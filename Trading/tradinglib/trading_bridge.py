@@ -217,9 +217,15 @@ class SignalEvaluator(Tools):
 
             if combined_df is None or combined_df.empty:
                 return [], (
-                    f"No data for strategy '{strategy_name}' in {sim_db}. "
-                    f"Run: python asset_perf2.py   (writes asset_simulation_{{year}}.db). "
-                    f"Also check that an index named '{strategy_name}' exists in yf_tickers.db."
+                    f"Keine Daten für Index '{strategy_name}' gefunden. "
+                    f"Mögliche Ursachen:\n"
+                    f"  1. In yf_tickers.db existiert kein Index mit dem Namen '{strategy_name}' "
+                    f"(Tabelle 'indices', Spalte 'name').\n"
+                    f"  2. asset_simulation_.db enthält noch keine Performance-Daten "
+                    f"für die Ticker dieses Index — bitte 'python asset_perf2.py' ausführen.\n"
+                    f"  (Verwendete DB: {sim_db})\n"
+                    f"Hinweis: Die Strategy-Regeln (buy/sell) kommen aus dem Config-JSON "
+                    f"und müssen NICHT in der Simulation-DB vorhanden sein."
                 )
 
             buy_raw  = strategy_config.get('buy', '')
