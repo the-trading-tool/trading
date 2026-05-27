@@ -549,24 +549,58 @@ class TradingPage:
     def _tab_compare(self):
         st.markdown('#### Backtest vs. Paper Trading')
 
+        # ── 1. Load backtest data ──────────────────────────────────────────
+        # Priority: session_state (set by multi_transaction on same page load)
+        #           → trading.db (persisted from previous run)
+        #           → calculate on demand via button
         backtest_df: Optional[pd.DataFrame] = st.session_state.get('multi_trades_df')
+
         if backtest_df is None or (isinstance(backtest_df, pd.DataFrame) and backtest_df.empty):
-            st.info(
-                'No backtest data available yet.  \n'
-                'Run the [Multi-Strategies simulation](/?multi=true) first — '
-                'results will be compared here.'
-            )
+            # Try DB fallback (survives page navigation)
+            backtest_df = self.order_log.get_backtest_df(self.username)
+            if not backtest_df.empty:
+                st.session_state['multi_trades_df'] = backtest_df  # warm cache
+
+        col_info, col_btn = st.columns([4, 1])
+        has_backtest = backtest_df is not None and not backtest_df.empty
+
+        with col_info:
+            if has_backtest:
+                saved_at = ''
+                if 'saved_at' in backtest_df.columns:
+                    saved_at = backtest_df['saved_at'].iloc[0][:16]
+                strategies = (backtest_df['strategy'].unique().tolist()
+                              if 'strategy' in backtest_df.columns else [])
+                st.caption(
+                    f"Backtest: {len(backtest_df)} trades | "
+                    f"Strategien: {', '.join(str(s) for s in strategies)}"
+                    + (f" | Stand: {saved_at}" if saved_at else '')
+                )
+            else:
+                st.info(
+                    'Noch keine Backtest-Daten. Klicke **Berechnen** oder führe die '
+                    '[Multi-Strategies-Simulation](/?multi=true) aus.'
+                )
+
+        with col_btn:
+            if st.button('🔄 Berechnen', help='Backtest aus Multi-Strategies neu berechnen'):
+                self._run_backtest_and_cache()
+                st.rerun()
+
+        if not has_backtest:
             return
 
+        # ── 2. Chart ──────────────────────────────────────────────────────
         paper_df = self.order_log.get_orders_df(mode='paper', broker='alpaca')
 
         fig = go.Figure()
 
         bt = backtest_df.sort_values('sellDate').copy()
-        bt['cum_gain'] = bt['gain'].cumsum()
+        if 'cum_gain' not in bt.columns or bt['cum_gain'].isna().all():
+            bt['cum_gain'] = bt['gain'].cumsum()
         fig.add_trace(go.Scatter(
             x=bt['sellDate'], y=bt['cum_gain'],
-            name='Backtest',
+            name='Backtest (Simulation)',
             line=dict(color='royalblue', width=2),
         ))
 
@@ -586,11 +620,44 @@ class TradingPage:
 
         fig.update_layout(
             xaxis_title='Date',
-            yaxis_title='Cumulative Gain',
+            yaxis_title='Kumulierter Gewinn',
             height=450,
             legend=dict(orientation='h', yanchor='bottom', y=1.02),
         )
         st.plotly_chart(fig, use_container_width=True)
+
+        # ── 3. Summary table ──────────────────────────────────────────────
+        if 'strategy' in bt.columns:
+            summary = (bt.groupby('strategy')['gain']
+                       .agg(Trades='count', TotalGain='sum', AvgGain='mean')
+                       .reset_index())
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+
+    def _run_backtest_and_cache(self) -> None:
+        """Run MultiTransactionProcessor silently and persist results to DB + session state."""
+        from tradinglib import multi_transaction as mu
+        strategies = self._strategies()
+        if not strategies:
+            st.warning('Keine Strategien konfiguriert.')
+            return
+
+        with st.spinner('Backtest wird berechnet …'):
+            try:
+                processor = mu.MultiTransactionProcessor(
+                    username=self.username,
+                    disable_streamlit=True,
+                )
+                processor.render()          # runs the full simulation silently
+                trades = processor.trades_df
+                if trades is not None and not trades.empty:
+                    st.session_state['multi_trades_df'] = trades.copy()
+                    self.order_log.save_backtest(trades, self.username)
+                    st.success(f'Backtest abgeschlossen: {len(trades)} Trades gespeichert.')
+                else:
+                    st.warning('Simulation lieferte keine Trades.')
+            except Exception as e:
+                logger.error('_run_backtest_and_cache failed: %s', e)
+                st.error(f'Backtest-Fehler: {e}')
 
     # ------------------------------------------------------------------ #
     #  Tab: Settings                                                       #

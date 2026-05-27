@@ -108,6 +108,56 @@ class OrderLog(Tools):
             logger.error(f"OrderLog.get_orders_df failed: {e}")
             return pd.DataFrame()
 
+    # ------------------------------------------------------------------ #
+    #  Backtest result persistence                                         #
+    # ------------------------------------------------------------------ #
+
+    def save_backtest(self, df: pd.DataFrame, username: str = '') -> None:
+        """Persist a MultiTransactionProcessor trades_df to trading.db.
+
+        Replaces any previous backtest for the same username.
+        Only the columns needed by _tab_compare() are stored; extra columns
+        are silently dropped so schema changes in multi_transaction.py don't break this.
+        """
+        keep = [c for c in ['sellDate', 'buyDate', 'ticker', 'strategy',
+                             'gain', 'Strategy', 'cumulative_gain']
+                if c in df.columns]
+        if not keep:
+            return
+        store = df[keep].copy()
+        # normalise: prefer 'strategy' column name (lower-case) if present
+        if 'Strategy' in store.columns and 'strategy' not in store.columns:
+            store = store.rename(columns={'Strategy': 'strategy'})
+        store['username'] = username
+        store['saved_at'] = datetime.now().isoformat()
+        try:
+            with sqlite3.connect(self._db) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS backtest_trades ("
+                             "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                             "username TEXT, saved_at TEXT,"
+                             "sellDate TEXT, buyDate TEXT, ticker TEXT,"
+                             "strategy TEXT, gain REAL, cumulative_gain REAL)")
+                conn.execute("DELETE FROM backtest_trades WHERE username=?",
+                             (username,))
+                store.to_sql('backtest_trades', conn,
+                             if_exists='append', index=False)
+            logger.info("Backtest saved: %d rows for user '%s'", len(store), username)
+        except Exception as e:
+            logger.error("save_backtest failed: %s", e)
+
+    def get_backtest_df(self, username: str = '') -> pd.DataFrame:
+        """Load the most recently saved backtest for a user."""
+        try:
+            with sqlite3.connect(self._db) as conn:
+                return pd.read_sql_query(
+                    "SELECT * FROM backtest_trades WHERE username=? "
+                    "ORDER BY sellDate",
+                    conn, params=(username,),
+                )
+        except Exception as e:
+            logger.debug("get_backtest_df: %s", e)
+            return pd.DataFrame()
+
     def get_open_tickers(self, strategy: str, mode: str, broker: str) -> set[str]:
         """Returns tickers that have an open buy with no matching sell."""
         try:
