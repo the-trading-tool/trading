@@ -572,7 +572,6 @@ class TradingPage:
     # ------------------------------------------------------------------ #
 
     def _run_alpaca_connection_test(self, api_key: str, api_secret: str, paper: bool):
-        from tradinglib.broker_alpaca import AlpacaBroker
         import pandas as pd
 
         mode_label = 'Paper' if paper else 'Live'
@@ -581,6 +580,17 @@ class TradingPage:
         def row(check: str, status: str, detail: str = '') -> dict:
             return {'Check': check, 'Status': status, 'Detail': detail}
 
+        # 0. Package availability
+        try:
+            from alpaca.trading.client import TradingClient  # noqa: F401
+            results.append(row('Package alpaca-py', '✅ Installed', ''))
+        except ImportError as e:
+            results.append(row('Package alpaca-py', '❌ Missing', f'{e} — run: pip install alpaca-py'))
+            st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+            st.error('Install the package first: `pip install alpaca-py`')
+            return
+
+        from tradinglib.broker_alpaca import AlpacaBroker
         broker = AlpacaBroker(api_key=api_key, secret_key=api_secret, paper=paper)
 
         # 1. Basic connectivity

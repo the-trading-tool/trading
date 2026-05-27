@@ -39,6 +39,9 @@ class AlpacaBroker(TradingBroker):
         try:
             self._get_client().get_account()
             return True
+        except ImportError:
+            # Re-raise so callers can show a meaningful "package missing" message
+            raise
         except Exception as e:
             logger.debug(f"Alpaca connection check failed: {e}")
             return False
