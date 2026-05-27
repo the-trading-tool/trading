@@ -146,17 +146,22 @@ class SignalEvaluator(Tools):
     def _best_sim_db(db_path: str) -> str:
         """Return the simulation DB filename that contains the most recent data.
 
-        asset_perf2.py writes to  asset_simulation_{year}.db  (never to the
-        base  asset_simulation_.db).  We prefer the current year, then walk
-        backwards up to 3 years, then try asset_simulation_all.db, and finally
-        fall back to asset_simulation_.db so the old base file still works as a
-        last resort.
+        Priority order (per project naming convention):
+          1. asset_simulation_.db  — PRIMARY: written by  asset_perf2.py  (no year
+             argument); always contains the most up-to-date data.
+          2. asset_simulation_{year}.db — FALLBACK: per-year archives written with
+             the /year:YYYY argument; walk back up to 4 years.
+          3. asset_simulation_all.db — weekly all-ticker run (last resort).
+
+        The OLD  asset_simulation.db  (no underscore suffix) is intentionally NOT
+        probed here — it belongs to the pre-refactor version of the app.
         """
         import datetime, os
         current_year = datetime.datetime.now().year
         candidates = (
-            [f"asset_simulation_{y}.db" for y in range(current_year, current_year - 4, -1)]
-            + ["asset_simulation_all.db", "asset_simulation_.db"]
+            ["asset_simulation_.db"]
+            + [f"asset_simulation_{y}.db" for y in range(current_year, current_year - 4, -1)]
+            + ["asset_simulation_all.db"]
         )
         for fname in candidates:
             full = Tools().get_path(path=db_path, file_name=fname)

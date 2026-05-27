@@ -159,7 +159,7 @@ def query_sector_stocks(
 
     debug_lines: list[str] = []
 
-    for db_name in ("asset_simulationall", "asset_simulation"):
+    for db_name in ("asset_simulation_all", "asset_simulation_", "asset_simulation"):
         sim_file  = _db_path(db_path, f"{db_name}.db")
         info_file = _db_path(db_path, "asset_info.db")
 

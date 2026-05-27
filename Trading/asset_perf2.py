@@ -14,6 +14,7 @@ from tradinglib.indicator import indicator
 from tradinglib import (fetch_data, ticker_tools as tt,
                         system_config as sysconf,
                         multi_transaction as mt)
+from tradinglib.tools import Tools as _Tools
 import logging
 from tradinglib.utils import DataUtils
 from tradinglib import cli, logging_config
@@ -1226,14 +1227,15 @@ if __name__ == "__main__":
     backfill_inds  = args.get('backfill', None)   # list[str] or None
 
     if rescore_flag:
-        sim_db_path  = os.path.join('database', sim_db_name)
-        info_db_path = os.path.join('database', 'asset_info.db')
+        _t = _Tools()
+        sim_db_path  = _t.get_path(path='database', file_name=sim_db_name)
+        info_db_path = _t.get_path(path='database', file_name='asset_info.db')
         logger.info("rescore mode: %s", sim_db_path)
         rescore_db(sim_db_path, info_db_path)
         exit(0)
 
     if backfill_inds:
-        sim_db_path = os.path.join('database', sim_db_name)
+        sim_db_path = _Tools().get_path(path='database', file_name=sim_db_name)
         unknown = [i for i in backfill_inds if i not in INDICATOR_BACKFILL_MAP]
         if unknown:
             logger.warning("backfill: unknown indicators ignored: %s", unknown)
