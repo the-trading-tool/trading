@@ -867,6 +867,11 @@ class MultiTransactionProcessor(tt.TickerTools):
         except Exception:
             pass
 
+        if not self.disable_streamlit:
+            try:
+                st.session_state['multi_trades_df'] = self.trades_df.copy()
+            except Exception:
+                pass
 
         if not self.disable_streamlit:
 #            ct_expander = st.expander("Closed Trades:")

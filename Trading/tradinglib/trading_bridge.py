@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional
 
-from tradinglib.tools import Tools, ExpressionEvaluator
+from tradinglib.tools import Tools, ExpressionEvaluatorNew as ExpressionEvaluator
 from tradinglib.broker_base import TradingBroker
 from tradinglib.broker_alpaca import AlpacaBroker
 from tradinglib.broker_ibkr import IBKRBroker
