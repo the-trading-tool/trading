@@ -47,7 +47,7 @@ class Ksp(tools.Tools):
                 encrypted_data = file.read()
                 decrypted_data = self.fernet.decrypt(encrypted_data)
                 return json.loads(decrypted_data)
-        return {None,None}
+        return {}
 
     def _get_all_credentials(self):
         return self.credentials
@@ -66,6 +66,12 @@ class Ksp(tools.Tools):
     def get_ksp(self, api):
         """Gibt die Zugangsdaten für eine API zurück."""
         return self.credentials.get(api, (None, None, None))
+
+    def delete_ksp(self, api):
+        """Entfernt einen Eintrag und speichert."""
+        if api in self.credentials:
+            del self.credentials[api]
+            self._save_credentials()
 
 # Beispiel-Nutzung:
 if __name__ == "__main__":
