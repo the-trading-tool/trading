@@ -641,6 +641,117 @@ class Admin():
                 else:
                     st.write(f"Error, no change to: {existing_ticker}")
 
+            config_copy_expander = st.expander("Copy user configuration", expanded=False)
+            with config_copy_expander:
+                _cfg_db = tools.Tools().get_path(path=self.db_path, file_name='config.db')
+                if not os.path.exists(_cfg_db):
+                    st.info("config.db not found.")
+                else:
+                    try:
+                        with sqlite3.connect(_cfg_db) as _cc:
+                            _all_rows = _cc.execute(
+                                "SELECT key, value FROM config ORDER BY key"
+                            ).fetchall()
+                    except Exception as _ce:
+                        st.error(f"Could not read config.db: {_ce}")
+                        _all_rows = []
+
+                    if _all_rows:
+                        _users_set: set[str] = set()
+                        for _rk, _ in _all_rows:
+                            _users_set.add(_rk.split(':', 1)[0])
+                        _user_list = sorted(_users_set)
+
+                        def _user_label(u: str) -> str:
+                            return f'(anonymous / system)' if u == '' else u
+
+                        col_src, col_dst = st.columns(2)
+                        with col_src:
+                            _src = st.selectbox(
+                                "Source user",
+                                _user_list,
+                                format_func=_user_label,
+                                key="cfg_copy_src",
+                            )
+                        with col_dst:
+                            _dst_opts = _user_list + ([""] if "" not in _user_list else [])
+                            _dst = st.selectbox(
+                                "Target user (existing)",
+                                _dst_opts,
+                                format_func=_user_label,
+                                key="cfg_copy_dst",
+                            )
+                            _dst_custom = st.text_input(
+                                "… or enter new username",
+                                value="",
+                                key="cfg_copy_dst_custom",
+                                help="Overrides the selectbox above when not empty.",
+                            ).strip()
+                        _target_user = _dst_custom if _dst_custom else _dst
+
+                        _src_prefix = f"{_src}:"
+                        _src_entries = [
+                            (rk.split(':', 1)[1], rv)
+                            for rk, rv in _all_rows
+                            if rk.startswith(_src_prefix)
+                        ]
+
+                        if not _src_entries:
+                            st.info(f"No configuration found for user '{_user_label(_src)}'.")
+                        else:
+                            _key_names = [k for k, _ in _src_entries]
+                            _sel_keys = st.multiselect(
+                                "Keys to copy  (empty = copy all)",
+                                options=_key_names,
+                                default=[],
+                                key="cfg_copy_keys",
+                            )
+                            _to_copy = [
+                                (k, v) for k, v in _src_entries
+                                if not _sel_keys or k in _sel_keys
+                            ]
+
+                            _preview = pd.DataFrame([
+                                {
+                                    "key": k,
+                                    "value preview": v[:80] + ("…" if len(v) > 80 else ""),
+                                }
+                                for k, v in _to_copy
+                            ])
+                            st.dataframe(_preview, use_container_width=True, hide_index=True)
+
+                            if _src == _target_user and not _dst_custom:
+                                st.warning("Source and target user are identical — nothing to do.")
+                            else:
+                                _copy_label = (
+                                    f"Copy {len(_to_copy)} key(s) from "
+                                    f"'{_user_label(_src)}' → '{_user_label(_target_user)}'"
+                                )
+                                _copy_confirm = st.checkbox(
+                                    _copy_label, key="cfg_copy_confirm"
+                                )
+                                if (
+                                    st.button("Copy", type="primary", key="cfg_copy_btn")
+                                    and _copy_confirm
+                                ):
+                                    try:
+                                        with sqlite3.connect(_cfg_db) as _cc:
+                                            for _k, _v in _to_copy:
+                                                _cc.execute(
+                                                    "INSERT INTO config (key, value) VALUES (?, ?)"
+                                                    " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                                                    (f"{_target_user}:{_k}", _v),
+                                                )
+                                        st.success(
+                                            f"Copied {len(_to_copy)} key(s) to "
+                                            f"'{_user_label(_target_user)}'."
+                                        )
+                                        st.rerun()
+                                    except Exception as _ce:
+                                        st.error(f"Copy failed: {_ce}")
+                    else:
+                        st.info("No configuration data found in config.db.")
+
             admin_expander = st.expander("Admin tasks", expanded=False)
             with admin_expander:
                 try:
