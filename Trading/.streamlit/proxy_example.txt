@@ -1,0 +1,33 @@
+<VirtualHost 167.86.92.84:80>
+   SuexecUserGroup "#1034" "#1010"
+   ServerName cloogidoo.com
+    RewriteEngine on
+#    RewriteCond %{SERVER_NAME} =cloogidoo.com
+#    RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+    RewriteCond %{HTTP:Upgrade} =websocket
+    RewriteRule ^/(.*) ws://localhost:8080/$1 [P]
+    RewriteCond %{HTTP:Upgrade} !=websocket
+    RewriteRule ^/(.*) http://localhost:8080/$1 [P]
+    ProxyPassReverse / http://localhost:8080
+    ProxyPass / http://localhost:8080
+</VirtualHost>
+<VirtualHost 167.86.92.84:443>
+    SuexecUserGroup "#1034" "#1010"
+    ServerName cloogidoo.com
+    RewriteEngine On
+
+    RewriteCond %{HTTP:Upgrade} =websocket
+    RewriteRule /(.*) ws://cloogidoo.com/$1 [P]
+    RewriteCond %{HTTP:Upgrade} !=websocket
+    RewriteRule /(.*) http://cloogidoo.com/$1 [P]
+    ProxyPassReverse / http://cloogidoo.com
+
+
+   SSLEngine on
+   SSLCertificateFile /home/cloogidoo/ssl.cert
+   SSLCertificateKeyFile /home/cloogidoo/ssl.key
+   SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
+
+   SSLCACertificateFile /home/cloogidoo/ssl.ca
+
+</VirtualHost>

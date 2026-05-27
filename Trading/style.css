@@ -1,0 +1,18 @@
+
+section[data-testid="stSidebar"] 
+    div.stButton > button {
+        background-color: whitesmoke;
+        width: 250px;
+#        color: grey;
+        align-self: center;
+		text-decoration: none;
+		decoration: none; 
+    }
+
+    div.stLinkButton > a {
+        background-color: lightgrey;
+        width: 250px;
+#        color: lightgray;
+        text-decoration: none;
+        align-self: center;
+	}
