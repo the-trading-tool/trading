@@ -197,6 +197,38 @@ class SignalEvaluator(Tools):
             order_by = strategy_config.get('order_by', 'sortino')
             currency = strategy_config.get('currency', 'ANY')
 
+            # Resolve the index name in yf_tickers.db.
+            # Indices are stored with a ^ prefix (e.g. ^SPX, ^GDAX), but strategy
+            # names in the Multi Strategies config omit the ^ (e.g. SPX, GDAX).
+            # Try exact match first, then ^ prefix, then % wildcard as last resort.
+            index_name = strategy_name
+            try:
+                conn = simulator.ticker_conn
+                exact = conn.execute(
+                    "SELECT COUNT(*) FROM indices WHERE name = ?", (strategy_name,)
+                ).fetchone()[0]
+                if exact == 0:
+                    caret = conn.execute(
+                        "SELECT COUNT(*) FROM indices WHERE name = ?", (f'^{strategy_name}',)
+                    ).fetchone()[0]
+                    if caret > 0:
+                        index_name = f'^{strategy_name}'
+                    else:
+                        # last resort: partial match (e.g. "SPX" matches "^SPX" via LIKE)
+                        like = conn.execute(
+                            "SELECT name FROM indices WHERE name LIKE ? LIMIT 1",
+                            (f'%{strategy_name}',)
+                        ).fetchone()
+                        if like:
+                            index_name = like[0]
+            except Exception as e:
+                logger.debug("Index name resolution failed for %s: %s", strategy_name, e)
+
+            if index_name != strategy_name:
+                logger.debug(
+                    "SignalEvaluator: resolved index '%s' → '%s'", strategy_name, index_name
+                )
+
             # Build the same WHERE extension as fetch_combined_data_with_attach,
             # but use q=1 (one row per ticker, latest date only) instead of q=3
             # (all historical rows).  q=1 is ~50× faster for large datasets and
@@ -208,7 +240,7 @@ class SignalEvaluator(Tools):
                 q_ext += f' ORDER BY {order_by} DESC'
 
             query = mq.make_query(
-                'asset_simulation', strategy_name, 1,
+                'asset_simulation', index_name, 1,
                 q=1, q_ext=q_ext, conn=simulator.ticker_conn,
             )
             combined_df = pd.read_sql_query(query, simulator.ticker_conn)
@@ -216,11 +248,12 @@ class SignalEvaluator(Tools):
                 combined_df['stockIndex'] = strategy_name
 
             if combined_df is None or combined_df.empty:
+                resolved = f" (aufgelöst zu '{index_name}')" if index_name != strategy_name else ""
                 return [], (
-                    f"Keine Daten für Index '{strategy_name}' gefunden. "
+                    f"Keine Daten für Index '{strategy_name}'{resolved} gefunden. "
                     f"Mögliche Ursachen:\n"
-                    f"  1. In yf_tickers.db existiert kein Index mit dem Namen '{strategy_name}' "
-                    f"(Tabelle 'indices', Spalte 'name').\n"
+                    f"  1. In yf_tickers.db existiert kein Index '{strategy_name}' oder "
+                    f"'^{strategy_name}' (Tabelle 'indices', Spalte 'name').\n"
                     f"  2. asset_simulation_.db enthält noch keine Performance-Daten "
                     f"für die Ticker dieses Index — bitte 'python asset_perf2.py' ausführen.\n"
                     f"  (Verwendete DB: {sim_db})\n"
