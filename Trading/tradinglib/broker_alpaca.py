@@ -48,12 +48,14 @@ class AlpacaBroker(TradingBroker):
 
     def get_account_info(self) -> AccountInfo:
         acct = self._get_client().get_account()
+        equity = float(acct.equity or 0)
+        last_equity = float(acct.last_equity or equity)
         return AccountInfo(
-            equity=float(acct.equity),
-            buying_power=float(acct.buying_power),
-            cash=float(acct.cash),
-            unrealized_pnl=float(acct.unrealized_pl or 0),
-            currency='USD',
+            equity=equity,
+            buying_power=float(acct.buying_power or 0),
+            cash=float(acct.cash or 0),
+            unrealized_pnl=round(equity - last_equity, 2),  # day change
+            currency=str(acct.currency or 'USD'),
         )
 
     def get_positions(self) -> list[Position]:

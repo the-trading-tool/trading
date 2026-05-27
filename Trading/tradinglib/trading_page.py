@@ -161,7 +161,7 @@ class TradingPage:
                 c1.metric('Equity',        f"{acct.equity:,.2f} {acct.currency}")
                 c2.metric('Buying Power',  f"{acct.buying_power:,.2f} {acct.currency}")
                 c3.metric('Cash',          f"{acct.cash:,.2f} {acct.currency}")
-                c4.metric('Unrealized',    f"{acct.unrealized_pnl:+,.2f} {acct.currency}")
+                c4.metric('Day P&L',       f"{acct.unrealized_pnl:+,.2f} {acct.currency}")
             except Exception as e:
                 st.error(f'Failed to load account data: {e}')
 
