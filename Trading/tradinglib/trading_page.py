@@ -1,5 +1,4 @@
 import logging
-from urllib.parse import quote as _url_quote
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -302,10 +301,13 @@ class TradingPage:
         # Build editable table: select-checkbox + asset viewer link
         edit_df = show_df.copy().reset_index(drop=True)
         edit_df.insert(0, 'select', True)
-        # Link: /?details=true&symbol=<longName URL-encoded>
-        edit_df['view'] = edit_df['longName'].apply(
-            lambda n: f'/?details=true&symbol={_url_quote(str(n), safe="")}'
-        )
+        # Link: /?details=true&symbol=<longName>
+        # All non-alphanumeric characters are replaced with %20
+        def _to_link(name: str) -> str:
+            safe = ''.join(c if c.isalnum() else '%20' for c in str(name))
+            return f'/?details=true&symbol={safe}'
+
+        edit_df['view'] = edit_df['longName'].apply(_to_link)
 
         display_cols = [c for c in
             ['select', 'strategy', 'signal', 'ticker', 'longName',
