@@ -493,6 +493,27 @@ class TradingPage:
         else:
             st.warning(f'KSP entry "{current_ksp_name}" not found or empty.')
 
+        # ---- Manual connection test ---------------------------------- #
+        with st.expander('🔌 Connection test — enter credentials manually'):
+            st.caption(
+                'Test credentials without storing them. Useful for verifying a new key '
+                'before adding it to the key store.'
+            )
+            with st.form('form_alpaca_test'):
+                col_l, col_r = st.columns(2)
+                with col_l:
+                    test_key = st.text_input('API Key', type='password', key='test_alpaca_key')
+                with col_r:
+                    test_secret = st.text_input('API Secret', type='password', key='test_alpaca_secret')
+                test_paper = st.checkbox('Paper account', value=True, key='test_alpaca_paper')
+                run_test = st.form_submit_button('▶ Run test', type='primary')
+
+            if run_test:
+                if not test_key or not test_secret:
+                    st.error('API Key and API Secret are required.')
+                else:
+                    self._run_alpaca_connection_test(test_key, test_secret, test_paper)
+
         # ---- IBKR ---------------------------------------------------- #
         st.markdown('#### IBKR Live Trading — Connection *(Phase 3)*')
         with st.form('form_ibkr_creds'):
@@ -545,3 +566,73 @@ class TradingPage:
                         st.rerun()
                     else:
                         st.error('Yahoo Ticker must not be empty.')
+
+    # ------------------------------------------------------------------ #
+    #  Alpaca connection test                                              #
+    # ------------------------------------------------------------------ #
+
+    def _run_alpaca_connection_test(self, api_key: str, api_secret: str, paper: bool):
+        from tradinglib.broker_alpaca import AlpacaBroker
+        import pandas as pd
+
+        mode_label = 'Paper' if paper else 'Live'
+        results: list[dict] = []
+
+        def row(check: str, status: str, detail: str = '') -> dict:
+            return {'Check': check, 'Status': status, 'Detail': detail}
+
+        broker = AlpacaBroker(api_key=api_key, secret_key=api_secret, paper=paper)
+
+        # 1. Basic connectivity
+        try:
+            connected = broker.is_connected()
+            if connected:
+                results.append(row('Connection', '✅ OK', f'Alpaca {mode_label} reachable'))
+            else:
+                results.append(row('Connection', '❌ Failed', 'is_connected() returned False'))
+        except Exception as e:
+            results.append(row('Connection', '❌ Error', str(e)))
+            st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
+            return
+
+        # 2. Account info
+        try:
+            acct = broker.get_account_info()
+            results.append(row(
+                'Account',
+                '✅ OK',
+                f'Equity: {acct.equity:,.2f} {acct.currency} | '
+                f'Buying power: {acct.buying_power:,.2f} | '
+                f'Cash: {acct.cash:,.2f}',
+            ))
+        except Exception as e:
+            results.append(row('Account', '❌ Error', str(e)))
+
+        # 3. Positions
+        try:
+            positions = broker.get_positions()
+            results.append(row('Positions', '✅ OK', f'{len(positions)} open position(s)'))
+        except Exception as e:
+            results.append(row('Positions', '❌ Error', str(e)))
+
+        # 4. Orders (read-only)
+        try:
+            orders = broker.get_orders(status='open')
+            results.append(row('Orders', '✅ OK', f'{len(orders)} open order(s)'))
+        except Exception as e:
+            results.append(row('Orders', '❌ Error', str(e)))
+
+        # 5. Asset lookup (sanity check — no order placed)
+        try:
+            from alpaca.trading.client import TradingClient
+            client = TradingClient(api_key=api_key, secret_key=api_secret, paper=paper)
+            asset = client.get_asset('AAPL')
+            results.append(row(
+                'Asset lookup',
+                '✅ OK',
+                f'AAPL → {asset.name}, tradable={asset.tradable}, shortable={asset.shortable}',
+            ))
+        except Exception as e:
+            results.append(row('Asset lookup', '❌ Error', str(e)))
+
+        st.dataframe(pd.DataFrame(results), use_container_width=True, hide_index=True)
