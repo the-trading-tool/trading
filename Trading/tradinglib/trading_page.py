@@ -213,13 +213,15 @@ class TradingPage:
                 sigs, err = evaluator.get_signals(name, cfg)
                 if err:
                     eval_errors[name] = err
+                budget = self._budget_per_position(cfg)
                 for s in sigs:
                     sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
                     s['broker_symbol'] = sym or '—'
                     s['tradeable'] = sym is not None
-                    qty = calc_qty(self._budget_per_position(cfg), s['price'])
-                    s['qty'] = qty
-                    s['value'] = round(qty * s['price'], 2)
+                    qty = calc_qty(budget, s['price'])
+                    s['qty']    = int(qty)
+                    s['value']  = round(qty * s['price'], 2)
+                    s['budget'] = round(budget, 2)
                     all_signals.append(s)
 
         if eval_errors:
@@ -227,9 +229,8 @@ class TradingPage:
                 for strat, msg in eval_errors.items():
                     st.error(f'**{strat}**: {msg}')
                 st.caption(
-                    'Common causes: strategy not found in asset_simulation_.db '
-                    '(run `python asset_perf2.py`), index name mismatch, '
-                    'or invalid buy/sell expression.'
+                    'Mögliche Ursachen: Index nicht in yf_tickers.db, '
+                    'oder `python asset_perf2.py` ausführen um asset_simulation_.db zu befüllen.'
                 )
 
         if not all_signals and not eval_errors:
@@ -242,35 +243,93 @@ class TradingPage:
         buy_df  = df[df['signal'] == 'buy']
         sell_df = df[df['signal'] == 'sell']
 
-        st.markdown(f"**{len(buy_df)} buy signal(s)** | **{len(sell_df)} sell signal(s)**")
+        col_b, col_s = st.columns(2)
+        col_b.metric('🟢 Buy signals',  len(buy_df))
+        col_s.metric('🔴 Sell signals', len(sell_df))
 
         sig_filter = st.radio('Show:', ['All', 'Buy only', 'Sell only'], horizontal=True)
-        show_df = df if sig_filter == 'All' else (buy_df if sig_filter == 'Buy only' else sell_df)
+        show_df = (df if sig_filter == 'All'
+                   else (buy_df if sig_filter == 'Buy only' else sell_df))
+
+        # Build editable table: select-checkbox + asset viewer link
+        edit_df = show_df.copy().reset_index(drop=True)
+        edit_df.insert(0, 'select', True)
+        edit_df['view'] = edit_df['ticker'].apply(lambda t: f'/?symbol={t}')
 
         display_cols = [c for c in
-            ['strategy', 'ticker', 'longName', 'signal', 'price', 'currency', 'qty', 'value', 'tradeable', 'broker_symbol']
-            if c in show_df.columns]
+            ['select', 'strategy', 'signal', 'ticker', 'longName',
+             'price', 'currency', 'budget', 'qty', 'value',
+             'broker_symbol', 'tradeable', 'view']
+            if c in edit_df.columns]
 
-        st.dataframe(
-            show_df[display_cols].reset_index(drop=True),
+        edited = st.data_editor(
+            edit_df[display_cols],
             use_container_width=True,
+            hide_index=True,
             column_config={
+                'select':        st.column_config.CheckboxColumn(
+                                     '✓', width='small',
+                                     help='Select for execution'),
+                'strategy':      st.column_config.TextColumn('Strategy'),
                 'signal':        st.column_config.TextColumn('Signal', width='small'),
-                'tradeable':     st.column_config.CheckboxColumn('Tradeable', width='small'),
+                'ticker':        st.column_config.TextColumn('Ticker'),
+                'longName':      st.column_config.TextColumn('Name'),
+                'price':         st.column_config.NumberColumn('Price',      format='%.2f'),
+                'currency':      st.column_config.TextColumn('CCY',          width='small'),
+                'budget':        st.column_config.NumberColumn(
+                                     'Budget/Pos', format='%.2f',
+                                     help='Budget per position = invest ÷ num_assets'),
+                'qty':           st.column_config.NumberColumn('Qty',        format='%d',   width='small'),
+                'value':         st.column_config.NumberColumn('Value',      format='%.2f'),
                 'broker_symbol': st.column_config.TextColumn('Broker Symbol'),
+                'tradeable':     st.column_config.CheckboxColumn('Tradeable', width='small'),
+                'view':          st.column_config.LinkColumn(
+                                     '📊 Chart',
+                                     display_text='→ open',
+                                     help='Open ticker in Asset Viewer'),
             },
+            disabled=[c for c in display_cols if c != 'select'],
         )
 
-        tradeable = [s for s in all_signals if s.get('tradeable')]
-        if not tradeable:
-            st.warning('No tradeable signals (all tickers unavailable on Alpaca).')
+        # Collect the signals that are checked AND tradeable
+        selected_signals: list[dict] = []
+        n_not_tradeable = 0
+        for i in edited[edited['select']].index.tolist():
+            row = edit_df.iloc[i]
+            match = next(
+                (s for s in all_signals
+                 if s['ticker'] == row['ticker']
+                 and s['strategy'] == row['strategy']
+                 and s['signal'] == row['signal']),
+                None,
+            )
+            if match is None:
+                continue
+            if match['tradeable']:
+                selected_signals.append(match)
+            else:
+                n_not_tradeable += 1
+
+        if n_not_tradeable:
+            st.warning(
+                f'{n_not_tradeable} selected signal(s) not tradeable on '
+                f'{broker_id.upper()} (no broker symbol) — skipped.'
+            )
+
+        n_sel = len(selected_signals)
+
+        if n_sel == 0:
+            if edited['select'].any():
+                st.warning('No tradeable signals selected.')
+            else:
+                st.info('Tick the ✓ column for signals you want to execute.')
             return
 
         if self._dry_run():
-            st.info(f'🧪 Dry run: {len(tradeable)} order(s) would be submitted.')
+            st.info(f'🧪 Dry run: {n_sel} order(s) would be submitted.')
         else:
-            if st.button(f'▶ Execute all {len(tradeable)} tradeable signals', type='primary'):
-                self._dialog_confirm_all(tradeable, active, broker_id)
+            if st.button(f'▶ Execute {n_sel} selected order(s)', type='primary'):
+                self._dialog_confirm_all(selected_signals, active, broker_id)
 
     @st.dialog('Confirm orders', width='large')
     def _dialog_confirm_all(self, signals: list[dict], strategies: dict, broker_id: str):
