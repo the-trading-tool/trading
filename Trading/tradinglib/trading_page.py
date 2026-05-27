@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import quote as _url_quote
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -70,6 +71,49 @@ class TradingPage:
         invest = strategy_cfg.get('invest', 1000)
         n = max(strategy_cfg.get('num_assets', 1), 1)
         return invest / n
+
+    @staticmethod
+    def _apply_inv_vola_sizing(
+        signals: list[dict],
+        strategy_cfg: dict,
+    ) -> list[dict]:
+        """Sort signals by order_by score, keep top num_assets, weight by inverse volatility.
+
+        This mirrors the allocation logic used in the other portfolio apps:
+          weight_i  = (1 / vola_i) / sum(1 / vola_j)   for j in top-N
+          budget_i  = invest * weight_i
+          qty_i     = floor(budget_i / price_i)  (min 1)
+        """
+        if not signals:
+            return []
+
+        invest     = float(strategy_cfg.get('invest',     1000))
+        num_assets = max(int(strategy_cfg.get('num_assets', 1)),  1)
+
+        # 1. Sort descending by score (= order_by metric, e.g. sortino)
+        ranked = sorted(signals, key=lambda s: float(s.get('score', 0)), reverse=True)
+
+        # 2. Keep only top num_assets
+        selected = ranked[:num_assets]
+
+        # 3. Inverse-volatility weights
+        inv_volas   = [1.0 / max(float(s.get('vola', 1.0)), 1e-6) for s in selected]
+        total_iv    = sum(inv_volas)
+
+        result: list[dict] = []
+        for s, iv in zip(selected, inv_volas):
+            weight = iv / total_iv
+            budget = invest * weight
+            price  = s['price']
+            qty    = calc_qty(budget, price)
+            row    = dict(s)                         # copy — don't mutate original
+            row['weight'] = round(weight * 100, 1)  # percentage of total invest
+            row['budget'] = round(budget, 2)
+            row['qty']    = int(qty)
+            row['value']  = round(qty * price, 2)
+            result.append(row)
+
+        return result
 
     # ------------------------------------------------------------------ #
     #  Entry point                                                         #
@@ -213,15 +257,19 @@ class TradingPage:
                 sigs, err = evaluator.get_signals(name, cfg)
                 if err:
                     eval_errors[name] = err
-                budget = self._budget_per_position(cfg)
-                for s in sigs:
+
+                # --- Inverse-volatility sizing (buy signals only) ----------
+                buy_raw  = [s for s in sigs if s['signal'] == 'buy']
+                sell_raw = [s for s in sigs if s['signal'] == 'sell']
+
+                sized_buys  = self._apply_inv_vola_sizing(buy_raw,  cfg)
+                # Sell signals: same mechanism (top-N by score, inv-vola weighted)
+                sized_sells = self._apply_inv_vola_sizing(sell_raw, cfg)
+
+                for s in sized_buys + sized_sells:
                     sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
                     s['broker_symbol'] = sym or '—'
-                    s['tradeable'] = sym is not None
-                    qty = calc_qty(budget, s['price'])
-                    s['qty']    = int(qty)
-                    s['value']  = round(qty * s['price'], 2)
-                    s['budget'] = round(budget, 2)
+                    s['tradeable']     = sym is not None
                     all_signals.append(s)
 
         if eval_errors:
@@ -254,11 +302,14 @@ class TradingPage:
         # Build editable table: select-checkbox + asset viewer link
         edit_df = show_df.copy().reset_index(drop=True)
         edit_df.insert(0, 'select', True)
-        edit_df['view'] = edit_df['ticker'].apply(lambda t: f'/?symbol={t}')
+        # Link: /?details=true&symbol=<longName URL-encoded>
+        edit_df['view'] = edit_df['longName'].apply(
+            lambda n: f'/?details=true&symbol={_url_quote(str(n), safe="")}'
+        )
 
         display_cols = [c for c in
             ['select', 'strategy', 'signal', 'ticker', 'longName',
-             'price', 'currency', 'budget', 'qty', 'value',
+             'price', 'currency', 'score', 'weight', 'budget', 'qty', 'value',
              'broker_symbol', 'tradeable', 'view']
             if c in edit_df.columns]
 
@@ -271,22 +322,28 @@ class TradingPage:
                                      '✓', width='small',
                                      help='Select for execution'),
                 'strategy':      st.column_config.TextColumn('Strategy'),
-                'signal':        st.column_config.TextColumn('Signal', width='small'),
+                'signal':        st.column_config.TextColumn('Signal',    width='small'),
                 'ticker':        st.column_config.TextColumn('Ticker'),
                 'longName':      st.column_config.TextColumn('Name'),
-                'price':         st.column_config.NumberColumn('Price',      format='%.2f'),
-                'currency':      st.column_config.TextColumn('CCY',          width='small'),
+                'price':         st.column_config.NumberColumn('Price',   format='%.2f'),
+                'currency':      st.column_config.TextColumn('CCY',       width='small'),
+                'score':         st.column_config.NumberColumn(
+                                     'Score', format='%.3f',
+                                     help='Ranking metric (order_by), e.g. Sortino ratio'),
+                'weight':        st.column_config.NumberColumn(
+                                     'Weight %', format='%.1f%%',
+                                     help='Inv.-volatility weight within strategy budget'),
                 'budget':        st.column_config.NumberColumn(
-                                     'Budget/Pos', format='%.2f',
-                                     help='Budget per position = invest ÷ num_assets'),
-                'qty':           st.column_config.NumberColumn('Qty',        format='%d',   width='small'),
-                'value':         st.column_config.NumberColumn('Value',      format='%.2f'),
+                                     'Budget', format='%.2f',
+                                     help='invest × weight  (inv.-volatility allocated)'),
+                'qty':           st.column_config.NumberColumn('Qty',     format='%d',  width='small'),
+                'value':         st.column_config.NumberColumn('Value',   format='%.2f'),
                 'broker_symbol': st.column_config.TextColumn('Broker Symbol'),
                 'tradeable':     st.column_config.CheckboxColumn('Tradeable', width='small'),
                 'view':          st.column_config.LinkColumn(
-                                     '📊 Chart',
+                                     '📊 Details',
                                      display_text='→ open',
-                                     help='Open ticker in Asset Viewer'),
+                                     help='Asset Viewer mit Details öffnen'),
             },
             disabled=[c for c in display_cols if c != 'select'],
         )

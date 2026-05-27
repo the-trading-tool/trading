@@ -315,6 +315,8 @@ class SignalEvaluator(Tools):
                     'currency':  row.get('currency', 'USD'),
                     'date':      str(latest_date)[:10],
                     'score':     float(row.get(order_by, 0)),
+                    # vola is needed for inverse-volatility position sizing
+                    'vola':      max(float(row.get('vola', 1.0) or 1.0), 1e-6),
                 })
 
             expr_errors = '  |  '.join(e for e in [buy_err, sell_err] if e)
