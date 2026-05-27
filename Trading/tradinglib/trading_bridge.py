@@ -142,6 +142,28 @@ class SignalEvaluator(Tools):
         self.username = username
         self.db_path = db_path
 
+    @staticmethod
+    def _best_sim_db(db_path: str) -> str:
+        """Return the simulation DB filename that contains the most recent data.
+
+        asset_perf2.py writes to  asset_simulation_{year}.db  (never to the
+        base  asset_simulation_.db).  We prefer the current year, then walk
+        backwards up to 3 years, then try asset_simulation_all.db, and finally
+        fall back to asset_simulation_.db so the old base file still works as a
+        last resort.
+        """
+        import datetime, os
+        current_year = datetime.datetime.now().year
+        candidates = (
+            [f"asset_simulation_{y}.db" for y in range(current_year, current_year - 4, -1)]
+            + ["asset_simulation_all.db", "asset_simulation_.db"]
+        )
+        for fname in candidates:
+            full = Tools().get_path(path=db_path, file_name=fname)
+            if os.path.exists(full) and os.path.getsize(full) > 4096:  # >4 KB → not empty
+                return fname
+        return "asset_simulation_.db"  # absolute fallback
+
     def get_signals(
         self, strategy_name: str, strategy_config: dict
     ) -> tuple[list[dict], str]:
@@ -156,8 +178,11 @@ class SignalEvaluator(Tools):
         from tradinglib import make_query as mq
 
         try:
+            sim_db = self._best_sim_db(self.db_path)
+            logger.debug("SignalEvaluator: using %s for strategy %s", sim_db, strategy_name)
+
             simulator = ass.AssetSimulator(
-                "yf_tickers.db", "asset_simulation_.db", "asset_info.db",
+                "yf_tickers.db", sim_db, "asset_info.db",
                 strategy_name,
                 db_path=self.db_path,
                 username=self.username,
@@ -187,9 +212,9 @@ class SignalEvaluator(Tools):
 
             if combined_df is None or combined_df.empty:
                 return [], (
-                    f"No data for strategy '{strategy_name}'. "
-                    "Make sure asset_simulation_.db is populated (run asset_perf2.py) "
-                    f"and that an index named '{strategy_name}' exists in yf_tickers.db."
+                    f"No data for strategy '{strategy_name}' in {sim_db}. "
+                    f"Run: python asset_perf2.py   (writes asset_simulation_{{year}}.db). "
+                    f"Also check that an index named '{strategy_name}' exists in yf_tickers.db."
                 )
 
             buy_raw  = strategy_config.get('buy', '')
