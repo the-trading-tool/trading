@@ -204,11 +204,16 @@ class TradingPage:
 
         active = {k: v for k, v in strategies.items() if k in enabled}
 
-        with st.spinner('Calculating signals from current market data …'):
-            evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
-            all_signals: list[dict] = []
-            for name, cfg in active.items():
-                for s in evaluator.get_signals(name, cfg):
+        evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
+        all_signals: list[dict] = []
+        eval_errors: dict[str, str] = {}
+
+        for name, cfg in active.items():
+            with st.spinner(f'Evaluating {name} …'):
+                sigs, err = evaluator.get_signals(name, cfg)
+                if err:
+                    eval_errors[name] = err
+                for s in sigs:
                     sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
                     s['broker_symbol'] = sym or '—'
                     s['tradeable'] = sym is not None
@@ -217,8 +222,20 @@ class TradingPage:
                     s['value'] = round(qty * s['price'], 2)
                     all_signals.append(s)
 
-        if not all_signals:
+        if eval_errors:
+            with st.expander('⚠ Signal evaluation errors', expanded=True):
+                for strat, msg in eval_errors.items():
+                    st.error(f'**{strat}**: {msg}')
+                st.caption(
+                    'Common causes: strategy not found in asset_simulation_.db '
+                    '(run `python asset_perf2.py`), index name mismatch, '
+                    'or invalid buy/sell expression.'
+                )
+
+        if not all_signals and not eval_errors:
             st.success('No current signals — all strategies are neutral.')
+            return
+        if not all_signals:
             return
 
         df = pd.DataFrame(all_signals)

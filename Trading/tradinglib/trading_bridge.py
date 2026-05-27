@@ -142,8 +142,18 @@ class SignalEvaluator(Tools):
         self.username = username
         self.db_path = db_path
 
-    def get_signals(self, strategy_name: str, strategy_config: dict) -> list[dict]:
+    def get_signals(
+        self, strategy_name: str, strategy_config: dict
+    ) -> tuple[list[dict], str]:
+        """Evaluate today's signals for one strategy.
+
+        Returns ``(signals, error_msg)``.  ``error_msg`` is an empty string on
+        success; a human-readable description of the problem otherwise.
+        The caller should surface ``error_msg`` in the UI so the user can
+        diagnose missing data / mis-named indices / expression errors.
+        """
         from tradinglib import asset_simulator as ass
+        from tradinglib import make_query as mq
 
         try:
             simulator = ass.AssetSimulator(
@@ -157,30 +167,69 @@ class SignalEvaluator(Tools):
             order_by = strategy_config.get('order_by', 'sortino')
             currency = strategy_config.get('currency', 'ANY')
 
-            combined_df = simulator.fetch_combined_data_with_attach(
-                index_filter=1, o_by=order_by, curr_column=currency
+            # Build the same WHERE extension as fetch_combined_data_with_attach,
+            # but use q=1 (one row per ticker, latest date only) instead of q=3
+            # (all historical rows).  q=1 is ~50× faster for large datasets and
+            # is exactly what signal evaluation needs.
+            q_ext = ''
+            if currency != 'ANY':
+                q_ext += f' AND ai.currency = "{currency}"'
+            if order_by:
+                q_ext += f' ORDER BY {order_by} DESC'
+
+            query = mq.make_query(
+                'asset_simulation', strategy_name, 1,
+                q=1, q_ext=q_ext, conn=simulator.ticker_conn,
             )
+            combined_df = pd.read_sql_query(query, simulator.ticker_conn)
+            if combined_df is not None:
+                combined_df['stockIndex'] = strategy_name
+
             if combined_df is None or combined_df.empty:
-                return []
+                return [], (
+                    f"No data for strategy '{strategy_name}'. "
+                    "Make sure asset_simulation_.db is populated (run asset_perf2.py) "
+                    f"and that an index named '{strategy_name}' exists in yf_tickers.db."
+                )
 
+            buy_raw  = strategy_config.get('buy', '')
+            sell_raw = strategy_config.get('sell', '')
             evaluator = ExpressionEvaluator(combined_df, dataframe_name='combined_df')
-            buy_expr = evaluator.validate_and_transform(strategy_config['buy'])
-            sell_expr = evaluator.validate_and_transform(strategy_config['sell'])
 
+            buy_err = sell_err = ''
+            try:
+                buy_expr = evaluator.validate_and_transform(buy_raw)
+            except Exception as e:
+                buy_expr = ''
+                buy_err  = str(e)
+
+            try:
+                sell_expr = evaluator.validate_and_transform(sell_raw)
+            except Exception as e:
+                sell_expr = ''
+                sell_err  = str(e)
+
+            combined_df = combined_df.copy()
             combined_df['_signal'] = 0
-            try:
-                combined_df['_signal'] = np.where(
-                    eval(buy_expr), 1, combined_df['_signal']  # noqa: S307
-                )
-            except Exception:
-                pass
-            try:
-                combined_df['_signal'] = np.where(
-                    eval(sell_expr), -1, combined_df['_signal']  # noqa: S307
-                )
-            except Exception:
-                pass
 
+            if buy_expr:
+                try:
+                    combined_df['_signal'] = np.where(
+                        eval(buy_expr), 1, combined_df['_signal']  # noqa: S307
+                    )
+                except Exception as e:
+                    buy_err = f"buy eval: {e}"
+
+            if sell_expr:
+                try:
+                    combined_df['_signal'] = np.where(
+                        eval(sell_expr), -1, combined_df['_signal']  # noqa: S307
+                    )
+                except Exception as e:
+                    sell_err = f"sell eval: {e}"
+
+            # q=1 already returns only the latest date, but guard in case of
+            # unexpected duplicates (e.g. multiple rows per ticker from the JOIN)
             latest_date = combined_df['Date'].max()
             triggered = combined_df[
                 (combined_df['Date'] == latest_date) & (combined_df['_signal'] != 0)
@@ -198,11 +247,13 @@ class SignalEvaluator(Tools):
                     'date':      str(latest_date)[:10],
                     'score':     float(row.get(order_by, 0)),
                 })
-            return signals
+
+            expr_errors = '  |  '.join(e for e in [buy_err, sell_err] if e)
+            return signals, expr_errors
 
         except Exception as e:
             logger.error(f"Signal evaluation failed for {strategy_name}: {e}")
-            return []
+            return [], str(e)
 
 
 # ------------------------------------------------------------------ #
