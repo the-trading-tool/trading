@@ -335,7 +335,7 @@ class MultiTransactionProcessor(tt.TickerTools):
                 pass
             return (close)
 
-        def filter_buy_df():
+        def filter_buy_df(apply_date_filter=True):
             # Ensure buyDate column exists and is a datetime; missing values become NaT
             if 'buyDate' not in self.buy_df.columns:
                 self.buy_df['buyDate'] = pd.NaT
@@ -345,16 +345,19 @@ class MultiTransactionProcessor(tt.TickerTools):
                 except Exception:
                     self.buy_df['buyDate'] = pd.NaT
 
-            # parse asset_date into Timestamp for comparison
-            try:
-                asset_cut = pd.to_datetime(self.asset_date)
-            except Exception:
-                asset_cut = pd.NaT
+            if apply_date_filter:
+                # parse asset_date into Timestamp for comparison
+                try:
+                    asset_cut = pd.to_datetime(self.asset_date)
+                except Exception:
+                    asset_cut = pd.NaT
 
-            if pd.isna(asset_cut):
-                filtered = self.buy_df
+                if pd.isna(asset_cut):
+                    filtered = self.buy_df
+                else:
+                    filtered = self.buy_df.loc[self.buy_df['buyDate'].notna() & (self.buy_df['buyDate'] >= asset_cut)]
             else:
-                filtered = self.buy_df.loc[self.buy_df['buyDate'].notna() & (self.buy_df['buyDate'] >= asset_cut)]
+                filtered = self.buy_df
 
             self.buy_df = filtered.copy()
             # ensure ticker exists for sorting/display; only include in sort if present
@@ -479,128 +482,128 @@ class MultiTransactionProcessor(tt.TickerTools):
             for item in self.transactions:
                 if not self.disable_streamlit:
                     st.markdown(f"""<h2>Strategy: {item}</h2>""", unsafe_allow_html=True)
-            for id in self.transactions[item]:
-                total_transactions += 1
-                buy_assets = self.transactions[item][id]['buy']
-                sell_assets = self.transactions[item][id]['sell']
-                num_assets = self.transactions[item][id]['num_assets']
-                invest = self.transactions[item][id]['invest']
-                ta_currency = 'ANY'
-                try:
-                    ta_currency = self.transactions[item][id]['currency']
-                except Exception:
-                    pass
-                self.total_invest += invest
-                self.order_by = self.transactions[item][id]['order_by']
-                self.simulator.index_column = id
-                combined_df = self.simulator.fetch_combined_data_with_attach(index_filter=1,o_by=self.order_by,curr_column=ta_currency)
-                combined_df.sort_values(['Date',self.order_by], inplace=True, ascending=[True, False])
-    #            st.dataframe(combined_df[:1000])
-                evaluator = tools.ExpressionEvaluator(combined_df, dataframe_name='combined_df')
-                buy_assets_transformed = evaluator.validate_and_transform(buy_assets)        
-                sell_assets_transformed =evaluator.validate_and_transform(sell_assets)        
-    #            st.write(buy_assets_transformed, " ", buy_assets)
-    #            st.write(sell_assets_transformed, " ", sell_assets)
-                combined_df['buySell'] = 0
-                try:
-                    combined_df['buySell'] = np.where((eval(buy_assets_transformed)), 1,combined_df['buySell'])
-                except Exception:
-                    pass
-                try:
-                    combined_df['buySell'] = np.where((eval(sell_assets_transformed)), -1,combined_df['buySell'])
-                except Exception:
-                    pass
-                
-                # invest is in local currency to calulate the correct weights we need to adjust it
-                x_rate = 1 
-                try:
-                    symb = combined_df['currency'].iloc[0]
-                    if not symb == 0 and not symb == self.system_currency:
-                        x_rate = self.get_exchange_rate(symbol=symb,system_currency=self.system_currency)
-                except Exception:
-                    pass
-                
-    #            self.delayed_bs = 1
-    #            combined_df['buySell'] = combined_df.groupby('ticker')['buySell'].shift(self.delayed_bs).fillna(0)
-
-                combined_df.sort_values(['Date',self.order_by], inplace=True, ascending=[True, False])
-                portfolio = ass.PortfolioSimulator(data = combined_df, initial_cash=round(invest * x_rate,2), max_assets=num_assets)
-                portfolio.simulate()
-
-                transaction_df = portfolio.get_transaction_dataframe()        
-#                transaction_df['Strategy'] = item
-    #            if not self.disable_streamlit:
-    #                st.write(f'Transaction data {id}')
-    #                st.dataframe(transaction_df, use_container_width=True)
-    #            self.export_to_excel(combined_df, button_label = f'📥 Download {id} buy sell', file_name = f'{id}_buy_sell_dataset.xlsx', region = st )                
-    #            self.export_to_excel(transaction_df, button_label = f'📥 Download {id} transactions', file_name = f'{id}_transactions_dataset.xlsx', region = st )                
-
-                processor = ass.TradeProcessor(data=transaction_df, username=self.username)
-                processor.process_trades()
-
-                data = processor.processed_data
-    #            if not data.empty:
-                if isinstance(data, pd.DataFrame):
-
-                    data['Strategy'] = item
-                    data.sort_values(['sellDate','ticker'],ascending=[True,True], inplace=True)
-
-                    data['cumulative_gain'] = data['gain'].cumsum()
-                    self.trades_df = pd.concat([self.trades_df, data])        
-
-                    total_invest = 0
-                    for n in portfolio.bought_assets:
-                        total_invest += transaction_df.loc[transaction_df['ticker']==n].value.sum()
-                    total_invest = round(total_invest / x_rate,2)
-                    p_cash = round(portfolio.cash / x_rate, 2)
-                    gain = round(p_cash+(-total_invest),0)
-                    t_gain = round((gain/invest*100)-100,1)
-            
-                    implied_vola = round(combined_df['vola'].sum() / combined_df['vola'].count())
-                    avg_value = 0
-                    if 'overallValueTrend' in combined_df.columns:
-                        avg_value = round(combined_df['overallValueTrend'].sum() / combined_df['overallValueTrend'].count())
-
-                    self.overall_vola += implied_vola
-                    self.overall_trend += avg_value
-                    self.total_cash += round(portfolio.cash / x_rate,2)
-                    self.still_invested += total_invest
-                    self.total_value += gain
-                    self.total_gain += t_gain
-                    self.investments = [*self.investments, *portfolio.bought_assets]
+                for id in self.transactions[item]:
+                    total_transactions += 1
+                    buy_assets = self.transactions[item][id]['buy']
+                    sell_assets = self.transactions[item][id]['sell']
+                    num_assets = self.transactions[item][id]['num_assets']
+                    invest = self.transactions[item][id]['invest']
+                    ta_currency = 'ANY'
+                    try:
+                        ta_currency = self.transactions[item][id]['currency']
+                    except Exception:
+                        pass
+                    self.total_invest += invest
+                    self.order_by = self.transactions[item][id]['order_by']
+                    self.simulator.index_column = id
+                    combined_df = self.simulator.fetch_combined_data_with_attach(index_filter=1,o_by=self.order_by,curr_column=ta_currency)
+                    combined_df.sort_values(['Date',self.order_by], inplace=True, ascending=[True, False])
+        #            st.dataframe(combined_df[:1000])
+                    evaluator = tools.ExpressionEvaluator(combined_df, dataframe_name='combined_df')
+                    buy_assets_transformed = evaluator.validate_and_transform(buy_assets)        
+                    sell_assets_transformed =evaluator.validate_and_transform(sell_assets)        
+        #            st.write(buy_assets_transformed, " ", buy_assets)
+        #            st.write(sell_assets_transformed, " ", sell_assets)
+                    combined_df['buySell'] = 0
+                    try:
+                        combined_df['buySell'] = np.where((eval(buy_assets_transformed)), 1,combined_df['buySell'])
+                    except Exception:
+                        pass
+                    try:
+                        combined_df['buySell'] = np.where((eval(sell_assets_transformed)), -1,combined_df['buySell'])
+                    except Exception:
+                        pass
                     
-                    if not self.disable_streamlit:
-                        if self.show_details and not combined_df.empty:
-        #                eval(f"expander_{id} = st.expander('Performance {id}')")
-        #                eval(f"with expander_{id}:")
-                            st.subheader(f"Performance investing into: {id}")
-                            st.write(f'Dataset implied vola: {implied_vola}%, with average value trend: {avg_value}')
-                            st.write(f'Initial invest: {invest}, Total cash: {round(portfolio.cash/x_rate,2)}, still invested: {-total_invest}, total value: {gain}, total gain: {round((1-(invest/gain))*100,1)}%')
-                            st.write(f'Buy {num_assets} assets if: {buy_assets}, Sell assets if: {sell_assets}')
-                            st.write(f'<h5>Trades for  {id}</h5>',unsafe_allow_html=True)
-                            try:
-                                selection5 = self.simulator.dataframe_with_selections(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False),region=st, show_df_only=True)    
-                                if not selection5.empty:
-                                    self.overlay_selector(selection5, region = st, action_type='trades')            
-                                    self.export_to_excel(selection5, button_label = '📥 Download Trades', file_name = f'trades.xlsx', region = st )                
-        #                        st.dataframe(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False))
-
-                                fig = px.line(
-                                    data,
-                                    x='sellDate',
-                                    y='cumulative_gain',
-        #                           title='Total gain',
-                                    labels={'buyDate': 'Date', 'cumulative_gain': 'Gain'}
-                                )
-            
-                                st.plotly_chart(
-                                        fig,
-                                        use_container_width = True,
-                                        #sharing="streamlit",
-                                        config = gt.chart_config)
-                            except Exception:
-                                pass
-
+                    # invest is in local currency to calulate the correct weights we need to adjust it
+                    x_rate = 1 
+                    try:
+                        symb = combined_df['currency'].iloc[0]
+                        if not symb == 0 and not symb == self.system_currency:
+                            x_rate = self.get_exchange_rate(symbol=symb,system_currency=self.system_currency)
+                    except Exception:
+                        pass
+                    
+        #            self.delayed_bs = 1
+        #            combined_df['buySell'] = combined_df.groupby('ticker')['buySell'].shift(self.delayed_bs).fillna(0)
+    
+                    combined_df.sort_values(['Date',self.order_by], inplace=True, ascending=[True, False])
+                    portfolio = ass.PortfolioSimulator(data = combined_df, initial_cash=round(invest * x_rate,2), max_assets=num_assets)
+                    portfolio.simulate()
+    
+                    transaction_df = portfolio.get_transaction_dataframe()        
+    #                transaction_df['Strategy'] = item
+        #            if not self.disable_streamlit:
+        #                st.write(f'Transaction data {id}')
+        #                st.dataframe(transaction_df, use_container_width=True)
+        #            self.export_to_excel(combined_df, button_label = f'📥 Download {id} buy sell', file_name = f'{id}_buy_sell_dataset.xlsx', region = st )                
+        #            self.export_to_excel(transaction_df, button_label = f'📥 Download {id} transactions', file_name = f'{id}_transactions_dataset.xlsx', region = st )                
+    
+                    processor = ass.TradeProcessor(data=transaction_df, username=self.username)
+                    processor.process_trades()
+    
+                    data = processor.processed_data
+        #            if not data.empty:
+                    if isinstance(data, pd.DataFrame):
+    
+                        data['Strategy'] = item
+                        data.sort_values(['sellDate','ticker'],ascending=[True,True], inplace=True)
+    
+                        data['cumulative_gain'] = data['gain'].cumsum()
+                        self.trades_df = pd.concat([self.trades_df, data])        
+    
+                        total_invest = 0
+                        for n in portfolio.bought_assets:
+                            total_invest += transaction_df.loc[transaction_df['ticker']==n].value.sum()
+                        total_invest = round(total_invest / x_rate,2)
+                        p_cash = round(portfolio.cash / x_rate, 2)
+                        gain = round(p_cash+(-total_invest),0)
+                        t_gain = round((gain/invest*100)-100,1)
+                
+                        implied_vola = round(combined_df['vola'].sum() / combined_df['vola'].count())
+                        avg_value = 0
+                        if 'overallValueTrend' in combined_df.columns:
+                            avg_value = round(combined_df['overallValueTrend'].sum() / combined_df['overallValueTrend'].count())
+    
+                        self.overall_vola += implied_vola
+                        self.overall_trend += avg_value
+                        self.total_cash += round(portfolio.cash / x_rate,2)
+                        self.still_invested += total_invest
+                        self.total_value += gain
+                        self.total_gain += t_gain
+                        self.investments = [*self.investments, *portfolio.bought_assets]
+                        
+                        if not self.disable_streamlit:
+                            if self.show_details and not combined_df.empty:
+            #                eval(f"expander_{id} = st.expander('Performance {id}')")
+            #                eval(f"with expander_{id}:")
+                                st.subheader(f"Performance investing into: {id}")
+                                st.write(f'Dataset implied vola: {implied_vola}%, with average value trend: {avg_value}')
+                                st.write(f'Initial invest: {invest}, Total cash: {round(portfolio.cash/x_rate,2)}, still invested: {-total_invest}, total value: {gain}, total gain: {round((1-(invest/gain))*100,1)}%')
+                                st.write(f'Buy {num_assets} assets if: {buy_assets}, Sell assets if: {sell_assets}')
+                                st.write(f'<h5>Trades for  {id}</h5>',unsafe_allow_html=True)
+                                try:
+                                    selection5 = self.simulator.dataframe_with_selections(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False),region=st, show_df_only=True)    
+                                    if not selection5.empty:
+                                        self.overlay_selector(selection5, region = st, action_type='trades')            
+                                        self.export_to_excel(selection5, button_label = '📥 Download Trades', file_name = f'trades.xlsx', region = st )                
+            #                        st.dataframe(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False))
+    
+                                    fig = px.line(
+                                        data,
+                                        x='sellDate',
+                                        y='cumulative_gain',
+            #                           title='Total gain',
+                                        labels={'buyDate': 'Date', 'cumulative_gain': 'Gain'}
+                                    )
+                
+                                    st.plotly_chart(
+                                            fig,
+                                            use_container_width = True,
+                                            #sharing="streamlit",
+                                            config = gt.chart_config)
+                                except Exception:
+                                    pass
+    
         ###
         if 'isin' in self.trades_df:
             self.trades_df['isin'] = self.trades_df['isin'].astype(str)
@@ -1129,7 +1132,7 @@ class MultiTransactionProcessor(tt.TickerTools):
 #                st.write(self.asset_date)
                 selection2 = self.simulator.dataframe_with_selections(self.buy_df,region=st, column_config=column_config)    
                 if not selection2.empty:
-                    self.overlay_selector(selection2, region = st, action_type='buy')            
+                    #self.overlay_selector(selection2, region = st, action_type='buy')            
                     tickers = self.buy_df['ticker'].tolist()
                     tickers = list(set(tickers))
                     show_tickers(tickers)
@@ -1139,10 +1142,10 @@ class MultiTransactionProcessor(tt.TickerTools):
                 filter_sell_df()
                 selection3 = self.simulator.dataframe_with_selections(self.sell_df,region=st, column_config=column_config)    
                 if not selection3.empty:
-                    try:
-                        self.overlay_selector(selection3, region = st, action_type='sell')            
-                    except Exception:
-                        pass
+#                    try:
+#                        self.overlay_selector(selection3, region = st, action_type='sell')            
+#                    except Exception:
+#                        pass
                     tickers = self.sell_df['ticker'].tolist()
                     tickers = list(set(tickers))
                     show_tickers(tickers)

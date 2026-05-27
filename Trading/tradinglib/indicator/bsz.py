@@ -59,7 +59,7 @@ class Bsz(_indicator._Indicator):
             # Bullish demand zone + trend
             if (
                 df['ema9'].iloc[i] > max(df['ema20'].iloc[i-self.lookback:i]) and
-                df['ewo'].iloc[i] > df['ewoema'].iloc[i] and
+                df['ewo'].iloc[i] > df['ewo_ema'].iloc[i] and
                 df['close'].iloc[i+1] > df['open'].iloc[i+1] #and  # bullish candle
 #                df['close'].iloc[i] > df['close'].rolling(20).mean().iloc[i]  # uptrend
             ):
@@ -83,7 +83,7 @@ class Bsz(_indicator._Indicator):
 #            # Bearish demand zone - trend
             elif (
                 df['ema9'].iloc[i] < min(df['ema20'].iloc[i-self.lookback:i]) and
-                df['ewo'].iloc[i] < df['ewoema'].iloc[i] and
+                df['ewo'].iloc[i] < df['ewo_ema'].iloc[i] and
                 df['close'].iloc[i+1] < df['open'].iloc[i+1] #and  # bullish candle
  #               df['close'].iloc[i] < df['close'].rolling(20).mean().iloc[i]  # uptrend
             ):
