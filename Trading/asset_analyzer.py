@@ -469,6 +469,7 @@ class TradingApp:
             main_links['Admin'] = '/?admin=true'
             main_links['All assets'] = '/?all_assets=true'
             main_links['Multi strategies'] = '/?multi=true'
+            main_links['Paper / Live Trading'] = '/?trading=true'
             main_links['Own transactions'] = '/?own_trades=true'
         st.sidebar.markdown("""---""")
         st.sidebar.link_button('Market map', '/?marketmap=true')
@@ -585,6 +586,13 @@ class TradingApp:
                 elif parms.get('strategy_finder'):
                     self.set_page_config(f"Finder")
                     ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
+                elif parms.get('trading'):
+                    self.set_page_config("Paper / Live Trading")
+                    try:
+                        from tradinglib.trading_page import TradingPage
+                        TradingPage(username=self.username, db_path='database').render()
+                    except Exception as e:
+                        st.error(f'Failed to render Trading page: {e}')
                 elif parms.get('rotation'):
                     self.set_page_config("Sector Rotation")
                     try:

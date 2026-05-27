@@ -29,7 +29,7 @@ class Admin():
         logger.debug(f'Admin.render called by user={self.username}')
 
         tab_ticker, tab_db, tab_creds, tab_system = self.region.tabs(
-            ["Ticker", "Datenbank", "Zugangsdaten", "System"]
+            ["Ticker", "Database", "API Credentials", "System"]
         )
 
         # ── Tab: Ticker ────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ class Admin():
                         ).strip()
                     with col_r:
                         new_invested = st.number_input(
-                            "Investiert (optional, EUR)", min_value=0.0,
+                            "Invested (optional, EUR)", min_value=0.0,
                             value=0.0, step=100.0, key="add_ticker_invested"
                         )
 
@@ -101,10 +101,10 @@ class Admin():
                                 st.info(
                                     f"Ticker **{new_ticker}** ist bereits vorhanden – "
                                     f"ISIN: `{_existing_row[4] or '–'}` | "
-                                    f"Investiert: `{_existing_row[3] or 0:.2f} €` | "
+                                    f"Invested: `{_existing_row[3] or 0:.2f} €` | "
                                     f"Indices: `{', '.join(_ex_indices) or '–'}`\n\n"
-                                    "Beim Speichern werden ISIN und Investiert-Wert aktualisiert "
-                                    "und neue Indexverknüpfungen ergänzt (bestehende bleiben erhalten)."
+                                    "Saving will update ISIN and invested value "
+                                    "and add new index links (existing ones are kept)."
                                 )
                             _c_prev.close()
                         except Exception:
@@ -188,8 +188,8 @@ class Admin():
                                 _conn.close()
 
                             except Exception as _e:
-                                _msgs_err.append(f"Fehler beim Speichern: {_e}")
-                                logger.exception("Fehler beim Anlegen von Ticker %s", new_ticker)
+                                _msgs_err.append(f"Error saving: {_e}")
+                                logger.exception("Error creating ticker %s", new_ticker)
 
                             for _m in _msgs_ok:
                                 st.success(_m)
@@ -442,7 +442,7 @@ class Admin():
                                             file_name=f'yf_{sel_failed}.db')
                                         if os.path.exists(_price_db):
                                             os.remove(_price_db)
-                                            msgs_ok.append(f"Datei yf_{sel_failed}.db gelöscht.")
+                                            msgs_ok.append(f"File yf_{sel_failed}.db deleted.")
                                         else:
                                             msgs_ok.append(
                                                 f"Datei yf_{sel_failed}.db nicht gefunden.")
@@ -482,14 +482,14 @@ class Admin():
                 explorer = fe.FileExplorer()
                 explorer.render()
 
-        # ── Tab: Zugangsdaten ──────────────────────────────────────────────────
+        # ── Tab: API Credentials ───────────────────────────────────────────────
         with tab_creds:
 
-            st.subheader("API-Zugangsdaten")
+            st.subheader("API Credentials")
             try:
                 ksp = ksplib.Ksp(storage_path=self.db_path, secrets_path=self.db_path)
             except Exception as e:
-                st.error(f"Fehler beim Laden der Zugangsdaten: {e}")
+                st.error(f"Error loading credentials: {e}")
                 ksp = None
 
             if ksp is not None:
@@ -502,39 +502,67 @@ class Admin():
                     ]
                     st.dataframe(rows_display, use_container_width=True)
                 else:
-                    st.info("Noch keine Zugangsdaten gespeichert.")
+                    st.info("No credentials stored yet.")
 
                 st.markdown("---")
-                st.markdown("**Eintrag hinzufügen / ändern**")
+                st.markdown("**Add / edit entry**")
+
+                # Select existing entry to prefill the form
+                edit_options = ["— New entry —"] + list(all_creds.keys() if all_creds else [])
+                ksp_edit_sel = st.selectbox("Edit existing entry:", edit_options, key="ksp_edit_sel")
+
+                existing = {}
+                if ksp_edit_sel and ksp_edit_sel != "— New entry —":
+                    existing = all_creds.get(ksp_edit_sel, {})
+
                 col1, col2 = st.columns(2)
                 with col1:
-                    ksp_api = st.text_input("API-Name (z. B. gapi, tradingdesk)", key="ksp_api")
-                    ksp_user = st.text_input("User / API-Key", key="ksp_user")
+                    ksp_api = st.text_input(
+                        "API name (e.g. gapi, av-paper)",
+                        value=ksp_edit_sel if ksp_edit_sel != "— New entry —" else "",
+                        key="ksp_api",
+                    )
+                    ksp_user = st.text_input(
+                        "User / API Key",
+                        value=existing.get("user", ""),
+                        key="ksp_user",
+                    )
                 with col2:
-                    ksp_pw = st.text_input("Passwort / Token", type="password", key="ksp_pw")
-                    ksp_url = st.text_input("URL (optional)", key="ksp_url")
+                    ksp_pw = st.text_input(
+                        "Password / Token  (leave blank = keep existing)",
+                        type="password",
+                        key="ksp_pw",
+                        help="Leave blank to keep the existing password.",
+                    )
+                    ksp_url = st.text_input(
+                        "URL (optional)",
+                        value=existing.get("url", ""),
+                        key="ksp_url",
+                    )
 
-                if st.button("Speichern", type="primary", key="ksp_save"):
+                if st.button("Save", type="primary", key="ksp_save"):
                     if ksp_api and ksp_user:
-                        ksp.add_ksp(ksp_api, ksp_user, ksp_pw, ksp_url)
-                        st.success(f"Zugangsdaten für '{ksp_api}' gespeichert.")
+                        # Keep existing password if field was left blank
+                        password_to_save = ksp_pw if ksp_pw else existing.get("password", "")
+                        ksp.add_ksp(ksp_api, ksp_user, password_to_save, ksp_url)
+                        st.success(f"Credentials for '{ksp_api}' saved.")
                         st.rerun()
                     else:
-                        st.error("API-Name und User / Key sind Pflichtfelder.")
+                        st.error("API name and User / Key are required.")
 
                 if all_creds and isinstance(all_creds, dict):
                     st.markdown("---")
-                    st.markdown("**Eintrag löschen**")
+                    st.markdown("**Delete entry**")
                     ksp_del = st.selectbox(
-                        "Eintrag auswählen", [""] + list(all_creds.keys()), key="ksp_del_select"
+                        "Select entry", [""] + list(all_creds.keys()), key="ksp_del_select"
                     )
                     if ksp_del:
                         ksp_confirm = st.checkbox(
-                            f"Löschung von '{ksp_del}' bestätigen", key=f"ksp_confirm_{ksp_del}"
+                            f"Confirm deletion of '{ksp_del}'", key=f"ksp_confirm_{ksp_del}"
                         )
-                        if st.button("Löschen", key="ksp_del_btn") and ksp_confirm:
+                        if st.button("Delete", key="ksp_del_btn") and ksp_confirm:
                             ksp.delete_ksp(ksp_del)
-                            st.success(f"'{ksp_del}' gelöscht.")
+                            st.success(f"'{ksp_del}' deleted.")
                             st.rerun()
 
         # ── Tab: System ────────────────────────────────────────────────────────
