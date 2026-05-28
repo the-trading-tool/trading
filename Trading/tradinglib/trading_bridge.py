@@ -220,69 +220,83 @@ class SignalEvaluator(Tools):
         return "asset_simulation_.db"  # absolute fallback
 
     def get_signals(
-        self, strategy_name: str, strategy_config: dict
+        self,
+        strategy_name: str,
+        index_name: str,
+        strategy_config: dict,
     ) -> tuple[list[dict], str]:
-        """Evaluate today's signals for one strategy.
+        """Evaluate today's signals for one (strategy, index) combination.
 
-        Returns ``(signals, error_msg)``.  ``error_msg`` is an empty string on
-        success; a human-readable description of the problem otherwise.
-        The caller should surface ``error_msg`` in the UI so the user can
-        diagnose missing data / mis-named indices / expression errors.
+        Parameters
+        ----------
+        strategy_name : str
+            Human-readable name of the strategy group, e.g.
+            "Support/Resistance Strategy".  Stored in each returned signal
+            so the UI can group / filter by strategy.
+        index_name : str
+            The market index key as stored in yf_tickers.db, e.g. "^SPX".
+            Used for the simulation-DB query.
+        strategy_config : dict
+            The per-index config block:
+            {buy, sell, num_assets, invest, order_by, [currency]}.
+
+        Returns ``(signals, error_msg)``.  ``error_msg`` is empty on success.
         """
         from tradinglib import asset_simulator as ass
         from tradinglib import make_query as mq
 
         try:
             sim_db = self._best_sim_db(self.db_path)
-            logger.debug("SignalEvaluator: using %s for strategy %s", sim_db, strategy_name)
+            logger.debug(
+                "SignalEvaluator: %s for strategy '%s' / index '%s'",
+                sim_db, strategy_name, index_name,
+            )
 
             simulator = ass.AssetSimulator(
                 "yf_tickers.db", sim_db, "asset_info.db",
-                strategy_name,
+                index_name,                       # 4th arg = index for DB lookup
                 db_path=self.db_path,
                 username=self.username,
             )
-            simulator.index_column = strategy_name
+            simulator.index_column = index_name
 
             order_by = strategy_config.get('order_by', 'sortino')
             currency = strategy_config.get('currency', 'ANY')
 
             # Resolve the index name in yf_tickers.db.
-            # Indices are stored with a ^ prefix (e.g. ^SPX, ^GDAX), but strategy
-            # names in the Multi Strategies config omit the ^ (e.g. SPX, GDAX).
-            # Try exact match first, then ^ prefix, then % wildcard as last resort.
-            index_name = strategy_name
+            # The JSON already contains ^ prefixes (e.g. '^SPX'), but keep the
+            # resolution as a safety fallback for configs that omit the caret.
+            resolved_index = index_name
             try:
                 conn = simulator.ticker_conn
                 exact = conn.execute(
-                    "SELECT COUNT(*) FROM indices WHERE name = ?", (strategy_name,)
+                    "SELECT COUNT(*) FROM indices WHERE name = ?", (index_name,)
                 ).fetchone()[0]
                 if exact == 0:
                     caret = conn.execute(
-                        "SELECT COUNT(*) FROM indices WHERE name = ?", (f'^{strategy_name}',)
+                        "SELECT COUNT(*) FROM indices WHERE name = ?",
+                        (f'^{index_name}',)
                     ).fetchone()[0]
                     if caret > 0:
-                        index_name = f'^{strategy_name}'
+                        resolved_index = f'^{index_name}'
                     else:
-                        # last resort: partial match (e.g. "SPX" matches "^SPX" via LIKE)
                         like = conn.execute(
                             "SELECT name FROM indices WHERE name LIKE ? LIMIT 1",
-                            (f'%{strategy_name}',)
+                            (f'%{index_name}',)
                         ).fetchone()
                         if like:
-                            index_name = like[0]
-            except Exception as e:
-                logger.debug("Index name resolution failed for %s: %s", strategy_name, e)
-
-            if index_name != strategy_name:
+                            resolved_index = like[0]
+            except Exception as exc:
                 logger.debug(
-                    "SignalEvaluator: resolved index '%s' → '%s'", strategy_name, index_name
+                    "Index resolution failed for '%s': %s", index_name, exc
                 )
 
-            # Build the same WHERE extension as fetch_combined_data_with_attach,
-            # but use q=1 (one row per ticker, latest date only) instead of q=3
-            # (all historical rows).  q=1 is ~50× faster for large datasets and
-            # is exactly what signal evaluation needs.
+            if resolved_index != index_name:
+                logger.debug(
+                    "SignalEvaluator: resolved index '%s' → '%s'",
+                    index_name, resolved_index,
+                )
+
             q_ext = ''
             if currency != 'ANY':
                 q_ext += f' AND ai.currency = "{currency}"'
@@ -290,25 +304,26 @@ class SignalEvaluator(Tools):
                 q_ext += f' ORDER BY {order_by} DESC'
 
             query = mq.make_query(
-                'asset_simulation', index_name, 1,
+                'asset_simulation', resolved_index, 1,
                 q=1, q_ext=q_ext, conn=simulator.ticker_conn,
             )
             combined_df = pd.read_sql_query(query, simulator.ticker_conn)
             if combined_df is not None:
-                combined_df['stockIndex'] = strategy_name
+                combined_df['stockIndex'] = resolved_index
 
             if combined_df is None or combined_df.empty:
-                resolved = f" (aufgelöst zu '{index_name}')" if index_name != strategy_name else ""
+                resolved_note = (
+                    f" (aufgelöst zu '{resolved_index}')"
+                    if resolved_index != index_name else ""
+                )
                 return [], (
-                    f"Keine Daten für Index '{strategy_name}'{resolved} gefunden. "
+                    f"Keine Daten für Index '{index_name}'{resolved_note}. "
                     f"Mögliche Ursachen:\n"
-                    f"  1. In yf_tickers.db existiert kein Index '{strategy_name}' oder "
-                    f"'^{strategy_name}' (Tabelle 'indices', Spalte 'name').\n"
-                    f"  2. asset_simulation_.db enthält noch keine Performance-Daten "
-                    f"für die Ticker dieses Index — bitte 'python asset_perf2.py' ausführen.\n"
-                    f"  (Verwendete DB: {sim_db})\n"
-                    f"Hinweis: Die Strategy-Regeln (buy/sell) kommen aus dem Config-JSON "
-                    f"und müssen NICHT in der Simulation-DB vorhanden sein."
+                    f"  1. '{index_name}' existiert nicht in yf_tickers.db "
+                    f"(Tabelle 'indices', Spalte 'name').\n"
+                    f"  2. asset_simulation_.db enthält noch keine Daten für diesen Index "
+                    f"— bitte 'python asset_perf2.py' ausführen.\n"
+                    f"  (Verwendete DB: {sim_db})"
                 )
 
             buy_raw  = strategy_config.get('buy', '')
@@ -318,15 +333,15 @@ class SignalEvaluator(Tools):
             buy_err = sell_err = ''
             try:
                 buy_expr = evaluator.validate_and_transform(buy_raw)
-            except Exception as e:
+            except Exception as exc:
                 buy_expr = ''
-                buy_err  = str(e)
+                buy_err  = str(exc)
 
             try:
                 sell_expr = evaluator.validate_and_transform(sell_raw)
-            except Exception as e:
+            except Exception as exc:
                 sell_expr = ''
-                sell_err  = str(e)
+                sell_err  = str(exc)
 
             combined_df = combined_df.copy()
             combined_df['_signal'] = 0
@@ -336,25 +351,23 @@ class SignalEvaluator(Tools):
                     combined_df['_signal'] = np.where(
                         eval(buy_expr), 1, combined_df['_signal']  # noqa: S307
                     )
-                except Exception as e:
-                    buy_err = f"buy eval: {e}"
+                except Exception as exc:
+                    buy_err = f"buy eval: {exc}"
 
             if sell_expr:
                 try:
                     combined_df['_signal'] = np.where(
                         eval(sell_expr), -1, combined_df['_signal']  # noqa: S307
                     )
-                except Exception as e:
-                    sell_err = f"sell eval: {e}"
+                except Exception as exc:
+                    sell_err = f"sell eval: {exc}"
 
-            # q=1 already returns only the latest date, but guard in case of
-            # unexpected duplicates (e.g. multiple rows per ticker from the JOIN)
             latest_date = combined_df['Date'].max()
             triggered = combined_df[
                 (combined_df['Date'] == latest_date) & (combined_df['_signal'] != 0)
             ]
 
-            signals = []
+            signals: list[dict] = []
             for _, row in triggered.iterrows():
                 price = float(row.get('Close', 0))
 
@@ -368,13 +381,13 @@ class SignalEvaluator(Tools):
                 atr = float(atr_raw) if atr_raw else 0.0
                 if atr <= 0:
                     # Fallback: approximate daily ATR from annualised volatility
-                    # daily_vol ≈ vola / sqrt(252), ATR ≈ price * daily_vol
                     vola_ann = float(row.get('vola', 0) or 0)
                     if vola_ann > 0 and price > 0:
                         atr = round(price * vola_ann / (252 ** 0.5), 4)
 
                 signals.append({
-                    'strategy':  strategy_name,
+                    'strategy':  strategy_name,      # e.g. "Support/Resistance Strategy"
+                    'index':     resolved_index,      # e.g. "^SPX"
                     'ticker':    row['ticker'],
                     'longName':  row.get('longName', row['ticker']),
                     'signal':    'buy' if row['_signal'] == 1 else 'sell',
@@ -382,18 +395,19 @@ class SignalEvaluator(Tools):
                     'currency':  row.get('currency', 'USD'),
                     'date':      str(latest_date)[:10],
                     'score':     float(row.get(order_by, 0)),
-                    # vola is needed for inverse-volatility position sizing
                     'vola':      max(float(row.get('vola', 1.0) or 1.0), 1e-6),
-                    # ATR for stop-loss suggestion (broker submits as OTO stop order)
                     'atr':       round(atr, 4),
                 })
 
             expr_errors = '  |  '.join(e for e in [buy_err, sell_err] if e)
             return signals, expr_errors
 
-        except Exception as e:
-            logger.error(f"Signal evaluation failed for {strategy_name}: {e}")
-            return [], str(e)
+        except Exception as exc:
+            logger.error(
+                "Signal evaluation failed for '%s' / '%s': %s",
+                strategy_name, index_name, exc,
+            )
+            return [], str(exc)
 
 
 # ------------------------------------------------------------------ #

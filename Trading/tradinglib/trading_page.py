@@ -274,17 +274,37 @@ class TradingPage:
         enabled = self._enabled()
         new_enabled: list[str] = []
         cols = st.columns(max(len(strategies), 1))
-        for i, (name, cfg) in enumerate(strategies.items()):
+        for i, (name, indices_or_cfg) in enumerate(strategies.items()):
             with cols[i]:
+                # Two-level config: {strategy: {index: {buy, sell, invest, …}}}
+                # Flat (legacy):    {index:    {buy, sell, invest, …}}
+                is_two_level = (
+                    isinstance(indices_or_cfg, dict)
+                    and all(isinstance(v, dict) for v in indices_or_cfg.values())
+                    and any('buy' not in v for v in indices_or_cfg.values())
+                )
+                if is_two_level:
+                    n_idx = len(indices_or_cfg)
+                    total_invest = sum(
+                        v.get('invest', 0) for v in indices_or_cfg.values()
+                        if isinstance(v, dict)
+                    )
+                    help_txt = (
+                        f"{n_idx} Indizes  |  "
+                        f"Gesamt-Invest: {total_invest:,.0f}  |  "
+                        f"Indizes: {', '.join(indices_or_cfg.keys())}"
+                    )
+                else:
+                    help_txt = (
+                        f"Invest: {indices_or_cfg.get('invest', 0):,.0f}  |  "
+                        f"Max assets: {indices_or_cfg.get('num_assets', 0)}  |  "
+                        f"Sort by: {indices_or_cfg.get('order_by', '—')}"
+                    )
                 checked = st.checkbox(
                     name,
                     value=name in enabled,
                     key=f'strat_en_{name}',
-                    help=(
-                        f"Invest: {cfg.get('invest', 0):,.0f}  |  "
-                        f"Max assets: {cfg.get('num_assets', 0)}  |  "
-                        f"Sort by: {cfg.get('order_by', '—')}"
-                    ),
+                    help=help_txt,
                 )
                 if checked:
                     new_enabled.append(name)
@@ -312,25 +332,41 @@ class TradingPage:
         all_signals: list[dict] = []
         eval_errors: dict[str, str] = {}
 
-        for name, cfg in active.items():
-            with st.spinner(f'Evaluating {name} …'):
-                sigs, err = evaluator.get_signals(name, cfg)
-                if err:
-                    eval_errors[name] = err
+        for strategy_name, indices_or_cfg in active.items():
+            # Support both config shapes:
+            #   Two-level (current):  {strategy: {'^SPX': {buy, sell, invest, …}, …}}
+            #   Flat (legacy):        {'^SPX':    {buy, sell, invest, …}}
+            if isinstance(indices_or_cfg, dict):
+                first = next(iter(indices_or_cfg.values()), None)
+                if isinstance(first, dict) and 'buy' not in indices_or_cfg:
+                    # Two-level: outer key is strategy name, inner keys are index names
+                    index_cfg_pairs = list(indices_or_cfg.items())
+                else:
+                    # Flat legacy: outer key IS the index name
+                    index_cfg_pairs = [(strategy_name, indices_or_cfg)]
+            else:
+                continue
 
-                # --- Inverse-volatility sizing (buy signals only) ----------
-                buy_raw  = [s for s in sigs if s['signal'] == 'buy']
-                sell_raw = [s for s in sigs if s['signal'] == 'sell']
+            for index_name, cfg in index_cfg_pairs:
+                if not isinstance(cfg, dict):
+                    continue
+                label = f'{strategy_name} / {index_name}'
+                with st.spinner(f'Auswertung {label} …'):
+                    sigs, err = evaluator.get_signals(strategy_name, index_name, cfg)
+                    if err:
+                        eval_errors[label] = err
 
-                sized_buys  = self._apply_inv_vola_sizing(buy_raw,  cfg)
-                # Sell signals: same mechanism (top-N by score, inv-vola weighted)
-                sized_sells = self._apply_inv_vola_sizing(sell_raw, cfg)
+                    buy_raw  = [s for s in sigs if s['signal'] == 'buy']
+                    sell_raw = [s for s in sigs if s['signal'] == 'sell']
 
-                for s in sized_buys + sized_sells:
-                    sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
-                    s['broker_symbol'] = sym or '—'
-                    s['tradeable']     = sym is not None
-                    all_signals.append(s)
+                    sized_buys  = self._apply_inv_vola_sizing(buy_raw,  cfg)
+                    sized_sells = self._apply_inv_vola_sizing(sell_raw, cfg)
+
+                    for s in sized_buys + sized_sells:
+                        sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
+                        s['broker_symbol'] = sym or '—'
+                        s['tradeable']     = sym is not None
+                        all_signals.append(s)
 
         if eval_errors:
             with st.expander('⚠ Signal evaluation errors', expanded=True):
@@ -356,9 +392,9 @@ class TradingPage:
         col_s.metric('🔴 Sell signals', len(sell_df))
         with col_info:
             st.caption(
-                'Größen per Strategie: Top-N nach Score (order_by), '
+                'Sizing pro Strategie+Index: Top-N nach Score (order_by), '
                 'Budget nach inverser Volatilität gewichtet. '
-                'Jede Strategie hat ihr eigenes invest/num_assets.'
+                'Jede Strategie/Index-Kombination hat ihr eigenes invest/num_assets.'
             )
 
         # ── ATR multiplier for stop-loss ──────────────────────────────
@@ -410,7 +446,7 @@ class TradingPage:
         edit_df['view'] = edit_df['longName'].apply(_to_link)
 
         display_cols = [c for c in
-            ['select', 'strategy', 'signal', 'ticker', 'longName',
+            ['select', 'strategy', 'index', 'signal', 'ticker', 'longName',
              'price', 'atr', 'stop_loss_price', 'currency',
              'score', 'weight', 'budget', 'qty', 'value',
              'broker_symbol', 'tradeable', 'view']
@@ -424,7 +460,12 @@ class TradingPage:
                 'select':           st.column_config.CheckboxColumn(
                                         '✓', width='small',
                                         help='Für Ausführung markieren'),
-                'strategy':         st.column_config.TextColumn('Strategie'),
+                'strategy':         st.column_config.TextColumn(
+                                        'Strategie',
+                                        help='Strategiename (z.B. "Support/Resistance Strategy")'),
+                'index':            st.column_config.TextColumn(
+                                        'Index',
+                                        help='Marktindex (z.B. ^SPX, ^GDAXI)'),
                 'signal':           st.column_config.TextColumn('Signal',       width='small'),
                 'ticker':           st.column_config.TextColumn('Ticker'),
                 'longName':         st.column_config.TextColumn('Name'),
@@ -441,10 +482,10 @@ class TradingPage:
                                         help='Ranking-Metrik (order_by), z.B. Sortino'),
                 'weight':           st.column_config.NumberColumn(
                                         'Gewicht %', format='%.1f',
-                                        help='Inv.-Vola-Gewicht am Strategie-Budget'),
+                                        help='Inv.-Vola-Gewicht am Index-Budget'),
                 'budget':           st.column_config.NumberColumn(
                                         'Budget', format='%.2f',
-                                        help='invest × Gewicht  (inv.-vola-allokiert)'),
+                                        help='invest × Gewicht (für diesen Index)'),
                 'qty':              st.column_config.NumberColumn('Stück',        format='%d',  width='small'),
                 'value':            st.column_config.NumberColumn('Wert',         format='%.2f'),
                 'broker_symbol':    st.column_config.TextColumn('Broker-Symbol'),
@@ -464,9 +505,10 @@ class TradingPage:
             row_ed = edit_df.iloc[i]
             match = next(
                 (s for s in all_signals
-                 if s['ticker'] == row_ed['ticker']
+                 if s['ticker']   == row_ed['ticker']
                  and s['strategy'] == row_ed['strategy']
-                 and s['signal'] == row_ed['signal']),
+                 and s.get('index', '') == row_ed.get('index', '')
+                 and s['signal']   == row_ed['signal']),
                 None,
             )
             if match is None:
