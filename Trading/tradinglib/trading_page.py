@@ -583,7 +583,8 @@ class TradingPage:
                 )
 
         with col_btn:
-            st.page_link('/?multi=true', label='▶ Multi-Strategies', help='Simulation dort starten — Ergebnis erscheint automatisch hier')
+            st.link_button('▶ Multi-Strategies', '/?multi=true',
+                           help='Simulation dort starten — Ergebnis erscheint automatisch hier')
 
         if not has_backtest:
             return
