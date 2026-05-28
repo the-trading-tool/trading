@@ -74,14 +74,237 @@ class OrderLog(Tools):
             """, (mode, broker, strategy, ticker, broker_symbol, action, qty,
                   signal_price, order_id, status, signal_date, now, error_msg))
 
-    def update_fill(self, order_id: str, fill_price: float):
-        now = datetime.now().isoformat()
+    def update_fill(self, order_id: str, fill_price: float, filled_at: str = ''):
+        ts = filled_at or datetime.now().isoformat()
         with sqlite3.connect(self._db) as conn:
             conn.execute("""
                 UPDATE broker_orders
                 SET status='filled', fill_price=?, filled_at=?
                 WHERE order_id=?
-            """, (fill_price, now, order_id))
+            """, (fill_price, ts, order_id))
+
+    def clear_orders(self, mode: str | None = None, broker: str | None = None):
+        """Delete all rows from broker_orders (optionally filtered by mode/broker)."""
+        query = "DELETE FROM broker_orders WHERE 1=1"
+        params: list = []
+        if mode:
+            query += " AND mode=?"
+            params.append(mode)
+        if broker:
+            query += " AND broker=?"
+            params.append(broker)
+        with sqlite3.connect(self._db) as conn:
+            conn.execute(query, params)
+
+    # ------------------------------------------------------------------ #
+    #  Broker sync                                                         #
+    # ------------------------------------------------------------------ #
+
+    def sync_from_broker(
+        self,
+        broker,
+        mode: str,
+        broker_id: str,
+    ) -> dict:
+        """Pull all Alpaca orders into the local log and update fill data.
+
+        Steps:
+          0. Import every Alpaca order not yet in the DB  (works even on empty DB)
+          1. Update pending local orders with real fill price / filled_at
+          2. Detect positions closed outside the app (stop-loss, manual Alpaca)
+
+        Returns summary dict with keys:
+          imported, fills_updated, external_closes, errors
+        """
+        summary = {'imported': 0, 'fills_updated': 0, 'external_closes': 0, 'errors': []}
+
+        # ── Fetch all Alpaca orders once ─────────────────────────────────
+        try:
+            alpaca_orders = broker.get_orders(status='all')
+        except Exception as e:
+            summary['errors'].append(f'get_orders failed: {e}')
+            return summary
+
+        alpaca_by_id = {o['id']: o for o in alpaca_orders}
+
+        # ── Step 0: Import orders not yet in DB ──────────────────────────
+        try:
+            with sqlite3.connect(self._db) as conn:
+                known_ids = {
+                    r[0] for r in conn.execute(
+                        "SELECT order_id FROM broker_orders WHERE broker=? AND mode=?",
+                        (broker_id, mode),
+                    ).fetchall()
+                }
+        except Exception as e:
+            summary['errors'].append(f'known_ids query failed: {e}')
+            known_ids = set()
+
+        for o in alpaca_orders:
+            oid = o['id']
+            if oid in known_ids:
+                continue
+            raw_fp     = o.get('filled_avg_price')
+            fill_price = float(raw_fp) if raw_fp else None
+            filled_at  = o.get('filled_at') or None
+            created_at = o.get('created_at') or datetime.now().isoformat()
+            symbol     = o.get('symbol', '')
+            side       = 'buy' if 'buy' in str(o.get('side', '')).lower() else 'sell'
+            qty        = float(o.get('qty') or 0) or None
+            status     = str(o.get('status', 'unknown'))
+            signal_date = (filled_at or created_at)[:10]
+            try:
+                with sqlite3.connect(self._db) as conn:
+                    conn.execute("""
+                        INSERT INTO broker_orders
+                            (mode, broker, strategy, ticker, broker_symbol,
+                             action, qty, signal_price, order_id, status,
+                             signal_date, submitted_at, filled_at, fill_price,
+                             error_msg)
+                        VALUES (?, ?, '', ?, ?,
+                                ?, ?, NULL, ?, ?,
+                                ?, ?, ?, ?,
+                                'alpaca_import')
+                    """, (
+                        mode, broker_id, symbol, symbol,
+                        side, qty, oid, status,
+                        signal_date, created_at, filled_at, fill_price,
+                    ))
+                summary['imported'] += 1
+            except Exception as e:
+                summary['errors'].append(f'import {oid[:8]}: {e}')
+
+        # ── Step 1: Update pending local orders with real fill data ──────
+        try:
+            with sqlite3.connect(self._db) as conn:
+                pending = conn.execute("""
+                    SELECT order_id FROM broker_orders
+                    WHERE mode=? AND broker=?
+                    AND status IN ('submitted', 'accepted', 'pending', 'new')
+                    AND order_id IS NOT NULL AND order_id != ''
+                    AND error_msg != 'alpaca_import'
+                """, (mode, broker_id)).fetchall()
+        except Exception as e:
+            summary['errors'].append(f'pending query failed: {e}')
+            pending = []
+
+        for (oid,) in pending:
+            alpaca_ord = alpaca_by_id.get(oid)
+            if not alpaca_ord:
+                continue
+            if alpaca_ord.get('status', '') in (
+                'filled', 'partially_filled', 'canceled', 'expired', 'replaced'
+            ):
+                new_status = alpaca_ord['status']
+                raw_price  = alpaca_ord.get('filled_avg_price')
+                fill_price = float(raw_price) if raw_price else None
+                filled_at  = alpaca_ord.get('filled_at') or None
+                try:
+                    with sqlite3.connect(self._db) as conn:
+                        conn.execute("""
+                            UPDATE broker_orders
+                            SET status=?, fill_price=?, filled_at=?
+                            WHERE order_id=? AND error_msg != 'alpaca_import'
+                        """, (new_status, fill_price, filled_at, oid))
+                    summary['fills_updated'] += 1
+                except Exception as e:
+                    summary['errors'].append(f'update fill {oid[:8]}: {e}')
+
+        # ── Step 2: Detect externally-closed positions ───────────────────
+        try:
+            alpaca_positions = {p.broker_symbol for p in broker.get_positions()}
+        except Exception as e:
+            summary['errors'].append(f'get_positions failed: {e}')
+            alpaca_positions = set()
+
+        try:
+            with sqlite3.connect(self._db) as conn:
+                strategies = [
+                    r[0] for r in conn.execute(
+                        "SELECT DISTINCT strategy FROM broker_orders "
+                        "WHERE mode=? AND broker=? AND strategy != ''",
+                        (mode, broker_id),
+                    ).fetchall()
+                ]
+        except Exception as e:
+            summary['errors'].append(f'strategies query failed: {e}')
+            strategies = []
+
+        for strat in strategies:
+            locally_open = self.get_open_tickers(strat, mode, broker_id)
+            for ticker in locally_open - alpaca_positions:
+                sell_ord = next(
+                    (o for o in sorted(
+                        alpaca_orders,
+                        key=lambda x: x.get('filled_at') or '',
+                        reverse=True,
+                    )
+                     if o['symbol'] == ticker
+                     and 'sell' in str(o.get('side', '')).lower()
+                     and o.get('status', '') == 'filled'),
+                    None,
+                )
+                raw_fp     = sell_ord.get('filled_avg_price') if sell_ord else None
+                fill_price = float(raw_fp) if raw_fp else None
+                filled_at  = (sell_ord.get('filled_at') or None) if sell_ord else None
+                sell_qty   = float(sell_ord['qty']) if sell_ord else None
+                order_id   = sell_ord['id'] if sell_ord else f'ext_{ticker}_{mode}'
+
+                try:
+                    with sqlite3.connect(self._db) as conn:
+                        buy_row = conn.execute("""
+                            SELECT qty, signal_price, fill_price FROM broker_orders
+                            WHERE mode=? AND broker=? AND strategy=? AND ticker=?
+                            AND action='buy'
+                            ORDER BY submitted_at DESC LIMIT 1
+                        """, (mode, broker_id, strat, ticker)).fetchone()
+                except Exception:
+                    buy_row = None
+
+                entry_qty   = sell_qty or (float(buy_row[0]) if buy_row and buy_row[0] else None)
+                entry_price = (
+                    (float(buy_row[2]) if buy_row and buy_row[2] else None)
+                    or (float(buy_row[1]) if buy_row and buy_row[1] else None)
+                )
+
+                try:
+                    with sqlite3.connect(self._db) as conn:
+                        exists = conn.execute(
+                            "SELECT 1 FROM broker_orders WHERE order_id=?", (order_id,)
+                        ).fetchone()
+                        if not exists:
+                            submitted_ts = filled_at or datetime.now().isoformat()
+                            signal_date  = (
+                                filled_at[:10] if filled_at and len(filled_at) >= 10
+                                else datetime.now().strftime('%Y-%m-%d')
+                            )
+                            conn.execute("""
+                                INSERT INTO broker_orders
+                                    (mode, broker, strategy, ticker, broker_symbol,
+                                     action, qty, signal_price, order_id, status,
+                                     signal_date, submitted_at, filled_at, fill_price,
+                                     error_msg)
+                                VALUES (?, ?, ?, ?, ?,
+                                        'sell', ?, ?, ?, 'filled',
+                                        ?, ?, ?, ?,
+                                        'external_close')
+                            """, (
+                                mode, broker_id, strat, ticker, ticker,
+                                entry_qty, entry_price,
+                                order_id,
+                                signal_date, submitted_ts,
+                                filled_at, fill_price,
+                            ))
+                            summary['external_closes'] += 1
+                except Exception as e:
+                    summary['errors'].append(f'ext_close {ticker}: {e}')
+
+        logger.info(
+            'sync_from_broker: imported=%d fills_updated=%d external_closes=%d errors=%d',
+            summary['imported'], summary['fills_updated'],
+            summary['external_closes'], len(summary['errors']),
+        )
+        return summary
 
     def get_orders_df(
         self,

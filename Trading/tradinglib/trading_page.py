@@ -57,28 +57,37 @@ class TradingPage:
     def _strategies(self) -> dict:
         """Return the multi_transactions config as a Python dict.
 
-        The config is stored in config.db either as a proper JSON dict (if
-        set programmatically via set_value with a dict) or as a Python-repr
-        string (the value from the st.text_area in SystemConfig.render()).
-        We try both representations before falling back to the class-level
-        default.
+        Priority:
+          1. Already a dict  (stored programmatically)
+          2. JSON string     (saved by the strategy editor — preferred format)
+          3. Python-repr     (legacy text_area values — eval fallback)
+          4. Class-level default in SystemConfig.transactions
         """
+        import json as _json
+
         raw = self.sys_config.get_value('multi_transactions', None)
 
-        # 1. Already a dict (stored via set_value(key, dict))
+        # 1. Already a dict
         if isinstance(raw, dict) and raw:
             return raw
 
-        # 2. Python-repr string from the text_area (most common case)
         if isinstance(raw, str) and raw.strip():
+            # 2. JSON
+            try:
+                parsed = _json.loads(raw)
+                if isinstance(parsed, dict) and parsed:
+                    return parsed
+            except Exception:
+                pass
+            # 3. Python-repr (legacy)
             try:
                 parsed = eval(raw)  # noqa: S307 — config is admin-only
                 if isinstance(parsed, dict) and parsed:
                     return parsed
             except Exception as exc:
-                logger.debug('_strategies: eval failed for multi_transactions: %s', exc)
+                logger.debug('_strategies: could not parse multi_transactions: %s', exc)
 
-        # 3. Hard-coded class-level fallback (old flat format)
+        # 4. Hard-coded fallback
         return self.sys_config.transactions
 
     def _enabled(self) -> list[str]:
@@ -401,15 +410,27 @@ class TradingPage:
             _progress = st.progress(0, text='Initialising …')
             _index_pairs: list[tuple] = []  # (strategy_name, index_name, cfg)
 
+            # Reserved keys that live at strategy level, not per-index
+            _STRAT_KEYS = {'num_assets', 'invest', 'order_by', 'enabled', 'buy', 'sell'}
+
             for _sn, _icfg in active.items():
                 if not isinstance(_icfg, dict):
                     continue
-                _first = next(iter(_icfg.values()), None)
-                if isinstance(_first, dict) and 'buy' not in _icfg:
-                    for _idx, _cfg in _icfg.items():
-                        if isinstance(_cfg, dict):
-                            _index_pairs.append((_sn, _idx, _cfg))
+
+                # Extract strategy-level params (scalars) vs index sub-configs (dicts)
+                _strat_params = {k: v for k, v in _icfg.items()
+                                 if not isinstance(v, dict)}
+                _index_cfgs   = {k: v for k, v in _icfg.items()
+                                 if isinstance(v, dict)}
+
+                if _index_cfgs and 'buy' not in _icfg:
+                    # Nested format: strategy → {index → {buy, sell}} + shared params
+                    for _idx, _cfg in _index_cfgs.items():
+                        # Merge strategy-level params so SignalEvaluator sees them
+                        _merged = {**_strat_params, **_cfg}
+                        _index_pairs.append((_sn, _idx, _merged))
                 else:
+                    # Flat format: index IS the strategy (legacy / single-index)
                     _index_pairs.append((_sn, _sn, _icfg))
 
             _n = len(_index_pairs)
@@ -824,33 +845,45 @@ class TradingPage:
                 on_select='rerun',
                 selection_mode='single-row',
                 hide_index=True,
+                key='df_open_positions',
             )
 
-            if sel_pos and sel_pos.get('selection', {}).get('rows'):
-                row_idx = sel_pos['selection']['rows'][0]
-                pos = positions[row_idx]
-                st.markdown(f"**Selected:** {pos.broker_symbol}")
-                if self._dry_run():
-                    st.info('Dry run active — closing not available.')
-                else:
-                    if st.button(f'✕ Close position: {pos.broker_symbol}', type='secondary'):
-                        result = broker.close_position(pos.broker_symbol)
-                        if result.status != 'error':
-                            st.success(f'{pos.broker_symbol} close order submitted.')
-                            self.order_log.save(
-                                mode=mode, broker=bid,
-                                strategy=strategy_map.get(pos.broker_symbol, ''),
-                                ticker=pos.broker_symbol,
-                                broker_symbol=pos.broker_symbol,
-                                action='sell', qty=pos.qty,
-                                signal_price=pos.current_price,
-                                order_id=result.order_id,
-                                status=result.status,
-                                signal_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
-                            )
-                            st.rerun()
-                        else:
-                            st.error(f'Error: {result.error_msg}')
+            # Streamlit 1.35+ returns AttributeDictionary — use attribute access.
+            # Fall back to session_state (set by the key= above) as safety net.
+            try:
+                _pos_rows = sel_pos.selection.rows
+            except AttributeError:
+                _pos_rows = (st.session_state.get('df_open_positions') or {}).get(
+                    'selection', {}
+                ).get('rows', [])
+
+            if _pos_rows:
+                row_idx = _pos_rows[0]
+                if row_idx < len(positions):
+                    pos = positions[row_idx]
+                    st.markdown(f"**Selected:** {pos.broker_symbol}")
+                    if self._dry_run():
+                        st.info('Dry run active — closing not available.')
+                    else:
+                        if st.button(f'✕ Close position: {pos.broker_symbol}',
+                                     type='secondary', key='btn_close_position'):
+                            result = broker.close_position(pos.broker_symbol)
+                            if result.status != 'error':
+                                st.success(f'{pos.broker_symbol} close order submitted.')
+                                self.order_log.save(
+                                    mode=mode, broker=bid,
+                                    strategy=strategy_map.get(pos.broker_symbol, ''),
+                                    ticker=pos.broker_symbol,
+                                    broker_symbol=pos.broker_symbol,
+                                    action='sell', qty=pos.qty,
+                                    signal_price=pos.current_price,
+                                    order_id=result.order_id,
+                                    status=result.status,
+                                    signal_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                                )
+                                st.rerun()
+                            else:
+                                st.error(f'Error: {result.error_msg}')
 
         # ── Open Orders ─────────────────────────────────────────────────
         st.markdown('#### Open Orders')
@@ -880,22 +913,31 @@ class TradingPage:
                 on_select='rerun',
                 selection_mode='single-row',
                 hide_index=True,
+                key='df_open_orders',
             )
 
-            if sel_ord and sel_ord.get('selection', {}).get('rows'):
-                row_idx = sel_ord['selection']['rows'][0]
-                chosen   = ord_rows[row_idx]
-                full_id  = chosen['_full_id']
-                symbol   = chosen['Symbol']
-                st.markdown(f"**Selected:** {symbol} — ID: `{full_id[:16]}…`")
-                if st.button(f'✕ Cancel order: {symbol}', type='secondary',
-                             key='btn_cancel_order'):
-                    result = broker.cancel_order(full_id)
-                    if result.status == 'cancelled':
-                        st.success(f'Order {full_id[:8]}… cancelled.')
-                        st.rerun()
-                    else:
-                        st.error(f'Cancellation failed: {result.error_msg}')
+            try:
+                _ord_rows = sel_ord.selection.rows
+            except AttributeError:
+                _ord_rows = (st.session_state.get('df_open_orders') or {}).get(
+                    'selection', {}
+                ).get('rows', [])
+
+            if _ord_rows:
+                row_idx = _ord_rows[0]
+                if row_idx < len(ord_rows):
+                    chosen   = ord_rows[row_idx]
+                    full_id  = chosen['_full_id']
+                    symbol   = chosen['Symbol']
+                    st.markdown(f"**Selected:** {symbol} — ID: `{full_id[:16]}…`")
+                    if st.button(f'✕ Cancel order: {symbol}', type='secondary',
+                                 key='btn_cancel_order'):
+                        result = broker.cancel_order(full_id)
+                        if result.status == 'cancelled':
+                            st.success(f'Order {full_id[:8]}… cancelled.')
+                            st.rerun()
+                        else:
+                            st.error(f'Cancellation failed: {result.error_msg}')
 
         # ── Manual Order ────────────────────────────────────────────────
         st.markdown('#### Manual Order')
@@ -956,31 +998,97 @@ class TradingPage:
 
     def _tab_history(self):
         mode, bid = self._mode(), self._broker_id()
+        broker = self._broker()
+
+        # ── Toolbar: Sync + Clear ────────────────────────────────────────
+        col_sync, col_clear, col_confirm, _ = st.columns([1, 1, 1, 2])
+        with col_sync:
+            do_sync = st.button('🔄 Sync with Alpaca', type='primary',
+                                help='Pull real fill prices + detect positions closed outside the app')
+        with col_clear:
+            do_clear = st.button('🗑 Clear History', type='secondary',
+                                 help='Delete all order log entries for this broker/mode')
+        with col_confirm:
+            confirm_clear = st.checkbox('Confirm delete', key='confirm_clear_history',
+                                        help='Must be checked before Clear History takes effect')
+
+        if do_clear:
+            if not confirm_clear:
+                st.warning('Check "Confirm delete" first.')
+            else:
+                self.order_log.clear_orders(mode=mode, broker=bid)
+                st.session_state['confirm_clear_history'] = False
+                st.success('History cleared.')
+                st.rerun()
+        if do_sync:
+            if not broker.is_connected():
+                st.error('Broker not connected — cannot sync.')
+            else:
+                with st.spinner('Syncing with Alpaca…'):
+                    result = self.order_log.sync_from_broker(broker, mode, bid)
+                imported = result['imported']
+                fills    = result['fills_updated']
+                ext      = result['external_closes']
+                errors   = result['errors']
+                msg = (f'✅ Sync complete — {imported} order(s) imported, '
+                       f'{fills} fill(s) updated, {ext} external close(s) detected.')
+                if errors:
+                    msg += f'  ⚠ {len(errors)} error(s): ' + '; '.join(errors[:3])
+                st.success(msg)
+                st.rerun()
+
         df = self.order_log.get_orders_df(mode=mode, broker=bid)
 
         if df.empty:
-            st.info('No executed orders yet.')
+            st.info('No orders yet. Execute a signal or press 🔄 Sync to import from Alpaca.')
             return
 
         filled = df[df['status'] == 'filled'].copy()
         if not filled.empty and 'fill_price' in filled.columns and 'signal_price' in filled.columns:
-            filled['pnl'] = (filled['fill_price'] - filled['signal_price']) * filled['qty']
+            filled['pnl'] = (
+                (filled['fill_price'].fillna(0) - filled['signal_price'].fillna(0))
+                * filled['qty'].fillna(0)
+            )
             sells = filled[filled['action'] == 'sell']
             total_pnl = sells['pnl'].sum() if not sells.empty else 0.0
         else:
             total_pnl = 0.0
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric('Total orders', len(df))
-        c2.metric('Filled',       len(filled))
-        c3.metric('Errors',       int((df['status'] == 'error').sum()))
-        c4.metric('Realized PnL', f'{total_pnl:+,.2f}')
+        ext_closes = int((df.get('error_msg', pd.Series()) == 'external_close').sum())
+
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric('Total orders',     len(df))
+        c2.metric('Filled',           len(filled))
+        c3.metric('Errors',           int((df['status'] == 'error').sum()))
+        c4.metric('External closes',  ext_closes,
+                  help='Positions closed outside the app (stop-loss, manual Alpaca)')
+        c5.metric('Realized PnL',     f'{total_pnl:+,.2f}')
 
         show_cols = [c for c in
-            ['submitted_at', 'strategy', 'ticker', 'action', 'qty',
+            ['submitted_at', 'filled_at', 'strategy', 'ticker', 'action', 'qty',
              'signal_price', 'fill_price', 'status', 'error_msg']
             if c in df.columns]
-        st.dataframe(df[show_cols].reset_index(drop=True), use_container_width=True)
+        display = df[show_cols].reset_index(drop=True).copy()
+
+        # Highlight external closes
+        def _row_style(row):
+            if row.get('error_msg') == 'external_close':
+                return ['background-color: #fff3cd'] * len(row)
+            return [''] * len(row)
+
+        st.dataframe(
+            display.style.apply(_row_style, axis=1),
+            use_container_width=True,
+            column_config={
+                'submitted_at': st.column_config.DatetimeColumn('Submitted', format='YYYY-MM-DD HH:mm'),
+                'filled_at':    st.column_config.DatetimeColumn('Filled at', format='YYYY-MM-DD HH:mm'),
+                'signal_price': st.column_config.NumberColumn('Signal $',  format='%.2f'),
+                'fill_price':   st.column_config.NumberColumn('Fill $',    format='%.2f'),
+                'error_msg':    st.column_config.TextColumn(
+                    'Note',
+                    help='"external_close" = position closed outside the app (stop-loss, manual)'),
+            },
+        )
 
     # ------------------------------------------------------------------ #
     #  Tab: Compare                                                        #
@@ -1140,6 +1248,166 @@ class TradingPage:
                 self.sys_config.set_value('ibkr_port', port)
                 st.success('IBKR connection parameters saved.')
 
+        # ---- Strategy editor ----------------------------------------- #
+        st.markdown('#### Strategies (Multi-Transactions)')
+        st.caption(
+            'Each **strategy** (e.g. "Value Trend") groups one or more **indices** '
+            '(e.g. SPX, GDAXI) — each with its own Buy/Sell conditions. '
+            'Shared parameters (Max Pos, Invest, Order By) apply to all indices in that strategy.'
+        )
+        import json as _json
+
+        current      = self._strategies()
+        _STRAT_KEYS  = {'num_assets', 'invest', 'order_by', 'enabled', 'buy', 'sell'}
+        _order_by_opts = ['sortino', 'score', 'rsi', 'ewo', 'adx', 'relvol_ratio', 'beta']
+
+        # Normalize current config into nested format for the editor
+        # Flat entry {'SPX': {'buy':..., 'sell':..., 'num_assets':...}} →
+        #   {'SPX': {'num_assets':..., 'invest':..., 'order_by':..., 'enabled':True,
+        #            'SPX': {'buy':..., 'sell':...}}}
+        def _to_nested(cfg: dict) -> dict:
+            out = {}
+            for sn, scfg in cfg.items():
+                if not isinstance(scfg, dict):
+                    continue
+                idx_cfgs = {k: v for k, v in scfg.items() if isinstance(v, dict)}
+                if idx_cfgs:
+                    out[sn] = scfg  # already nested
+                else:
+                    # flat — wrap the index under its own name
+                    out[sn] = {
+                        'num_assets': scfg.get('num_assets', 5),
+                        'invest':     scfg.get('invest', 10000),
+                        'order_by':   scfg.get('order_by', 'sortino'),
+                        'enabled':    scfg.get('enabled', True),
+                        sn: {'buy': scfg.get('buy', ''), 'sell': scfg.get('sell', '')},
+                    }
+            return out
+
+        nested = _to_nested(current)
+
+        # ── Collect edits per strategy in session_state ──────────────────
+        # We store pending edits so the user can work across multiple expanders
+        # before pressing Save.
+        _edit_key = 'strat_editor_pending'
+        if _edit_key not in st.session_state:
+            st.session_state[_edit_key] = _json.loads(_json.dumps(nested))  # deep copy
+
+        pending: dict = st.session_state[_edit_key]
+
+        # ── Per-strategy expanders ────────────────────────────────────────
+        col_add, col_save, col_discard = st.columns([2, 1, 1])
+        with col_add:
+            new_sn = st.text_input('New strategy name', key='new_strat_name',
+                                   placeholder='e.g. Value Trend', label_visibility='collapsed')
+            if st.button('➕ Add strategy', key='btn_add_strat'):
+                ns = new_sn.strip()
+                if ns and ns not in pending:
+                    pending[ns] = {'num_assets': 5, 'invest': 10000,
+                                   'order_by': 'sortino', 'enabled': True}
+                    st.session_state[_edit_key] = pending
+                    st.rerun()
+
+        strat_names = list(pending.keys())
+        to_delete: list[str] = []
+
+        for sn in strat_names:
+            scfg = pending[sn]
+            idx_cfgs = {k: v for k, v in scfg.items() if isinstance(v, dict)}
+
+            with st.expander(f'**{sn}**  —  {len(idx_cfgs)} index(es)', expanded=False):
+
+                # ── Strategy-level params ─────────────────────────────────
+                p1, p2, p3, p4, p5 = st.columns([1, 1, 2, 1, 1])
+                with p1:
+                    scfg['num_assets'] = st.number_input(
+                        'Max Pos', value=int(scfg.get('num_assets', 5)),
+                        min_value=1, step=1, key=f'np_{sn}')
+                with p2:
+                    scfg['invest'] = st.number_input(
+                        'Invest', value=float(scfg.get('invest', 10000)),
+                        min_value=0.0, step=1000.0, format='%.0f', key=f'inv_{sn}')
+                with p3:
+                    ob_val = scfg.get('order_by', 'sortino')
+                    ob_idx = _order_by_opts.index(ob_val) if ob_val in _order_by_opts else 0
+                    scfg['order_by'] = st.selectbox(
+                        'Order By', _order_by_opts, index=ob_idx, key=f'ob_{sn}')
+                with p4:
+                    scfg['enabled'] = st.checkbox(
+                        'Active', value=bool(scfg.get('enabled', True)), key=f'en_{sn}')
+                with p5:
+                    if st.button('🗑 Delete strategy', key=f'del_strat_{sn}', type='secondary'):
+                        to_delete.append(sn)
+
+                st.markdown('**Index conditions:**')
+
+                # ── Per-index buy/sell table ──────────────────────────────
+                idx_df = pd.DataFrame([
+                    {'Index': k, 'Buy': v.get('buy', ''), 'Sell': v.get('sell', '')}
+                    for k, v in idx_cfgs.items()
+                ]) if idx_cfgs else pd.DataFrame(columns=['Index', 'Buy', 'Sell'])
+
+                edited_idx = st.data_editor(
+                    idx_df,
+                    num_rows='dynamic',
+                    use_container_width=True,
+                    hide_index=True,
+                    key=f'idx_editor_{sn}',
+                    column_config={
+                        'Index': st.column_config.TextColumn(
+                            'Index', help='e.g. SPX, GDAXI', required=True, width='small'),
+                        'Buy':  st.column_config.TextColumn(
+                            'Buy Condition', width='large'),
+                        'Sell': st.column_config.TextColumn(
+                            'Sell Condition', width='large'),
+                    },
+                )
+
+                # Write edited indices back into pending (remove old, add new)
+                for k in list(scfg.keys()):
+                    if isinstance(scfg[k], dict):
+                        del scfg[k]
+                for _, row in edited_idx.iterrows():
+                    idx = str(row.get('Index', '') or '').strip()
+                    if idx:
+                        scfg[idx] = {
+                            'buy':  str(row.get('Buy', '') or '').strip(),
+                            'sell': str(row.get('Sell', '') or '').strip(),
+                        }
+
+        for sn in to_delete:
+            pending.pop(sn, None)
+        if to_delete:
+            st.session_state[_edit_key] = pending
+            st.rerun()
+
+        # ── Save / Discard ────────────────────────────────────────────────
+        with col_save:
+            if st.button('💾 Save all', type='primary', key='btn_save_strategies'):
+                errors: list[str] = []
+                for sn, scfg in pending.items():
+                    idx_cfgs = {k: v for k, v in scfg.items() if isinstance(v, dict)}
+                    if not idx_cfgs:
+                        errors.append(f'"{sn}": no indices defined.')
+                    for idx, icfg in idx_cfgs.items():
+                        if not icfg.get('buy') or not icfg.get('sell'):
+                            errors.append(f'"{sn} / {idx}": Buy and Sell must not be empty.')
+                if errors:
+                    for e in errors:
+                        st.error(e)
+                else:
+                    self.sys_config.set_value('multi_transactions', _json.dumps(pending))
+                    for k in list(st.session_state.keys()):
+                        if k.startswith('signals_cache_') or k == _edit_key:
+                            del st.session_state[k]
+                    st.success(f'✅ {len(pending)} strateg{"y" if len(pending)==1 else "ies"} saved.')
+                    st.rerun()
+
+        with col_discard:
+            if st.button('↩ Discard', key='btn_discard_strategies'):
+                st.session_state.pop(_edit_key, None)
+                st.rerun()
+
         # ---- Ticker mapping ------------------------------------------ #
         st.markdown('#### Ticker Mapping')
         st.caption(
@@ -1155,13 +1423,21 @@ class TradingPage:
                 use_container_width=True,
                 on_select='rerun',
                 selection_mode='single-row',
+                key='df_ticker_overrides',
             )
-            if sel and sel.get('selection', {}).get('rows'):
-                row_idx = sel['selection']['rows'][0]
-                ticker_to_del = over_df.iloc[row_idx]['yahoo_ticker']
-                if st.button(f'🗑 Delete override for {ticker_to_del}', type='secondary'):
-                    self.resolver.delete_override(ticker_to_del)
-                    st.rerun()
+            try:
+                _over_rows = sel.selection.rows
+            except AttributeError:
+                _over_rows = (st.session_state.get('df_ticker_overrides') or {}).get(
+                    'selection', {}
+                ).get('rows', [])
+            if _over_rows:
+                row_idx = _over_rows[0]
+                if row_idx < len(over_df):
+                    ticker_to_del = over_df.iloc[row_idx]['yahoo_ticker']
+                    if st.button(f'🗑 Delete override for {ticker_to_del}', type='secondary'):
+                        self.resolver.delete_override(ticker_to_del)
+                        st.rerun()
         else:
             st.info('No manual overrides defined.')
 

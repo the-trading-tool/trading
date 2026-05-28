@@ -1114,6 +1114,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
 def process_symbol(symbol, simulate=True, add_current=False, year='', init=False):
     """Funktion, die pro Ticker in einem separaten Prozess läuft."""
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
+    from tradinglib.utils import DataUtils
     ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend'])
     results = []
 
@@ -1133,7 +1134,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
         df_m = DataUtils.ensure_datetime_index(df_m)
         df_w = DataUtils.ensure_datetime_index(df_w)
         if df is None or df.empty:
-            return []
+            return None
 
         # --- Zeitraumbegrenzung ---
         if year == "":
@@ -1185,7 +1186,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
 
     except Exception as e:
         logger.exception("Error processing %s: %s", symbol, e)
-        return []
+        return None
 
 # --- Hauptprogramm ---
 if __name__ == "__main__":
@@ -1272,7 +1273,17 @@ if __name__ == "__main__":
     logger.info("%d tickers found.", len(tickers))
     all_results = []
     start = time.time()
-    
+
+    # --- Failed-Ticker-Tracking ---
+    failed_tickers_file = info_db.get_path(path='database', file_name='failed_tickers_perf.json')
+    existing_failed: dict = {}
+    try:
+        if os.path.exists(failed_tickers_file):
+            with open(failed_tickers_file, 'r', encoding='utf-8') as _f:
+                existing_failed = {e['ticker']: e for e in json.load(_f)}
+    except Exception:
+        logger.warning("Konnte failed_tickers_perf.json nicht laden – starte mit leerer Liste.")
+
     # === Parallel: pro Symbol rechnen ===
     max_workers = 1
     if sys.platform == 'win32':
@@ -1289,10 +1300,27 @@ if __name__ == "__main__":
             symbol = futures[future]
             try:
                 res = future.result()
-                all_results.extend(res)
-                logger.info("%s: %d rows", symbol, len(res))
+                if res is None:
+                    existing_failed[symbol] = {
+                        'ticker': symbol,
+                        'last_seen': datetime.now().isoformat(),
+                        'first_seen': existing_failed.get(symbol, {}).get(
+                            'first_seen', datetime.now().isoformat()),
+                    }
+                    logger.info("%s: failed (no rows)", symbol)
+                else:
+                    all_results.extend(res)
+                    if res:
+                        existing_failed.pop(symbol, None)
+                    logger.info("%s: %d rows", symbol, len(res))
             except Exception as e:
                 logger.exception("Error processing symbol %s: %s", symbol, e)
+                existing_failed[symbol] = {
+                    'ticker': symbol,
+                    'last_seen': datetime.now().isoformat(),
+                    'first_seen': existing_failed.get(symbol, {}).get(
+                        'first_seen', datetime.now().isoformat()),
+                }
 
     logger.info("Parallel processing done in %.2fs", time.time()-start)
 
@@ -1325,6 +1353,16 @@ if __name__ == "__main__":
         pass
 
     sim_db.close()
+
+    # --- Aktualisierte Failed-Liste speichern ---
+    try:
+        with open(failed_tickers_file, 'w', encoding='utf-8') as _f:
+            json.dump(list(existing_failed.values()), _f, indent=2, ensure_ascii=False)
+        if existing_failed:
+            logger.info("%d fehlgeschlagene Ticker in %s gespeichert.",
+                        len(existing_failed), failed_tickers_file)
+    except Exception:
+        logger.exception("Konnte failed_tickers_perf.json nicht schreiben.")
 
     if year == '' and not all:
         if simulate and not silent:

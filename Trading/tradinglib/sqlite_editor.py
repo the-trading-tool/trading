@@ -8,7 +8,7 @@ import io
 
 class SQLiteEditor(tt.TickerTools):
 
-    def __init__(self, db_path="asset_simulation.db"):
+    def __init__(self, db_path="asset_simulation_.db"):
         """
         Initialisiert den SQLite-Editor mit einem Datenbankpfad.
         :param db_path: Standardpfad zur SQLite-Datenbank

@@ -183,6 +183,7 @@ class AlpacaBroker(TradingBroker):
                 'status':           str(o.status),
                 'filled_avg_price': float(o.filled_avg_price or 0),
                 'created_at':       str(o.created_at),
+                'filled_at':        str(o.filled_at) if o.filled_at else '',
             }
             for o in orders
         ]
