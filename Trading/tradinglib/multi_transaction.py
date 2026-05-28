@@ -875,6 +875,14 @@ class MultiTransactionProcessor(tt.TickerTools):
                 st.session_state['multi_trades_df'] = self.trades_df.copy()
             except Exception:
                 pass
+            # Also persist to trading.db so the Compare-Tab survives page navigation
+            try:
+                from tradinglib.trading_bridge import OrderLog
+                OrderLog(db_path=self.db_path).save_backtest(
+                    self.trades_df, username=self.username
+                )
+            except Exception as _e:
+                logger.debug("multi_transaction: save_backtest failed: %s", _e)
 
         if not self.disable_streamlit:
 #            ct_expander = st.expander("Closed Trades:")

@@ -583,9 +583,7 @@ class TradingPage:
                 )
 
         with col_btn:
-            if st.button('🔄 Berechnen', help='Backtest aus Multi-Strategies neu berechnen'):
-                self._run_backtest_and_cache()
-                st.rerun()
+            st.page_link('/?multi=true', label='▶ Multi-Strategies', help='Simulation dort starten — Ergebnis erscheint automatisch hier')
 
         if not has_backtest:
             return
@@ -632,32 +630,6 @@ class TradingPage:
                        .agg(Trades='count', TotalGain='sum', AvgGain='mean')
                        .reset_index())
             st.dataframe(summary, use_container_width=True, hide_index=True)
-
-    def _run_backtest_and_cache(self) -> None:
-        """Run MultiTransactionProcessor silently and persist results to DB + session state."""
-        from tradinglib import multi_transaction as mu
-        strategies = self._strategies()
-        if not strategies:
-            st.warning('Keine Strategien konfiguriert.')
-            return
-
-        with st.spinner('Backtest wird berechnet …'):
-            try:
-                processor = mu.MultiTransactionProcessor(
-                    username=self.username,
-                    disable_streamlit=True,
-                )
-                processor.render()          # runs the full simulation silently
-                trades = processor.trades_df
-                if trades is not None and not trades.empty:
-                    st.session_state['multi_trades_df'] = trades.copy()
-                    self.order_log.save_backtest(trades, self.username)
-                    st.success(f'Backtest abgeschlossen: {len(trades)} Trades gespeichert.')
-                else:
-                    st.warning('Simulation lieferte keine Trades.')
-            except Exception as e:
-                logger.error('_run_backtest_and_cache failed: %s', e)
-                st.error(f'Backtest-Fehler: {e}')
 
     # ------------------------------------------------------------------ #
     #  Tab: Settings                                                       #
