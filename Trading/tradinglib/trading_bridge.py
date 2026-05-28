@@ -185,8 +185,16 @@ class OrderLog(Tools):
 # ------------------------------------------------------------------ #
 
 class SignalEvaluator(Tools):
-    """Evaluates today's buy/sell signals for a strategy using the same
-    expression engine as MultiTransactionProcessor, but on the latest date only."""
+    """Evaluates current signals for a strategy using the same position-state-machine
+    logic as MultiTransactionProcessor / PortfolioSimulator.
+
+    Algorithm (mirrors multi_transaction.py + PortfolioSimulator.simulate()):
+      1. Load ~400 days of history for all tickers in the index (q=3).
+      2. Evaluate buy/sell conditions on the full DataFrame (vectorised).
+      3. Run a per-ticker state machine: buy → in_pos, sell → out_of_pos.
+      4. Tickers still *in position* at end  → 'buy' (hold) signal.
+      5. Tickers where sell fires on the *latest* date → 'sell' signal.
+    """
 
     def __init__(self, username: str, db_path: str = 'database'):
         self.username = username
@@ -225,7 +233,7 @@ class SignalEvaluator(Tools):
         index_name: str,
         strategy_config: dict,
     ) -> tuple[list[dict], str]:
-        """Evaluate today's signals for one (strategy, index) combination.
+        """Evaluate current signals for one (strategy, index) combination.
 
         Parameters
         ----------
@@ -254,7 +262,7 @@ class SignalEvaluator(Tools):
 
             simulator = ass.AssetSimulator(
                 "yf_tickers.db", sim_db, "asset_info.db",
-                index_name,                       # 4th arg = index for DB lookup
+                index_name,
                 db_path=self.db_path,
                 username=self.username,
             )
@@ -263,7 +271,7 @@ class SignalEvaluator(Tools):
             order_by = strategy_config.get('order_by', 'sortino')
             currency = strategy_config.get('currency', 'ANY')
 
-            # Resolve the index name in yf_tickers.db.
+            # ── Resolve the index name in yf_tickers.db ─────────────────
             # The JSON already contains ^ prefixes (e.g. '^SPX'), but keep the
             # resolution as a safety fallback for configs that omit the caret.
             resolved_index = index_name
@@ -297,35 +305,41 @@ class SignalEvaluator(Tools):
                     index_name, resolved_index,
                 )
 
-            q_ext = ''
+            # ── Load full history (q=3) — same as multi_transaction.py ──
+            # No ORDER BY: we sort chronologically in Python after fetching.
+            # Limit to last ~400 days to keep the query fast while covering
+            # all realistic open-position lookback periods.
+            q_ext_hist = ''
             if currency != 'ANY':
-                q_ext += f' AND ai.currency = "{currency}"'
-            if order_by:
-                q_ext += f' ORDER BY {order_by} DESC'
+                q_ext_hist += f' AND ai.currency = "{currency}"'
+            q_ext_hist += " AND ap.Date >= date('now', '-400 days')"
 
             query = mq.make_query(
                 'asset_simulation', resolved_index, 1,
-                q=1, q_ext=q_ext, conn=simulator.ticker_conn,
+                q=3, q_ext=q_ext_hist, conn=simulator.ticker_conn,
             )
             combined_df = pd.read_sql_query(query, simulator.ticker_conn)
-            if combined_df is not None:
-                combined_df['stockIndex'] = resolved_index
 
             if combined_df is None or combined_df.empty:
                 resolved_note = (
-                    f" (aufgelöst zu '{resolved_index}')"
+                    f" (resolved to '{resolved_index}')"
                     if resolved_index != index_name else ""
                 )
                 return [], (
-                    f"Keine Daten für Index '{index_name}'{resolved_note}. "
-                    f"Mögliche Ursachen:\n"
-                    f"  1. '{index_name}' existiert nicht in yf_tickers.db "
-                    f"(Tabelle 'indices', Spalte 'name').\n"
-                    f"  2. asset_simulation_.db enthält noch keine Daten für diesen Index "
-                    f"— bitte 'python asset_perf2.py' ausführen.\n"
-                    f"  (Verwendete DB: {sim_db})"
+                    f"No data for index '{index_name}'{resolved_note}. "
+                    f"Possible causes:\n"
+                    f"  1. '{index_name}' not found in yf_tickers.db "
+                    f"(table 'indices', column 'name').\n"
+                    f"  2. asset_simulation_.db has no data for this index "
+                    f"— please run 'python asset_perf2.py'.\n"
+                    f"  (DB used: {sim_db})"
                 )
 
+            combined_df['stockIndex'] = resolved_index
+            combined_df = combined_df.drop_duplicates(subset=['Date', 'ticker'], keep='last')
+            combined_df = combined_df.sort_values(['Date'], ascending=True)
+
+            # ── Evaluate buy / sell conditions (vectorised) ──────────────
             buy_raw  = strategy_config.get('buy', '')
             sell_raw = strategy_config.get('sell', '')
             evaluator = ExpressionEvaluator(combined_df, dataframe_name='combined_df')
@@ -344,34 +358,64 @@ class SignalEvaluator(Tools):
                 sell_err  = str(exc)
 
             combined_df = combined_df.copy()
-            combined_df['_signal'] = 0
+            combined_df['_buy']  = False
+            combined_df['_sell'] = False
 
             if buy_expr:
                 try:
-                    combined_df['_signal'] = np.where(
-                        eval(buy_expr), 1, combined_df['_signal']  # noqa: S307
-                    )
+                    combined_df['_buy'] = eval(buy_expr)   # noqa: S307
                 except Exception as exc:
                     buy_err = f"buy eval: {exc}"
 
             if sell_expr:
                 try:
-                    combined_df['_signal'] = np.where(
-                        eval(sell_expr), -1, combined_df['_signal']  # noqa: S307
-                    )
+                    combined_df['_sell'] = eval(sell_expr)  # noqa: S307
                 except Exception as exc:
                     sell_err = f"sell eval: {exc}"
 
             latest_date = combined_df['Date'].max()
-            triggered = combined_df[
-                (combined_df['Date'] == latest_date) & (combined_df['_signal'] != 0)
-            ]
 
-            signals: list[dict] = []
-            for _, row in triggered.iterrows():
-                price = float(row.get('Close', 0))
+            # ── Per-ticker state machine (mirrors PortfolioSimulator) ────
+            # Buy fires → enter position.  Sell fires → exit position.
+            # After replaying all history:
+            #   still in position  → emit 'buy' (hold) signal
+            #   sell fired today   → emit 'sell' signal
+            active_positions: dict = {}  # ticker → {entry_date, row}
+            sell_on_latest:   dict = {}  # ticker → row
 
-                # ATR: try several column names from different indicator modules
+            for ticker, grp in combined_df.groupby('ticker', sort=False):
+                grp_sorted = grp.sort_values('Date')
+                in_pos = False
+                entry_date: Optional[str] = None
+
+                for _, row in grp_sorted.iterrows():
+                    is_buy  = bool(row['_buy'])
+                    is_sell = bool(row['_sell'])
+
+                    if is_buy and not in_pos:
+                        in_pos = True
+                        entry_date = str(row['Date'])[:10]
+                    elif is_sell and in_pos:
+                        in_pos = False
+                        entry_date = None
+
+                # Grab the latest row for metadata regardless of state
+                latest_rows = grp_sorted[grp_sorted['Date'] == latest_date]
+                if latest_rows.empty:
+                    continue
+                last_row = latest_rows.iloc[0]
+
+                if in_pos:
+                    active_positions[ticker] = {
+                        'entry_date': entry_date,
+                        'row': last_row,
+                    }
+                elif bool(last_row['_sell']):
+                    # Sell fired today on a ticker that WAS in position previously
+                    sell_on_latest[ticker] = last_row
+
+            # ── Build signal list ────────────────────────────────────────
+            def _atr_for_row(row: pd.Series, price: float) -> float:
                 atr_raw = (
                     row.get('atr') or
                     row.get('bos_atr') or
@@ -380,24 +424,39 @@ class SignalEvaluator(Tools):
                 )
                 atr = float(atr_raw) if atr_raw else 0.0
                 if atr <= 0:
-                    # Fallback: approximate daily ATR from annualised volatility
                     vola_ann = float(row.get('vola', 0) or 0)
                     if vola_ann > 0 and price > 0:
                         atr = round(price * vola_ann / (252 ** 0.5), 4)
+                return atr
 
-                signals.append({
-                    'strategy':  strategy_name,      # e.g. "Support/Resistance Strategy"
-                    'index':     resolved_index,      # e.g. "^SPX"
-                    'ticker':    row['ticker'],
-                    'longName':  row.get('longName', row['ticker']),
-                    'signal':    'buy' if row['_signal'] == 1 else 'sell',
-                    'price':     price,
-                    'currency':  row.get('currency', 'USD'),
-                    'date':      str(latest_date)[:10],
-                    'score':     float(row.get(order_by, 0)),
-                    'vola':      max(float(row.get('vola', 1.0) or 1.0), 1e-6),
-                    'atr':       round(atr, 4),
-                })
+            def _build_signal(
+                row: pd.Series,
+                sig_type: str,
+                entry_date: Optional[str] = None,
+            ) -> dict:
+                price = float(row.get('Close', 0))
+                return {
+                    'strategy':   strategy_name,
+                    'index':      resolved_index,
+                    'ticker':     row['ticker'],
+                    'longName':   row.get('longName', row['ticker']),
+                    'signal':     sig_type,
+                    'price':      price,
+                    'currency':   row.get('currency', 'USD'),
+                    'date':       str(latest_date)[:10],
+                    'entry_date': entry_date,
+                    'score':      float(row.get(order_by, 0)),
+                    'vola':       max(float(row.get('vola', 1.0) or 1.0), 1e-6),
+                    'atr':        round(_atr_for_row(row, price), 4),
+                }
+
+            signals: list[dict] = []
+            for ticker, pos in active_positions.items():
+                signals.append(_build_signal(
+                    pos['row'], 'buy', entry_date=pos['entry_date']
+                ))
+            for ticker, row in sell_on_latest.items():
+                signals.append(_build_signal(row, 'sell'))
 
             expr_errors = '  |  '.join(e for e in [buy_err, sell_err] if e)
             return signals, expr_errors

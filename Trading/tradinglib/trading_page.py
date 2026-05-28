@@ -504,7 +504,8 @@ class TradingPage:
         edit_df['view'] = edit_df['longName'].apply(_to_link)
 
         display_cols = [c for c in
-            ['select', 'strategy', 'index', 'date', 'signal', 'ticker', 'longName',
+            ['select', 'strategy', 'index', 'date', 'entry_date', 'signal',
+             'ticker', 'longName',
              'price', 'atr', 'stop_loss_price', 'currency',
              'score', 'weight', 'budget', 'qty', 'value',
              'broker_symbol', 'tradeable', 'view']
@@ -526,7 +527,11 @@ class TradingPage:
                                         help='Market index (e.g. ^SPX, ^GDAXI)'),
                 'date':             st.column_config.DateColumn(
                                         'Signal Date',
-                                        help='Date of the latest signal for this strategy/index',
+                                        help='Date of the latest data row for this strategy/index',
+                                        format='YYYY-MM-DD'),
+                'entry_date':       st.column_config.DateColumn(
+                                        'Entry Date',
+                                        help='Date the buy signal first triggered (position open since)',
                                         format='YYYY-MM-DD'),
                 'signal':           st.column_config.TextColumn('Signal',        width='small'),
                 'ticker':           st.column_config.TextColumn('Ticker'),
