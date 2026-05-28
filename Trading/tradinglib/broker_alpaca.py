@@ -165,3 +165,38 @@ class AlpacaBroker(TradingBroker):
             }
             for o in orders
         ]
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        try:
+            self._get_client().cancel_order_by_id(order_id)
+            return OrderResult(
+                order_id=order_id, ticker='', broker_symbol='',
+                side='', qty=0, status='cancelled',
+            )
+        except Exception as e:
+            logger.error(f"Alpaca cancel_order failed {order_id}: {e}")
+            return OrderResult(
+                order_id=order_id, ticker='', broker_symbol='',
+                side='', qty=0, status='error', error_msg=str(e),
+            )
+
+    def get_portfolio_history(self, period: str = '1M') -> dict:
+        """Return Alpaca portfolio history for the equity curve chart.
+
+        period examples: '1D', '1W', '1M', '3M', '1A' (= 1 year)
+        Returns dict with keys: timestamps (list[int]), equity (list[float]),
+        profit_loss (list[float]), base_value (float).
+        """
+        try:
+            from alpaca.trading.requests import GetPortfolioHistoryRequest
+            req = GetPortfolioHistoryRequest(period=period, timeframe='1D')
+            hist = self._get_client().get_portfolio_history(req)
+            return {
+                'timestamps':  list(hist.timestamp or []),
+                'equity':      [float(v) for v in (hist.equity or [])],
+                'profit_loss': [float(v) for v in (hist.profit_loss or [])],
+                'base_value':  float(hist.base_value or 0),
+            }
+        except Exception as e:
+            logger.debug(f"get_portfolio_history failed: {e}")
+            return {}

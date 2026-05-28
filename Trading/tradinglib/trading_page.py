@@ -208,7 +208,68 @@ class TradingPage:
             except Exception as e:
                 st.error(f'Failed to load account data: {e}')
 
-        st.markdown('#### Enable strategies for paper trading')
+            # ── Portfolio equity chart + allocation pie ─────────────────
+            col_chart, col_pie = st.columns([3, 2])
+
+            with col_chart:
+                st.markdown('##### Portfolio-Entwicklung')
+                period = st.radio(
+                    'Zeitraum', ['1W', '1M', '3M', '1A'],
+                    horizontal=True, index=1, key='portfolio_period',
+                )
+                try:
+                    hist = broker.get_portfolio_history(period=period)
+                    if hist.get('timestamps'):
+                        import datetime as _dt
+                        dates = [_dt.datetime.fromtimestamp(t) for t in hist['timestamps']]
+                        eq    = hist['equity']
+                        fig_eq = go.Figure()
+                        fig_eq.add_trace(go.Scatter(
+                            x=dates, y=eq,
+                            fill='tozeroy', name='Equity',
+                            line=dict(color='royalblue', width=2),
+                        ))
+                        base = hist.get('base_value', eq[0] if eq else 0)
+                        if base:
+                            pnl_pct = round((eq[-1] / base - 1) * 100, 2) if eq else 0
+                            fig_eq.add_annotation(
+                                x=dates[-1], y=eq[-1],
+                                text=f'{pnl_pct:+.2f}%',
+                                showarrow=False, xanchor='right',
+                                font=dict(color='royalblue', size=13),
+                            )
+                        fig_eq.update_layout(
+                            height=260, margin=dict(t=10, b=10, l=0, r=0),
+                            xaxis_title='', yaxis_title='Equity (USD)',
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig_eq, use_container_width=True)
+                    else:
+                        st.caption('Keine Portfolio-Historie verfügbar.')
+                except Exception as e:
+                    st.caption(f'Portfolio-Kurve nicht verfügbar: {e}')
+
+            with col_pie:
+                st.markdown('##### Allokation')
+                try:
+                    positions = broker.get_positions()
+                    if positions:
+                        import plotly.express as px
+                        pie_df = pd.DataFrame([
+                            {'Symbol': p.broker_symbol, 'Wert': p.market_value}
+                            for p in positions if p.market_value > 0
+                        ])
+                        fig_pie = px.pie(pie_df, names='Symbol', values='Wert',
+                                         height=260)
+                        fig_pie.update_layout(margin=dict(t=10, b=10, l=0, r=0),
+                                              showlegend=True)
+                        st.plotly_chart(fig_pie, use_container_width=True)
+                    else:
+                        st.caption('Keine offenen Positionen.')
+                except Exception as e:
+                    st.caption(f'Allokation nicht verfügbar: {e}')
+
+        st.markdown('#### Strategien aktivieren')
         strategies = self._strategies()
         enabled = self._enabled()
         new_enabled: list[str] = []
@@ -443,72 +504,174 @@ class TradingPage:
             st.info('Broker not connected.')
             return
 
+        mode, bid = self._mode(), self._broker_id()
+
         col_sync, _ = st.columns([1, 4])
         with col_sync:
             if st.button('↻ Refresh'):
                 st.rerun()
 
+        # ── Open Positions ──────────────────────────────────────────────
+        st.markdown('#### Offene Positionen')
         try:
             positions = broker.get_positions()
         except Exception as e:
             st.error(f'Failed to load positions: {e}')
-            return
+            positions = []
 
         if not positions:
             st.info('No open positions.')
-            return
+        else:
+            # Map broker symbol → strategy from order log
+            strategy_map: dict[str, str] = {}
+            for strat in self._enabled():
+                for t in self.order_log.get_open_tickers(strat, mode, bid):
+                    strategy_map[t] = strat
 
-        # Map broker symbol → strategy from order log
-        mode, bid = self._mode(), self._broker_id()
-        strategy_map: dict[str, str] = {}
-        for strat in self._enabled():
-            for t in self.order_log.get_open_tickers(strat, mode, bid):
-                strategy_map[t] = strat
+            rows = []
+            for p in positions:
+                rows.append({
+                    'Ticker':       p.broker_symbol,
+                    'Strategy':     strategy_map.get(p.broker_symbol, '—'),
+                    'Qty':          p.qty,
+                    'Avg Entry':    f"{p.avg_entry_price:,.2f}",
+                    'Current':      f"{p.current_price:,.2f}",
+                    'Market Value': f"{p.market_value:,.2f}",
+                    'uPnL':         f"{p.unrealized_pnl:+,.2f}",
+                    'uPnL %':       f"{p.unrealized_pnl_pct:+.2f}%",
+                })
 
-        rows = []
-        for p in positions:
-            rows.append({
-                'Ticker':       p.broker_symbol,
-                'Strategy':     strategy_map.get(p.broker_symbol, '—'),
-                'Qty':          p.qty,
-                'Avg Entry':    f"{p.avg_entry_price:,.2f}",
-                'Current':      f"{p.current_price:,.2f}",
-                'Market Value': f"{p.market_value:,.2f}",
-                'uPnL':         f"{p.unrealized_pnl:+,.2f}",
-                'uPnL %':       f"{p.unrealized_pnl_pct:+.2f}%",
-            })
+            sel_pos = st.dataframe(
+                pd.DataFrame(rows),
+                use_container_width=True,
+                on_select='rerun',
+                selection_mode='single-row',
+                hide_index=True,
+            )
 
-        sel = st.dataframe(
-            pd.DataFrame(rows),
-            use_container_width=True,
-            on_select='rerun',
-            selection_mode='single-row',
-        )
+            if sel_pos and sel_pos.get('selection', {}).get('rows'):
+                row_idx = sel_pos['selection']['rows'][0]
+                pos = positions[row_idx]
+                st.markdown(f"**Ausgewählt:** {pos.broker_symbol}")
+                if self._dry_run():
+                    st.info('Dry run aktiv — Schließen nicht verfügbar.')
+                else:
+                    if st.button(f'✕ Position schließen: {pos.broker_symbol}', type='secondary'):
+                        result = broker.close_position(pos.broker_symbol)
+                        if result.status != 'error':
+                            st.success(f'{pos.broker_symbol} wird geschlossen.')
+                            self.order_log.save(
+                                mode=mode, broker=bid,
+                                strategy=strategy_map.get(pos.broker_symbol, ''),
+                                ticker=pos.broker_symbol,
+                                broker_symbol=pos.broker_symbol,
+                                action='sell', qty=pos.qty,
+                                signal_price=pos.current_price,
+                                order_id=result.order_id,
+                                status=result.status,
+                                signal_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
+                            )
+                            st.rerun()
+                        else:
+                            st.error(f'Fehler: {result.error_msg}')
 
-        if sel and sel.get('selection', {}).get('rows'):
-            row_idx = sel['selection']['rows'][0]
-            pos = positions[row_idx]
-            st.markdown(f"**Selected:** {pos.broker_symbol}")
-            if self._dry_run():
-                st.info('Dry run active — closing not available.')
-            else:
-                if st.button(f'✕ Close position {pos.broker_symbol}', type='secondary'):
-                    result = broker.close_position(pos.broker_symbol)
+        # ── Open Orders ─────────────────────────────────────────────────
+        st.markdown('#### Offene Aufträge')
+        try:
+            open_orders = broker.get_orders('open')
+        except Exception as e:
+            st.error(f'Aufträge konnten nicht geladen werden: {e}')
+            open_orders = []
+
+        if not open_orders:
+            st.info('Keine offenen Aufträge.')
+        else:
+            ord_rows = [{
+                'ID':         o['id'][:8] + '…',
+                'Symbol':     o['symbol'],
+                'Seite':      o['side'],
+                'Qty':        o['qty'],
+                'Status':     o['status'],
+                'Erstellt':   o['created_at'][:16],
+                '_full_id':   o['id'],
+            } for o in open_orders]
+            ord_display = [c for c in ['ID', 'Symbol', 'Seite', 'Qty', 'Status', 'Erstellt']]
+
+            sel_ord = st.dataframe(
+                pd.DataFrame(ord_rows)[ord_display],
+                use_container_width=True,
+                on_select='rerun',
+                selection_mode='single-row',
+                hide_index=True,
+            )
+
+            if sel_ord and sel_ord.get('selection', {}).get('rows'):
+                row_idx = sel_ord['selection']['rows'][0]
+                chosen   = ord_rows[row_idx]
+                full_id  = chosen['_full_id']
+                symbol   = chosen['Symbol']
+                st.markdown(f"**Ausgewählt:** {symbol} — ID: `{full_id[:16]}…`")
+                if st.button(f'✕ Auftrag stornieren: {symbol}', type='secondary',
+                             key='btn_cancel_order'):
+                    result = broker.cancel_order(full_id)
+                    if result.status == 'cancelled':
+                        st.success(f'Auftrag {full_id[:8]}… storniert.')
+                        st.rerun()
+                    else:
+                        st.error(f'Stornierung fehlgeschlagen: {result.error_msg}')
+
+        # ── Manueller Auftrag ───────────────────────────────────────────
+        st.markdown('#### Manueller Auftrag')
+        with st.expander('📝 Order manuell eingeben', expanded=False):
+            with st.form('form_manual_order'):
+                col_sym, col_qty, col_side = st.columns([2, 1, 1])
+                with col_sym:
+                    man_symbol = st.text_input(
+                        'Symbol  (z.B. AAPL)',
+                        help='Alpaca-Symbol — Groß-/Kleinschreibung egal',
+                    )
+                with col_qty:
+                    man_qty = st.number_input('Anzahl', min_value=1, step=1, value=1)
+                with col_side:
+                    man_side = st.selectbox('Seite', ['buy', 'sell'])
+                submitted = st.form_submit_button('▶ Order senden', type='primary')
+
+            if submitted:
+                sym = man_symbol.strip().upper()
+                if not sym:
+                    st.error('Symbol darf nicht leer sein.')
+                elif self._dry_run():
+                    st.info(
+                        f'🧪 Dry run: {man_side.upper()} {int(man_qty)}× {sym} — '
+                        'kein Auftrag gesendet.'
+                    )
+                else:
+                    result = broker.submit_order(
+                        broker_symbol=sym,
+                        qty=float(man_qty),
+                        side=man_side,
+                    )
                     if result.status != 'error':
-                        st.success(f'{pos.broker_symbol} is being closed.')
+                        short_id = result.order_id[:8] if result.order_id else '—'
+                        st.success(
+                            f'{man_side.upper()} {int(man_qty)}× {sym} eingereicht '
+                            f'(ID: {short_id}…)'
+                        )
                         self.order_log.save(
                             mode=mode, broker=bid,
-                            strategy=strategy_map.get(pos.broker_symbol, ''),
-                            ticker=pos.broker_symbol,
-                            broker_symbol=pos.broker_symbol,
-                            action='sell', qty=pos.qty,
-                            signal_price=pos.current_price,
+                            strategy='manual',
+                            ticker=sym,
+                            broker_symbol=sym,
+                            action=man_side,
+                            qty=float(man_qty),
+                            signal_price=0.0,
                             order_id=result.order_id,
                             status=result.status,
                             signal_date=pd.Timestamp.today().strftime('%Y-%m-%d'),
                         )
+                        st.rerun()
                     else:
-                        st.error(f'Error: {result.error_msg}')
+                        st.error(f'Order fehlgeschlagen: {result.error_msg}')
 
     # ------------------------------------------------------------------ #
     #  Tab: History                                                        #

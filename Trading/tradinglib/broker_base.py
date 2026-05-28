@@ -67,3 +67,16 @@ class TradingBroker(ABC):
 
     @abstractmethod
     def get_orders(self, status: str = 'all') -> list[dict]: ...
+
+    def cancel_order(self, order_id: str) -> OrderResult:
+        """Cancel a pending order by broker order ID.  Default: not supported."""
+        return OrderResult(
+            order_id=order_id, ticker='', broker_symbol='',
+            side='', qty=0, status='error',
+            error_msg='cancel_order not supported by this broker',
+        )
+
+    def get_portfolio_history(self, period: str = '1M') -> dict:
+        """Return portfolio equity history as {timestamps, equity, profit_loss}.
+        Default: empty dict (broker does not support this endpoint)."""
+        return {}
