@@ -361,84 +361,155 @@ class TradingPage:
 
         active = {k: v for k, v in strategies.items() if k in enabled}
 
-        # ── Sell-signal lookback ────────────────────────────────────────
+        # ── Cache key ───────────────────────────────────────────────────
+        # Cache is invalidated automatically when the set of active strategies
+        # changes (e.g. user enables / disables a strategy in the Account tab).
+        _strat_fp = '_'.join(sorted(active.keys()))
+        _cache_key = f'signals_cache_{self.username}_{_strat_fp}'
+        _cache_ts  = f'{_cache_key}_ts'
+
+        # ── Recalculate button + status ─────────────────────────────────
+        _btn_col, _ts_col = st.columns([2, 5])
+        with _btn_col:
+            _do_recalc = st.button(
+                '🔄 Recalculate Signals',
+                key='recalc_signals',
+                type='primary',
+                help='Re-run the portfolio simulation for all active strategies.',
+            )
+        with _ts_col:
+            _ts = st.session_state.get(_cache_ts, '')
+            if _ts:
+                st.caption(f'Last calculated: **{_ts}** — press 🔄 to refresh.')
+            else:
+                st.info(
+                    '▶ Press **Recalculate Signals** to run the portfolio simulation.',
+                    icon='ℹ️',
+                )
+
+        # ── Run computation only on first visit or explicit recalculate ──
+        # The simulation (PortfolioSimulator × all indices) is expensive.
+        # We cache the full result in st.session_state and only re-run when
+        # the user presses the button.
+        # Sell signals are stored for the last 90 days; the UI slider below
+        # filters the display without triggering another simulation run.
+        if _do_recalc or _cache_key not in st.session_state:
+            from datetime import datetime as _datetime
+            _evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
+            _all_signals: list[dict] = []
+            _eval_errors: dict[str, str] = {}
+            _progress = st.progress(0, text='Initialising …')
+            _index_pairs: list[tuple] = []  # (strategy_name, index_name, cfg)
+
+            for _sn, _icfg in active.items():
+                if not isinstance(_icfg, dict):
+                    continue
+                _first = next(iter(_icfg.values()), None)
+                if isinstance(_first, dict) and 'buy' not in _icfg:
+                    for _idx, _cfg in _icfg.items():
+                        if isinstance(_cfg, dict):
+                            _index_pairs.append((_sn, _idx, _cfg))
+                else:
+                    _index_pairs.append((_sn, _sn, _icfg))
+
+            _n = len(_index_pairs)
+            for _i, (_sn, _idx, _cfg) in enumerate(_index_pairs):
+                _label = f'{_sn} / {_idx}'
+                _progress.progress(
+                    int(_i / _n * 100),
+                    text=f'Evaluating {_label} ({_i + 1}/{_n}) …',
+                )
+                _sigs, _err = _evaluator.get_signals(
+                    _sn, _idx, _cfg,
+                    sell_lookback_days=90,   # cache 90 days; UI slider filters display
+                )
+                if _err:
+                    _eval_errors[_label] = _err
+
+                _buy_raw  = [s for s in _sigs if s['signal'] == 'buy']
+                _sell_raw = [s for s in _sigs if s['signal'] == 'sell']
+                _sized_buys  = self._apply_inv_vola_sizing(_buy_raw,  _cfg)
+                _sized_sells = self._apply_inv_vola_sizing(_sell_raw, _cfg)
+
+                for _s in _sized_buys + _sized_sells:
+                    _sym = self.resolver.resolve_for_broker(_s['ticker'], broker_id)
+                    _s['broker_symbol'] = _sym or '—'
+                    _s['tradeable']     = _sym is not None
+                    _all_signals.append(_s)
+
+            _progress.progress(90, text='Fetching live prices …')
+
+            # ── Live prices from Alpaca (included in cache) ───────────────
+            _broker = self._broker()
+            _live_caption = ''
+            if _broker.is_connected():
+                _tradeable_syms = list({
+                    s['broker_symbol'] for s in _all_signals
+                    if s['tradeable'] and s['broker_symbol'] not in ('—', '')
+                })
+                if _tradeable_syms:
+                    _live_prices = _broker.get_latest_prices(_tradeable_syms)
+                    if _live_prices:
+                        for _s in _all_signals:
+                            _lp = _live_prices.get(_s['broker_symbol'])
+                            if _lp and _lp > 0:
+                                _s['price'] = _lp
+                                if 'budget' in _s:
+                                    _s['qty']   = int(calc_qty(_s['budget'], _lp))
+                                    _s['value'] = round(_s['qty'] * _lp, 2)
+                        _live_caption = (
+                            f'Prices: live from Alpaca for '
+                            f'{len(_live_prices)}/{len(_tradeable_syms)} symbols.'
+                        )
+
+            _progress.progress(100, text='Done.')
+            _progress.empty()
+
+            # Store in session_state
+            st.session_state[_cache_key] = {
+                'signals':      _all_signals,
+                'errors':       _eval_errors,
+                'live_caption': _live_caption,
+            }
+            st.session_state[_cache_ts] = _datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            # Refresh the timestamp label immediately
+            _ts_col.empty()
+            with _ts_col:
+                st.caption(
+                    f'Last calculated: **{st.session_state[_cache_ts]}** '
+                    f'— press 🔄 to refresh.'
+                )
+
+        # ── Load from cache ─────────────────────────────────────────────
+        _cached      = st.session_state.get(_cache_key, {})
+        all_signals  = _cached.get('signals',      [])
+        eval_errors  = _cached.get('errors',       {})
+        _live_caption = _cached.get('live_caption', '')
+
+        if _live_caption:
+            st.caption(_live_caption)
+
+        # ── Sell-signal lookback filter (applied to cached data, no recompute) ─
         sell_lookback_days = int(st.number_input(
             'Show closed positions from last N days:',
-            min_value=1, max_value=365, value=30, step=1,
+            min_value=1, max_value=90, value=14, step=1,
             help=(
-                'Sell signals = positions closed by the simulation within this window. '
-                'Open (currently held) positions are always shown regardless of entry date.'
+                'Filters *sell* signals by how recently the simulation closed them. '
+                'Open (currently held) positions are always shown. '
+                'The cache covers the last 90 days; press 🔄 to reload.'
             ),
             key='sell_lookback_days',
         ))
-
-        evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
-        all_signals: list[dict] = []
-        eval_errors: dict[str, str] = {}
-
-        for strategy_name, indices_or_cfg in active.items():
-            # Support both config shapes:
-            #   Two-level (current):  {strategy: {'^SPX': {buy, sell, invest, …}, …}}
-            #   Flat (legacy):        {'^SPX':    {buy, sell, invest, …}}
-            if isinstance(indices_or_cfg, dict):
-                first = next(iter(indices_or_cfg.values()), None)
-                if isinstance(first, dict) and 'buy' not in indices_or_cfg:
-                    # Two-level: outer key is strategy name, inner keys are index names
-                    index_cfg_pairs = list(indices_or_cfg.items())
-                else:
-                    # Flat legacy: outer key IS the index name
-                    index_cfg_pairs = [(strategy_name, indices_or_cfg)]
-            else:
-                continue
-
-            for index_name, cfg in index_cfg_pairs:
-                if not isinstance(cfg, dict):
-                    continue
-                label = f'{strategy_name} / {index_name}'
-                with st.spinner(f'Evaluating {label} …'):
-                    sigs, err = evaluator.get_signals(
-                        strategy_name, index_name, cfg,
-                        sell_lookback_days=sell_lookback_days,
-                    )
-                    if err:
-                        eval_errors[label] = err
-
-                    buy_raw  = [s for s in sigs if s['signal'] == 'buy']
-                    sell_raw = [s for s in sigs if s['signal'] == 'sell']
-
-                    sized_buys  = self._apply_inv_vola_sizing(buy_raw,  cfg)
-                    sized_sells = self._apply_inv_vola_sizing(sell_raw, cfg)
-
-                    for s in sized_buys + sized_sells:
-                        sym = self.resolver.resolve_for_broker(s['ticker'], broker_id)
-                        s['broker_symbol'] = sym or '—'
-                        s['tradeable']     = sym is not None
-                        all_signals.append(s)
-
-        # ── Live prices from Alpaca ─────────────────────────────────────
-        # Replace simulation-DB close prices with live Alpaca quotes,
-        # then recalculate qty (floor(budget / live_price)) and value.
-        broker = self._broker()
-        if broker.is_connected():
-            tradeable_syms = list({
-                s['broker_symbol'] for s in all_signals
-                if s['tradeable'] and s['broker_symbol'] not in ('—', '')
-            })
-            if tradeable_syms:
-                with st.spinner('Fetching live prices from Alpaca …'):
-                    live_prices = broker.get_latest_prices(tradeable_syms)
-                if live_prices:
-                    for s in all_signals:
-                        live_p = live_prices.get(s['broker_symbol'])
-                        if live_p and live_p > 0:
-                            s['price'] = live_p
-                            if 'budget' in s:
-                                s['qty']   = int(calc_qty(s['budget'], live_p))
-                                s['value'] = round(s['qty'] * live_p, 2)
-                    st.caption(
-                        f'Prices: live from Alpaca for '
-                        f'{len(live_prices)}/{len(tradeable_syms)} symbols.'
-                    )
+        if sell_lookback_days < 90:
+            import datetime as _dt_mod
+            _cutoff = (
+                _dt_mod.date.today() - _dt_mod.timedelta(days=sell_lookback_days)
+            ).isoformat()
+            all_signals = [
+                s for s in all_signals
+                if s['signal'] != 'sell'
+                or (s.get('sell_date') or '') >= _cutoff
+            ]
 
         if eval_errors:
             with st.expander('⚠ Signal evaluation errors', expanded=True):
@@ -450,7 +521,8 @@ class TradingPage:
                 )
 
         if not all_signals and not eval_errors:
-            st.success('No current signals — all strategies are neutral.')
+            if _cache_key in st.session_state:
+                st.success('No current signals — all strategies are neutral.')
             return
         if not all_signals:
             return
