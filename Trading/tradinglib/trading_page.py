@@ -361,6 +361,17 @@ class TradingPage:
 
         active = {k: v for k, v in strategies.items() if k in enabled}
 
+        # ── Sell-signal lookback ────────────────────────────────────────
+        sell_lookback_days = int(st.number_input(
+            'Show closed positions from last N days:',
+            min_value=1, max_value=365, value=30, step=1,
+            help=(
+                'Sell signals = positions closed by the simulation within this window. '
+                'Open (currently held) positions are always shown regardless of entry date.'
+            ),
+            key='sell_lookback_days',
+        ))
+
         evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
         all_signals: list[dict] = []
         eval_errors: dict[str, str] = {}
@@ -385,7 +396,10 @@ class TradingPage:
                     continue
                 label = f'{strategy_name} / {index_name}'
                 with st.spinner(f'Evaluating {label} …'):
-                    sigs, err = evaluator.get_signals(strategy_name, index_name, cfg)
+                    sigs, err = evaluator.get_signals(
+                        strategy_name, index_name, cfg,
+                        sell_lookback_days=sell_lookback_days,
+                    )
                     if err:
                         eval_errors[label] = err
 
@@ -504,7 +518,7 @@ class TradingPage:
         edit_df['view'] = edit_df['longName'].apply(_to_link)
 
         display_cols = [c for c in
-            ['select', 'strategy', 'index', 'date', 'entry_date', 'signal',
+            ['select', 'strategy', 'index', 'date', 'entry_date', 'sell_date', 'signal',
              'ticker', 'longName',
              'price', 'atr', 'stop_loss_price', 'currency',
              'score', 'weight', 'budget', 'qty', 'value',
@@ -531,7 +545,11 @@ class TradingPage:
                                         format='YYYY-MM-DD'),
                 'entry_date':       st.column_config.DateColumn(
                                         'Entry Date',
-                                        help='Date the buy signal first triggered (position open since)',
+                                        help='Date the position was opened (first buy trigger)',
+                                        format='YYYY-MM-DD'),
+                'sell_date':        st.column_config.DateColumn(
+                                        'Sell Date',
+                                        help='Date the simulation closed this position (sell signals only)',
                                         format='YYYY-MM-DD'),
                 'signal':           st.column_config.TextColumn('Signal',        width='small'),
                 'ticker':           st.column_config.TextColumn('Ticker'),
