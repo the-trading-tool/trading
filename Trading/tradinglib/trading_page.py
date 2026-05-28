@@ -55,13 +55,46 @@ class TradingPage:
         return BrokerFactory.create(self._broker_id(), self._broker_config())
 
     def _strategies(self) -> dict:
+        """Return the multi_transactions config as a Python dict.
+
+        The config is stored in config.db either as a proper JSON dict (if
+        set programmatically via set_value with a dict) or as a Python-repr
+        string (the value from the st.text_area in SystemConfig.render()).
+        We try both representations before falling back to the class-level
+        default.
+        """
         raw = self.sys_config.get_value('multi_transactions', None)
+
+        # 1. Already a dict (stored via set_value(key, dict))
         if isinstance(raw, dict) and raw:
             return raw
+
+        # 2. Python-repr string from the text_area (most common case)
+        if isinstance(raw, str) and raw.strip():
+            try:
+                parsed = eval(raw)  # noqa: S307 — config is admin-only
+                if isinstance(parsed, dict) and parsed:
+                    return parsed
+            except Exception as exc:
+                logger.debug('_strategies: eval failed for multi_transactions: %s', exc)
+
+        # 3. Hard-coded class-level fallback (old flat format)
         return self.sys_config.transactions
 
     def _enabled(self) -> list[str]:
-        return self.sys_config.get_value('trading_enabled_strategies', []) or []
+        """Return enabled strategy names.
+
+        If no strategies have ever been enabled (fresh install or old config
+        that stored index-level names like 'SPX'), return ALL known strategy
+        names so the tab is not empty on first load.
+        """
+        stored = self.sys_config.get_value('trading_enabled_strategies', []) or []
+        if not stored:
+            return list(self._strategies().keys())
+        # Drop stale entries that are no longer in the current config
+        known = set(self._strategies().keys())
+        valid = [s for s in stored if s in known]
+        return valid if valid else list(known)
 
     def _dry_run(self) -> bool:
         return st.session_state.get('trading_dry_run', True)
