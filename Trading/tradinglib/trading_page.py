@@ -494,7 +494,7 @@ class TradingPage:
             axis=1,
         )
 
-        edit_df.insert(0, 'select', True)
+        edit_df.insert(0, 'select', False)
         # Link: /?details=true&symbol=<longName>
         # All non-alphanumeric characters are replaced with %20
         def _to_link(name: str) -> str:
@@ -504,7 +504,7 @@ class TradingPage:
         edit_df['view'] = edit_df['longName'].apply(_to_link)
 
         display_cols = [c for c in
-            ['select', 'strategy', 'index', 'signal', 'ticker', 'longName',
+            ['select', 'strategy', 'index', 'date', 'signal', 'ticker', 'longName',
              'price', 'atr', 'stop_loss_price', 'currency',
              'score', 'weight', 'budget', 'qty', 'value',
              'broker_symbol', 'tradeable', 'view']
@@ -524,6 +524,10 @@ class TradingPage:
                 'index':            st.column_config.TextColumn(
                                         'Index',
                                         help='Market index (e.g. ^SPX, ^GDAXI)'),
+                'date':             st.column_config.DateColumn(
+                                        'Signal Date',
+                                        help='Date of the latest signal for this strategy/index',
+                                        format='YYYY-MM-DD'),
                 'signal':           st.column_config.TextColumn('Signal',        width='small'),
                 'ticker':           st.column_config.TextColumn('Ticker'),
                 'longName':         st.column_config.TextColumn('Name'),
