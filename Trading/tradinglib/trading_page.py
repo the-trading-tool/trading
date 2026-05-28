@@ -351,16 +351,55 @@ class TradingPage:
         buy_df  = df[df['signal'] == 'buy']
         sell_df = df[df['signal'] == 'sell']
 
-        col_b, col_s = st.columns(2)
+        col_b, col_s, col_info = st.columns([1, 1, 4])
         col_b.metric('🟢 Buy signals',  len(buy_df))
         col_s.metric('🔴 Sell signals', len(sell_df))
+        with col_info:
+            st.caption(
+                'Größen per Strategie: Top-N nach Score (order_by), '
+                'Budget nach inverser Volatilität gewichtet. '
+                'Jede Strategie hat ihr eigenes invest/num_assets.'
+            )
 
-        sig_filter = st.radio('Show:', ['All', 'Buy only', 'Sell only'], horizontal=True)
-        show_df = (df if sig_filter == 'All'
-                   else (buy_df if sig_filter == 'Buy only' else sell_df))
+        # ── ATR multiplier for stop-loss ──────────────────────────────
+        atr_col, filter_col = st.columns([2, 3])
+        with atr_col:
+            atr_mult = st.number_input(
+                'ATR-Multiplikator (Stop Loss)',
+                min_value=0.5, max_value=10.0, value=2.0, step=0.5,
+                help='Stop-Loss = Kurs − N × ATR  (nur für Kauf-Orders als OTO-Auftrag)',
+                key='atr_mult',
+            )
+        with filter_col:
+            sig_filter = st.radio(
+                'Anzeigen:', ['Alle', 'Nur Käufe', 'Nur Verkäufe'],
+                horizontal=True, key='sig_filter',
+            )
+
+        show_df = (df if sig_filter == 'Alle'
+                   else (buy_df if sig_filter == 'Nur Käufe' else sell_df))
+
+        # Compute stop_loss_price per row and embed it back in all_signals
+        for s in all_signals:
+            if s['signal'] == 'buy' and s.get('atr', 0) > 0:
+                s['stop_loss_price'] = round(
+                    s['price'] - atr_mult * s['atr'], 2
+                )
+            else:
+                s['stop_loss_price'] = None
 
         # Build editable table: select-checkbox + asset viewer link
         edit_df = show_df.copy().reset_index(drop=True)
+        # Re-sync stop_loss_price into edit_df (show_df is a filtered subset)
+        edit_df['stop_loss_price'] = edit_df.apply(
+            lambda r: (
+                round(r['price'] - atr_mult * r['atr'], 2)
+                if r.get('signal') == 'buy' and r.get('atr', 0) > 0
+                else None
+            ),
+            axis=1,
+        )
+
         edit_df.insert(0, 'select', True)
         # Link: /?details=true&symbol=<longName>
         # All non-alphanumeric characters are replaced with %20
@@ -372,7 +411,8 @@ class TradingPage:
 
         display_cols = [c for c in
             ['select', 'strategy', 'signal', 'ticker', 'longName',
-             'price', 'currency', 'score', 'weight', 'budget', 'qty', 'value',
+             'price', 'atr', 'stop_loss_price', 'currency',
+             'score', 'weight', 'budget', 'qty', 'value',
              'broker_symbol', 'tradeable', 'view']
             if c in edit_df.columns]
 
@@ -381,32 +421,38 @@ class TradingPage:
             use_container_width=True,
             hide_index=True,
             column_config={
-                'select':        st.column_config.CheckboxColumn(
-                                     '✓', width='small',
-                                     help='Select for execution'),
-                'strategy':      st.column_config.TextColumn('Strategy'),
-                'signal':        st.column_config.TextColumn('Signal',    width='small'),
-                'ticker':        st.column_config.TextColumn('Ticker'),
-                'longName':      st.column_config.TextColumn('Name'),
-                'price':         st.column_config.NumberColumn('Price',   format='%.2f'),
-                'currency':      st.column_config.TextColumn('CCY',       width='small'),
-                'score':         st.column_config.NumberColumn(
-                                     'Score', format='%.3f',
-                                     help='Ranking metric (order_by), e.g. Sortino ratio'),
-                'weight':        st.column_config.NumberColumn(
-                                     'Weight %', format='%.1f%%',
-                                     help='Inv.-volatility weight within strategy budget'),
-                'budget':        st.column_config.NumberColumn(
-                                     'Budget', format='%.2f',
-                                     help='invest × weight  (inv.-volatility allocated)'),
-                'qty':           st.column_config.NumberColumn('Qty',     format='%d',  width='small'),
-                'value':         st.column_config.NumberColumn('Value',   format='%.2f'),
-                'broker_symbol': st.column_config.TextColumn('Broker Symbol'),
-                'tradeable':     st.column_config.CheckboxColumn('Tradeable', width='small'),
-                'view':          st.column_config.LinkColumn(
-                                     '📊 Details',
-                                     display_text='→ open',
-                                     help='Asset Viewer mit Details öffnen'),
+                'select':           st.column_config.CheckboxColumn(
+                                        '✓', width='small',
+                                        help='Für Ausführung markieren'),
+                'strategy':         st.column_config.TextColumn('Strategie'),
+                'signal':           st.column_config.TextColumn('Signal',       width='small'),
+                'ticker':           st.column_config.TextColumn('Ticker'),
+                'longName':         st.column_config.TextColumn('Name'),
+                'price':            st.column_config.NumberColumn('Kurs',        format='%.2f'),
+                'atr':              st.column_config.NumberColumn(
+                                        'ATR', format='%.3f',
+                                        help='Average True Range — Basis für den Stop-Loss'),
+                'stop_loss_price':  st.column_config.NumberColumn(
+                                        'Stop Loss', format='%.2f',
+                                        help=f'Kurs − {atr_mult:.1f} × ATR  (nur bei Käufen)'),
+                'currency':         st.column_config.TextColumn('CCY',           width='small'),
+                'score':            st.column_config.NumberColumn(
+                                        'Score', format='%.3f',
+                                        help='Ranking-Metrik (order_by), z.B. Sortino'),
+                'weight':           st.column_config.NumberColumn(
+                                        'Gewicht %', format='%.1f',
+                                        help='Inv.-Vola-Gewicht am Strategie-Budget'),
+                'budget':           st.column_config.NumberColumn(
+                                        'Budget', format='%.2f',
+                                        help='invest × Gewicht  (inv.-vola-allokiert)'),
+                'qty':              st.column_config.NumberColumn('Stück',        format='%d',  width='small'),
+                'value':            st.column_config.NumberColumn('Wert',         format='%.2f'),
+                'broker_symbol':    st.column_config.TextColumn('Broker-Symbol'),
+                'tradeable':        st.column_config.CheckboxColumn('Handelbar',  width='small'),
+                'view':             st.column_config.LinkColumn(
+                                        '📊 Details',
+                                        display_text='→ öffnen',
+                                        help='Asset Viewer mit Details öffnen'),
             },
             disabled=[c for c in display_cols if c != 'select'],
         )
@@ -415,12 +461,12 @@ class TradingPage:
         selected_signals: list[dict] = []
         n_not_tradeable = 0
         for i in edited[edited['select']].index.tolist():
-            row = edit_df.iloc[i]
+            row_ed = edit_df.iloc[i]
             match = next(
                 (s for s in all_signals
-                 if s['ticker'] == row['ticker']
-                 and s['strategy'] == row['strategy']
-                 and s['signal'] == row['signal']),
+                 if s['ticker'] == row_ed['ticker']
+                 and s['strategy'] == row_ed['strategy']
+                 and s['signal'] == row_ed['signal']),
                 None,
             )
             if match is None:
@@ -432,43 +478,72 @@ class TradingPage:
 
         if n_not_tradeable:
             st.warning(
-                f'{n_not_tradeable} selected signal(s) not tradeable on '
-                f'{broker_id.upper()} (no broker symbol) — skipped.'
+                f'{n_not_tradeable} ausgewähltes Signal nicht handelbar auf '
+                f'{broker_id.upper()} (kein Broker-Symbol) — übersprungen.'
             )
 
         n_sel = len(selected_signals)
 
         if n_sel == 0:
             if edited['select'].any():
-                st.warning('No tradeable signals selected.')
+                st.warning('Keine handelbaren Signale ausgewählt.')
             else:
-                st.info('Tick the ✓ column for signals you want to execute.')
+                st.info('✓-Spalte ankreuzen um Signale zur Ausführung auszuwählen.')
             return
 
-        if self._dry_run():
-            st.info(f'🧪 Dry run: {n_sel} order(s) would be submitted.')
-        else:
-            if st.button(f'▶ Execute {n_sel} selected order(s)', type='primary'):
-                self._dialog_confirm_all(selected_signals, active, broker_id)
+        dry = self._dry_run()
+        if st.button(
+            f'▶ {n_sel} markierte Order(s) ausführen',
+            type='primary',
+            disabled=dry,
+            help=(
+                'Dry-Run aktiv — Schalter oben deaktivieren, '
+                'um echte Orders an Alpaca zu senden.'
+            ) if dry else None,
+        ):
+            self._dialog_confirm_all(selected_signals, active, broker_id)
 
-    @st.dialog('Confirm orders', width='large')
+        if dry:
+            stop_info = ', '.join(
+                f"{s['ticker']} SL={s.get('stop_loss_price') or '—'}"
+                for s in selected_signals
+            )
+            st.caption(f'🧪 Dry-Run — {n_sel} Order(s) würden gesendet: {stop_info}')
+
+    @st.dialog('Aufträge bestätigen', width='large')
     def _dialog_confirm_all(self, signals: list[dict], strategies: dict, broker_id: str):
-        st.warning(f'**{len(signals)} orders** will be sent to Alpaca Paper.')
-        preview = pd.DataFrame(signals)[['strategy', 'ticker', 'signal', 'qty', 'value', 'currency']]
-        st.dataframe(preview, use_container_width=True)
+        st.warning(f'**{len(signals)} Order(s)** werden an Alpaca Paper gesendet.')
+
+        prev_rows = []
+        for s in signals:
+            sl = s.get('stop_loss_price')
+            prev_rows.append({
+                'Strategie': s['strategy'],
+                'Ticker':    s['ticker'],
+                'Signal':    s['signal'],
+                'Stück':     s['qty'],
+                'Wert':      s.get('value', 0),
+                'CCY':       s.get('currency', ''),
+                'Stop Loss': f"{sl:.2f}" if sl else '—',
+            })
+        st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
+
         col_ok, col_cancel = st.columns(2)
         with col_ok:
-            if st.button('✅ Execute all', type='primary', use_container_width=True):
+            if st.button('✅ Alle ausführen', type='primary', use_container_width=True):
                 broker = self._broker()
+                mode   = self._mode()
                 ok, failed = 0, 0
                 for s in signals:
+                    stop_p = s.get('stop_loss_price')
                     result = broker.submit_order(
                         broker_symbol=s['broker_symbol'],
                         qty=s['qty'],
                         side=s['signal'],
+                        stop_price=stop_p if stop_p and stop_p > 0 else None,
                     )
                     self.order_log.save(
-                        mode=self._mode(),
+                        mode=mode,
                         broker=broker_id,
                         strategy=s['strategy'],
                         ticker=s['ticker'],
@@ -482,16 +557,17 @@ class TradingPage:
                         error_msg=result.error_msg or '',
                     )
                     if result.status == 'error':
+                        st.error(f"{s['ticker']}: {result.error_msg}")
                         failed += 1
                     else:
                         ok += 1
-                msg = f'{ok} order(s) submitted'
+                msg = f'{ok} Order(s) eingereicht'
                 if failed:
-                    msg += f', {failed} failed'
+                    msg += f', {failed} fehlgeschlagen'
                 st.success(msg)
                 st.rerun()
         with col_cancel:
-            if st.button('Cancel', use_container_width=True):
+            if st.button('Abbrechen', use_container_width=True):
                 st.rerun()
 
     # ------------------------------------------------------------------ #

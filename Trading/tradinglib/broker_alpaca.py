@@ -84,20 +84,41 @@ class AlpacaBroker(TradingBroker):
         side: str,
         order_type: str = 'market',
         time_in_force: str = 'day',
+        stop_price: Optional[float] = None,
     ) -> OrderResult:
-        from alpaca.trading.requests import MarketOrderRequest
-        from alpaca.trading.enums import OrderSide, TimeInForce
+        """Submit a market order, optionally with an attached stop-loss (OTO).
+
+        If *stop_price* is set and the order is a buy, the order is submitted as
+        an OTO (One-Triggers-Other) bracket: the main market order triggers a
+        stop-market order at *stop_price* as soon as it fills.
+        For sell orders *stop_price* is silently ignored.
+        """
+        from alpaca.trading.requests import MarketOrderRequest, StopLossRequest
+        from alpaca.trading.enums import OrderSide, TimeInForce, OrderClass
 
         side_enum = OrderSide.BUY if side == 'buy' else OrderSide.SELL
         tif_enum = TimeInForce.DAY if time_in_force == 'day' else TimeInForce.GTC
 
+        use_stop = (
+            stop_price is not None
+            and float(stop_price) > 0
+            and side == 'buy'
+        )
+
         try:
-            req = MarketOrderRequest(
+            kwargs: dict = dict(
                 symbol=broker_symbol,
                 qty=qty,
                 side=side_enum,
                 time_in_force=tif_enum,
             )
+            if use_stop:
+                kwargs['order_class'] = OrderClass.OTO
+                kwargs['stop_loss'] = StopLossRequest(
+                    stop_price=round(float(stop_price), 2)
+                )
+
+            req = MarketOrderRequest(**kwargs)
             order = self._get_client().submit_order(req)
             return OrderResult(
                 order_id=str(order.id),

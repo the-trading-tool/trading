@@ -356,17 +356,36 @@ class SignalEvaluator(Tools):
 
             signals = []
             for _, row in triggered.iterrows():
+                price = float(row.get('Close', 0))
+
+                # ATR: try several column names from different indicator modules
+                atr_raw = (
+                    row.get('atr') or
+                    row.get('bos_atr') or
+                    row.get('mmm_atr') or
+                    0.0
+                )
+                atr = float(atr_raw) if atr_raw else 0.0
+                if atr <= 0:
+                    # Fallback: approximate daily ATR from annualised volatility
+                    # daily_vol ≈ vola / sqrt(252), ATR ≈ price * daily_vol
+                    vola_ann = float(row.get('vola', 0) or 0)
+                    if vola_ann > 0 and price > 0:
+                        atr = round(price * vola_ann / (252 ** 0.5), 4)
+
                 signals.append({
                     'strategy':  strategy_name,
                     'ticker':    row['ticker'],
                     'longName':  row.get('longName', row['ticker']),
                     'signal':    'buy' if row['_signal'] == 1 else 'sell',
-                    'price':     float(row.get('Close', 0)),
+                    'price':     price,
                     'currency':  row.get('currency', 'USD'),
                     'date':      str(latest_date)[:10],
                     'score':     float(row.get(order_by, 0)),
                     # vola is needed for inverse-volatility position sizing
                     'vola':      max(float(row.get('vola', 1.0) or 1.0), 1e-6),
+                    # ATR for stop-loss suggestion (broker submits as OTO stop order)
+                    'atr':       round(atr, 4),
                 })
 
             expr_errors = '  |  '.join(e for e in [buy_err, sell_err] if e)

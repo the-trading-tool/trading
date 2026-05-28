@@ -60,6 +60,7 @@ class TradingBroker(ABC):
         side: str,
         order_type: str = 'market',
         time_in_force: str = 'day',
+        stop_price: Optional[float] = None,
     ) -> OrderResult: ...
 
     @abstractmethod

@@ -18,6 +18,7 @@ IBKR covers all 4 strategies (SPX + GDAXI + MDAXI + SDAXI) because
 it supports XETRA for German stocks unlike Alpaca (US-only).
 """
 import logging
+from typing import Optional
 from tradinglib.broker_base import TradingBroker, AccountInfo, Position, OrderResult
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class IBKRBroker(TradingBroker):
         side: str,
         order_type: str = 'market',
         time_in_force: str = 'day',
+        stop_price: Optional[float] = None,
     ) -> OrderResult:
         raise NotImplementedError("IBKR integration not yet implemented (Phase 3)")
 
