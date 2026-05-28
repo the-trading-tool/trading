@@ -81,3 +81,9 @@ class TradingBroker(ABC):
         """Return portfolio equity history as {timestamps, equity, profit_loss}.
         Default: empty dict (broker does not support this endpoint)."""
         return {}
+
+    def get_latest_prices(self, symbols: list[str]) -> dict[str, float]:
+        """Return the latest trade price for each symbol.
+        Keys are the broker symbols as passed in.
+        Default: empty dict (broker does not support this endpoint)."""
+        return {}

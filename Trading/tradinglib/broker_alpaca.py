@@ -201,6 +201,30 @@ class AlpacaBroker(TradingBroker):
                 side='', qty=0, status='error', error_msg=str(e),
             )
 
+    def get_latest_prices(self, symbols: list[str]) -> dict[str, float]:
+        """Return the latest trade price for each US symbol via the Alpaca Data API.
+
+        Uses ``StockHistoricalDataClient`` (same credentials as the trading client).
+        Returns only the symbols for which a price was found; missing symbols are
+        silently skipped so the caller can fall back to the sim-DB price.
+        """
+        if not symbols:
+            return {}
+        try:
+            from alpaca.data.historical import StockHistoricalDataClient
+            from alpaca.data.requests import StockLatestTradeRequest
+
+            data_client = StockHistoricalDataClient(
+                api_key=self.api_key,
+                secret_key=self.secret_key,
+            )
+            req = StockLatestTradeRequest(symbol_or_symbols=symbols)
+            trades = data_client.get_stock_latest_trade(req)
+            return {sym: float(trade.price) for sym, trade in trades.items()}
+        except Exception as e:
+            logger.debug(f"get_latest_prices failed: {e}")
+            return {}
+
     def get_portfolio_history(self, period: str = '1M') -> dict:
         """Return Alpaca portfolio history for the equity curve chart.
 

@@ -245,9 +245,9 @@ class TradingPage:
             col_chart, col_pie = st.columns([3, 2])
 
             with col_chart:
-                st.markdown('##### Portfolio-Entwicklung')
+                st.markdown('##### Portfolio Performance')
                 period = st.radio(
-                    'Zeitraum', ['1W', '1M', '3M', '1A'],
+                    'Period', ['1W', '1M', '3M', '1A'],
                     horizontal=True, index=1, key='portfolio_period',
                 )
                 try:
@@ -278,31 +278,31 @@ class TradingPage:
                         )
                         st.plotly_chart(fig_eq, use_container_width=True)
                     else:
-                        st.caption('Keine Portfolio-Historie verfügbar.')
+                        st.caption('No portfolio history available.')
                 except Exception as e:
-                    st.caption(f'Portfolio-Kurve nicht verfügbar: {e}')
+                    st.caption(f'Portfolio chart unavailable: {e}')
 
             with col_pie:
-                st.markdown('##### Allokation')
+                st.markdown('##### Allocation')
                 try:
                     positions = broker.get_positions()
                     if positions:
                         import plotly.express as px
                         pie_df = pd.DataFrame([
-                            {'Symbol': p.broker_symbol, 'Wert': p.market_value}
+                            {'Symbol': p.broker_symbol, 'Value': p.market_value}
                             for p in positions if p.market_value > 0
                         ])
-                        fig_pie = px.pie(pie_df, names='Symbol', values='Wert',
+                        fig_pie = px.pie(pie_df, names='Symbol', values='Value',
                                          height=260)
                         fig_pie.update_layout(margin=dict(t=10, b=10, l=0, r=0),
                                               showlegend=True)
                         st.plotly_chart(fig_pie, use_container_width=True)
                     else:
-                        st.caption('Keine offenen Positionen.')
+                        st.caption('No open positions.')
                 except Exception as e:
-                    st.caption(f'Allokation nicht verfügbar: {e}')
+                    st.caption(f'Allocation chart unavailable: {e}')
 
-        st.markdown('#### Strategien aktivieren')
+        st.markdown('#### Enable strategies')
         strategies = self._strategies()
         enabled = self._enabled()
         new_enabled: list[str] = []
@@ -323,9 +323,9 @@ class TradingPage:
                         if isinstance(v, dict)
                     )
                     help_txt = (
-                        f"{n_idx} Indizes  |  "
-                        f"Gesamt-Invest: {total_invest:,.0f}  |  "
-                        f"Indizes: {', '.join(indices_or_cfg.keys())}"
+                        f"{n_idx} indices  |  "
+                        f"Total invest: {total_invest:,.0f}  |  "
+                        f"Indices: {', '.join(indices_or_cfg.keys())}"
                     )
                 else:
                     help_txt = (
@@ -384,7 +384,7 @@ class TradingPage:
                 if not isinstance(cfg, dict):
                     continue
                 label = f'{strategy_name} / {index_name}'
-                with st.spinner(f'Auswertung {label} …'):
+                with st.spinner(f'Evaluating {label} …'):
                     sigs, err = evaluator.get_signals(strategy_name, index_name, cfg)
                     if err:
                         eval_errors[label] = err
@@ -401,13 +401,38 @@ class TradingPage:
                         s['tradeable']     = sym is not None
                         all_signals.append(s)
 
+        # ── Live prices from Alpaca ─────────────────────────────────────
+        # Replace simulation-DB close prices with live Alpaca quotes,
+        # then recalculate qty (floor(budget / live_price)) and value.
+        broker = self._broker()
+        if broker.is_connected():
+            tradeable_syms = list({
+                s['broker_symbol'] for s in all_signals
+                if s['tradeable'] and s['broker_symbol'] not in ('—', '')
+            })
+            if tradeable_syms:
+                with st.spinner('Fetching live prices from Alpaca …'):
+                    live_prices = broker.get_latest_prices(tradeable_syms)
+                if live_prices:
+                    for s in all_signals:
+                        live_p = live_prices.get(s['broker_symbol'])
+                        if live_p and live_p > 0:
+                            s['price'] = live_p
+                            if 'budget' in s:
+                                s['qty']   = int(calc_qty(s['budget'], live_p))
+                                s['value'] = round(s['qty'] * live_p, 2)
+                    st.caption(
+                        f'Prices: live from Alpaca for '
+                        f'{len(live_prices)}/{len(tradeable_syms)} symbols.'
+                    )
+
         if eval_errors:
             with st.expander('⚠ Signal evaluation errors', expanded=True):
                 for strat, msg in eval_errors.items():
                     st.error(f'**{strat}**: {msg}')
                 st.caption(
-                    'Mögliche Ursachen: Index nicht in yf_tickers.db, '
-                    'oder `python asset_perf2.py` ausführen um asset_simulation_.db zu befüllen.'
+                    'Possible causes: index not in yf_tickers.db, '
+                    'or run `python asset_perf2.py` to populate asset_simulation_.db.'
                 )
 
         if not all_signals and not eval_errors:
@@ -425,28 +450,28 @@ class TradingPage:
         col_s.metric('🔴 Sell signals', len(sell_df))
         with col_info:
             st.caption(
-                'Sizing pro Strategie+Index: Top-N nach Score (order_by), '
-                'Budget nach inverser Volatilität gewichtet. '
-                'Jede Strategie/Index-Kombination hat ihr eigenes invest/num_assets.'
+                'Sizing per strategy/index: top-N by score (order_by), '
+                'budget weighted by inverse volatility. '
+                'Each strategy/index combination has its own invest and num_assets.'
             )
 
         # ── ATR multiplier for stop-loss ──────────────────────────────
         atr_col, filter_col = st.columns([2, 3])
         with atr_col:
             atr_mult = st.number_input(
-                'ATR-Multiplikator (Stop Loss)',
+                'ATR Multiplier (Stop Loss)',
                 min_value=0.5, max_value=10.0, value=2.0, step=0.5,
-                help='Stop-Loss = Kurs − N × ATR  (nur für Kauf-Orders als OTO-Auftrag)',
+                help='Stop Loss = Price − N × ATR  (buy orders only, submitted as OTO)',
                 key='atr_mult',
             )
         with filter_col:
             sig_filter = st.radio(
-                'Anzeigen:', ['Alle', 'Nur Käufe', 'Nur Verkäufe'],
+                'Show:', ['All', 'Buys only', 'Sells only'],
                 horizontal=True, key='sig_filter',
             )
 
-        show_df = (df if sig_filter == 'Alle'
-                   else (buy_df if sig_filter == 'Nur Käufe' else sell_df))
+        show_df = (df if sig_filter == 'All'
+                   else (buy_df if sig_filter == 'Buys only' else sell_df))
 
         # Compute stop_loss_price per row and embed it back in all_signals
         for s in all_signals:
@@ -492,41 +517,43 @@ class TradingPage:
             column_config={
                 'select':           st.column_config.CheckboxColumn(
                                         '✓', width='small',
-                                        help='Für Ausführung markieren'),
+                                        help='Select for execution'),
                 'strategy':         st.column_config.TextColumn(
-                                        'Strategie',
-                                        help='Strategiename (z.B. "Support/Resistance Strategy")'),
+                                        'Strategy',
+                                        help='Strategy name (e.g. "Support/Resistance Strategy")'),
                 'index':            st.column_config.TextColumn(
                                         'Index',
-                                        help='Marktindex (z.B. ^SPX, ^GDAXI)'),
-                'signal':           st.column_config.TextColumn('Signal',       width='small'),
+                                        help='Market index (e.g. ^SPX, ^GDAXI)'),
+                'signal':           st.column_config.TextColumn('Signal',        width='small'),
                 'ticker':           st.column_config.TextColumn('Ticker'),
                 'longName':         st.column_config.TextColumn('Name'),
-                'price':            st.column_config.NumberColumn('Kurs',        format='%.2f'),
+                'price':            st.column_config.NumberColumn('Price',        format='%.2f',
+                                        help='Live price from Alpaca (falls back to last close)'),
                 'atr':              st.column_config.NumberColumn(
                                         'ATR', format='%.3f',
-                                        help='Average True Range — Basis für den Stop-Loss'),
+                                        help='Average True Range — basis for stop-loss'),
                 'stop_loss_price':  st.column_config.NumberColumn(
                                         'Stop Loss', format='%.2f',
-                                        help=f'Kurs − {atr_mult:.1f} × ATR  (nur bei Käufen)'),
-                'currency':         st.column_config.TextColumn('CCY',           width='small'),
+                                        help=f'Price − {atr_mult:.1f} × ATR  (buy orders only)'),
+                'currency':         st.column_config.TextColumn('CCY',            width='small'),
                 'score':            st.column_config.NumberColumn(
                                         'Score', format='%.3f',
-                                        help='Ranking-Metrik (order_by), z.B. Sortino'),
+                                        help='Ranking metric (order_by), e.g. Sortino ratio'),
                 'weight':           st.column_config.NumberColumn(
-                                        'Gewicht %', format='%.1f',
-                                        help='Inv.-Vola-Gewicht am Index-Budget'),
+                                        'Weight %', format='%.1f',
+                                        help='Inv.-volatility weight of index budget'),
                 'budget':           st.column_config.NumberColumn(
                                         'Budget', format='%.2f',
-                                        help='invest × Gewicht (für diesen Index)'),
-                'qty':              st.column_config.NumberColumn('Stück',        format='%d',  width='small'),
-                'value':            st.column_config.NumberColumn('Wert',         format='%.2f'),
-                'broker_symbol':    st.column_config.TextColumn('Broker-Symbol'),
-                'tradeable':        st.column_config.CheckboxColumn('Handelbar',  width='small'),
+                                        help='invest × weight (for this index)'),
+                'qty':              st.column_config.NumberColumn('Qty',           format='%d',  width='small',
+                                        help='Shares: floor(budget / live_price)'),
+                'value':            st.column_config.NumberColumn('Value',         format='%.2f'),
+                'broker_symbol':    st.column_config.TextColumn('Broker Symbol'),
+                'tradeable':        st.column_config.CheckboxColumn('Tradeable',   width='small'),
                 'view':             st.column_config.LinkColumn(
                                         '📊 Details',
-                                        display_text='→ öffnen',
-                                        help='Asset Viewer mit Details öffnen'),
+                                        display_text='→ open',
+                                        help='Open asset in Asset Viewer'),
             },
             disabled=[c for c in display_cols if c != 'select'],
         )
@@ -553,27 +580,26 @@ class TradingPage:
 
         if n_not_tradeable:
             st.warning(
-                f'{n_not_tradeable} ausgewähltes Signal nicht handelbar auf '
-                f'{broker_id.upper()} (kein Broker-Symbol) — übersprungen.'
+                f'{n_not_tradeable} selected signal(s) not tradeable on '
+                f'{broker_id.upper()} (no broker symbol) — skipped.'
             )
 
         n_sel = len(selected_signals)
 
         if n_sel == 0:
             if edited['select'].any():
-                st.warning('Keine handelbaren Signale ausgewählt.')
+                st.warning('No tradeable signals selected.')
             else:
-                st.info('✓-Spalte ankreuzen um Signale zur Ausführung auszuwählen.')
+                st.info('Tick the ✓ column to select signals for execution.')
             return
 
         dry = self._dry_run()
         if st.button(
-            f'▶ {n_sel} markierte Order(s) ausführen',
+            f'▶ Execute {n_sel} selected order(s)',
             type='primary',
             disabled=dry,
             help=(
-                'Dry-Run aktiv — Schalter oben deaktivieren, '
-                'um echte Orders an Alpaca zu senden.'
+                'Dry run active — disable the toggle above to send real orders to Alpaca.'
             ) if dry else None,
         ):
             self._dialog_confirm_all(selected_signals, active, broker_id)
@@ -583,21 +609,22 @@ class TradingPage:
                 f"{s['ticker']} SL={s.get('stop_loss_price') or '—'}"
                 for s in selected_signals
             )
-            st.caption(f'🧪 Dry-Run — {n_sel} Order(s) würden gesendet: {stop_info}')
+            st.caption(f'🧪 Dry run — {n_sel} order(s) would be sent: {stop_info}')
 
-    @st.dialog('Aufträge bestätigen', width='large')
+    @st.dialog('Confirm orders', width='large')
     def _dialog_confirm_all(self, signals: list[dict], strategies: dict, broker_id: str):
-        st.warning(f'**{len(signals)} Order(s)** werden an Alpaca Paper gesendet.')
+        st.warning(f'**{len(signals)} order(s)** will be sent to Alpaca Paper.')
 
         prev_rows = []
         for s in signals:
             sl = s.get('stop_loss_price')
             prev_rows.append({
-                'Strategie': s['strategy'],
+                'Strategy':  s['strategy'],
+                'Index':     s.get('index', ''),
                 'Ticker':    s['ticker'],
                 'Signal':    s['signal'],
-                'Stück':     s['qty'],
-                'Wert':      s.get('value', 0),
+                'Qty':       s['qty'],
+                'Value':     s.get('value', 0),
                 'CCY':       s.get('currency', ''),
                 'Stop Loss': f"{sl:.2f}" if sl else '—',
             })
@@ -605,7 +632,7 @@ class TradingPage:
 
         col_ok, col_cancel = st.columns(2)
         with col_ok:
-            if st.button('✅ Alle ausführen', type='primary', use_container_width=True):
+            if st.button('✅ Execute all', type='primary', use_container_width=True):
                 broker = self._broker()
                 mode   = self._mode()
                 ok, failed = 0, 0
@@ -636,13 +663,13 @@ class TradingPage:
                         failed += 1
                     else:
                         ok += 1
-                msg = f'{ok} Order(s) eingereicht'
+                msg = f'{ok} order(s) submitted'
                 if failed:
-                    msg += f', {failed} fehlgeschlagen'
+                    msg += f', {failed} failed'
                 st.success(msg)
                 st.rerun()
         with col_cancel:
-            if st.button('Abbrechen', use_container_width=True):
+            if st.button('Cancel', use_container_width=True):
                 st.rerun()
 
     # ------------------------------------------------------------------ #
@@ -663,7 +690,7 @@ class TradingPage:
                 st.rerun()
 
         # ── Open Positions ──────────────────────────────────────────────
-        st.markdown('#### Offene Positionen')
+        st.markdown('#### Open Positions')
         try:
             positions = broker.get_positions()
         except Exception as e:
@@ -703,14 +730,14 @@ class TradingPage:
             if sel_pos and sel_pos.get('selection', {}).get('rows'):
                 row_idx = sel_pos['selection']['rows'][0]
                 pos = positions[row_idx]
-                st.markdown(f"**Ausgewählt:** {pos.broker_symbol}")
+                st.markdown(f"**Selected:** {pos.broker_symbol}")
                 if self._dry_run():
-                    st.info('Dry run aktiv — Schließen nicht verfügbar.')
+                    st.info('Dry run active — closing not available.')
                 else:
-                    if st.button(f'✕ Position schließen: {pos.broker_symbol}', type='secondary'):
+                    if st.button(f'✕ Close position: {pos.broker_symbol}', type='secondary'):
                         result = broker.close_position(pos.broker_symbol)
                         if result.status != 'error':
-                            st.success(f'{pos.broker_symbol} wird geschlossen.')
+                            st.success(f'{pos.broker_symbol} close order submitted.')
                             self.order_log.save(
                                 mode=mode, broker=bid,
                                 strategy=strategy_map.get(pos.broker_symbol, ''),
@@ -724,29 +751,29 @@ class TradingPage:
                             )
                             st.rerun()
                         else:
-                            st.error(f'Fehler: {result.error_msg}')
+                            st.error(f'Error: {result.error_msg}')
 
         # ── Open Orders ─────────────────────────────────────────────────
-        st.markdown('#### Offene Aufträge')
+        st.markdown('#### Open Orders')
         try:
             open_orders = broker.get_orders('open')
         except Exception as e:
-            st.error(f'Aufträge konnten nicht geladen werden: {e}')
+            st.error(f'Failed to load orders: {e}')
             open_orders = []
 
         if not open_orders:
-            st.info('Keine offenen Aufträge.')
+            st.info('No open orders.')
         else:
             ord_rows = [{
-                'ID':         o['id'][:8] + '…',
-                'Symbol':     o['symbol'],
-                'Seite':      o['side'],
-                'Qty':        o['qty'],
-                'Status':     o['status'],
-                'Erstellt':   o['created_at'][:16],
-                '_full_id':   o['id'],
+                'ID':       o['id'][:8] + '…',
+                'Symbol':   o['symbol'],
+                'Side':     o['side'],
+                'Qty':      o['qty'],
+                'Status':   o['status'],
+                'Created':  o['created_at'][:16],
+                '_full_id': o['id'],
             } for o in open_orders]
-            ord_display = [c for c in ['ID', 'Symbol', 'Seite', 'Qty', 'Status', 'Erstellt']]
+            ord_display = ['ID', 'Symbol', 'Side', 'Qty', 'Status', 'Created']
 
             sel_ord = st.dataframe(
                 pd.DataFrame(ord_rows)[ord_display],
@@ -761,40 +788,40 @@ class TradingPage:
                 chosen   = ord_rows[row_idx]
                 full_id  = chosen['_full_id']
                 symbol   = chosen['Symbol']
-                st.markdown(f"**Ausgewählt:** {symbol} — ID: `{full_id[:16]}…`")
-                if st.button(f'✕ Auftrag stornieren: {symbol}', type='secondary',
+                st.markdown(f"**Selected:** {symbol} — ID: `{full_id[:16]}…`")
+                if st.button(f'✕ Cancel order: {symbol}', type='secondary',
                              key='btn_cancel_order'):
                     result = broker.cancel_order(full_id)
                     if result.status == 'cancelled':
-                        st.success(f'Auftrag {full_id[:8]}… storniert.')
+                        st.success(f'Order {full_id[:8]}… cancelled.')
                         st.rerun()
                     else:
-                        st.error(f'Stornierung fehlgeschlagen: {result.error_msg}')
+                        st.error(f'Cancellation failed: {result.error_msg}')
 
-        # ── Manueller Auftrag ───────────────────────────────────────────
-        st.markdown('#### Manueller Auftrag')
-        with st.expander('📝 Order manuell eingeben', expanded=False):
+        # ── Manual Order ────────────────────────────────────────────────
+        st.markdown('#### Manual Order')
+        with st.expander('📝 Enter a manual order', expanded=False):
             with st.form('form_manual_order'):
                 col_sym, col_qty, col_side = st.columns([2, 1, 1])
                 with col_sym:
                     man_symbol = st.text_input(
-                        'Symbol  (z.B. AAPL)',
-                        help='Alpaca-Symbol — Groß-/Kleinschreibung egal',
+                        'Symbol  (e.g. AAPL)',
+                        help='Alpaca symbol — case insensitive',
                     )
                 with col_qty:
-                    man_qty = st.number_input('Anzahl', min_value=1, step=1, value=1)
+                    man_qty = st.number_input('Qty', min_value=1, step=1, value=1)
                 with col_side:
-                    man_side = st.selectbox('Seite', ['buy', 'sell'])
-                submitted = st.form_submit_button('▶ Order senden', type='primary')
+                    man_side = st.selectbox('Side', ['buy', 'sell'])
+                submitted = st.form_submit_button('▶ Send order', type='primary')
 
             if submitted:
                 sym = man_symbol.strip().upper()
                 if not sym:
-                    st.error('Symbol darf nicht leer sein.')
+                    st.error('Symbol must not be empty.')
                 elif self._dry_run():
                     st.info(
                         f'🧪 Dry run: {man_side.upper()} {int(man_qty)}× {sym} — '
-                        'kein Auftrag gesendet.'
+                        'no order sent.'
                     )
                 else:
                     result = broker.submit_order(
@@ -805,7 +832,7 @@ class TradingPage:
                     if result.status != 'error':
                         short_id = result.order_id[:8] if result.order_id else '—'
                         st.success(
-                            f'{man_side.upper()} {int(man_qty)}× {sym} eingereicht '
+                            f'{man_side.upper()} {int(man_qty)}× {sym} submitted '
                             f'(ID: {short_id}…)'
                         )
                         self.order_log.save(
@@ -822,7 +849,7 @@ class TradingPage:
                         )
                         st.rerun()
                     else:
-                        st.error(f'Order fehlgeschlagen: {result.error_msg}')
+                        st.error(f'Order failed: {result.error_msg}')
 
     # ------------------------------------------------------------------ #
     #  Tab: History                                                        #
@@ -887,13 +914,14 @@ class TradingPage:
                               if 'strategy' in backtest_df.columns else [])
                 st.caption(
                     f"Backtest: {len(backtest_df)} trades | "
-                    f"Strategien: {', '.join(str(s) for s in strategies)}"
-                    + (f" | Stand: {saved_at}" if saved_at else '')
+                    f"Strategies: {', '.join(str(s) for s in strategies)}"
+                    + (f" | As of: {saved_at}" if saved_at else '')
                 )
             else:
                 st.info(
-                    'Noch keine Backtest-Daten. Klicke **Berechnen** oder führe die '
-                    '[Multi-Strategies-Simulation](/?multi=true) aus.'
+                    'No backtest data yet. Run the '
+                    '[Multi-Strategies simulation](/?multi=true) — '
+                    'results will appear here automatically.'
                 )
 
         with col_btn:
@@ -933,7 +961,7 @@ class TradingPage:
 
         fig.update_layout(
             xaxis_title='Date',
-            yaxis_title='Kumulierter Gewinn',
+            yaxis_title='Cumulative Gain',
             height=450,
             legend=dict(orientation='h', yanchor='bottom', y=1.02),
         )
@@ -957,7 +985,7 @@ class TradingPage:
         st.markdown('#### Alpaca Paper Trading — Connection')
         st.caption(
             'API credentials are read from the encrypted key store (ksplib). '
-            'New entries can be added under **Admin → API Credentials**.'
+            'Add entries under **Admin → API Credentials**.'
         )
 
         current_ksp_name = self.sys_config.get_value('alpaca_ksp_name', 'av-paper')
