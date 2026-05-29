@@ -9,7 +9,7 @@ import plotly.graph_objs as go
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tradinglib import tools, ticker_tools as tt, asset_simulator as ass, main_page as mp
-from tradinglib.i18n import t
+from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +200,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             pass
 
     if raw is None or raw.empty:
-        r.info(t('ota.no_trades_db'))
+        r.info(_t('ota.no_trades_db'))
         return
 
     # Spaltennamen normalisieren (case-insensitive Lookup)
@@ -224,7 +224,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     # action-Spalte normalisieren
     act_col = _col.get('action', 'action')
     if act_col not in raw.columns:
-        r.error(t('ota.no_action_col'))
+        r.error(_t('ota.no_action_col'))
         return
     raw[act_col] = raw[act_col].astype(str).str.lower().str.strip()
 
@@ -261,15 +261,15 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     open_df   = buy_raw[buy_raw['_ticker'].isin(open_tickers)].copy()
     closed_df = sell_raw[sell_raw['_ticker'].isin(closed_tickers)].copy()
 
-    r.markdown(t('ota.trades_loaded', total=len(raw), open=len(open_tickers), closed=len(closed_tickers)))
+    r.markdown(_t('ota.trades_loaded', total=len(raw), open=len(open_tickers), closed=len(closed_tickers)))
 
     # ══════════════════════════════════════════════════════════════════════════
     # A) ABGESCHLOSSENE TRADES – Normierter Kursverlauf
     # ══════════════════════════════════════════════════════════════════════════
-    with r.expander(t('ota.section_closed'), expanded=not closed_df.empty):
+    with r.expander(_t('ota.section_closed'), expanded=not closed_df.empty):
 
         if closed_df.empty:
-            st.info(t('ota.no_closed_trades'))
+            st.info(_t('ota.no_closed_trades'))
         else:
             # Für jeden Sell-Trade die früheste passende Buy-Transaktion ermitteln
             closed_display = []
@@ -328,7 +328,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                          })
 
             # Normalised chart: each position over its holding period
-            st.markdown(t('ota.norm_chart_closed'))
+            st.markdown(_t('ota.norm_chart_closed'))
             tickers_closed = list(set(r['Ticker'] for r in closed_display))
             with st.spinner('Loading historical price data …'):
                 with ThreadPoolExecutor(max_workers=min(8, len(tickers_closed))) as ex:
@@ -379,7 +379,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 cum_df['Cumulative P&L'] = cum_df[f'P&L ({system_currency})'].cumsum()
                 fig_cum = px.line(cum_df, x='Sell Date', y='Cumulative P&L',
                                   labels={'Sell Date': 'Date', 'Cumulative P&L': f'Cum. P&L ({system_currency})'},
-                                  title=t('ota.cum_pnl_title'), template='plotly_white')
+                                  title=_t('ota.cum_pnl_title'), template='plotly_white')
                 st.plotly_chart(fig_cum, use_container_width=True)
             except Exception:
                 pass
@@ -387,10 +387,10 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     # ══════════════════════════════════════════════════════════════════════════
     # B) OFFENE POSITIONEN – Rebalancing & Paritäts-Analyse
     # ══════════════════════════════════════════════════════════════════════════
-    with r.expander(t('ota.section_open'), expanded=True):
+    with r.expander(_t('ota.section_open'), expanded=True):
 
         if open_df.empty:
-            st.info(t('ota.no_open_positions'))
+            st.info(_t('ota.no_open_positions'))
         else:
             # Mehrere Lots desselben Tickers aggregieren (normierte Spalten _ticker, _shares, _value, …)
             agg = open_df.groupby('_ticker', as_index=False).agg(
@@ -448,22 +448,22 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             )
 
             # Portfolio table
-            st.markdown(t('ota.open_positions_header'))
+            st.markdown(_t('ota.open_positions_header'))
             disp_cols_o = [c for c in ['ticker', 'longName', 'isin', 'shares', 'avg_price',
                                         'current_price', 'buy_value', 'current_value',
                                         'unrealized_pnl', 'pnl_pct', 'weight_pct'] if c in agg.columns]
             st.dataframe(agg[disp_cols_o], hide_index=True, use_container_width=True,
                          column_config={
-                             'ticker':        st.column_config.TextColumn(t('ota.col_ticker')),
-                             'longName':      st.column_config.TextColumn(t('ota.col_name')),
-                             'shares':        st.column_config.NumberColumn(t('ota.col_shares'),       format='%.2f'),
-                             'avg_price':     st.column_config.NumberColumn(t('ota.col_avg_buy'),      format='%.4f'),
-                             'current_price': st.column_config.NumberColumn(t('ota.col_current_price'), format='%.4f'),
-                             'buy_value':     st.column_config.NumberColumn(t('ota.col_cost_basis', currency=system_currency),   format='%.2f'),
-                             'current_value': st.column_config.NumberColumn(t('ota.col_market_value', currency=system_currency), format='%.2f'),
-                             'unrealized_pnl':st.column_config.NumberColumn(t('ota.col_pnl', currency=system_currency),         format='%.2f'),
-                             'pnl_pct':       st.column_config.NumberColumn(t('ota.col_pnl_pct'),      format='%.1f'),
-                             'weight_pct':    st.column_config.NumberColumn(t('ota.col_weight_pct'),   format='%.1f'),
+                             'ticker':        st.column_config.TextColumn(_t('ota.col_ticker')),
+                             'longName':      st.column_config.TextColumn(_t('ota.col_name')),
+                             'shares':        st.column_config.NumberColumn(_t('ota.col_shares'),       format='%.2f'),
+                             'avg_price':     st.column_config.NumberColumn(_t('ota.col_avg_buy'),      format='%.4f'),
+                             'current_price': st.column_config.NumberColumn(_t('ota.col_current_price'), format='%.4f'),
+                             'buy_value':     st.column_config.NumberColumn(_t('ota.col_cost_basis', currency=system_currency),   format='%.2f'),
+                             'current_value': st.column_config.NumberColumn(_t('ota.col_market_value', currency=system_currency), format='%.2f'),
+                             'unrealized_pnl':st.column_config.NumberColumn(_t('ota.col_pnl', currency=system_currency),         format='%.2f'),
+                             'pnl_pct':       st.column_config.NumberColumn(_t('ota.col_pnl_pct'),      format='%.1f'),
+                             'weight_pct':    st.column_config.NumberColumn(_t('ota.col_weight_pct'),   format='%.1f'),
                          })
 
             total_invest = agg['buy_value'].sum()
@@ -474,13 +474,13 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 total_invest > 0, (agg['buy_value'] / total_invest * 100).round(2), 0.0
             )
             m1, m2, m3 = st.columns(3)
-            m1.metric(t('ota.metric_total_value'), f'{total_open_value:,.2f} {system_currency}')
-            m2.metric(t('ota.metric_cost_basis'),  f'{total_invest:,.2f} {system_currency}')
-            m3.metric(t('ota.metric_pnl'),          f'{total_gain:+,.2f} {system_currency}', delta=f'{gain_pct:+.1f}%')
+            m1.metric(_t('ota.metric_total_value'), f'{total_open_value:,.2f} {system_currency}')
+            m2.metric(_t('ota.metric_cost_basis'),  f'{total_invest:,.2f} {system_currency}')
+            m3.metric(_t('ota.metric_pnl'),          f'{total_gain:+,.2f} {system_currency}', delta=f'{gain_pct:+.1f}%')
 
             # ── Normalised trend chart – open positions ───────────────────
-            st.markdown(t('ota.norm_chart_open'))
-            st.caption(t('ota.norm_chart_caption'))
+            st.markdown(_t('ota.norm_chart_open'))
+            st.caption(_t('ota.norm_chart_caption'))
 
             date_c1, date_c2 = st.columns(2)
             try:
@@ -490,10 +490,10 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 default_start = dt.date.today() - dt.timedelta(days=365)
 
             start_date = date_c1.date_input(
-                t('ota.date_start'), default_start, format='YYYY-MM-DD', key='ptf_open_start'
+                _t('ota.date_start'), default_start, format='YYYY-MM-DD', key='ptf_open_start'
             ).strftime('%Y-%m-%d')
             end_date = date_c2.date_input(
-                t('ota.date_end'), dt.date.today(), format='YYYY-MM-DD', key='ptf_open_end'
+                _t('ota.date_end'), dt.date.today(), format='YYYY-MM-DD', key='ptf_open_end'
             ).strftime('%Y-%m-%d')
 
             label_map = {
@@ -518,12 +518,12 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             st.plotly_chart(trend_fig, use_container_width=True)
 
             # ── Parity analysis ───────────────────────────────────────────
-            st.markdown(t('ota.parity_header'))
-            st.caption(t('ota.parity_caption', invest=f'{total_invest:,.2f}', currency=system_currency))
+            st.markdown(_t('ota.parity_header'))
+            st.caption(_t('ota.parity_caption', invest=f'{total_invest:,.2f}', currency=system_currency))
 
             opt_weights = _compute_parity_weights(open_series, window=30)
             if opt_weights.empty:
-                st.warning(t('ota.parity_no_data'))
+                st.warning(_t('ota.parity_no_data'))
             else:
                 # Use invested capital (cost basis) as the weighting base, not fluctuating market value
                 invest_w_map = dict(zip(agg['ticker'], agg['invest_pct']))  # already in %
@@ -534,7 +534,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 parity_df['Current %'] = parity_df['Ticker'].map(invest_w_map).fillna(0).round(2)
                 parity_df['Diff %']    = (parity_df['Parity %'] - parity_df['Current %']).round(2)
                 parity_df['Action']    = parity_df['Diff %'].apply(
-                    lambda d: t('ota.action_buy') if d > 1 else (t('ota.action_sell') if d < -1 else t('ota.action_ok'))
+                    lambda d: _t('ota.action_buy') if d > 1 else (_t('ota.action_sell') if d < -1 else _t('ota.action_ok'))
                 )
                 # Target and current amounts both anchored to cost basis
                 parity_df['Target']    = (parity_df['Parity %']  / 100 * total_invest).round(2)
@@ -545,12 +545,12 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     parity_df[['Ticker', 'Current %', 'Parity %', 'Diff %',
                                'Action', 'Target', 'Invested', 'Delta']],
                     column_config={
-                        'Current %': st.column_config.NumberColumn(t('ota.col_cost_basis_pct'), format='%.2f'),
-                        'Parity %':  st.column_config.NumberColumn(t('ota.col_parity_pct'),     format='%.2f'),
-                        'Diff %':    st.column_config.NumberColumn(t('ota.col_diff_pct'),        format='%.2f'),
-                        'Target':    st.column_config.NumberColumn(t('ota.col_target',   currency=system_currency), format='%.2f'),
-                        'Invested':  st.column_config.NumberColumn(t('ota.col_invested', currency=system_currency), format='%.2f'),
-                        'Delta':     st.column_config.NumberColumn(t('ota.col_delta',    currency=system_currency), format='%.2f'),
+                        'Current %': st.column_config.NumberColumn(_t('ota.col_cost_basis_pct'), format='%.2f'),
+                        'Parity %':  st.column_config.NumberColumn(_t('ota.col_parity_pct'),     format='%.2f'),
+                        'Diff %':    st.column_config.NumberColumn(_t('ota.col_diff_pct'),        format='%.2f'),
+                        'Target':    st.column_config.NumberColumn(_t('ota.col_target',   currency=system_currency), format='%.2f'),
+                        'Invested':  st.column_config.NumberColumn(_t('ota.col_invested', currency=system_currency), format='%.2f'),
+                        'Delta':     st.column_config.NumberColumn(_t('ota.col_delta',    currency=system_currency), format='%.2f'),
                     },
                     hide_index=True,
                     use_container_width=True,
@@ -560,32 +560,32 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 pie_c1, pie_c2 = st.columns(2)
                 fig_ist = px.pie(
                     agg, values='invest_pct', names='ticker',
-                    title=t('ota.pie_current'), hole=0.4,
+                    title=_t('ota.pie_current'), hole=0.4,
                 )
                 fig_ist.update_traces(textinfo='percent+label')
                 pie_c1.plotly_chart(fig_ist, use_container_width=True)
 
                 fig_soll = px.pie(
                     parity_df, values='Parity %', names='Ticker',
-                    title=t('ota.pie_target'), hole=0.4,
+                    title=_t('ota.pie_target'), hole=0.4,
                 )
                 fig_soll.update_traces(textinfo='percent+label')
                 pie_c2.plotly_chart(fig_soll, use_container_width=True)
 
                 # Action items
-                st.markdown(t('ota.action_items'))
+                st.markdown(_t('ota.action_items'))
                 buys  = parity_df[parity_df['Diff %'] >  1].sort_values('Diff %', ascending=False)
                 sells = parity_df[parity_df['Diff %'] < -1].sort_values('Diff %')
                 if not buys.empty:
-                    st.success(t('ota.add_position'))
+                    st.success(_t('ota.add_position'))
                     st.dataframe(buys[['Ticker', 'Current %', 'Parity %', 'Delta']],
                                  hide_index=True, use_container_width=True)
                 if not sells.empty:
-                    st.warning(t('ota.reduce_position'))
+                    st.warning(_t('ota.reduce_position'))
                     st.dataframe(sells[['Ticker', 'Current %', 'Parity %', 'Delta']],
                                  hide_index=True, use_container_width=True)
                 if buys.empty and sells.empty:
-                    st.info(t('ota.balanced'))
+                    st.info(_t('ota.balanced'))
 
 
 class OwnTradesManager:
@@ -624,7 +624,7 @@ class OwnTradesManager:
             if self.trades_df is not None and not self.trades_df.empty:
                 st_region.dataframe(self.trades_df.head(20))
             else:
-                st_region.info(t('ota.no_processed_trades'))
+                st_region.info(_t('ota.no_processed_trades'))
         except Exception:
             pass
 
@@ -972,7 +972,7 @@ def render_import_export(region, simulator=None, username='', db_path='database'
                 st_region.write(proc_preview.head(20).to_string())
             # allow analyzing the stored processed trades
             try:
-                if simulator is not None and st_region.button(t('ota.analyze_stored'), key='analyze_stored'):
+                if simulator is not None and st_region.button(_t('ota.analyze_stored'), key='analyze_stored'):
                     try:
                         simulator.render_parity(proc_preview, suffix='stored', invest=100000, region=st_region)
                     except Exception as e:
@@ -981,7 +981,7 @@ def render_import_export(region, simulator=None, username='', db_path='database'
                 pass
     except Exception:
         pass
-    uploaded = st_region.file_uploader(t('ota.upload_label'), type=['csv','xlsx'], key='upload_trades_file')
+    uploaded = st_region.file_uploader(_t('ota.upload_label'), type=['csv','xlsx'], key='upload_trades_file')
     df_u = None
     if uploaded is not None:
         try:
@@ -990,13 +990,13 @@ def render_import_export(region, simulator=None, username='', db_path='database'
             else:
                 df_u = pd.read_csv(uploaded)
         except Exception as e:
-            st_region.error(t('ota.upload_error', error=e))
+            st_region.error(_t('ota.upload_error', error=e))
             df_u = None
 
     if df_u is not None:
         df_u.columns = [c.strip() for c in df_u.columns]
         try:
-            st_region.write(t('ota.upload_preview'))
+            st_region.write(_t('ota.upload_preview'))
             st_region.dataframe(df_u.head())
         except Exception:
             pass
@@ -1008,16 +1008,16 @@ def render_import_export(region, simulator=None, username='', db_path='database'
         # simple auto-mapping UI (only show when a file was uploaded)
         if df_u is not None:
             expected = [
-                ('timestamp', t('ota.map_col_timestamp')),
-                ('action',    t('ota.map_col_action')),
-                ('ticker',    t('ota.map_col_ticker')),
-                ('price',     t('ota.map_col_price')),
-                ('shares',    t('ota.map_col_shares')),
-                ('value',     t('ota.map_col_value')),
-                ('longName',  t('ota.map_col_longname')),
-                ('isin',      t('ota.map_col_isin')),
-                ('currency',  t('ota.map_col_currency')),
-                ('stockIndex', t('ota.map_col_index')),
+                ('timestamp', _t('ota.map_col_timestamp')),
+                ('action',    _t('ota.map_col_action')),
+                ('ticker',    _t('ota.map_col_ticker')),
+                ('price',     _t('ota.map_col_price')),
+                ('shares',    _t('ota.map_col_shares')),
+                ('value',     _t('ota.map_col_value')),
+                ('longName',  _t('ota.map_col_longname')),
+                ('isin',      _t('ota.map_col_isin')),
+                ('currency',  _t('ota.map_col_currency')),
+                ('stockIndex', _t('ota.map_col_index')),
             ]
 
             cols = list(df_u.columns)
@@ -1032,20 +1032,20 @@ def render_import_export(region, simulator=None, username='', db_path='database'
                 sel = st_region.selectbox(f'{label}', options=['(none)'] + cols, index=(cols.index(default)+1) if default in cols else 0, key=f'map_{key}')
                 user_map[key] = None if sel == '(none)' else sel
 
-            if st_region.button(t('ota.apply_import'), key='apply_mapping_import'):
+            if st_region.button(_t('ota.apply_import'), key='apply_mapping_import'):
                 try:
                     inserted, mapped, processed = import_trades(df_u, user_map, username=username, db_path=db_path, db_name='trades.db')
-                    st_region.success(t('ota.import_success', n=inserted))
+                    st_region.success(_t('ota.import_success', n=inserted))
                     try:
-                        st_region.write(t('ota.mapped_preview'))
+                        st_region.write(_t('ota.mapped_preview'))
                         st_region.dataframe(mapped.head())
                     except Exception:
                         pass
                     try:
                         if not processed.empty:
-                            st_region.write(t('ota.processed_preview'))
+                            st_region.write(_t('ota.processed_preview'))
                             st_region.dataframe(processed.head())
-                            if simulator is not None and st_region.button(t('ota.analyze_imported'), key='analyze_imported'):
+                            if simulator is not None and st_region.button(_t('ota.analyze_imported'), key='analyze_imported'):
                                 try:
                                     simulator.render_parity(processed, suffix='imported', invest=100000, region=st_region)
                                 except Exception as e:
@@ -1055,13 +1055,13 @@ def render_import_export(region, simulator=None, username='', db_path='database'
                                 db_proc_res = analyze_own_trades(db_path=db_path, db_name='trades.db', system_currency='EUR')
                                 db_proc = db_proc_res.get('processed', pd.DataFrame())
                                 if db_proc is not None and not db_proc.empty:
-                                    st_region.write(t('ota.db_preview'))
+                                    st_region.write(_t('ota.db_preview'))
                                     try:
                                         st_region.dataframe(db_proc.head(20))
                                     except Exception:
                                         st_region.write(db_proc.head(20).to_string())
                                     try:
-                                        if simulator is not None and st_region.button(t('ota.analyze_stored'), key='analyze_stored_after_import'):
+                                        if simulator is not None and st_region.button(_t('ota.analyze_stored'), key='analyze_stored_after_import'):
                                             try:
                                                 simulator.render_parity(db_proc, suffix='stored_after_import', invest=100000, region=st_region)
                                             except Exception as e:
@@ -1086,7 +1086,7 @@ def render_import_export(region, simulator=None, username='', db_path='database'
         # Always show a short preview (or empty table) and row count for diagnostics
         try:
             row_count = 0 if df_all is None else len(df_all)
-            st_region.write(t('ota.stored_rows', db=dbt.database_name, rows=row_count))
+            st_region.write(_t('ota.stored_rows', db=dbt.database_name, rows=row_count))
             try:
                 st_region.dataframe(df_all.head(20))
             except Exception:
@@ -1095,13 +1095,13 @@ def render_import_export(region, simulator=None, username='', db_path='database'
             try:
                 csv_bytes = (df_all.to_csv(index=False).encode('utf-8')) if df_all is not None else b''
                 if csv_bytes:
-                    st_region.download_button(t('ota.export_csv'), data=csv_bytes, file_name='trades_export.csv', mime='text/csv')
+                    st_region.download_button(_t('ota.export_csv'), data=csv_bytes, file_name='trades_export.csv', mime='text/csv')
             except Exception:
                 pass
             try:
                 xlsx = df_to_excel_bytes(df_all) if df_all is not None else b''
                 if xlsx:
-                    st_region.download_button(t('ota.export_xlsx'), data=xlsx, file_name='trades_export.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                    st_region.download_button(_t('ota.export_xlsx'), data=xlsx, file_name='trades_export.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             except Exception:
                 pass
         except Exception:
@@ -1112,37 +1112,37 @@ def render_import_export(region, simulator=None, username='', db_path='database'
             res = analyze_own_trades(db_path=db_path, db_name='trades.db', system_currency='EUR')
             proc = res.get('processed', pd.DataFrame())
             proc_rows = 0 if proc is None else len(proc)
-            st_region.write(t('ota.processed_rows', rows=proc_rows))
+            st_region.write(_t('ota.processed_rows', rows=proc_rows))
             try:
                 if proc is not None and not proc.empty:
                     st_region.dataframe(proc.head(20))
                 else:
-                    st_region.write(t('ota.no_processed_available'))
+                    st_region.write(_t('ota.no_processed_available'))
             except Exception:
                 if proc is not None:
                     st_region.write(proc.head(20).to_string())
                 else:
-                    st_region.write(t('ota.no_processed_available'))
+                    st_region.write(_t('ota.no_processed_available'))
         except Exception:
             pass
 
         # Dangerous operation: delete all trades
         st_region.markdown('---')
-        st_region.markdown(t('ota.danger_label'), unsafe_allow_html=True)
-        delete_confirm = st_region.text_input(t('ota.delete_confirm'), key='confirm_delete_trades')
-        if st_region.button(t('ota.delete_btn'), key='delete_trades_btn'):
+        st_region.markdown(_t('ota.danger_label'), unsafe_allow_html=True)
+        delete_confirm = st_region.text_input(_t('ota.delete_confirm'), key='confirm_delete_trades')
+        if st_region.button(_t('ota.delete_btn'), key='delete_trades_btn'):
             if delete_confirm == 'DELETE':
                 try:
                     try:
                         dbt.cursor.execute('DELETE FROM trades')
                         dbt.conn.commit()
-                        st_region.success(t('ota.delete_success'))
+                        st_region.success(_t('ota.delete_success'))
                     except Exception:
-                        st_region.warning(t('ota.delete_no_table'))
+                        st_region.warning(_t('ota.delete_no_table'))
                 except Exception as e:
                     st_region.error(f'Failed to delete trades: {e}')
             else:
-                st_region.warning(t('ota.delete_confirm_warning'))
+                st_region.warning(_t('ota.delete_confirm_warning'))
 
         try:
             dbt.close()
