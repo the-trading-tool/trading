@@ -24,6 +24,7 @@ from tradinglib import (asset_simulator as ass,
         multi_select as ms,
         main_page as mp, system_config as sysconf,
         fetch_data as fd, pushover_notifier as pn, graph_tools as gt)
+from tradinglib.i18n import t as _t
 from tradinglib.indicator import indicator
 from tradinglib.utils import DataUtils
 
@@ -109,10 +110,10 @@ class MultiTransactionProcessor(tt.TickerTools):
     
         return extracted_parts
                 
-    @st.dialog('Asset details',width='large')
+    @st.dialog('Asset details', width='large')
     def overlay_selector(self, selection, col = 'ticker', region = st, action_type = 'buy'):
         show = False
-        t = selection['ticker'][selection[col].index[0]]            
+        ticker = selection['ticker'][selection[col].index[0]]
         if not selection.empty:
             show = True
 
@@ -129,56 +130,56 @@ class MultiTransactionProcessor(tt.TickerTools):
                 x_rate = self.get_exchange_rate(symbol=currency,system_currency=self.system_currency)
                 help_txt = ''
                 values = region.empty()
-                mp_window = region.empty()     
+                mp_window = region.empty()
                 row = {
                     'uuid': uuid.uuid4().hex,
-                    'timestamp': db_t.get_d_timestamp(), # timestamp milliseconds
-                    'ticker':t,
-                    'longName':longname, 
-                    'isin':ISIN, 
-                    'stockIndex':stockIndex, 
-                    'action':'buy',  # buy or sell
+                    'timestamp': db_t.get_d_timestamp(),
+                    'ticker': ticker,
+                    'longName': longname,
+                    'isin': ISIN,
+                    'stockIndex': stockIndex,
+                    'action': 'buy',
                 }
                 if action_type == 'view':
                     (v_s,v_p,v_c) = values.columns(3)
-    
+
                     buy_volume = selection['buyVolume'][selection[col].index[0]]
-                    num_shares = float(v_s.text_input('Shares to sell',buy_volume, key=f'sell_shares_{t}'))
-                    currency = v_c.text_input('Currency',currency, key=f'sell_currency_{t}')
-                    sell_price = float(v_p.text_input('Share Price',0, key=f'sell_price_{t}'))
+                    num_shares = float(v_s.text_input(_t('mt.shares_to_sell'), buy_volume, key=f'sell_shares_{ticker}'))
+                    currency = v_c.text_input(_t('mt.currency'), currency, key=f'sell_currency_{ticker}')
+                    sell_price = float(v_p.text_input(_t('mt.share_price'), 0, key=f'sell_price_{ticker}'))
                     sell_price_sc = sell_price / x_rate
                     if not currency == self.system_currency:
-                        help_txt =  f"/ {round(sell_price_sc*num_shares,0)} {self.system_currency}"
-                    sell_b = region.button(f"Sell for: {round(sell_price*num_shares,0)} {currency} {help_txt}")
+                        help_txt = f"/ {round(sell_price_sc*num_shares,0)} {self.system_currency}"
+                    sell_b = region.button(_t('mt.sell_for', value=round(sell_price*num_shares,0), currency=currency, help=help_txt))
                     if sell_b:
-                        row['action'] = 'sell'  # buy or sell
-                        row['shares'] = num_shares 
+                        row['action'] = 'sell'
+                        row['shares'] = num_shares
                         row['currency'] = self.system_currency
                         row['price'] = sell_price
-                        row['value'] = sell_price*num_shares # rounded pric x shares
-                        region.write(f"Done")
+                        row['value'] = sell_price*num_shares
+                        region.write(_t('mt.done'))
                         show_mp_dialog = False
 
                 elif action_type == 'trades':
                     (v_s,v_p,v_c) = values.columns(3)
-    
+
                     if selection['action'][selection[col].index[0]] == 'buy':
                         shares = selection['shares'][selection[col].index[0]]
-                        shares = float(v_s.text_input('Shares',shares, key=f'trades_shares_{t}'))
-                        currency = v_c.text_input('Currency',currency, key=f'trades_currency_{t}')
+                        shares = float(v_s.text_input(_t('mt.shares'), shares, key=f'trades_shares_{ticker}'))
+                        currency = v_c.text_input(_t('mt.currency'), currency, key=f'trades_currency_{ticker}')
                         price = round(float(selection['price'][selection[col].index[0]]),2)
-                        price = round(float(v_p.text_input('Price',price, key=f'trades_price_{t}')),2)
+                        price = round(float(v_p.text_input(_t('mt.price'), price, key=f'trades_price_{ticker}')),2)
                         price_sc = price / x_rate
                         if not currency == self.system_currency:
-                            help_txt =  f"/ {round(price_sc*shares,0)} {self.system_currency}"
-                        sell_b = region.button(f"Sell for: {round(price*shares,0)} {currency} {help_txt}")
+                            help_txt = f"/ {round(price_sc*shares,0)} {self.system_currency}"
+                        sell_b = region.button(_t('mt.sell_for', value=round(price*shares,0), currency=currency, help=help_txt))
                         if sell_b:
-                            row['action'] = 'sell'  # buy or sell
-                            row['shares'] = shares 
+                            row['action'] = 'sell'
+                            row['shares'] = shares
                             row['currency'] = self.system_currency
                             row['price'] = price_sc
-                            row['value'] = price_sc*num_shares # rounded pric x shares
-                            region.write(f"Done")
+                            row['value'] = price_sc*num_shares
+                            region.write(_t('mt.done'))
                             show_mp_dialog = False
 
                 elif action_type == 'buy':
@@ -186,27 +187,26 @@ class MultiTransactionProcessor(tt.TickerTools):
 
                     shares_to_buy = selection['buyVolume'][selection[col].index[0]]
                     buy_price = round(selection['buyPrice'][selection[col].index[0]],2)
-                    num_shares = float(v_s.text_input('Shares to buy',shares_to_buy, key=f'buy_shares_{t}'))
-                    currency = v_c.text_input('Currency',currency, key=f'buy_currency_{t}')
-                    buy_price = float(v_p.text_input('Price',buy_price, key=f'buy_price_{t}'))
+                    num_shares = float(v_s.text_input(_t('mt.shares_to_buy'), shares_to_buy, key=f'buy_shares_{ticker}'))
+                    currency = v_c.text_input(_t('mt.currency'), currency, key=f'buy_currency_{ticker}')
+                    buy_price = float(v_p.text_input(_t('mt.price'), buy_price, key=f'buy_price_{ticker}'))
                     buy_price_sc = buy_price / x_rate
                     if not currency == self.system_currency:
-                        help_txt =  f"/ {round(buy_price_sc*num_shares,0)} {self.system_currency}"
-                    buy_b = region.button(f"Buy for: {round(buy_price*num_shares,0)} {currency} {help_txt}")
+                        help_txt = f"/ {round(buy_price_sc*num_shares,0)} {self.system_currency}"
+                    buy_b = region.button(_t('mt.buy_for', value=round(buy_price*num_shares,0), currency=currency, help=help_txt))
                     if buy_b:
-                        row['shares'] = num_shares 
+                        row['shares'] = num_shares
                         row['currency'] = self.system_currency
                         row['price'] = buy_price_sc
-                        row['value'] = -buy_price_sc*num_shares # rounded pric x shares
-                        region.write(f"Done")
+                        row['value'] = -buy_price_sc*num_shares
+                        region.write(_t('mt.done'))
                         show_mp_dialog = False
                 else:
                     df = pd.DataFrame()
-                    # ticker via ? übergeben — {t} hatte weder Anführungszeichen noch Escaping
                     query = f"SELECT * FROM {db_table} WHERE ticker = ? AND buy = 1 ORDER BY Date DESC"
                     shares_to_sell = 0
                     try:
-                        df = pd.read_sql_query(query, db_t.conn, params=(t,))
+                        df = pd.read_sql_query(query, db_t.conn, params=(ticker,))
                         shares_to_sell = df['shares']
                     except Exception:
                         pass
@@ -214,35 +214,35 @@ class MultiTransactionProcessor(tt.TickerTools):
                         shares_to_sell = selection['sellVolume'][selection[col].index[0]]
                     sell_price = round(selection['sellPrice'][selection[col].index[0]],2)
                     (v_s, v_p, v_c) = values.columns(3)
-                    num_shares = float(v_s.text_input('Shares to sell',shares_to_sell, key=f'view_sell_shares_{t}'))
-                    sell_price = float(v_p.text_input('Share Price',sell_price, key=f'view_sell_price_{t}'))
-                    currency = v_c.text_input('Currency',currency, key=f'view_sell_currency_{t}')
+                    num_shares = float(v_s.text_input(_t('mt.shares_to_sell'), shares_to_sell, key=f'view_sell_shares_{ticker}'))
+                    sell_price = float(v_p.text_input(_t('mt.share_price'), sell_price, key=f'view_sell_price_{ticker}'))
+                    currency = v_c.text_input(_t('mt.currency'), currency, key=f'view_sell_currency_{ticker}')
                     sell_price_sc = sell_price / x_rate
                     if not currency == self.system_currency:
-                        help_txt =  f"/ {round(sell_price_sc*num_shares,0)} {self.system_currency}"
-                    sell_b = region.button(f"Sell for: {round(sell_price*num_shares,0)} {currency} {help_txt}")
+                        help_txt = f"/ {round(sell_price_sc*num_shares,0)} {self.system_currency}"
+                    sell_b = region.button(_t('mt.sell_for', value=round(sell_price*num_shares,0), currency=currency, help=help_txt))
                     if sell_b:
-                        row['action'] = 'sell'  # buy or sell
-                        row['shares'] = num_shares 
+                        row['action'] = 'sell'
+                        row['shares'] = num_shares
                         row['currency'] = self.system_currency
                         row['price'] = sell_price_sc
-                        row['value'] = sell_price_sc*num_shares # rounded pric x shares
-                        region.write(f"Done")
+                        row['value'] = sell_price_sc*num_shares
+                        region.write(_t('mt.done'))
                         show_mp_dialog = False
                     
-                if show_mp_dialog:                    
-                    mp.render_mainpage(t, search_ticker_only=True, region=mp_window, hide_search=True, hide_details=True, username=self.username)
+                if show_mp_dialog:
+                    mp.render_mainpage(ticker, search_ticker_only=True, region=mp_window, hide_search=True, hide_details=True, username=self.username)
                 else:
 #                    st.write(row)
                     db_t.ensure_table_and_columns(row_dict=row, database_name=db_table)
                     db_t.insert_data(row_dict=row, database_name=db_table)
                     db_t.conn.commit()
-                    mp_window.html("<h3>Data stored, please close this window</h3>")
+                    mp_window.html(f"<h3>{_t('mt.data_stored')}</h3>")
                     self.send_esc(True)
             else:
-                region.write('Nothing to show.')
+                region.write(_t('mt.nothing_to_show'))
         except Exception as e:
-            region.error(f"Sorry, try again! {e}")
+            region.error(_t('mt.sorry', error=e))
             pass
             
 
@@ -423,12 +423,12 @@ class MultiTransactionProcessor(tt.TickerTools):
                 day_diff = -1
 #            self.asset_date = st.text_input('Filter buy/sell calc date from: ',self.asset_date)
             self.asset_date = st.date_input(
-                "Filter buy/sell calc start date:",
+                _t('mt.filter_date'),
                 (dt.datetime.now() + dt.timedelta(days=day_diff)).strftime("%Y-%m-%d"),
                 format="YYYY-MM-DD",
                 key='multi_trans_asset_date'
             ).strftime("%Y-%m-%d")
-            self.show_details = st.checkbox('Show transaction detailed trend & data', self.show_details)
+            self.show_details = st.checkbox(_t('mt.show_details'), self.show_details)
 #            summary_expander = summary_section.expander("Summary:", expanded=True)
 
 #            self.transactions = eval(st.text_area(
@@ -442,9 +442,9 @@ class MultiTransactionProcessor(tt.TickerTools):
         years.extend(list(self.find_files_with_pattern(self.db_path, rf'{self.db_name}_(\d+)\.db')))
         if not self.disable_streamlit:
             self.use_year = int(st.selectbox(
-                "Use data as of:",
-                options = sorted(years, reverse=True),
-                index = 0,
+                _t('mt.data_as_of'),
+                options=sorted(years, reverse=True),
+                index=0,
                 key='multi_trans_use_year'
             ))
             
@@ -469,19 +469,19 @@ class MultiTransactionProcessor(tt.TickerTools):
             # overwritten later when we write the summary into `summary_section`.
             calc_row = st.empty()
             (calc_l, calc_r) = calc_row.columns([0.2, 0.8])
-            if calc_l.button('Calculate transactions', key=f'calc_{calc_key}', use_container_width=True):
+            if calc_l.button(_t('mt.calc_btn'), key=f'calc_{calc_key}', use_container_width=True):
                 st.session_state[calc_key] = True
-            if calc_r.button('Reset', key=f'reset_{calc_key}', use_container_width=True):
+            if calc_r.button(_t('mt.reset_btn'), key=f'reset_{calc_key}', use_container_width=True):
                 st.session_state[calc_key] = False
 
         total_transactions = 0
         if not st.session_state.get(calc_key, False):
             if not self.disable_streamlit:
-                st.info('Press "Calculate transactions" to run simulations. You can upload your own trades first in Import/Export.')
+                st.info(_t('mt.calc_hint'))
         else:
             for item in self.transactions:
                 if not self.disable_streamlit:
-                    st.markdown(f"""<h2>Strategy: {item}</h2>""", unsafe_allow_html=True)
+                    st.markdown(f"""<h2>{_t('mt.strategy_header', name=item)}</h2>""", unsafe_allow_html=True)
                 for id in self.transactions[item]:
                     total_transactions += 1
                     buy_assets = self.transactions[item][id]['buy']
@@ -576,16 +576,16 @@ class MultiTransactionProcessor(tt.TickerTools):
                             if self.show_details and not combined_df.empty:
             #                eval(f"expander_{id} = st.expander('Performance {id}')")
             #                eval(f"with expander_{id}:")
-                                st.subheader(f"Performance investing into: {id}")
-                                st.write(f'Dataset implied vola: {implied_vola}%, with average value trend: {avg_value}')
-                                st.write(f'Initial invest: {invest}, Total cash: {round(portfolio.cash/x_rate,2)}, still invested: {-total_invest}, total value: {gain}, total gain: {round((1-(invest/gain))*100,1)}%')
-                                st.write(f'Buy {num_assets} assets if: {buy_assets}, Sell assets if: {sell_assets}')
-                                st.write(f'<h5>Trades for  {id}</h5>',unsafe_allow_html=True)
+                                st.subheader(_t('mt.performance_header', id=id))
+                                st.write(_t('mt.dataset_stats', vola=implied_vola, trend=avg_value))
+                                st.write(_t('mt.invest_stats', invest=invest, cash=round(portfolio.cash/x_rate,2), invested=-total_invest, value=gain, gain=round((1-(invest/gain))*100,1)))
+                                st.write(_t('mt.conditions', n=num_assets, buy=buy_assets, sell=sell_assets))
+                                st.write(f'<h5>{_t("mt.trades_for", id=id)}</h5>', unsafe_allow_html=True)
                                 try:
                                     selection5 = self.simulator.dataframe_with_selections(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False),region=st, show_df_only=True)    
                                     if not selection5.empty:
                                         self.overlay_selector(selection5, region = st, action_type='trades')            
-                                        self.export_to_excel(selection5, button_label = '📥 Download Trades', file_name = f'trades.xlsx', region = st )                
+                                        self.export_to_excel(selection5, button_label=_t('mt.download_trades'), file_name='trades.xlsx', region=st)
             #                        st.dataframe(pd.DataFrame(portfolio.history).sort_values(['timestamp'], ascending=False))
     
                                     fig = px.line(
@@ -787,7 +787,7 @@ class MultiTransactionProcessor(tt.TickerTools):
         # For downstream presentation, replace NaN gains with 0 for cumulative sum but report how many were affected
         num_missing = int(self.trades_df['gain'].isna().sum())
         if num_missing > 0 and not self.disable_streamlit:
-            st.warning(f"{num_missing} trades could not be converted to {self.system_currency} due to missing exchange rates and were excluded from totals.")
+            st.warning(_t('mt.missing_xrate', n=num_missing, currency=self.system_currency))
             # show details of affected trades
             cols_to_show = [c for c in ['ticker','buyDate','sellDate','currency','buyValue','sellValue'] if c in self.trades_df.columns]
             missing_df = self.trades_df[self.trades_df['gain'].isna()][cols_to_show]
@@ -890,36 +890,36 @@ class MultiTransactionProcessor(tt.TickerTools):
 #               self.trades_df.sort_values(['buyDate'], ascending=[True],inplace=True)
             column_config = {
                             "Select": st.column_config.CheckboxColumn(required=False),
-                            'sellDate': st.column_config.TextColumn("Sell Date"), #,format="YYYY-MM-DD hh:mm:ss"),                      
-                            'buyDate': st.column_config.TextColumn("Buy Date"), #,format="YYYY-MM-DD hh:mm:ss"),                      
-                            "ticker": st.column_config.TextColumn("Ticker"),
-                            "isin": st.column_config.TextColumn("ISIN"),
-                            "longName": st.column_config.TextColumn("Company"),
-                            'costBasis': st.column_config.NumberColumn("Costs",format="%.2f"),
-                            "cumulative_gain": st.column_config.NumberColumn("Cum Gain",format="%.2f"),
-                            "buyPrice": st.column_config.NumberColumn("Buy Price",format="%.2f"),
-                            "buyValue": st.column_config.NumberColumn("Buy Value",format="%.2f"),
-                            "sellPrice": st.column_config.NumberColumn("Sell Price",format="%.2f"),
-                            "sellValue": st.column_config.NumberColumn("Sell Value",format="%.2f"),
-                            'gain': st.column_config.NumberColumn("Gain",format="%.2f"),
-                            'gainPct': st.column_config.NumberColumn("%",format="%.2f"),
-                            'buyVolume': st.column_config.NumberColumn("Buy Volume",format="%.0f"),
-                            'sellVolume': st.column_config.NumberColumn("Sell Volume",format="%.0f"),
-                            'stockIndex': st.column_config.TextColumn("Index"),
-                            'currency': st.column_config.TextColumn("Currency"),
-                            f'buyValue{self.system_currency}': st.column_config.NumberColumn(f"Buy Value {self.system_currency}", format="%.2f"),
-                            f'sellValue{self.system_currency}': st.column_config.NumberColumn(f"Sell Value {self.system_currency}", format="%.2f"),
-                            f'buyPrice{self.system_currency}': st.column_config.NumberColumn(f"Buy Price {self.system_currency}", format="%.2f"),
-                            f'sellPrice{self.system_currency}': st.column_config.NumberColumn(f"Sell Price {self.system_currency}", format="%.2f"),
-                            f'sellAt': st.column_config.NumberColumn(f"Sell At", format="%.2f"),
-                            f'sellTarget': st.column_config.NumberColumn(f"Sell Target", format="%.2f"),
-                            "details": st.column_config.LinkColumn( "Details", display_text="View"),
+                            'sellDate':  st.column_config.TextColumn(_t('mt.col_sell_date')),
+                            'buyDate':   st.column_config.TextColumn(_t('mt.col_buy_date')),
+                            "ticker":    st.column_config.TextColumn(_t('mt.col_ticker')),
+                            "isin":      st.column_config.TextColumn(_t('mt.col_isin')),
+                            "longName":  st.column_config.TextColumn(_t('mt.col_company')),
+                            'costBasis': st.column_config.NumberColumn(_t('mt.col_costs'),      format="%.2f"),
+                            "cumulative_gain": st.column_config.NumberColumn(_t('mt.col_cum_gain'), format="%.2f"),
+                            "buyPrice":  st.column_config.NumberColumn(_t('mt.col_buy_price'),  format="%.2f"),
+                            "buyValue":  st.column_config.NumberColumn(_t('mt.col_buy_value'),  format="%.2f"),
+                            "sellPrice": st.column_config.NumberColumn(_t('mt.col_sell_price'), format="%.2f"),
+                            "sellValue": st.column_config.NumberColumn(_t('mt.col_sell_value'), format="%.2f"),
+                            'gain':      st.column_config.NumberColumn(_t('mt.col_gain'),       format="%.2f"),
+                            'gainPct':   st.column_config.NumberColumn(_t('mt.col_gain_pct'),   format="%.2f"),
+                            'buyVolume': st.column_config.NumberColumn(_t('mt.col_buy_volume'), format="%.0f"),
+                            'sellVolume':st.column_config.NumberColumn(_t('mt.col_sell_volume'),format="%.0f"),
+                            'stockIndex':st.column_config.TextColumn(_t('mt.col_index')),
+                            'currency':  st.column_config.TextColumn(_t('mt.col_currency')),
+                            f'buyValue{self.system_currency}':  st.column_config.NumberColumn(f"{_t('mt.col_buy_value')} {self.system_currency}",  format="%.2f"),
+                            f'sellValue{self.system_currency}': st.column_config.NumberColumn(f"{_t('mt.col_sell_value')} {self.system_currency}", format="%.2f"),
+                            f'buyPrice{self.system_currency}':  st.column_config.NumberColumn(f"{_t('mt.col_buy_price')} {self.system_currency}",  format="%.2f"),
+                            f'sellPrice{self.system_currency}': st.column_config.NumberColumn(f"{_t('mt.col_sell_price')} {self.system_currency}", format="%.2f"),
+                            'sellAt':    st.column_config.NumberColumn("Sell At",    format="%.2f"),
+                            'sellTarget':st.column_config.NumberColumn("Sell Target",format="%.2f"),
+                            "details":   st.column_config.LinkColumn(_t('mt.col_details'), display_text=_t('mt.col_view')),
                             }
 #            if 1:
             day_diff = -1
             sell_date = (dt.datetime.now() + dt.timedelta(days=day_diff)).strftime("%Y-%m-%d 00:00:00")
             if self.show_details:
-                st.html('<h3>Simulation</h3>')
+                st.html(f'<h3>{_t("mt.simulation_header")}</h3>')
                 if not self.trades_df.empty:
 #                    st.write(self.trades_df)
                     for idx, _ in self.trades_df.iterrows():
@@ -984,11 +984,11 @@ class MultiTransactionProcessor(tt.TickerTools):
 
                         if not selection1.empty:
                             self.overlay_selector(selection1, region = st, action_type='sell')
-                        self.export_to_excel(self.trades_df, button_label = '📥 Download Trades', file_name = f'trades.xlsx', region = st )
+                        self.export_to_excel(self.trades_df, button_label=_t('mt.download_trades'), file_name='trades.xlsx', region=st)
 
                         # Potential gain plot
                         self.trades_df.sort_values(['sellDate','ticker'],ascending=[True,True], inplace=True)
-                        st.html("<h3>Potential Gain</h3>")
+                        st.html(f'<h3>{_t("mt.potential_gain_header")}</h3>')
                         fig1 = px.line(
                                     self.trades_df,
                                     x='sellDate',
@@ -1068,26 +1068,26 @@ class MultiTransactionProcessor(tt.TickerTools):
             total_gain_pct = round(((total_value_calc / s_total_invest) - 1) * 100, 1)
 
         summary = f"""
-            <h3>Investment summary:</h3><br>
+            <h3>{_t('mt.summary_header')}</h3><br>
             <table>
             <tr>
-            <td>System currency :</td><td>{self.system_currency}</td>
+            <td>{_t('mt.summary_currency')} :</td><td>{self.system_currency}</td>
             </tr><tr>
-            <td>Total initial invest :</td><td>{round(s_total_invest,0)}</td>
+            <td>{_t('mt.summary_invest')} :</td><td>{round(s_total_invest,0)}</td>
             </tr><tr>
-            <td>Total cash           :</td><td>{round(s_total_cash,0)}</td>
+            <td>{_t('mt.summary_cash')} :</td><td>{round(s_total_cash,0)}</td>
             </tr><tr>
-            <td>Still invested       :</td><td>{round(-s_still_invested,0)} into:</br>{self.investments}</td>
+            <td>{_t('mt.summary_still_invested')} :</td><td>{round(-s_still_invested,0)} into:</br>{self.investments}</td>
             </tr><tr>
-            <td>Total Value    :</td><td>{round(total_value_calc,0)}</td>
+            <td>{_t('mt.summary_total_value')} :</td><td>{round(total_value_calc,0)}</td>
             </tr><tr>
-            <td>Total gain           :</td><td>{total_gain_pct}%</td>
+            <td>{_t('mt.summary_total_gain')} :</td><td>{total_gain_pct}%</td>
             </tr><tr>
-            <td>Overall trend        :</td><td>{round(s_overall_trend/total_transactions,0) if total_transactions and total_transactions != 0 else 0}</td>
+            <td>{_t('mt.summary_trend')} :</td><td>{round(s_overall_trend/total_transactions,0) if total_transactions and total_transactions != 0 else 0}</td>
             </tr><tr>
-            <td>Overall vola         :</td><td>{round(s_overall_vola/total_transactions,0) if total_transactions and total_transactions != 0 else 0}</td>
+            <td>{_t('mt.summary_vola')} :</td><td>{round(s_overall_vola/total_transactions,0) if total_transactions and total_transactions != 0 else 0}</td>
             </tr><tr>
-            <td>Profit:Loss ratio    :</td><td>{ratio}:1</td>
+            <td>{_t('mt.summary_ratio')} :</td><td>{ratio}:1</td>
             </tr>
             </table>
             <br><br>
@@ -1122,12 +1122,12 @@ class MultiTransactionProcessor(tt.TickerTools):
             self.buy_df['stopLoss'] = round(self.buy_df[f'buyPrice{self.system_currency}'] * (1-self.overall_vola/len(self.transactions)/400),2)
             (self.buy_df['buyAt'],self.buy_df['buyTarget'],self.buy_df['sellAt'],self.buy_df['sellTarget'],_,_,_,_,_,_) = zip(*self.buy_df[f'buyPrice{self.system_currency}'].apply(indicator.target_prices))
         except Exception:
-            st.write("no buy data")
+            st.write(_t('mt.no_buy_data'))
             pass
         try:
             (_,_,self.sell_df['sellAt'],self.sell_df['sellTarget'],_,_,_,_,_,_) = zip(*self.sell_df[f'sellPrice{self.system_currency}'].apply(indicator.target_prices))
         except Exception:
-            st.write("no sell data")
+            st.write(_t('mt.no_sell_data'))
             pass
 
         if not self.disable_streamlit:
@@ -1135,7 +1135,7 @@ class MultiTransactionProcessor(tt.TickerTools):
 
 #                self.asset_date = st.text_input('Filter date from: ', f"{dt.datetime.now().year}-01-01")#,(dt.datetime.now() + dt.timedelta(days=day_diff)).strftime("%Y-%m-%d"))
 
-                st.html('<h3>Buy</h3>')
+                st.html(f'<h3>{_t("mt.buy_header")}</h3>')
                 filter_buy_df()
 #                st.write(self.asset_date)
                 selection2 = self.simulator.dataframe_with_selections(self.buy_df,region=st, column_config=column_config)    
@@ -1144,9 +1144,9 @@ class MultiTransactionProcessor(tt.TickerTools):
                     tickers = self.buy_df['ticker'].tolist()
                     tickers = list(set(tickers))
                     show_tickers(tickers)
-                self.export_to_excel(self.buy_df, button_label = '📥 Download Buy', file_name = f'buy_trades.xlsx', region = st )                
+                self.export_to_excel(self.buy_df, button_label=_t('mt.download_buy'), file_name='buy_trades.xlsx', region=st)
 
-                st.html('<h3>Sell</h3>')
+                st.html(f'<h3>{_t("mt.sell_header")}</h3>')
                 filter_sell_df()
                 selection3 = self.simulator.dataframe_with_selections(self.sell_df,region=st, column_config=column_config)    
                 if not selection3.empty:
@@ -1157,7 +1157,7 @@ class MultiTransactionProcessor(tt.TickerTools):
                     tickers = self.sell_df['ticker'].tolist()
                     tickers = list(set(tickers))
                     show_tickers(tickers)
-                self.export_to_excel(self.sell_df, button_label = '📥 Download Sell', file_name = f'sell_trades.xlsx', region = st )                
+                self.export_to_excel(self.sell_df, button_label=_t('mt.download_sell'), file_name='sell_trades.xlsx', region=st)
         else:
 
             # last days
