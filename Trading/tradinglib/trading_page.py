@@ -1056,7 +1056,45 @@ class TradingPage:
         except Exception:
             live_open = set()
 
-        # Add position_status column
+        # ── FIFO matching: determine which filled buy rows are still "open"
+        # A ticker can be sold and re-bought (e.g. ADTN: 74 sold, 83 re-bought).
+        # Plain ticker-in-live_open gives the wrong answer for the OLD buy.
+        # Solution: walk each ticker's buys and sells chronologically (FIFO);
+        # only the buys not yet covered by a sell are considered open.
+        _open_buy_indices: set = set()
+
+        for _ticker, _tdf in df.groupby('ticker'):
+            _buys = _tdf[(_tdf['action'] == 'buy') & (_tdf['status'] == 'filled')].copy()
+            _sells = _tdf[(_tdf['action'] == 'sell') & (_tdf['status'] == 'filled')].copy()
+
+            if _buys.empty:
+                continue
+
+            # Sort by filled_at (fall back to submitted_at for missing timestamps)
+            def _ts(frame):
+                t = pd.to_datetime(frame.get('filled_at', pd.Series(dtype=str)),
+                                   errors='coerce')
+                if t.isna().all():
+                    t = pd.to_datetime(frame.get('submitted_at', pd.Series(dtype=str)),
+                                       errors='coerce')
+                return t
+
+            _buys = _buys.copy()
+            _buys['_t'] = _ts(_buys)
+            _buys = _buys.sort_values('_t')
+
+            _total_sold = pd.to_numeric(_sells['qty'], errors='coerce').fillna(0).sum()
+            _remaining  = float(_total_sold)
+
+            for _idx, _buy_row in _buys.iterrows():
+                _bqty = float(pd.to_numeric(_buy_row['qty'], errors='coerce') or 0)
+                if _remaining >= _bqty:
+                    _remaining -= _bqty   # this buy fully covered by sells → Closed
+                else:
+                    _open_buy_indices.add(_idx)   # this buy (partially) uncovered → Open
+                    _remaining = 0
+
+        # ── pos_status per row ─────────────────────────────────────────────
         _PENDING_STATUSES = {'new', 'submitted', 'accepted', 'pending_new',
                              'pending_cancel', 'pending_replace'}
 
@@ -1067,16 +1105,18 @@ class TradingPage:
                 if status in _PENDING_STATUSES:
                     return '⏳ Pending'
                 if status == 'held':
-                    return '🔒 Held'          # bracket / stop order waiting
+                    return '🔒 Held'
                 if status == 'filled':
-                    return '🟢 Open' if row['ticker'] in live_open else '⚫ Closed'
+                    if row.name in _open_buy_indices:
+                        return '🟢 Open' if row['ticker'] in live_open else '⚫ Closed'
+                    return '⚫ Closed'   # matched by a sell in FIFO order
                 if status in ('canceled', 'cancelled', 'expired', 'replaced'):
                     return '❌ Cancelled'
             if action == 'sell':
                 if status in _PENDING_STATUSES:
                     return '⏳ Sell pending'
                 if status == 'held':
-                    return '🔒 Stop/TP'       # bracket sell leg waiting to trigger
+                    return '🔒 Stop/TP'
                 if status in ('canceled', 'cancelled', 'expired', 'replaced'):
                     return '❌ Cancelled'
                 return '🔴 Sell'
