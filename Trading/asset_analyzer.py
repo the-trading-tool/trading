@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import datetime as dt
 import yaml
@@ -448,22 +449,12 @@ class TradingApp:
             'Strategy finder': '/?strategy_finder=true',
             'Asset summary': '/?summary=true',
         }
-        external_links = {
-            'Europe Macro Report':'https://en.macromicro.me/macro/eu',
-            'Tradegate':'https://www.tradegate.de/finanz-nachrichten.php',
-            'Stock analysis':'https://stockanalysis.com/trending/',
-            'finanzen.net News':'https://www.finanzen.net/news/',
-            'finance.yahoo.com':'https://finance.yahoo.com/',
-            'HSBC Strenght Matrix':'https://hsbc-zertifikate.de/home/trendkompass.html',
-            'L&S Indicator':'https://www.ls-tc.de/de/index/lus-indikation',
-            'Stock3 DAX':"https://stock3.com/experten/rocco-graefe-5/",
-            'Stock List':'https://yftickers.wordpress.com/',
-            'S&P Put Call ratio':'https://en.macromicro.me/collections/34/us-stock-relative/449/us-cboe-options-put-call-ratio',
-            'Fear and greed meter':'https://feargreedmeter.com/',
-            'CNN fear and greed':'https://edition.cnn.com/markets/fear-and-greed',
-            'Tradingdesk':'https://tradingdesk.finanzen.net/',
-            'Trader Boersenspiel':'https://www.trader-boersenspiel.de/web/tournament/ranking'
-        }
+        _links_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'external_links.json')
+        try:
+            with open(_links_file, encoding='utf-8') as _f:
+                external_links = {e['label']: e['url'] for e in json.load(_f)}
+        except Exception:
+            external_links = {}
         self.sidebar_header = st.sidebar.empty()
         if self.is_admin:
             main_links['Admin'] = '/?admin=true'
@@ -510,6 +501,9 @@ class TradingApp:
 
 
     def render(self):
+        from tradinglib.first_run import maybe_show_setup
+        if maybe_show_setup():
+            st.stop()
 
         parms = st.query_params.to_dict()
         if parms.get('stream') == "api":

@@ -1,0 +1,16 @@
+[
+  { "label": "Europe Macro Report", "url": "https://en.macromicro.me/macro/eu" },
+  { "label": "Tradegate", "url": "https://www.tradegate.de/finanz-nachrichten.php" },
+  { "label": "Stock analysis", "url": "https://stockanalysis.com/trending/" },
+  { "label": "finanzen.net News", "url": "https://www.finanzen.net/news/" },
+  { "label": "finance.yahoo.com", "url": "https://finance.yahoo.com/" },
+  { "label": "HSBC Strenght Matrix", "url": "https://hsbc-zertifikate.de/home/trendkompass.html" },
+  { "label": "L&S Indicator", "url": "https://www.ls-tc.de/de/index/lus-indikation" },
+  { "label": "Stock3 DAX", "url": "https://stock3.com/experten/rocco-graefe-5/" },
+  { "label": "Stock List", "url": "https://yftickers.wordpress.com/" },
+  { "label": "S&P Put Call ratio", "url": "https://en.macromicro.me/collections/34/us-stock-relative/449/us-cboe-options-put-call-ratio" },
+  { "label": "Fear and greed meter", "url": "https://feargreedmeter.com/" },
+  { "label": "CNN fear and greed", "url": "https://edition.cnn.com/markets/fear-and-greed" },
+  { "label": "Tradingdesk", "url": "https://tradingdesk.finanzen.net/" },
+  { "label": "Trader Boersenspiel", "url": "https://www.trader-boersenspiel.de/web/tournament/ranking" }
+]
