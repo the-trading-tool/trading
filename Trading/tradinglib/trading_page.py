@@ -8,6 +8,7 @@ from tradinglib.system_config import SystemConfig
 from tradinglib.trading_bridge import BrokerFactory, OrderLog, SignalEvaluator, calc_qty
 from tradinglib.ticker_resolver import TickerResolver
 from tradinglib import ksplib
+from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
 
@@ -165,15 +166,15 @@ class TradingPage:
         st.markdown('---')
 
         if self._broker_id() == 'ibkr':
-            st.error('⚠ LIVE MODE — Orders are executed with **real money** at IBKR!')
+            st.error(_t('tp.live_warning'))
 
         tabs = st.tabs([
-            '📊 Account',
-            '🔔 Signals',
-            '📂 Positions',
-            '📋 History',
-            '📈 Compare',
-            '⚙ Settings',
+            _t('tp.tab_account'),
+            _t('tp.tab_signals'),
+            _t('tp.tab_positions'),
+            _t('tp.tab_history'),
+            _t('tp.tab_compare'),
+            _t('tp.tab_settings'),
         ])
         tab_account, tab_signals, tab_positions, tab_history, tab_compare, tab_settings = tabs
 
@@ -200,7 +201,7 @@ class TradingPage:
         is_paper = self._broker_id() == 'alpaca'
         with col_paper:
             if st.button(
-                f"{'●' if is_paper else '○'}  Paper Trading — Alpaca",
+                _t('tp.btn_paper') if is_paper else _t('tp.btn_paper_off'),
                 use_container_width=True,
                 type='primary' if is_paper else 'secondary',
             ):
@@ -209,7 +210,7 @@ class TradingPage:
 
         with col_live:
             st.button(
-                '○  Live Trading — IBKR  *(Phase 3)*',
+                _t('tp.btn_ibkr'),
                 use_container_width=True,
                 type='secondary',
                 disabled=True,
@@ -218,13 +219,13 @@ class TradingPage:
 
         with col_dry:
             st.toggle(
-                '🧪 Dry run',
+                _t('tp.dry_run'),
                 value=self._dry_run(),
                 key='trading_dry_run',
                 help='Signals are calculated but no orders are sent',
             )
             if self._dry_run():
-                st.caption('No real orders will be sent')
+                st.caption(_t('tp.dry_run_caption'))
 
     # ------------------------------------------------------------------ #
     #  Tab: Account                                                        #
@@ -234,11 +235,11 @@ class TradingPage:
         broker = self._broker()
         connected = broker.is_connected()
 
-        status_icon = '🟢 Connected' if connected else '🔴 Not connected'
-        st.markdown(f'**Alpaca Paper:** {status_icon}')
+        status_icon = _t('tp.account_connected') if connected else _t('tp.account_not_connected')
+        st.markdown(_t('tp.account_status', status=status_icon))
 
         if not connected:
-            st.info('Add API credentials under ⚙ Settings.')
+            st.info(_t('tp.account_add_creds'))
         else:
             try:
                 acct = broker.get_account_info()
@@ -248,15 +249,15 @@ class TradingPage:
                 c3.metric('Cash',          f"{acct.cash:,.2f} {acct.currency}")
                 c4.metric('Day P&L',       f"{acct.unrealized_pnl:+,.2f} {acct.currency}")
             except Exception as e:
-                st.error(f'Failed to load account data: {e}')
+                st.error(_t('tp.account_load_error', error=e))
 
             # ── Portfolio equity chart + allocation pie ─────────────────
             col_chart, col_pie = st.columns([3, 2])
 
             with col_chart:
-                st.markdown('##### Portfolio Performance')
+                st.markdown(_t('tp.account_performance'))
                 period = st.radio(
-                    'Period', ['1W', '1M', '3M', '1A'],
+                    _t('tp.account_period'), ['1W', '1M', '3M', '1A'],
                     horizontal=True, index=1, key='portfolio_period',
                 )
                 try:
@@ -287,12 +288,12 @@ class TradingPage:
                         )
                         st.plotly_chart(fig_eq, use_container_width=True)
                     else:
-                        st.caption('No portfolio history available.')
+                        st.caption(_t('tp.account_no_history'))
                 except Exception as e:
-                    st.caption(f'Portfolio chart unavailable: {e}')
+                    st.caption(_t('tp.account_chart_error', error=e))
 
             with col_pie:
-                st.markdown('##### Allocation')
+                st.markdown(_t('tp.account_allocation'))
                 try:
                     positions = broker.get_positions()
                     if positions:
@@ -307,11 +308,11 @@ class TradingPage:
                                               showlegend=True)
                         st.plotly_chart(fig_pie, use_container_width=True)
                     else:
-                        st.caption('No open positions.')
+                        st.caption(_t('tp.account_no_positions'))
                 except Exception as e:
-                    st.caption(f'Allocation chart unavailable: {e}')
+                    st.caption(_t('tp.account_alloc_error', error=e))
 
-        st.markdown('#### Enable strategies')
+        st.markdown(_t('tp.account_enable_strat'))
         strategies = self._strategies()
         enabled = self._enabled()
         new_enabled: list[str] = []
@@ -365,7 +366,7 @@ class TradingPage:
         strategies = self._strategies()
 
         if not enabled:
-            st.info('No strategy enabled. Please select under 📊 Account.')
+            st.info(_t('tp.signals_no_strategy'))
             return
 
         active = {k: v for k, v in strategies.items() if k in enabled}
@@ -381,7 +382,7 @@ class TradingPage:
         _btn_col, _ts_col = st.columns([2, 5])
         with _btn_col:
             _do_recalc = st.button(
-                '🔄 Recalculate Signals',
+                _t('tp.signals_recalc_btn'),
                 key='recalc_signals',
                 type='primary',
                 help='Re-run the portfolio simulation for all active strategies.',
@@ -389,12 +390,9 @@ class TradingPage:
         with _ts_col:
             _ts = st.session_state.get(_cache_ts, '')
             if _ts:
-                st.caption(f'Last calculated: **{_ts}** — press 🔄 to refresh.')
+                st.caption(_t('tp.signals_last_calc', ts=_ts))
             else:
-                st.info(
-                    '▶ Press **Recalculate Signals** to run the portfolio simulation.',
-                    icon='ℹ️',
-                )
+                st.info(_t('tp.signals_run_hint'), icon='ℹ️')
 
         # ── Run computation only on first visit or explicit recalculate ──
         # The simulation (PortfolioSimulator × all indices) is expensive.
@@ -501,10 +499,7 @@ class TradingPage:
             # Refresh the timestamp label immediately
             _ts_col.empty()
             with _ts_col:
-                st.caption(
-                    f'Last calculated: **{st.session_state[_cache_ts]}** '
-                    f'— press 🔄 to refresh.'
-                )
+                st.caption(_t('tp.signals_last_calc', ts=st.session_state[_cache_ts]))
 
         # ── Load from cache ─────────────────────────────────────────────
         _cached      = st.session_state.get(_cache_key, {})
@@ -517,7 +512,7 @@ class TradingPage:
 
         # ── Sell-signal lookback filter (applied to cached data, no recompute) ─
         sell_lookback_days = int(st.number_input(
-            'Show closed positions from last N days:',
+            _t('tp.signals_lookback'),
             min_value=1, max_value=90, value=14, step=1,
             help=(
                 'Filters *sell* signals by how recently the simulation closed them. '
@@ -538,7 +533,7 @@ class TradingPage:
             ]
 
         if eval_errors:
-            with st.expander('⚠ Signal evaluation errors', expanded=True):
+            with st.expander(_t('tp.signals_eval_errors'), expanded=True):
                 for strat, msg in eval_errors.items():
                     st.error(f'**{strat}**: {msg}')
                 st.caption(
@@ -548,7 +543,7 @@ class TradingPage:
 
         if not all_signals and not eval_errors:
             if _cache_key in st.session_state:
-                st.success('No current signals — all strategies are neutral.')
+                st.success(_t('tp.signals_neutral'))
             return
         if not all_signals:
             return
@@ -558,8 +553,8 @@ class TradingPage:
         sell_df = df[df['signal'] == 'sell']
 
         col_b, col_s, col_info = st.columns([1, 1, 4])
-        col_b.metric('🟢 Buy signals',  len(buy_df))
-        col_s.metric('🔴 Sell signals', len(sell_df))
+        col_b.metric(_t('tp.signals_buy'),  len(buy_df))
+        col_s.metric(_t('tp.signals_sell'), len(sell_df))
         with col_info:
             st.caption(
                 'Sizing per strategy/index: top-N by score (order_by), '
@@ -571,19 +566,22 @@ class TradingPage:
         atr_col, filter_col = st.columns([2, 3])
         with atr_col:
             atr_mult = st.number_input(
-                'ATR Multiplier (Stop Loss)',
+                _t('tp.signals_atr_mult'),
                 min_value=0.5, max_value=10.0, value=2.0, step=0.5,
                 help='Stop Loss = Price − N × ATR  (buy orders only, submitted as OTO)',
                 key='atr_mult',
             )
         with filter_col:
+            _show_all   = _t('tp.signals_show_all')
+            _show_buys  = _t('tp.signals_show_buys')
+            _show_sells = _t('tp.signals_show_sells')
             sig_filter = st.radio(
-                'Show:', ['All', 'Buys only', 'Sells only'],
+                _t('tp.signals_show'), [_show_all, _show_buys, _show_sells],
                 horizontal=True, key='sig_filter',
             )
 
-        show_df = (df if sig_filter == 'All'
-                   else (buy_df if sig_filter == 'Buys only' else sell_df))
+        show_df = (df if sig_filter == _show_all
+                   else (buy_df if sig_filter == _show_buys else sell_df))
 
         # Compute stop_loss_price per row and embed it back in all_signals
         for s in all_signals:
@@ -628,57 +626,27 @@ class TradingPage:
             use_container_width=True,
             hide_index=True,
             column_config={
-                'select':           st.column_config.CheckboxColumn(
-                                        '✓', width='small',
-                                        help='Select for execution'),
-                'strategy':         st.column_config.TextColumn(
-                                        'Strategy',
-                                        help='Strategy name (e.g. "Support/Resistance Strategy")'),
-                'index':            st.column_config.TextColumn(
-                                        'Index',
-                                        help='Market index (e.g. ^SPX, ^GDAXI)'),
-                'date':             st.column_config.DateColumn(
-                                        'Signal Date',
-                                        help='Date of the latest data row for this strategy/index',
-                                        format='YYYY-MM-DD'),
-                'entry_date':       st.column_config.DateColumn(
-                                        'Entry Date',
-                                        help='Date the position was opened (first buy trigger)',
-                                        format='YYYY-MM-DD'),
-                'sell_date':        st.column_config.DateColumn(
-                                        'Sell Date',
-                                        help='Date the simulation closed this position (sell signals only)',
-                                        format='YYYY-MM-DD'),
-                'signal':           st.column_config.TextColumn('Signal',        width='small'),
-                'ticker':           st.column_config.TextColumn('Ticker'),
-                'longName':         st.column_config.TextColumn('Name'),
-                'price':            st.column_config.NumberColumn('Price',        format='%.2f',
-                                        help='Live price from Alpaca (falls back to last close)'),
-                'atr':              st.column_config.NumberColumn(
-                                        'ATR', format='%.3f',
-                                        help='Average True Range — basis for stop-loss'),
-                'stop_loss_price':  st.column_config.NumberColumn(
-                                        'Stop Loss', format='%.2f',
-                                        help=f'Price − {atr_mult:.1f} × ATR  (buy orders only)'),
-                'currency':         st.column_config.TextColumn('CCY',            width='small'),
-                'score':            st.column_config.NumberColumn(
-                                        'Score', format='%.3f',
-                                        help='Ranking metric (order_by), e.g. Sortino ratio'),
-                'weight':           st.column_config.NumberColumn(
-                                        'Weight %', format='%.1f',
-                                        help='Inv.-volatility weight of index budget'),
-                'budget':           st.column_config.NumberColumn(
-                                        'Budget', format='%.2f',
-                                        help='invest × weight (for this index)'),
-                'qty':              st.column_config.NumberColumn('Qty',           format='%d',  width='small',
-                                        help='Shares: floor(budget / live_price)'),
-                'value':            st.column_config.NumberColumn('Value',         format='%.2f'),
-                'broker_symbol':    st.column_config.TextColumn('Broker Symbol'),
-                'tradeable':        st.column_config.CheckboxColumn('Tradeable',   width='small'),
-                'view':             st.column_config.LinkColumn(
-                                        '📊 Details',
-                                        display_text='→ open',
-                                        help='Open asset in Asset Viewer'),
+                'select':           st.column_config.CheckboxColumn('✓', width='small'),
+                'strategy':         st.column_config.TextColumn(_t('tp.col_strategy')),
+                'index':            st.column_config.TextColumn(_t('tp.col_index')),
+                'date':             st.column_config.DateColumn(_t('tp.col_signal_date'), format='YYYY-MM-DD'),
+                'entry_date':       st.column_config.DateColumn(_t('tp.col_entry_date'),  format='YYYY-MM-DD'),
+                'sell_date':        st.column_config.DateColumn(_t('tp.col_sell_date'),   format='YYYY-MM-DD'),
+                'signal':           st.column_config.TextColumn(_t('tp.col_signal'),      width='small'),
+                'ticker':           st.column_config.TextColumn(_t('tp.col_ticker')),
+                'longName':         st.column_config.TextColumn(_t('tp.col_name')),
+                'price':            st.column_config.NumberColumn(_t('tp.col_price'),     format='%.2f'),
+                'atr':              st.column_config.NumberColumn(_t('tp.col_atr'),        format='%.3f'),
+                'stop_loss_price':  st.column_config.NumberColumn(_t('tp.col_stop_loss'), format='%.2f'),
+                'currency':         st.column_config.TextColumn(_t('tp.col_ccy'),         width='small'),
+                'score':            st.column_config.NumberColumn(_t('tp.col_score'),     format='%.3f'),
+                'weight':           st.column_config.NumberColumn(_t('tp.col_weight_pct'), format='%.1f'),
+                'budget':           st.column_config.NumberColumn(_t('tp.col_budget'),    format='%.2f'),
+                'qty':              st.column_config.NumberColumn(_t('tp.col_qty'),        format='%d', width='small'),
+                'value':            st.column_config.NumberColumn(_t('tp.col_value'),     format='%.2f'),
+                'broker_symbol':    st.column_config.TextColumn(_t('tp.col_broker_symbol')),
+                'tradeable':        st.column_config.CheckboxColumn(_t('tp.col_tradeable'), width='small'),
+                'view':             st.column_config.LinkColumn(_t('tp.col_details'), display_text='→ open'),
             },
             disabled=[c for c in display_cols if c != 'select'],
         )
@@ -704,23 +672,20 @@ class TradingPage:
                 n_not_tradeable += 1
 
         if n_not_tradeable:
-            st.warning(
-                f'{n_not_tradeable} selected signal(s) not tradeable on '
-                f'{broker_id.upper()} (no broker symbol) — skipped.'
-            )
+            st.warning(_t('tp.signals_not_tradeable', n=n_not_tradeable, broker=broker_id.upper()))
 
         n_sel = len(selected_signals)
 
         if n_sel == 0:
             if edited['select'].any():
-                st.warning('No tradeable signals selected.')
+                st.warning(_t('tp.signals_no_tradeable'))
             else:
-                st.info('Tick the ✓ column to select signals for execution.')
+                st.info(_t('tp.signals_tick_hint'))
             return
 
         dry = self._dry_run()
         if st.button(
-            f'▶ Execute {n_sel} selected order(s)',
+            _t('tp.signals_execute_btn', n=n_sel),
             type='primary',
             disabled=dry,
             help=(
@@ -734,11 +699,11 @@ class TradingPage:
                 f"{s['ticker']} SL={s.get('stop_loss_price') or '—'}"
                 for s in selected_signals
             )
-            st.caption(f'🧪 Dry run — {n_sel} order(s) would be sent: {stop_info}')
+            st.caption(_t('tp.signals_dry_caption', n=n_sel, details=stop_info))
 
     @st.dialog('Confirm orders', width='large')
     def _dialog_confirm_all(self, signals: list[dict], strategies: dict, broker_id: str):
-        st.warning(f'**{len(signals)} order(s)** will be sent to Alpaca Paper.')
+        st.warning(_t('tp.signals_confirm_warning', n=len(signals)))
 
         prev_rows = []
         for s in signals:
@@ -757,7 +722,7 @@ class TradingPage:
 
         col_ok, col_cancel = st.columns(2)
         with col_ok:
-            if st.button('✅ Execute all', type='primary', use_container_width=True):
+            if st.button(_t('tp.signals_execute_all'), type='primary', use_container_width=True):
                 broker = self._broker()
                 mode   = self._mode()
                 ok, failed = 0, 0
@@ -788,13 +753,13 @@ class TradingPage:
                         failed += 1
                     else:
                         ok += 1
-                msg = f'{ok} order(s) submitted'
                 if failed:
-                    msg += f', {failed} failed'
-                st.success(msg)
+                    st.success(_t('tp.signals_order_failed', ok=ok, failed=failed))
+                else:
+                    st.success(_t('tp.signals_order_ok', ok=ok))
                 st.rerun()
         with col_cancel:
-            if st.button('Cancel', use_container_width=True):
+            if st.button(_t('tp.signals_cancel'), use_container_width=True):
                 st.rerun()
 
     # ------------------------------------------------------------------ #
@@ -811,19 +776,19 @@ class TradingPage:
 
         col_sync, _ = st.columns([1, 4])
         with col_sync:
-            if st.button('↻ Refresh'):
+            if st.button(_t('tp.pos_refresh')):
                 st.rerun()
 
         # ── Open Positions ──────────────────────────────────────────────
-        st.markdown('#### Open Positions')
+        st.markdown(_t('tp.pos_open_header'))
         try:
             positions = broker.get_positions()
         except Exception as e:
-            st.error(f'Failed to load positions: {e}')
+            st.error(_t('tp.pos_load_error', error=e))
             positions = []
 
         if not positions:
-            st.info('No open positions.')
+            st.info(_t('tp.pos_no_open'))
         else:
             # Map broker symbol → strategy from order log
             strategy_map: dict[str, str] = {}
@@ -868,13 +833,13 @@ class TradingPage:
                     pos = positions[row_idx]
                     st.markdown(f"**Selected:** {pos.broker_symbol}")
                     if self._dry_run():
-                        st.info('Dry run active — closing not available.')
+                        st.info(_t('tp.pos_dry_no_close'))
                     else:
-                        if st.button(f'✕ Close position: {pos.broker_symbol}',
+                        if st.button(_t('tp.pos_close_btn', symbol=pos.broker_symbol),
                                      type='secondary', key='btn_close_position'):
                             result = broker.close_position(pos.broker_symbol)
                             if result.status != 'error':
-                                st.success(f'{pos.broker_symbol} close order submitted.')
+                                st.success(_t('tp.pos_close_ok', symbol=pos.broker_symbol))
                                 self.order_log.save(
                                     mode=mode, broker=bid,
                                     strategy=strategy_map.get(pos.broker_symbol, ''),
@@ -888,18 +853,18 @@ class TradingPage:
                                 )
                                 st.rerun()
                             else:
-                                st.error(f'Error: {result.error_msg}')
+                                st.error(_t('tp.pos_close_error', error=result.error_msg))
 
         # ── Open Orders ─────────────────────────────────────────────────
-        st.markdown('#### Open Orders')
+        st.markdown(_t('tp.pos_orders_header'))
         try:
             open_orders = broker.get_orders('open')
         except Exception as e:
-            st.error(f'Failed to load orders: {e}')
+            st.error(_t('tp.pos_orders_load_error', error=e))
             open_orders = []
 
         if not open_orders:
-            st.info('No open orders.')
+            st.info(_t('tp.pos_no_orders'))
         else:
             ord_rows = [{
                 'ID':       o['id'][:8] + '…',
@@ -935,40 +900,34 @@ class TradingPage:
                     full_id  = chosen['_full_id']
                     symbol   = chosen['Symbol']
                     st.markdown(f"**Selected:** {symbol} — ID: `{full_id[:16]}…`")
-                    if st.button(f'✕ Cancel order: {symbol}', type='secondary',
+                    if st.button(_t('tp.pos_cancel_btn', symbol=symbol), type='secondary',
                                  key='btn_cancel_order'):
                         result = broker.cancel_order(full_id)
                         if result.status == 'cancelled':
-                            st.success(f'Order {full_id[:8]}… cancelled.')
+                            st.success(_t('tp.pos_cancel_ok', id=full_id[:8]))
                             st.rerun()
                         else:
-                            st.error(f'Cancellation failed: {result.error_msg}')
+                            st.error(_t('tp.pos_cancel_error', error=result.error_msg))
 
         # ── Manual Order ────────────────────────────────────────────────
-        st.markdown('#### Manual Order')
-        with st.expander('📝 Enter a manual order', expanded=False):
+        st.markdown(_t('tp.pos_manual_header'))
+        with st.expander(_t('tp.pos_manual_expander'), expanded=False):
             with st.form('form_manual_order'):
                 col_sym, col_qty, col_side = st.columns([2, 1, 1])
                 with col_sym:
-                    man_symbol = st.text_input(
-                        'Symbol  (e.g. AAPL)',
-                        help='Alpaca symbol — case insensitive',
-                    )
+                    man_symbol = st.text_input(_t('tp.pos_manual_symbol'))
                 with col_qty:
-                    man_qty = st.number_input('Qty', min_value=1, step=1, value=1)
+                    man_qty = st.number_input(_t('tp.pos_manual_qty'), min_value=1, step=1, value=1)
                 with col_side:
-                    man_side = st.selectbox('Side', ['buy', 'sell'])
-                submitted = st.form_submit_button('▶ Send order', type='primary')
+                    man_side = st.selectbox(_t('tp.pos_manual_side'), ['buy', 'sell'])
+                submitted = st.form_submit_button(_t('tp.pos_manual_send'), type='primary')
 
             if submitted:
                 sym = man_symbol.strip().upper()
                 if not sym:
-                    st.error('Symbol must not be empty.')
+                    st.error(_t('tp.pos_empty_symbol'))
                 elif self._dry_run():
-                    st.info(
-                        f'🧪 Dry run: {man_side.upper()} {int(man_qty)}× {sym} — '
-                        'no order sent.'
-                    )
+                    st.info(_t('tp.pos_dry_order', side=man_side.upper(), qty=int(man_qty), symbol=sym))
                 else:
                     result = broker.submit_order(
                         broker_symbol=sym,
@@ -977,10 +936,7 @@ class TradingPage:
                     )
                     if result.status != 'error':
                         short_id = result.order_id[:8] if result.order_id else '—'
-                        st.success(
-                            f'{man_side.upper()} {int(man_qty)}× {sym} submitted '
-                            f'(ID: {short_id}…)'
-                        )
+                        st.success(_t('tp.pos_order_ok', side=man_side.upper(), qty=int(man_qty), symbol=sym, id=short_id))
                         self.order_log.save(
                             mode=mode, broker=bid,
                             strategy='manual',
@@ -995,7 +951,7 @@ class TradingPage:
                         )
                         st.rerun()
                     else:
-                        st.error(f'Order failed: {result.error_msg}')
+                        st.error(_t('tp.pos_order_error', error=result.error_msg))
 
     # ------------------------------------------------------------------ #
     #  Tab: History                                                        #
@@ -1008,35 +964,31 @@ class TradingPage:
         # ── Toolbar: Sync + Clear ────────────────────────────────────────
         col_sync, col_clear, col_confirm, _ = st.columns([1, 1, 1, 2])
         with col_sync:
-            do_sync = st.button('🔄 Sync with Alpaca', type='primary',
-                                help='Pull real fill prices + detect positions closed outside the app')
+            do_sync = st.button(_t('tp.hist_sync_btn'), type='primary')
         with col_clear:
-            do_clear = st.button('🗑 Clear History', type='secondary',
-                                 help='Delete all order log entries for this broker/mode')
+            do_clear = st.button(_t('tp.hist_clear_btn'), type='secondary')
         with col_confirm:
-            confirm_clear = st.checkbox('Confirm delete', key='confirm_clear_history',
-                                        help='Must be checked before Clear History takes effect')
+            confirm_clear = st.checkbox(_t('tp.hist_confirm_delete'), key='confirm_clear_history')
 
         if do_clear:
             if not confirm_clear:
-                st.warning('Check "Confirm delete" first.')
+                st.warning(_t('tp.hist_confirm_first'))
             else:
                 self.order_log.clear_orders(mode=mode, broker=bid)
                 st.session_state['confirm_clear_history'] = False
-                st.success('History cleared.')
+                st.success(_t('tp.hist_cleared'))
                 st.rerun()
         if do_sync:
             if not broker.is_connected():
-                st.error('Broker not connected — cannot sync.')
+                st.error(_t('tp.hist_no_broker'))
             else:
-                with st.spinner('Syncing with Alpaca…'):
+                with st.spinner(_t('tp.hist_syncing')):
                     result = self.order_log.sync_from_broker(broker, mode, bid)
                 imported = result['imported']
                 fills    = result['fills_updated']
                 ext      = result['external_closes']
                 errors   = result['errors']
-                msg = (f'✅ Sync complete — {imported} order(s) imported, '
-                       f'{fills} fill(s) updated, {ext} external close(s) detected.')
+                msg = _t('tp.hist_sync_ok', imported=imported, fills=fills, ext=ext)
                 if errors:
                     msg += f'  ⚠ {len(errors)} error(s): ' + '; '.join(errors[:3])
                 st.success(msg)
@@ -1045,7 +997,7 @@ class TradingPage:
         df = self.order_log.get_orders_df(mode=mode, broker=bid)
 
         if df.empty:
-            st.info('No orders yet. Execute a signal or press 🔄 Sync to import from Alpaca.')
+            st.info(_t('tp.hist_no_orders'))
             return
 
         # ── Reconcile with live Alpaca positions ─────────────────────────
@@ -1167,31 +1119,25 @@ class TradingPage:
         ext_closes   = len(ext_tickers)
 
         c1, c2, c3, c4, c5, c6 = st.columns(6)
-        c1.metric('Open',             n_open,
-                  help='Filled buy orders where Alpaca still holds the position')
-        c2.metric('Pending',          n_pending,
-                  help='Orders not yet filled (new / held / stop-TP)')
-        c3.metric('Closed',           n_closed,
-                  help='Filled buy orders where the position has been sold')
-        c4.metric('Sells',            n_sells,
-                  help='Filled sell orders')
-        c5.metric('External closes',  ext_closes,
-                  help='Positions closed outside the app (stop-loss triggered, manual Alpaca close)')
-        c6.metric('Realized PnL',     f'{total_pnl:+,.2f}')
+        c1.metric(_t('tp.metric_open'),        n_open)
+        c2.metric(_t('tp.metric_pending'),     n_pending)
+        c3.metric(_t('tp.metric_closed'),      n_closed)
+        c4.metric(_t('tp.metric_sells'),       n_sells)
+        c5.metric(_t('tp.metric_ext_closes'),  ext_closes)
+        c6.metric(_t('tp.metric_realized_pnl'), f'{total_pnl:+,.2f}')
 
         # ── View filter ───────────────────────────────────────────────────
+        _view_all    = _t('tp.hist_all_orders')
+        _view_open   = _t('tp.hist_open_positions')
+        _view_closed = _t('tp.hist_closed_trades')
         view = st.radio(
-            'Show:', ['All orders', 'Open positions', 'Closed trades'],
+            _t('tp.hist_show'), [_view_all, _view_open, _view_closed],
             horizontal=True, key='history_view_filter',
         )
 
-        if view == 'Open positions':
+        if view == _view_open:
             display_df = df[df['pos_status'].isin(['🟢 Open', '⏳ Pending'])].copy()
-            st.caption(
-                f'ℹ {n_open} open + pending position(s) — '
-                'open positions match the **📂 Positions** tab. '
-                'Press 🔄 Sync to refresh.'
-            )
+            st.caption(_t('tp.hist_open_caption', n=n_open))
             show_cols = [c for c in
                 ['pos_status', 'filled_at', 'strategy', 'ticker', 'qty',
                  'fill_price', 'status']
@@ -1206,26 +1152,21 @@ class TradingPage:
                 display.style.apply(_row_style, axis=1),
                 use_container_width=True,
                 column_config={
-                    'pos_status': st.column_config.TextColumn('Status', width='small'),
-                    'filled_at':  st.column_config.DatetimeColumn('Filled at',
-                                                                   format='YYYY-MM-DD HH:mm'),
-                    'fill_price': st.column_config.NumberColumn('Entry $', format='%.2f'),
+                    'pos_status': st.column_config.TextColumn(_t('tp.hist_col_status'), width='small'),
+                    'filled_at':  st.column_config.DatetimeColumn(_t('tp.hist_col_filled_at'), format='YYYY-MM-DD HH:mm'),
+                    'fill_price': st.column_config.NumberColumn(_t('tp.hist_col_entry'), format='%.2f'),
                 },
             )
             return  # skip generic table below
 
-        elif view == 'Closed trades':
+        elif view == _view_closed:
             # Aggregate all closed buy lots per ticker, then pair with the sell side.
             # ADTN might have 3 separate buy orders (57+9+8) → merge into 1 trade row.
             closed_buys = df[df['pos_status'] == '⚫ Closed'].copy()
             sell_filled = df[(df['action'] == 'sell') & (df['status'] == 'filled')].copy()
 
             if closed_buys.empty:
-                st.info(
-                    'No closed trades yet. '
-                    'Press **🔄 Sync with Alpaca** first so all Alpaca orders are imported, '
-                    'then switch back to this filter.'
-                )
+                st.info(_t('tp.hist_no_closed'))
                 return
 
             # Numeric coercion
@@ -1298,7 +1239,7 @@ class TradingPage:
             trades_df = pd.DataFrame(trades)
 
             if trades_df.empty:
-                st.info('No closed trades yet.')
+                st.info(_t('tp.hist_no_closed_simple'))
             else:
                 def _pnl_style(row):
                     pnl = row.get('P&L')
@@ -1348,16 +1289,12 @@ class TradingPage:
             display.style.apply(_row_style, axis=1),
             use_container_width=True,
             column_config={
-                'pos_status':   st.column_config.TextColumn('Status', width='small'),
-                'submitted_at': st.column_config.DatetimeColumn('Submitted',
-                                                                 format='YYYY-MM-DD HH:mm'),
-                'filled_at':    st.column_config.DatetimeColumn('Filled at',
-                                                                 format='YYYY-MM-DD HH:mm'),
-                'signal_price': st.column_config.NumberColumn('Entry $', format='%.2f'),
-                'fill_price':   st.column_config.NumberColumn('Fill $',  format='%.2f'),
-                'error_msg':    st.column_config.TextColumn(
-                    'Note',
-                    help='"external_close" = closed outside the app (stop-loss, manual)'),
+                'pos_status':   st.column_config.TextColumn(_t('tp.hist_col_status'),    width='small'),
+                'submitted_at': st.column_config.DatetimeColumn(_t('tp.hist_col_submitted'), format='YYYY-MM-DD HH:mm'),
+                'filled_at':    st.column_config.DatetimeColumn(_t('tp.hist_col_filled_at'), format='YYYY-MM-DD HH:mm'),
+                'signal_price': st.column_config.NumberColumn(_t('tp.hist_col_entry'),   format='%.2f'),
+                'fill_price':   st.column_config.NumberColumn(_t('tp.hist_col_fill'),    format='%.2f'),
+                'error_msg':    st.column_config.TextColumn(_t('tp.hist_col_note')),
             },
         )
 
@@ -1367,37 +1304,26 @@ class TradingPage:
             missing_in_hist   = live_open - hist_open_tickers
             orphan_in_hist    = hist_open_tickers - live_open
             if missing_in_hist:
-                st.warning(
-                    f'⚠ Alpaca shows these as open but they have no buy record here: '
-                    f'`{"`, `".join(sorted(missing_in_hist))}` — press 🔄 Sync.'
-                )
+                st.warning(_t('tp.hist_reconcile_missing', tickers='`, `'.join(sorted(missing_in_hist))))
             if orphan_in_hist:
-                st.warning(
-                    f'⚠ These show as open in History but are no longer in Alpaca: '
-                    f'`{"`, `".join(sorted(orphan_in_hist))}` — press 🔄 Sync.'
-                )
+                st.warning(_t('tp.hist_reconcile_orphan', tickers='`, `'.join(sorted(orphan_in_hist))))
 
         # ── Activity Log ──────────────────────────────────────────────────
         st.markdown('---')
-        st.markdown('#### 📑 Activity Log')
-        st.caption(
-            'Individual fill events and fees from Alpaca — more granular than orders. '
-            'Each partial fill appears as a separate row.'
-        )
+        st.markdown(_t('tp.hist_activity_log'))
+        st.caption(_t('tp.hist_activity_caption'))
 
         col_async, col_aclear, _ = st.columns([1, 1, 3])
         with col_async:
-            do_act_sync = st.button('🔄 Sync Activities', key='btn_sync_activities',
-                                    help='Import FILL and FEE events from Alpaca')
+            do_act_sync = st.button(_t('tp.hist_act_sync_btn'), key='btn_sync_activities')
         with col_aclear:
-            do_act_clear = st.button('🗑 Clear Activities', key='btn_clear_activities',
-                                     type='secondary')
+            do_act_clear = st.button(_t('tp.hist_act_clear_btn'), key='btn_clear_activities', type='secondary')
 
         if do_act_sync:
             if not broker.is_connected():
-                st.error('Broker not connected.')
+                st.error(_t('tp.hist_act_no_broker'))
             else:
-                with st.spinner('Syncing activities…'):
+                with st.spinner(_t('tp.hist_act_syncing')):
                     res = self.order_log.sync_activities(
                         broker, bid, mode,
                         activity_types=['FILL', 'FEE'],
@@ -1405,32 +1331,31 @@ class TradingPage:
                 if res['errors']:
                     st.error('Sync errors: ' + ' | '.join(res['errors'][:5]))
                 elif res['imported'] == 0:
-                    st.warning('⚠ Sync completed but 0 records imported. '
-                               'Check broker connection or try again.')
+                    st.warning(_t('tp.hist_act_sync_zero'))
                 else:
-                    st.success(f'✅ {res["imported"]} new activity record(s) imported.')
+                    st.success(_t('tp.hist_act_sync_ok', n=res['imported']))
                 st.rerun()
 
         if do_act_clear:
             self.order_log.clear_activities(broker=bid, mode=mode)
-            st.success('Activity log cleared.')
+            st.success(_t('tp.hist_act_cleared'))
             st.rerun()
 
         act_df = self.order_log.get_activities_df(broker=bid, mode=mode)
         if act_df.empty:
-            st.info('No activities yet — press 🔄 Sync Activities.')
+            st.info(_t('tp.hist_act_no_activities'))
         else:
             # Summary metrics
             fills = act_df[act_df['activity_type'] == 'FILL']
             fees  = act_df[act_df['activity_type'] == 'FEE']
             fee_total = pd.to_numeric(fees['net_amount'], errors='coerce').sum()
             ma1, ma2, ma3 = st.columns(3)
-            ma1.metric('Fill events',  len(fills))
-            ma2.metric('Fee events',   len(fees))
-            ma3.metric('Total fees',   f'{fee_total:+,.4f}' if fee_total else '0')
+            ma1.metric(_t('tp.hist_act_fill_events'), len(fills))
+            ma2.metric(_t('tp.hist_act_fee_events'),  len(fees))
+            ma3.metric(_t('tp.hist_act_total_fees'),  f'{fee_total:+,.4f}' if fee_total else '0')
 
             # Filter
-            act_filter = st.radio('Activity type:', ['FILL', 'FEE', 'All'],
+            act_filter = st.radio(_t('tp.hist_act_type_filter'), ['FILL', 'FEE', 'All'],
                                   horizontal=True, key='act_type_filter')
             show_act = act_df if act_filter == 'All' else act_df[act_df['activity_type'] == act_filter]
 
@@ -1443,13 +1368,12 @@ class TradingPage:
                 show_act[show_act_cols].reset_index(drop=True),
                 use_container_width=True,
                 column_config={
-                    'activity_type':   st.column_config.TextColumn('Type', width='small'),
-                    'transaction_time':st.column_config.DatetimeColumn(
-                        'Time', format='YYYY-MM-DD HH:mm:ss'),
-                    'price':           st.column_config.NumberColumn('Price $',    format='%.4f'),
-                    'net_amount':      st.column_config.NumberColumn('Net $',      format='%+.4f'),
-                    'cum_qty':         st.column_config.NumberColumn('Cum qty',    format='%.0f'),
-                    'leaves_qty':      st.column_config.NumberColumn('Leaves qty', format='%.0f'),
+                    'activity_type':   st.column_config.TextColumn(_t('tp.hist_col_type'),      width='small'),
+                    'transaction_time':st.column_config.DatetimeColumn(_t('tp.hist_col_time'),  format='YYYY-MM-DD HH:mm:ss'),
+                    'price':           st.column_config.NumberColumn(_t('tp.hist_col_price'),   format='%.4f'),
+                    'net_amount':      st.column_config.NumberColumn(_t('tp.hist_col_net'),     format='%+.4f'),
+                    'cum_qty':         st.column_config.NumberColumn(_t('tp.hist_col_cum_qty'), format='%.0f'),
+                    'leaves_qty':      st.column_config.NumberColumn(_t('tp.hist_col_leaves_qty'), format='%.0f'),
                 },
             )
 
@@ -1458,7 +1382,7 @@ class TradingPage:
     # ------------------------------------------------------------------ #
 
     def _tab_compare(self):
-        st.markdown('#### Backtest vs. Paper Trading')
+        st.markdown(_t('tp.cmp_header'))
 
         # ── 1. Load backtest data ──────────────────────────────────────────
         # Priority: session_state (set by multi_transaction on same page load)
@@ -1488,15 +1412,10 @@ class TradingPage:
                     + (f" | As of: {saved_at}" if saved_at else '')
                 )
             else:
-                st.info(
-                    'No backtest data yet. Run the '
-                    '[Multi-Strategies simulation](/?multi=true) — '
-                    'results will appear here automatically.'
-                )
+                st.info(_t('tp.cmp_no_backtest'))
 
         with col_btn:
-            st.link_button('▶ Multi-Strategies', '/?multi=true',
-                           help='Simulation dort starten — Ergebnis erscheint automatisch hier')
+            st.link_button(_t('tp.cmp_multi_btn'), '/?multi=true')
 
         if not has_backtest:
             return
@@ -1552,7 +1471,7 @@ class TradingPage:
         cfg = self._broker_config()
 
         # ---- Alpaca -------------------------------------------------- #
-        st.markdown('#### Alpaca Paper Trading — Connection')
+        st.markdown(_t('tp.set_alpaca_header'))
         st.caption(
             'API credentials are read from the encrypted key store (ksplib). '
             'Add entries under **Admin → API Credentials**.'
@@ -1560,28 +1479,24 @@ class TradingPage:
 
         current_ksp_name = self.sys_config.get_value('alpaca_ksp_name', 'av-paper')
         with st.form('form_alpaca_ksp'):
-            ksp_name = st.text_input(
-                'KSP API Name',
-                value=current_ksp_name,
-                help='Name of the key store entry, e.g. "av-paper". user = API Key, password = API Secret.',
-            )
-            if st.form_submit_button('Save'):
+            ksp_name = st.text_input(_t('tp.set_ksp_label'), value=current_ksp_name)
+            if st.form_submit_button(_t('tp.set_ksp_save')):
                 self.sys_config.set_value('alpaca_ksp_name', ksp_name)
-                st.success(f'KSP name "{ksp_name}" saved.')
+                st.success(_t('tp.set_ksp_saved', name=ksp_name))
                 st.rerun()
 
         # Show live connection status after name is set
         if cfg.get('alpaca_key'):
             broker = self._broker()
             if broker.is_connected():
-                st.success(f'🟢 Connected to Alpaca Paper (KSP: "{current_ksp_name}")')
+                st.success(_t('tp.set_connected', name=current_ksp_name))
             else:
-                st.error(f'🔴 Connection failed — check KSP entry "{current_ksp_name}".')
+                st.error(_t('tp.set_conn_failed', name=current_ksp_name))
         else:
-            st.warning(f'KSP entry "{current_ksp_name}" not found or empty.')
+            st.warning(_t('tp.set_ksp_empty', name=current_ksp_name))
 
         # ---- Manual connection test ---------------------------------- #
-        with st.expander('🔌 Connection test — enter credentials manually'):
+        with st.expander(_t('tp.set_test_expander')):
             st.caption(
                 'Test credentials without storing them. Useful for verifying a new key '
                 'before adding it to the key store.'
@@ -1589,40 +1504,40 @@ class TradingPage:
             with st.form('form_alpaca_test'):
                 col_l, col_r = st.columns(2)
                 with col_l:
-                    test_key = st.text_input('API Key', type='password', key='test_alpaca_key')
+                    test_key = st.text_input(_t('tp.set_test_key'), type='password', key='test_alpaca_key')
                 with col_r:
-                    test_secret = st.text_input('API Secret', type='password', key='test_alpaca_secret')
-                test_paper = st.checkbox('Paper account', value=True, key='test_alpaca_paper')
-                run_test = st.form_submit_button('▶ Run test', type='primary')
+                    test_secret = st.text_input(_t('tp.set_test_secret'), type='password', key='test_alpaca_secret')
+                test_paper = st.checkbox(_t('tp.set_test_paper'), value=True, key='test_alpaca_paper')
+                run_test = st.form_submit_button(_t('tp.set_test_run'), type='primary')
 
             if run_test:
                 if not test_key or not test_secret:
-                    st.error('API Key and API Secret are required.')
+                    st.error(_t('tp.set_test_missing_creds'))
                 else:
                     self._run_alpaca_connection_test(test_key, test_secret, test_paper)
 
         # ---- IBKR ---------------------------------------------------- #
-        st.markdown('#### IBKR Live Trading — Connection *(Phase 3)*')
+        st.markdown(_t('tp.set_ibkr_header'))
         with st.form('form_ibkr_creds'):
-            host = st.text_input('IB Gateway / TWS Host', value=cfg.get('ibkr_host', '127.0.0.1'))
-            port = st.text_input('Port  (7497 = Paper, 7496 = Live)', value=str(cfg.get('ibkr_port', '7497')))
-            if st.form_submit_button('Save'):
+            host = st.text_input(_t('tp.set_ibkr_host'), value=cfg.get('ibkr_host', '127.0.0.1'))
+            port = st.text_input(_t('tp.set_ibkr_port'), value=str(cfg.get('ibkr_port', '7497')))
+            if st.form_submit_button(_t('tp.set_ksp_save')):
                 self.sys_config.set_value('ibkr_host', host)
                 self.sys_config.set_value('ibkr_port', port)
-                st.success('IBKR connection parameters saved.')
+                st.success(_t('tp.set_ibkr_saved'))
 
         # ---- Strategy editor ----------------------------------------- #
         # ---- Simulation DB selector ---------------------------------- #
-        st.markdown('#### Simulation Database')
+        st.markdown(_t('tp.set_simdb_header'))
         from tradinglib.trading_bridge import SignalEvaluator as _SE
         _avail_dbs = _SE.available_sim_dbs(self.db_path)
-        _auto_label = '— Auto (best available) —'
+        _auto_label = _t('tp.set_simdb_auto')
         _db_options  = [_auto_label] + _avail_dbs
         _current_db  = self.sys_config.get_value('trading_sim_db', '') or ''
         _sel_idx     = (_db_options.index(_current_db)
                         if _current_db in _db_options else 0)
         _chosen = st.radio(
-            'Which simulation DB to use for signal calculation:',
+            _t('tp.set_simdb_which'),
             _db_options,
             index=_sel_idx,
             horizontal=True,
@@ -1640,7 +1555,7 @@ class TradingPage:
             for _k in list(st.session_state.keys()):
                 if _k.startswith('signals_cache_'):
                     del st.session_state[_k]
-            st.success(f'Simulation DB set to: **{_chosen}**. Press 🔄 Recalculate to apply.')
+            st.success(_t('tp.set_simdb_saved', db=_chosen))
 
         st.caption(
             f'Available: `{"`, `".join(_avail_dbs)}`'
@@ -1649,7 +1564,7 @@ class TradingPage:
         st.markdown('---')
 
         # ---- Strategies editor --------------------------------------- #
-        st.markdown('#### Strategies (Multi-Transactions)')
+        st.markdown(_t('tp.set_strat_header'))
         st.caption(
             'Each **strategy** (e.g. "Value Trend") groups one or more **indices** '
             '(e.g. SPX, GDAXI) — each with its own Buy/Sell conditions. '
@@ -1698,9 +1613,9 @@ class TradingPage:
         # ── Per-strategy expanders ────────────────────────────────────────
         col_add, col_save, col_discard = st.columns([2, 1, 1])
         with col_add:
-            new_sn = st.text_input('New strategy name', key='new_strat_name',
+            new_sn = st.text_input(_t('tp.set_strat_new_name'), key='new_strat_name',
                                    placeholder='e.g. Value Trend', label_visibility='collapsed')
-            if st.button('➕ Add strategy', key='btn_add_strat'):
+            if st.button(_t('tp.set_strat_add_btn'), key='btn_add_strat'):
                 ns = new_sn.strip()
                 if ns and ns not in pending:
                     pending[ns] = {'num_assets': 5, 'invest': 10000,
@@ -1736,10 +1651,10 @@ class TradingPage:
                     scfg['enabled'] = st.checkbox(
                         'Active', value=bool(scfg.get('enabled', True)), key=f'en_{sn}')
                 with p5:
-                    if st.button('🗑 Delete strategy', key=f'del_strat_{sn}', type='secondary'):
+                    if st.button(_t('tp.set_strat_del_btn'), key=f'del_strat_{sn}', type='secondary'):
                         to_delete.append(sn)
 
-                st.markdown('**Index conditions:**')
+                st.markdown(_t('tp.set_strat_conditions'))
 
                 # ── Per-index buy/sell table ──────────────────────────────
                 idx_df = pd.DataFrame([
@@ -1754,12 +1669,9 @@ class TradingPage:
                     hide_index=True,
                     key=f'idx_editor_{sn}',
                     column_config={
-                        'Index': st.column_config.TextColumn(
-                            'Index', help='e.g. SPX, GDAXI', required=True, width='small'),
-                        'Buy':  st.column_config.TextColumn(
-                            'Buy Condition', width='large'),
-                        'Sell': st.column_config.TextColumn(
-                            'Sell Condition', width='large'),
+                        'Index': st.column_config.TextColumn(_t('tp.set_col_index'), required=True, width='small'),
+                        'Buy':  st.column_config.TextColumn(_t('tp.set_col_buy'),  width='large'),
+                        'Sell': st.column_config.TextColumn(_t('tp.set_col_sell'), width='large'),
                     },
                 )
 
@@ -1783,15 +1695,15 @@ class TradingPage:
 
         # ── Save / Discard ────────────────────────────────────────────────
         with col_save:
-            if st.button('💾 Save all', type='primary', key='btn_save_strategies'):
+            if st.button(_t('tp.set_strat_save_btn'), type='primary', key='btn_save_strategies'):
                 errors: list[str] = []
                 for sn, scfg in pending.items():
                     idx_cfgs = {k: v for k, v in scfg.items() if isinstance(v, dict)}
                     if not idx_cfgs:
-                        errors.append(f'"{sn}": no indices defined.')
+                        errors.append(_t('tp.set_strat_no_indices', name=sn))
                     for idx, icfg in idx_cfgs.items():
                         if not icfg.get('buy') or not icfg.get('sell'):
-                            errors.append(f'"{sn} / {idx}": Buy and Sell must not be empty.')
+                            errors.append(_t('tp.set_strat_empty_cond', name=sn, idx=idx))
                 if errors:
                     for e in errors:
                         st.error(e)
@@ -1800,16 +1712,17 @@ class TradingPage:
                     for k in list(st.session_state.keys()):
                         if k.startswith('signals_cache_') or k == _edit_key:
                             del st.session_state[k]
-                    st.success(f'✅ {len(pending)} strateg{"y" if len(pending)==1 else "ies"} saved.')
+                    word = 'strategy' if len(pending) == 1 else 'strategies'
+                    st.success(_t('tp.set_strat_saved', n=len(pending), word=word))
                     st.rerun()
 
         with col_discard:
-            if st.button('↩ Discard', key='btn_discard_strategies'):
+            if st.button(_t('tp.set_strat_discard_btn'), key='btn_discard_strategies'):
                 st.session_state.pop(_edit_key, None)
                 st.rerun()
 
         # ---- Ticker mapping ------------------------------------------ #
-        st.markdown('#### Ticker Mapping')
+        st.markdown(_t('tp.set_ticker_header'))
         st.caption(
             'Resolved automatically via suffix rules. Use this to manually fix edge cases '
             '(ADRs, dual listings). Manual entries always override the automatic cache.'
@@ -1835,29 +1748,29 @@ class TradingPage:
                 row_idx = _over_rows[0]
                 if row_idx < len(over_df):
                     ticker_to_del = over_df.iloc[row_idx]['yahoo_ticker']
-                    if st.button(f'🗑 Delete override for {ticker_to_del}', type='secondary'):
+                    if st.button(_t('tp.set_override_del_btn', ticker=ticker_to_del), type='secondary'):
                         self.resolver.delete_override(ticker_to_del)
                         st.rerun()
         else:
-            st.info('No manual overrides defined.')
+            st.info(_t('tp.set_no_overrides'))
 
-        with st.expander('Add new override'):
+        with st.expander(_t('tp.set_override_add')):
             with st.form('form_add_override'):
-                yft  = st.text_input('Yahoo Ticker  (e.g. SAP.DE)')
-                als  = st.text_input('Alpaca Symbol  (leave empty = not tradeable on Alpaca)')
-                ibks = st.text_input('IBKR Symbol  (e.g. SAP)')
-                ibkx = st.text_input('IBKR Exchange  (e.g. XETRA)')
-                ibkc = st.text_input('IBKR Currency  (e.g. EUR)')
-                note = st.text_input('Note  (optional)')
-                if st.form_submit_button('Add / overwrite'):
+                yft  = st.text_input(_t('tp.set_override_yahoo'))
+                als  = st.text_input(_t('tp.set_override_alpaca'))
+                ibks = st.text_input(_t('tp.set_override_ibkr'))
+                ibkx = st.text_input(_t('tp.set_override_exchange'))
+                ibkc = st.text_input(_t('tp.set_override_currency'))
+                note = st.text_input(_t('tp.set_override_note'))
+                if st.form_submit_button(_t('tp.set_override_submit')):
                     if yft:
                         self.resolver.save_override(
                             yft, als or None, ibks or None, ibkx or None, ibkc or None, note
                         )
-                        st.success(f'Override for {yft.upper()} saved.')
+                        st.success(_t('tp.set_override_saved', ticker=yft.upper()))
                         st.rerun()
                     else:
-                        st.error('Yahoo Ticker must not be empty.')
+                        st.error(_t('tp.set_override_empty'))
 
     # ------------------------------------------------------------------ #
     #  Alpaca connection test                                              #
