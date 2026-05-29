@@ -511,12 +511,6 @@ class TradingApp:
         if maybe_show_setup():
             st.stop()
 
-        # Initialize i18n before any UI is rendered.
-        # sys_config uses username from session_state; fall back to anonymous config.
-        _username = st.session_state.get("username", "admin")
-        _sc = sysconf.SystemConfig(username=_username, bare_mode=True)
-        i18n.init_from_session(sys_config=_sc)
-
         parms = st.query_params.to_dict()
         if parms.get('stream') == "api":
                 data = json.loads(parms.get('data'))
@@ -544,6 +538,12 @@ class TradingApp:
         else:
 
             self.login_overlay()
+
+            # i18n init happens here — AFTER login_overlay() so the real username
+            # is in session_state and sys_config reads the correct language from config.db.
+            _username = st.session_state.get("username", "admin")
+            _sc = sysconf.SystemConfig(username=_username, bare_mode=True)
+            i18n.init_from_session(sys_config=_sc)
 
             self.authentication_status = st.session_state.get('authentication_status')
             if not self.authentication_status:
