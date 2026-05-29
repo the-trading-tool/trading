@@ -172,15 +172,23 @@ class AlpacaBroker(TradingBroker):
             'open':   QueryOrderStatus.OPEN,
             'closed': QueryOrderStatus.CLOSED,
         }
-        req = GetOrdersRequest(status=status_map.get(status, QueryOrderStatus.ALL))
+        req = GetOrdersRequest(
+            status=status_map.get(status, QueryOrderStatus.ALL),
+            limit=500,  # default is 50 — raise to avoid missing older orders
+        )
         orders = self._get_client().get_orders(req)
+
+        def _val(enum_or_str) -> str:
+            """Return the plain string value of an Alpaca enum (e.g. 'filled', not 'OrderStatus.FILLED')."""
+            return enum_or_str.value if hasattr(enum_or_str, 'value') else str(enum_or_str)
+
         return [
             {
                 'id':               str(o.id),
-                'symbol':           o.symbol,
-                'side':             str(o.side),
+                'symbol':           str(o.symbol),
+                'side':             _val(o.side),
                 'qty':              float(o.qty or 0),
-                'status':           str(o.status),
+                'status':           _val(o.status),
                 'filled_avg_price': float(o.filled_avg_price or 0),
                 'created_at':       str(o.created_at),
                 'filled_at':        str(o.filled_at) if o.filled_at else '',

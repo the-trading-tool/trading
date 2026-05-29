@@ -404,7 +404,12 @@ class TradingPage:
         # filters the display without triggering another simulation run.
         if _do_recalc or _cache_key not in st.session_state:
             from datetime import datetime as _datetime
-            _evaluator = SignalEvaluator(username=self.username, db_path=self.db_path)
+            _sim_db_choice = self.sys_config.get_value('trading_sim_db', '') or ''
+            _evaluator = SignalEvaluator(
+                username=self.username,
+                db_path=self.db_path,
+                sim_db_override=_sim_db_choice if _sim_db_choice else None,
+            )
             _all_signals: list[dict] = []
             _eval_errors: dict[str, str] = {}
             _progress = st.progress(0, text='Initialising …')
@@ -1043,35 +1048,258 @@ class TradingPage:
             st.info('No orders yet. Execute a signal or press 🔄 Sync to import from Alpaca.')
             return
 
-        filled = df[df['status'] == 'filled'].copy()
-        if not filled.empty and 'fill_price' in filled.columns and 'signal_price' in filled.columns:
-            filled['pnl'] = (
-                (filled['fill_price'].fillna(0) - filled['signal_price'].fillna(0))
-                * filled['qty'].fillna(0)
+        # ── Reconcile with live Alpaca positions ─────────────────────────
+        # Ground truth: what is currently open on Alpaca
+        try:
+            live_open: set[str] = {p.broker_symbol for p in broker.get_positions()} \
+                if broker.is_connected() else set()
+        except Exception:
+            live_open = set()
+
+        # Add position_status column
+        _PENDING_STATUSES = {'new', 'submitted', 'accepted', 'pending_new',
+                             'pending_cancel', 'pending_replace'}
+
+        def _pos_status(row):
+            action = row.get('action', '')
+            status = row.get('status', '')
+            if action == 'buy':
+                if status in _PENDING_STATUSES:
+                    return '⏳ Pending'
+                if status == 'held':
+                    return '🔒 Held'          # bracket / stop order waiting
+                if status == 'filled':
+                    return '🟢 Open' if row['ticker'] in live_open else '⚫ Closed'
+                if status in ('canceled', 'cancelled', 'expired', 'replaced'):
+                    return '❌ Cancelled'
+            if action == 'sell':
+                if status in _PENDING_STATUSES:
+                    return '⏳ Sell pending'
+                if status == 'held':
+                    return '🔒 Stop/TP'       # bracket sell leg waiting to trigger
+                if status in ('canceled', 'cancelled', 'expired', 'replaced'):
+                    return '❌ Cancelled'
+                return '🔴 Sell'
+            return ''
+
+        df['pos_status'] = df.apply(_pos_status, axis=1)
+
+        # ── Realized P&L — pair buy fills with sell fills per ticker ─────
+        # Using (avg_sell_fill − avg_buy_fill) × qty instead of the naive
+        # (sell_fill − signal_price) formula which breaks for imported orders
+        # where signal_price is NULL.
+        def _realized_pnl(data: pd.DataFrame) -> float:
+            closed_tickers = set(
+                data.loc[data['pos_status'] == '⚫ Closed', 'ticker']
             )
-            sells = filled[filled['action'] == 'sell']
-            total_pnl = sells['pnl'].sum() if not sells.empty else 0.0
-        else:
-            total_pnl = 0.0
+            if not closed_tickers:
+                return 0.0
+            total = 0.0
+            for ticker in closed_tickers:
+                buys  = data[(data['ticker'] == ticker) & (data['action'] == 'buy')
+                             & (data['status'] == 'filled')]
+                sells = data[(data['ticker'] == ticker) & (data['action'] == 'sell')
+                             & (data['status'] == 'filled')]
+                if buys.empty or sells.empty:
+                    continue
+                buy_qty    = pd.to_numeric(buys['qty'],        errors='coerce').fillna(0).sum()
+                sell_qty   = pd.to_numeric(sells['qty'],       errors='coerce').fillna(0).sum()
+                buy_price  = pd.to_numeric(buys['fill_price'], errors='coerce').fillna(0)
+                sell_price = pd.to_numeric(sells['fill_price'],errors='coerce').fillna(0)
+                buy_val    = (pd.to_numeric(buys['qty'], errors='coerce').fillna(0) * buy_price).sum()
+                sell_val   = (pd.to_numeric(sells['qty'], errors='coerce').fillna(0) * sell_price).sum()
+                closed_qty = min(buy_qty, sell_qty)   # only count actually closed qty
+                avg_buy    = buy_val  / buy_qty  if buy_qty  > 0 else 0
+                avg_sell   = sell_val / sell_qty if sell_qty > 0 else 0
+                total += (avg_sell - avg_buy) * closed_qty
+            return round(total, 2)
 
-        ext_closes = int((df.get('error_msg', pd.Series()) == 'external_close').sum())
+        total_pnl = _realized_pnl(df)
 
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric('Total orders',     len(df))
-        c2.metric('Filled',           len(filled))
-        c3.metric('Errors',           int((df['status'] == 'error').sum()))
-        c4.metric('External closes',  ext_closes,
-                  help='Positions closed outside the app (stop-loss, manual Alpaca)')
-        c5.metric('Realized PnL',     f'{total_pnl:+,.2f}')
+        n_open       = int((df['pos_status'] == '🟢 Open').sum())
+        n_closed     = int((df['pos_status'] == '⚫ Closed').sum())
+        n_pending    = int(df['pos_status'].isin(['⏳ Pending', '⏳ Sell pending', '🔒 Held', '🔒 Stop/TP']).sum())
+        sells_filled = df[(df['action'] == 'sell') & (df['status'] == 'filled')]
+        n_sells      = len(sells_filled)
+        # External closes: unique tickers whose sell was flagged as external_close
+        _emsg        = df.get('error_msg', pd.Series(dtype=str))
+        ext_tickers  = set(df.loc[_emsg == 'external_close', 'ticker'])
+        ext_closes   = len(ext_tickers)
 
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.metric('Open',             n_open,
+                  help='Filled buy orders where Alpaca still holds the position')
+        c2.metric('Pending',          n_pending,
+                  help='Orders not yet filled (new / held / stop-TP)')
+        c3.metric('Closed',           n_closed,
+                  help='Filled buy orders where the position has been sold')
+        c4.metric('Sells',            n_sells,
+                  help='Filled sell orders')
+        c5.metric('External closes',  ext_closes,
+                  help='Positions closed outside the app (stop-loss triggered, manual Alpaca close)')
+        c6.metric('Realized PnL',     f'{total_pnl:+,.2f}')
+
+        # ── View filter ───────────────────────────────────────────────────
+        view = st.radio(
+            'Show:', ['All orders', 'Open positions', 'Closed trades'],
+            horizontal=True, key='history_view_filter',
+        )
+
+        if view == 'Open positions':
+            display_df = df[df['pos_status'].isin(['🟢 Open', '⏳ Pending'])].copy()
+            st.caption(
+                f'ℹ {n_open} open + pending position(s) — '
+                'open positions match the **📂 Positions** tab. '
+                'Press 🔄 Sync to refresh.'
+            )
+            show_cols = [c for c in
+                ['pos_status', 'filled_at', 'strategy', 'ticker', 'qty',
+                 'fill_price', 'status']
+                if c in display_df.columns]
+            display = display_df[show_cols].reset_index(drop=True)
+
+            def _row_style(row):
+                return (['background-color: #d4edda'] * len(row)
+                        if row.get('pos_status') == '🟢 Open' else [''] * len(row))
+
+            st.dataframe(
+                display.style.apply(_row_style, axis=1),
+                use_container_width=True,
+                column_config={
+                    'pos_status': st.column_config.TextColumn('Status', width='small'),
+                    'filled_at':  st.column_config.DatetimeColumn('Filled at',
+                                                                   format='YYYY-MM-DD HH:mm'),
+                    'fill_price': st.column_config.NumberColumn('Entry $', format='%.2f'),
+                },
+            )
+            return  # skip generic table below
+
+        elif view == 'Closed trades':
+            # Aggregate all closed buy lots per ticker, then pair with the sell side.
+            # ADTN might have 3 separate buy orders (57+9+8) → merge into 1 trade row.
+            closed_buys = df[df['pos_status'] == '⚫ Closed'].copy()
+            sell_filled = df[(df['action'] == 'sell') & (df['status'] == 'filled')].copy()
+
+            if closed_buys.empty:
+                st.info(
+                    'No closed trades yet. '
+                    'Press **🔄 Sync with Alpaca** first so all Alpaca orders are imported, '
+                    'then switch back to this filter.'
+                )
+                return
+
+            # Numeric coercion
+            for col in ('qty', 'fill_price', 'signal_price'):
+                for frame in (closed_buys, sell_filled):
+                    if col in frame.columns:
+                        frame[col] = pd.to_numeric(frame[col], errors='coerce').fillna(0)
+
+            # Aggregate buy side per ticker using plain groupby — no apply() needed
+            buy_agg_rows = []
+            for ticker, grp in closed_buys.groupby('ticker'):
+                qty_total = float(grp['qty'].sum())
+                # prefer fill_price; fall back to signal_price
+                use_col = 'fill_price' if grp['fill_price'].gt(0).any() else 'signal_price'
+                avg_entry = (
+                    float((grp['qty'] * grp[use_col]).sum()) / qty_total
+                    if qty_total > 0 else 0.0
+                )
+                strats = grp['strategy'].replace('', pd.NA).dropna()
+                buy_agg_rows.append({
+                    'ticker':     ticker,
+                    'qty':        qty_total,
+                    'avg_entry':  round(avg_entry, 4),
+                    'entry_date': grp['filled_at'].dropna().min() if 'filled_at' in grp else None,
+                    'strategy':   strats.iloc[0] if len(strats) > 0 else '',
+                    'note':       'external_close'
+                                  if 'error_msg' in grp.columns
+                                     and (grp['error_msg'] == 'external_close').any()
+                                  else '',
+                })
+            buy_agg = pd.DataFrame(buy_agg_rows)
+
+            # Aggregate sell side per ticker
+            sell_agg_rows = []
+            for ticker, grp in sell_filled.groupby('ticker'):
+                qty_total = float(grp['qty'].sum())
+                avg_exit  = (
+                    float((grp['qty'] * grp['fill_price']).sum()) / qty_total
+                    if qty_total > 0 else 0.0
+                )
+                sell_agg_rows.append({
+                    'ticker':    ticker,
+                    'sell_qty':  qty_total,
+                    'avg_exit':  round(avg_exit, 4),
+                    'exit_date': grp['filled_at'].dropna().max() if 'filled_at' in grp else None,
+                })
+            sell_agg = pd.DataFrame(sell_agg_rows) if sell_agg_rows else pd.DataFrame(
+                columns=['ticker', 'sell_qty', 'avg_exit', 'exit_date'])
+
+            merged = buy_agg.merge(sell_agg, on='ticker', how='left')
+
+            trades = []
+            for _, row in merged.iterrows():
+                entry = float(row.get('avg_entry') or 0)
+                exit_ = float(row.get('avg_exit') or 0)
+                qty   = float(row.get('qty') or 0)
+                pnl   = round((exit_ - entry) * qty, 2) if entry > 0 and exit_ > 0 else None
+                trades.append({
+                    'Ticker':     row['ticker'],
+                    'Strategy':   row.get('strategy', ''),
+                    'Qty':        qty,
+                    'Entry $':    entry or None,
+                    'Entry date': row.get('entry_date'),
+                    'Exit $':     exit_ or None,
+                    'Exit date':  row.get('exit_date'),
+                    'P&L':        pnl,
+                    'Note':       row.get('note', ''),
+                })
+
+            trades_df = pd.DataFrame(trades)
+
+            if trades_df.empty:
+                st.info('No closed trades yet.')
+            else:
+                def _pnl_style(row):
+                    pnl = row.get('P&L')
+                    if pnl is None:
+                        return [''] * len(row)
+                    color = '#d4edda' if pnl >= 0 else '#f8d7da'
+                    return [f'background-color: {color}'] * len(row)
+
+                st.dataframe(
+                    trades_df.style.apply(_pnl_style, axis=1),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        'Entry $':    st.column_config.NumberColumn(format='%.2f'),
+                        'Exit $':     st.column_config.NumberColumn(format='%.2f'),
+                        'P&L':        st.column_config.NumberColumn(format='%+.2f'),
+                        'Entry date': st.column_config.DatetimeColumn('Entry',
+                                                                       format='MM-DD HH:mm'),
+                        'Exit date':  st.column_config.DatetimeColumn('Exit',
+                                                                       format='MM-DD HH:mm'),
+                        'Note': st.column_config.TextColumn(
+                            'Note',
+                            help='"external_close" = closed outside the app'),
+                    },
+                )
+            return  # skip generic table below
+
+        else:  # All orders
+            display_df = df.copy()
+
+        # ── Generic table for "All orders" view ──────────────────────────
         show_cols = [c for c in
-            ['submitted_at', 'filled_at', 'strategy', 'ticker', 'action', 'qty',
-             'signal_price', 'fill_price', 'status', 'error_msg']
-            if c in df.columns]
-        display = df[show_cols].reset_index(drop=True).copy()
+            ['pos_status', 'submitted_at', 'filled_at', 'strategy', 'ticker',
+             'action', 'qty', 'signal_price', 'fill_price', 'status', 'error_msg']
+            if c in display_df.columns]
+        display = display_df[show_cols].reset_index(drop=True)
 
-        # Highlight external closes
         def _row_style(row):
+            s = row.get('pos_status', '')
+            if s == '🟢 Open':
+                return ['background-color: #d4edda'] * len(row)
             if row.get('error_msg') == 'external_close':
                 return ['background-color: #fff3cd'] * len(row)
             return [''] * len(row)
@@ -1080,15 +1308,34 @@ class TradingPage:
             display.style.apply(_row_style, axis=1),
             use_container_width=True,
             column_config={
-                'submitted_at': st.column_config.DatetimeColumn('Submitted', format='YYYY-MM-DD HH:mm'),
-                'filled_at':    st.column_config.DatetimeColumn('Filled at', format='YYYY-MM-DD HH:mm'),
-                'signal_price': st.column_config.NumberColumn('Signal $',  format='%.2f'),
-                'fill_price':   st.column_config.NumberColumn('Fill $',    format='%.2f'),
+                'pos_status':   st.column_config.TextColumn('Status', width='small'),
+                'submitted_at': st.column_config.DatetimeColumn('Submitted',
+                                                                 format='YYYY-MM-DD HH:mm'),
+                'filled_at':    st.column_config.DatetimeColumn('Filled at',
+                                                                 format='YYYY-MM-DD HH:mm'),
+                'signal_price': st.column_config.NumberColumn('Entry $', format='%.2f'),
+                'fill_price':   st.column_config.NumberColumn('Fill $',  format='%.2f'),
                 'error_msg':    st.column_config.TextColumn(
                     'Note',
-                    help='"external_close" = position closed outside the app (stop-loss, manual)'),
+                    help='"external_close" = closed outside the app (stop-loss, manual)'),
             },
         )
+
+        # ── Reconciliation warning ────────────────────────────────────────
+        if live_open:
+            hist_open_tickers = set(df[df['pos_status'] == '🟢 Open']['ticker'])
+            missing_in_hist   = live_open - hist_open_tickers
+            orphan_in_hist    = hist_open_tickers - live_open
+            if missing_in_hist:
+                st.warning(
+                    f'⚠ Alpaca shows these as open but they have no buy record here: '
+                    f'`{"`, `".join(sorted(missing_in_hist))}` — press 🔄 Sync.'
+                )
+            if orphan_in_hist:
+                st.warning(
+                    f'⚠ These show as open in History but are no longer in Alpaca: '
+                    f'`{"`, `".join(sorted(orphan_in_hist))}` — press 🔄 Sync.'
+                )
 
     # ------------------------------------------------------------------ #
     #  Tab: Compare                                                        #
@@ -1249,6 +1496,43 @@ class TradingPage:
                 st.success('IBKR connection parameters saved.')
 
         # ---- Strategy editor ----------------------------------------- #
+        # ---- Simulation DB selector ---------------------------------- #
+        st.markdown('#### Simulation Database')
+        from tradinglib.trading_bridge import SignalEvaluator as _SE
+        _avail_dbs = _SE.available_sim_dbs(self.db_path)
+        _auto_label = '— Auto (best available) —'
+        _db_options  = [_auto_label] + _avail_dbs
+        _current_db  = self.sys_config.get_value('trading_sim_db', '') or ''
+        _sel_idx     = (_db_options.index(_current_db)
+                        if _current_db in _db_options else 0)
+        _chosen = st.radio(
+            'Which simulation DB to use for signal calculation:',
+            _db_options,
+            index=_sel_idx,
+            horizontal=True,
+            key='radio_sim_db',
+            help=(
+                'asset_simulation_.db  — main indices (fast, default)\n'
+                'asset_simulation_all.db — all indices incl. small caps\n'
+                'Auto — picks the best available DB automatically'
+            ),
+        )
+        _save_val = '' if _chosen == _auto_label else _chosen
+        if _save_val != _current_db:
+            self.sys_config.set_value('trading_sim_db', _save_val)
+            # Bust signal cache — DB change requires full recalculation
+            for _k in list(st.session_state.keys()):
+                if _k.startswith('signals_cache_'):
+                    del st.session_state[_k]
+            st.success(f'Simulation DB set to: **{_chosen}**. Press 🔄 Recalculate to apply.')
+
+        st.caption(
+            f'Available: `{"`, `".join(_avail_dbs)}`'
+            + (f'  |  Active: `{_current_db}`' if _current_db else '  |  Active: *auto*')
+        )
+        st.markdown('---')
+
+        # ---- Strategies editor --------------------------------------- #
         st.markdown('#### Strategies (Multi-Transactions)')
         st.caption(
             'Each **strategy** (e.g. "Value Trend") groups one or more **indices** '

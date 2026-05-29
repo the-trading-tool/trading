@@ -233,6 +233,24 @@ class OrderLog(Tools):
         for strat in strategies:
             locally_open = self.get_open_tickers(strat, mode, broker_id)
             for ticker in locally_open - alpaca_positions:
+
+                # ── Guard: only act when there is at least one FILLED buy
+                # (pending/submitted buys are not yet open positions)
+                try:
+                    with sqlite3.connect(self._db) as conn:
+                        filled_buy = conn.execute("""
+                            SELECT qty, signal_price, fill_price FROM broker_orders
+                            WHERE mode=? AND broker=? AND ticker=?
+                            AND action='buy' AND status='filled'
+                            ORDER BY submitted_at DESC LIMIT 1
+                        """, (mode, broker_id, ticker)).fetchone()
+                except Exception:
+                    filled_buy = None
+
+                if not filled_buy:
+                    continue  # only pending buys → not an open position yet
+
+                # ── Find matching filled sell on Alpaca ───────────────────
                 sell_ord = next(
                     (o for o in sorted(
                         alpaca_orders,
@@ -244,27 +262,41 @@ class OrderLog(Tools):
                      and o.get('status', '') == 'filled'),
                     None,
                 )
+
+                # ── Skip if this sell order was already imported in step 0 ─
+                if sell_ord:
+                    try:
+                        with sqlite3.connect(self._db) as conn:
+                            already = conn.execute(
+                                "SELECT 1 FROM broker_orders WHERE order_id=? AND action='sell'",
+                                (sell_ord['id'],)
+                            ).fetchone()
+                    except Exception:
+                        already = None
+                    if already:
+                        # The sell was already imported — just tag it as external_close
+                        try:
+                            with sqlite3.connect(self._db) as conn:
+                                conn.execute(
+                                    "UPDATE broker_orders SET error_msg='external_close'"
+                                    " WHERE order_id=? AND error_msg IN ('alpaca_import', '')",
+                                    (sell_ord['id'],)
+                                )
+                            summary['external_closes'] += 1
+                        except Exception as e:
+                            summary['errors'].append(f'tag ext_close {ticker}: {e}')
+                        continue  # don't insert a duplicate row
+
                 raw_fp     = sell_ord.get('filled_avg_price') if sell_ord else None
                 fill_price = float(raw_fp) if raw_fp else None
                 filled_at  = (sell_ord.get('filled_at') or None) if sell_ord else None
                 sell_qty   = float(sell_ord['qty']) if sell_ord else None
                 order_id   = sell_ord['id'] if sell_ord else f'ext_{ticker}_{mode}'
 
-                try:
-                    with sqlite3.connect(self._db) as conn:
-                        buy_row = conn.execute("""
-                            SELECT qty, signal_price, fill_price FROM broker_orders
-                            WHERE mode=? AND broker=? AND strategy=? AND ticker=?
-                            AND action='buy'
-                            ORDER BY submitted_at DESC LIMIT 1
-                        """, (mode, broker_id, strat, ticker)).fetchone()
-                except Exception:
-                    buy_row = None
-
-                entry_qty   = sell_qty or (float(buy_row[0]) if buy_row and buy_row[0] else None)
+                entry_qty   = sell_qty or (float(filled_buy[0]) if filled_buy[0] else None)
                 entry_price = (
-                    (float(buy_row[2]) if buy_row and buy_row[2] else None)
-                    or (float(buy_row[1]) if buy_row and buy_row[1] else None)
+                    (float(filled_buy[2]) if filled_buy[2] else None)
+                    or (float(filled_buy[1]) if filled_buy[1] else None)
                 )
 
                 try:
@@ -382,24 +414,38 @@ class OrderLog(Tools):
             return pd.DataFrame()
 
     def get_open_tickers(self, strategy: str, mode: str, broker: str) -> set[str]:
-        """Returns tickers that have an open buy with no matching sell."""
+        """Returns tickers that have an open buy with no matching sell.
+
+        Buys are scoped to the given strategy.
+        Sells are matched strategy-agnostically (strategy='' from Alpaca imports
+        or external closes also close out a named-strategy buy).
+        """
         try:
             with sqlite3.connect(self._db) as conn:
-                rows = conn.execute("""
-                    SELECT ticker, action FROM broker_orders
+                # Buys: only for this strategy
+                buy_rows = conn.execute("""
+                    SELECT ticker FROM broker_orders
                     WHERE strategy=? AND mode=? AND broker=?
+                    AND action='buy'
                     AND status IN ('submitted', 'filled')
                     ORDER BY submitted_at
                 """, (strategy, mode, broker)).fetchall()
+
+                # Sells: ANY strategy for same mode/broker (Alpaca is position-level)
+                sell_rows = conn.execute("""
+                    SELECT ticker FROM broker_orders
+                    WHERE mode=? AND broker=?
+                    AND action='sell'
+                    AND status IN ('filled', 'submitted', 'canceled', 'cancelled')
+                    ORDER BY submitted_at
+                """, (mode, broker)).fetchall()
         except Exception as e:
             logger.error(f"get_open_tickers failed: {e}")
             return set()
-        open_pos: set[str] = set()
-        for ticker, action in rows:
-            if action == 'buy':
-                open_pos.add(ticker)
-            elif action == 'sell':
-                open_pos.discard(ticker)
+
+        open_pos: set[str] = {r[0] for r in buy_rows}
+        for (ticker,) in sell_rows:
+            open_pos.discard(ticker)
         return open_pos
 
 
@@ -420,9 +466,23 @@ class SignalEvaluator(Tools):
       6. Sells from history within sell_lookback_days → 'sell' signals.
     """
 
-    def __init__(self, username: str, db_path: str = 'database'):
+    def __init__(self, username: str, db_path: str = 'database',
+                 sim_db_override: str | None = None):
         self.username = username
         self.db_path = db_path
+        self.sim_db_override = sim_db_override  # None → auto-select via _best_sim_db()
+
+    @staticmethod
+    def available_sim_dbs(db_path: str = 'database') -> list[str]:
+        """Return all asset_simulation_*.db files that exist and are non-empty."""
+        import os, glob
+        base = Tools().get_path(path=db_path, file_name='')
+        pattern = os.path.join(base, 'asset_simulation_*.db')
+        found = []
+        for path in sorted(glob.glob(pattern)):
+            if os.path.getsize(path) > 4096:
+                found.append(os.path.basename(path))
+        return found or ['asset_simulation_.db']
 
     @staticmethod
     def _best_sim_db(db_path: str) -> str:
@@ -483,7 +543,7 @@ class SignalEvaluator(Tools):
         from tradinglib import make_query as mq
 
         try:
-            sim_db = self._best_sim_db(self.db_path)
+            sim_db = self.sim_db_override or self._best_sim_db(self.db_path)
             logger.debug(
                 "SignalEvaluator: %s for strategy '%s' / index '%s'",
                 sim_db, strategy_name, index_name,
