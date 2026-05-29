@@ -27,6 +27,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import plotly.express as px
 import logging
 from tradinglib import logging_config as lgc
+from tradinglib import i18n
+from tradinglib.i18n import t
 
 # Enable debug logging to the console so module debug statements (e.g. tiny_chart)
 # are visible when running Streamlit. Adjust level if too verbose.
@@ -240,7 +242,7 @@ class TradingApp:
             st.session_state['title'] = title
         if icon:
             st.session_state['icon'] = icon
-        self.sidebar_header.markdown(f"""<h2>Selected view: {title}</h2>""", unsafe_allow_html=True)
+        self.sidebar_header.markdown(f"""<h2>{t('page.selected_view', title=title)}</h2>""", unsafe_allow_html=True)
 #        self.sidebar_header.write(f"{title}\n")    
         
     def set_page_config(self, title):
@@ -314,15 +316,15 @@ class TradingApp:
 
         sel = st.empty()
         (sel_m, _, sel_e, _, sel_a) = sel.columns([0.4,0.05,0.4,0.05,0.1])
-        use_monitored = sel_m.checkbox("Use Monitored", True)
-        show_earnings = sel_e.checkbox('Earnings calendar', allow_show_earnings)
-        show_assets = sel_a.button("Show assets")
+        use_monitored = sel_m.checkbox(t('summary.use_monitored'), True)
+        show_earnings = sel_e.checkbox(t('summary.earnings_calendar'), allow_show_earnings)
+        show_assets = sel_a.button(t('summary.show_assets'))
 
         monitored_assets = self.sys_config.get_value("monitored_assets",'')
         if not use_monitored or monitored_assets == "":
             if results:
                 selected_ticker = st.selectbox(
-                    "Select market:", 
+                    t('summary.select_market'),
                     results,
                     index=pos
                 )
@@ -333,7 +335,7 @@ class TradingApp:
 
         if not isinstance(tickers, str):
             tickers.sort()
-        ti = st.text_input("Members",tickers)
+        ti = st.text_input(t('summary.members'), tickers)
         tickers = eval(ti)
 
         # Create optimizer and set whether network access is allowed from system config
@@ -363,7 +365,7 @@ class TradingApp:
         if show_earnings:
             if "^GDAXI" in tickers:
                 allow_show_earnings = False
-            with st.spinner("Wait for earnings to load...", show_time=True):
+            with st.spinner(t('summary.wait_earnings'), show_time=True):
                 try:       
                     get_earings()
                 except Exception as e:
@@ -407,7 +409,7 @@ class TradingApp:
                 #st.write(f"Error: {e}")
                 pass
 
-            with st.spinner("Wait for graphs to load...", show_time=True):
+            with st.spinner(t('summary.wait_graphs'), show_time=True):
                 renderer = ChartsGridRenderer(columns=2)
                 renderer.render(
                     tickers=tickers,
@@ -422,7 +424,7 @@ class TradingApp:
                     chart_config=gt.chart_config,
                 )
 
-                st.write(f'Last chart update: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+                st.write(t('summary.last_chart_update', ts=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     
     def show_navigation_links(self):
 
@@ -445,9 +447,9 @@ class TradingApp:
 #            pass
 
         main_links = {
-            'Asset viewer': '/',
-            'Strategy finder': '/?strategy_finder=true',
-            'Asset summary': '/?summary=true',
+            t('nav.asset_viewer'): '/',
+            t('nav.strategy_finder'): '/?strategy_finder=true',
+            t('nav.asset_summary'): '/?summary=true',
         }
         _links_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'external_links.json')
         try:
@@ -457,22 +459,26 @@ class TradingApp:
             external_links = {}
         self.sidebar_header = st.sidebar.empty()
         if self.is_admin:
-            main_links['Admin'] = '/?admin=true'
-            main_links['All assets'] = '/?all_assets=true'
-            main_links['Multi strategies'] = '/?multi=true'
-            main_links['Paper / Live Trading'] = '/?trading=true'
-            main_links['Own transactions'] = '/?own_trades=true'
+            main_links[t('nav.admin')] = '/?admin=true'
+            main_links[t('nav.all_assets')] = '/?all_assets=true'
+            main_links[t('nav.multi_strategies')] = '/?multi=true'
+            main_links[t('nav.trading')] = '/?trading=true'
+            main_links[t('nav.own_transactions')] = '/?own_trades=true'
         st.sidebar.markdown("""---""")
-        st.sidebar.link_button('Market map', '/?marketmap=true')
-        st.sidebar.link_button('Sector Rotation', '/?rotation=true')
+        st.sidebar.link_button(t('nav.market_map'), '/?marketmap=true')
+        st.sidebar.link_button(t('nav.sector_rotation'), '/?rotation=true')
         st.sidebar.markdown("""---""")
         for k, v in main_links.items():
             st.sidebar.link_button(k, v)
         st.sidebar.markdown("""---""")
 
-        selection = st.sidebar.selectbox("External links:", ["Choose..."] + list(external_links.keys()))
+        _ext_placeholder = t('nav.external_links_placeholder')
+        selection = st.sidebar.selectbox(
+            t('nav.external_links'),
+            [_ext_placeholder] + list(external_links.keys()),
+        )
 
-        if selection != "Choose...":
+        if selection != _ext_placeholder:
             url = external_links[selection]
             # JS-Injektion zum Öffnen des Links
             #js = f'window.open("{url}", "_blank");'
@@ -505,6 +511,12 @@ class TradingApp:
         if maybe_show_setup():
             st.stop()
 
+        # Initialize i18n before any UI is rendered.
+        # sys_config uses username from session_state; fall back to anonymous config.
+        _username = st.session_state.get("username", "admin")
+        _sc = sysconf.SystemConfig(username=_username, bare_mode=True)
+        i18n.init_from_session(sys_config=_sc)
+
         parms = st.query_params.to_dict()
         if parms.get('stream') == "api":
                 data = json.loads(parms.get('data'))
@@ -525,7 +537,7 @@ class TradingApp:
                                 self.lt.add_tick_data(symbol=d,time_str=data[d]['time'], price=data[d]['price'])                            
                                 st.write(data[d])
                             except Exception:
-                                st.write("Error writing to ticker db")
+                                st.write(t('error.api_write'))
                                 pass
         elif parms.get('download'):
             fp.FileProvider()
@@ -544,23 +556,26 @@ class TradingApp:
                 self.show_navigation_links()
         
                 if self.is_admin and parms.get('admin'):
-                    self.set_page_config("Admin Page")
+                    self.set_page_config(t('page.admin'))
                     admin.Admin(scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator = self.authenticator)
                 elif parms.get('live_chart'):
-                    self.set_page_config("Live chart")
+                    self.set_page_config(t('page.live_chart'))
                     self.live_chart(region=st)
                 elif parms.get('performance'):
-                    self.set_page_config("Performance data")
+                    self.set_page_config(t('page.performance'))
                     pd.Performance(username=self.username).render()
                 elif parms.get('multi'):
-                    self.set_page_config(f"Strategies calculator")
+                    self.set_page_config(t('page.strategies'))
                     mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
                 elif parms.get('own_trades'):
-                    self.set_page_config(f"Own transactions")
+                    self.set_page_config(t('page.own_transactions'))
                     try:
                         from tradinglib.own_trades_analysis import render_import_export, render_portfolio_analysis
                         system_currency = self.sys_config.get_value('system_currency', 'EUR')
-                        tab_portfolio, tab_trades = st.tabs(['Portfolio-Analyse', 'Trade Import/Export'])
+                        tab_portfolio, tab_trades = st.tabs([
+                            t('own_trades.tab_portfolio'),
+                            t('own_trades.tab_trades'),
+                        ])
                         with tab_portfolio:
                             render_portfolio_analysis(
                                 region=tab_portfolio,
@@ -576,40 +591,40 @@ class TradingApp:
                                 db_path='database',
                             )
                     except Exception as e:
-                        st.error(f'Failed to render Own transactions: {e}')
+                        st.error(t('error.load_own_trades', error=e))
                 elif parms.get('strategy_finder'):
-                    self.set_page_config(f"Finder")
+                    self.set_page_config(t('page.finder'))
                     ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
                 elif parms.get('trading'):
-                    self.set_page_config("Paper / Live Trading")
+                    self.set_page_config(t('page.trading'))
                     try:
                         from tradinglib.trading_page import TradingPage
                         TradingPage(username=self.username, db_path='database').render()
                     except Exception as e:
-                        st.error(f'Failed to render Trading page: {e}')
+                        st.error(t('error.load_trading', error=e))
                 elif parms.get('rotation'):
-                    self.set_page_config("Sector Rotation")
+                    self.set_page_config(t('page.sector_rotation'))
                     try:
                         from tradinglib.sector_rotation_page import SectorRotationPage
                         SectorRotationPage(username=self.username).render()
                     except Exception as e:
-                        st.error(f"Failed to render Sector Rotation: {e}")
+                        st.error(t('error.load_rotation', error=e))
                 elif parms.get('marketmap'):
-                    self.set_page_config(f"Market map")
+                    self.set_page_config(t('page.market_map'))
                     visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username)
                     visualizer.render(index_filter=1)
                     self.render_chart(index_columns=visualizer.index_column)
                 elif parms.get('summary'):
-                    self.set_page_config(f"Summary")
+                    self.set_page_config(t('page.summary'))
                     self.render_summary()
                 elif parms.get('option_calc'):
-                    self.set_page_config(f"Option price")
+                    self.set_page_config(t('page.option_price'))
                     op.OptionCalculator()
                 elif parms.get('all_assets'):
-                    self.set_page_config(f"Weekly performance")
+                    self.set_page_config(t('page.weekly_performance'))
                     aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
                 else:
-                    self.set_page_config("Asset details")
+                    self.set_page_config(t('page.asset_details'))
                     tab_details = False
                     if parms.get('details','false').lower() == 'true':
                         tab_details = True
@@ -622,12 +637,14 @@ class TradingApp:
                     if _raw:
                         _tok = _jwt.decode(_raw, self.config['cookie']['key'], algorithms=['HS256'])
                         _exp = dt.datetime.fromtimestamp(_tok['exp_date'])
-                        st.sidebar.write(f"Session expires: {_exp.strftime('%Y-%m-%d %H:%M')}")
+                        st.sidebar.write(t('session.expires_at', dt=_exp.strftime('%Y-%m-%d %H:%M')))
                     else:
-                        st.sidebar.write(f"Session expires in: {self.config['cookie']['expiry_days']} days.")
+                        st.sidebar.write(t('session.expires_in', days=self.config['cookie']['expiry_days']))
                 except Exception:
-                    st.sidebar.write(f"Session expires in: {self.config['cookie']['expiry_days']} days.")
+                    st.sidebar.write(t('session.expires_in', days=self.config['cookie']['expiry_days']))
                     
 
 if __name__ == "__main__":
+    from tradinglib.first_run import ensure_config_yaml
+    ensure_config_yaml()
     TradingApp().render()

@@ -4,6 +4,7 @@ import pandas as pd
 #from tradinglib import market_map
 from tradinglib import tools
 from tradinglib import make_query as mq
+from tradinglib.i18n import t
 
 
 
@@ -137,10 +138,10 @@ class FullTextSearch(tools.Db_tools):
 
         # Eingabefeld für die Suche
             
-        expander = self.region.expander('Select asset by full text search')
+        expander = self.region.expander(t('search.fts_expander'))
 
         with expander:
-            search_query = st.text_input("Search ticker name:",self.symbol)
+            search_query = st.text_input(t('search.ticker_name'), self.symbol)
             if search_query:
                 ctr = ['.','&','"']
                 for c in ctr:
@@ -164,7 +165,7 @@ class FullTextSearch(tools.Db_tools):
                         ticker_list.append(f"{row['ticker']} - {longname}")
 
                     selected_ticker = st.selectbox(
-                        "Select:", 
+                        t('search.select'),
                         ticker_list
                     )
                  
@@ -183,13 +184,13 @@ class FullTextSearch(tools.Db_tools):
                         except Exception:
                             self.index_name = "unknown"
                             pass
-                    if self.is_admin:                        
-                        if st.button("Update search"):
+                    if self.is_admin:
+                        if st.button(t('search.update_index')):
                             self.update_fts_table()
-                            st.success("Search index updated!")
-                        
+                            st.success(t('search.index_updated'))
+
                 else:
-                    st.write("No results.")
+                    st.write(t('search.no_results'))
 
 
 class MarketSearch(tools.Db_tools):
@@ -258,12 +259,12 @@ class MarketSearch(tools.Db_tools):
         except Exception:
             pass
         if results:
-            expander = self.region.expander('Select asset by market')
+            expander = self.region.expander(t('search.market_expander'))
             with expander:
 
                 if not self.hide_render:
                     selected_ticker = st.selectbox(
-                        "Select market:", 
+                        t('search.select_market'),
                         results,
                         index=pos
                     )
@@ -299,10 +300,10 @@ class MarketSearch(tools.Db_tools):
                             pass
                         if not self.hide_render:
                             selected = st.selectbox(
-                                    "Select company:", 
-                                    ticker_list,
-                                    pos            
-                                )
+                                t('search.select_company'),
+                                ticker_list,
+                                pos
+                            )
                         self.ticker_selected = selected_ticker
                         self.ticker_selected_longname = ""
                         try:

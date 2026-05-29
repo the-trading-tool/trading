@@ -2,6 +2,7 @@ from tradinglib import ( tiny_chart as tc, search as sr,
         sentiment as se, headlines as hl, multi_select as ms, fetch_data,
         system_config as sysconf, graph_tools as gt)
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
+from tradinglib.i18n import t
 import streamlit as st
 import streamlit_nested_layout
 import datetime as dt
@@ -195,9 +196,12 @@ class render_mainpage(fetch_data.FetchData):
         refresh = True
         if not self.hide_details:
 
-            tab_list = ["Trend", "Info", "Income sheet", "Balance sheet", "News"]
+            tab_list = [
+                t('main.tab_trend'), t('main.tab_info'),
+                t('main.tab_income'), t('main.tab_balance'), t('main.tab_news'),
+            ]
             if show_details:
-                tab_list.append('Details')
+                tab_list.append(t('main.tab_details'))
 
             tabs = pp_right.tabs(tab_list)
             tab_trend = tabs[0]
@@ -324,7 +328,7 @@ class render_mainpage(fetch_data.FetchData):
                                     except Exception:
                                         pass
 
-                            full_df_ex1 = st.expander('Data')
+                            full_df_ex1 = st.expander(t('main.data_expander'))
                             with full_df_ex1:
 #                                try:
 ##                                    st.dataframe(self.data)
@@ -345,7 +349,7 @@ class render_mainpage(fetch_data.FetchData):
                         try:
                             sht_df = self.get_sheet_as_df(self.ticker, 'incomeSheet', 'Category')
                             if not sht_df.empty:
-                                st.subheader("""**Income sheet** for """ + ticker_selected)
+                                st.subheader(t('main.income_header', ticker=ticker_selected))
                                 st.dataframe(sht_df,use_container_width=True)               
                     
                         except Exception:
@@ -356,7 +360,7 @@ class render_mainpage(fetch_data.FetchData):
                         try:
                             sht_df = self.get_sheet_as_df(self.ticker, 'balanceSheet', 'Category')
                             if not sht_df.empty:
-                                st.subheader("""**Balance sheet** for """ + ticker_selected)
+                                st.subheader(t('main.balance_header', ticker=ticker_selected))
                                 st.dataframe(sht_df,use_container_width=True)               
                     
                         except Exception:

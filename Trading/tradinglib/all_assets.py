@@ -8,6 +8,7 @@ from tradinglib import (
         fetch_data as fd,
     )
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
+from tradinglib.i18n import t
 import pandas as pd
 import streamlit as st 
 
@@ -35,7 +36,7 @@ class AllAssetsView(tt.TickerTools):
         buy_query = self.sys_config.get_value("buy_query",default="(ewo>ewo_ema)")
         sell_query = self.sys_config.get_value("sell_query",default="(ewo<ewo_ema)")
         db.conn.execute(f"ATTACH DATABASE '{self.get_path(path = 'database', file_name='asset_info.db')}' AS info_db")
-        bq_input = st.text_input('Filter data by: ',buy_query)
+        bq_input = st.text_input(t('assets.filter_label'), buy_query)
         o_by = "ORDER BY Date DESC, ap.currency, ap.sortino DESC, ap.overallValueTrend DESC Limit 7000;"
 #        if qv:
 #            o_by = "ORDER BY Date DESC, ap.currency Limit 7000;"
@@ -48,11 +49,11 @@ class AllAssetsView(tt.TickerTools):
         try:
             df = pd.read_sql_query(query, db.conn)
         except Exception:
-            st.error("No matching data found, please refine your Filter!")
+            st.error(t('assets.no_data_error'))
             df = pd.DataFrame()
             pass
         column_config = {
-            "details": st.column_config.LinkColumn( "Details", display_text="View"),
+            "details": st.column_config.LinkColumn(t('assets.details_col'), display_text=t('assets.view_text')),
             }
         try:
             df['details'] = df['longName'].apply(self.add_url)
@@ -70,7 +71,7 @@ class AllAssetsView(tt.TickerTools):
         if not df.empty:
 
             selection = ass.AssetSimulator().dataframe_with_selections(df=df,column_config=column_config)
-            self.export_to_excel(df, button_label = f'📥 Download Assets', file_name = f'Asset_dataset.xlsx', region = st )
+            self.export_to_excel(df, button_label=t('assets.download_btn'), file_name='Asset_dataset.xlsx', region=st)
             date = df['Date'].iloc[0] if not df.empty else None
             tickers = df[df['Date']==date]['ticker']
 
@@ -78,7 +79,7 @@ class AllAssetsView(tt.TickerTools):
             renderer = ChartsGridRenderer(columns=2)
             (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
 
-            with st.spinner("Wait for graphs to load...", show_time=True):
+            with st.spinner(t('assets.spinner'), show_time=True):
                 renderer.render(
                     tickers=tickers,
                     tc=tc,
@@ -117,7 +118,7 @@ class AllAssetsView(tt.TickerTools):
             try:
                 df = pd.read_sql_query(query, db.conn)
             except Exception:
-                st.error("No matching data found, please refine your Filter!")
+                st.error(t('assets.no_data_error'))
                 df = pd.DataFrame()
                 pass
 

@@ -3,12 +3,15 @@ import datetime as dt
 import pandas as pd
 import streamlit as st
 from tradinglib import system_config as sysconf
+from tradinglib.i18n import t
 import plotly.express as px
 import math
 
 class BannerPage():
 
-    ttl = 'The Trading Tools'
+    @property
+    def ttl(self):
+        return t('banner.title')
 
     def __init__(self, username='admin', region = st):
         self.db_path = 'database'
@@ -56,12 +59,12 @@ class BannerPage():
 
             pct_gain = round((gain/self.total_invest)*100,1)
             self.region.write(f"""
-                <h5> 
-                We started {year} with an investment of {self.total_invest} {self.system_currency}.</br>
-                Invested into {self.assets} at a maximum portfolio asset amount of {self.num_assets}.</br>
+                <h5>
+                {t('banner.intro', year=year, invest=self.total_invest, currency=self.system_currency)}</br>
+                {t('banner.portfolio_max', assets=self.assets, num=self.num_assets)}</br>
                 </br>
-                Today total portfoilio value is: {round(gain+self.total_invest,2)} {self.system_currency},</br>
-                at a portfolio performance of: {pct_gain}%</h5>.</br>
+                {t('banner.total_value', value=round(gain+self.total_invest,2), currency=self.system_currency)}</br>
+                {t('banner.performance', pct=pct_gain)}</h5>.</br>
                  """, unsafe_allow_html=True)
 
             db_table = 'banner_notes'
@@ -80,11 +83,11 @@ class BannerPage():
                 except Exception:
                     pass
                 if not text == '' and not longname =='':
-                    self.region.write(f"<h2>Latest trading tip goes for - {longname} -</h2> (Date: {date})", unsafe_allow_html=True)
+                    self.region.write(f"<h2>{t('banner.trading_tip', name=longname)}</h2> (Date: {date})", unsafe_allow_html=True)
                     self.region.write(f"""<font size="+4">{text}</font>""", unsafe_allow_html=True)
             except Exception:
                 pass
-            self.region.html(f"<h3>Executed trades since beginning of {year}: </h3>")
+            self.region.html(f"<h3>{t('banner.trades_since', year=year)}</h3>")
             df.sort_values(['sellDate','ticker'], ascending=[False,False],inplace=True)
             self.region.dataframe(df)
             
@@ -93,7 +96,7 @@ class BannerPage():
                         df,
                         x='sellDate',
                         y='cumulative_gain',
-                       title='Total gain',
+                       title=t('banner.total_gain'),
                         labels={'buyDate': 'Date', 'cumulative_gain': 'Gain'}
                     )
             st.plotly_chart(

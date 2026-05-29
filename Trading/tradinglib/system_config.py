@@ -3,6 +3,7 @@ import json
 import sys
 import streamlit as st
 import logging
+from tradinglib import license_manager as lm
 
 for name, l in logging.root.manager.loggerDict.items():
     if "streamlit" in name:
@@ -18,6 +19,7 @@ from tradinglib import help_text
 from tradinglib import multi_select
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
 from tradinglib import logging_config as lgc
+from tradinglib import i18n
 
 class SystemConfig(tools.Db_tools):
     
@@ -147,7 +149,7 @@ class SystemConfig(tools.Db_tools):
         return default
 
     @st.dialog('Configuration',width='large')
-    def render(self):
+    def render(self):  # noqa: C901
 
         def check_list(lst = None, overlay = ''):
             error_text = "Select a combination of either/and: "        
@@ -178,20 +180,57 @@ class SystemConfig(tools.Db_tools):
         idx_mp_details = self.get_idx_selected(b_select, 'mp_details',1)
         idx_pine_export = self.get_idx_selected(b_select, 'pine_export', 1)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
-        self.region.write(f"user: {self.username}")
+        self.region.write(i18n.t("cfg.user", username=self.username))
+
+        # --- Language switcher ---
+        lang_keys = list(i18n.SUPPORTED_LANGUAGES.keys())
+        current_lang = i18n.current_language()
+        try:
+            lang_idx = lang_keys.index(current_lang)
+        except ValueError:
+            lang_idx = 0
+        selected_lang = st.selectbox(
+            i18n.t("cfg.language"),
+            options=lang_keys,
+            format_func=lambda x: i18n.SUPPORTED_LANGUAGES[x],
+            index=lang_idx,
+        )
+        if selected_lang != current_lang:
+            self.set_value("language", selected_lang)
+            i18n.load_language(selected_lang)
+            st.rerun()
+
         if self.is_admin:
-            logging_choice = st.selectbox("Logging: ", b_select, idx_b_select)
+            with st.expander("License", expanded=False):
+                info = lm.get_license_info()
+                st.write(i18n.t("cfg.license_tier", tier=info['tier']))
+                if info.get("user"):
+                    st.write(i18n.t("cfg.license_licensee", user=info['user']))
+                if info.get("expires"):
+                    st.write(i18n.t("cfg.license_expires", expires=info['expires']))
+                active = [f for f in lm.ALL_FEATURES if lm.has_feature(f)]
+                st.write(i18n.t("cfg.license_features", features=', '.join(active)))
+                if info.get("error"):
+                    st.error(info["error"])
+                if not info["path_exists"]:
+                    st.info(i18n.t("cfg.license_no_file"))
+                if st.button(i18n.t("cfg.reload_license")):
+                    lm.reset_cache()
+                    st.rerun()
+
+        if self.is_admin:
+            logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
             self.set_value('logging', logging_choice)
             # logfile and level controls
             current_logfile = self.get_value('logfile', 'out.txt')
             current_loglevel = self.get_value('loglevel', 'INFO')
-            logfile = st.text_input('Log file name:', value=current_logfile)
+            logfile = st.text_input(i18n.t("cfg.logfile"), value=current_logfile)
             loglevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
             try:
                 idx_level = loglevels.index(current_loglevel)
             except Exception:
                 idx_level = 1
-            loglevel = st.selectbox('Log level:', loglevels, idx_level)
+            loglevel = st.selectbox(i18n.t("cfg.loglevel"), loglevels, idx_level)
             self.set_value('logfile', logfile)
             self.set_value('loglevel', loglevel)
             # Apply logging setting immediately
@@ -202,26 +241,26 @@ class SystemConfig(tools.Db_tools):
                     lgc.disable_logging()
             except Exception:
                 pass
-            self.set_value('sr_scaling',st.selectbox("S/R scaling: ", sr_select, idx_sr_select))
-            self.set_value('rt_prices',st.selectbox("Realtime prices: ", b_select, idx_rt_select))
-            self.set_value('ovt_smoothing', st.selectbox("ovt Smoothing: ", s_select,idx_s_select))
-        self.set_value('system_currency',st.text_input("Currency: ",self.get_value('system_currency', 'EUR')))
-        self.set_value('multi_transactions',st.text_area("Transactions: ",self.get_value('multi_transactions', self.transactions)))
-        self.set_value('trading_cost_pct',st.text_input("Trading cost percentage: ",self.get_value('trading_cost_pct', '0.6')))
-        self.set_value('interval',st.selectbox("Default chart interval: ",intervals,idx_interval)) #60m
-        self.set_value('period',st.selectbox("Default chart period: ",periods,idx_period)) #1mo        
-        self.set_value('overlay',st.text_input("Default chart overlay: ",self.get_value('overlay',"['bos','pre']"))) #predict
-        self.set_value('monitored_assets',st.text_input("Monitored assets: ",self.get_value('monitored_assets',"")))
+            self.set_value('sr_scaling', st.selectbox(i18n.t("cfg.sr_scaling"), sr_select, idx_sr_select))
+            self.set_value('rt_prices', st.selectbox(i18n.t("cfg.rt_prices"), b_select, idx_rt_select))
+            self.set_value('ovt_smoothing', st.selectbox(i18n.t("cfg.ovt_smoothing"), s_select, idx_s_select))
+        self.set_value('system_currency', st.text_input(i18n.t("cfg.currency"), self.get_value('system_currency', 'EUR')))
+        self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
+        self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
+        self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
+        self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
+        self.set_value('overlay', st.text_input(i18n.t("cfg.default_overlay"), self.get_value('overlay', "['bos','pre']")))
+        self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
         check_list(overlays, 'overlay')
-        self.set_value('oszilator',st.text_input("Default chart oszilator: ",self.get_value('oszilator',"['adx','cci','ewo']"))) #rsi       
+        self.set_value('oszilator', st.text_input(i18n.t("cfg.default_oscillator"), self.get_value('oszilator', "['adx','cci','ewo']")))
         check_list(oszilators, 'oszilator')
-        self.set_value('tz_info',st.text_input("Default timezone: ",self.get_value('tz_info',"Europe/Berlin"))) #predict
-        self.set_value('mp_details', st.selectbox("Show Main page Details-Tab: ", b_select,idx_mp_details))
-        self.set_value('pine_export', st.selectbox("Pine Script Export anzeigen: ", b_select, idx_pine_export))
-        self.set_value('buy_query', st.text_input("Buy query: ", self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
-        self.set_value('sell_query', st.text_input("Sell query: ", self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
+        self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
+        self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))
+        self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
+        self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
+        self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
 
-        if st.button("Save"):
+        if st.button(i18n.t("cfg.save")):
             st.rerun()        
 
     def get_plugin_params(self, plugin_name: str) -> dict:

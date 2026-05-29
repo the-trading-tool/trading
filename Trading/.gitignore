@@ -22,6 +22,9 @@ database/
 config.yaml
 *.env
 .env
+private_key.pem
+public_key_b64.txt
+license.json
 
 # Logs
 *.log

@@ -10,10 +10,16 @@ Schritte:
   3. Preisdaten  — get_asset_data.py für einen ersten Tag-Datensatz
   4. Fertig      — App neu laden
 
-Aufruf in asset_analyzer.py (ganz oben in render()):
-    from tradinglib.first_run import maybe_show_setup
-    if maybe_show_setup():
-        st.stop()          # Rest der App nicht rendern
+Aufruf in asset_analyzer.py:
+
+  # Ganz oben im Modul (VOR TradingApp()):
+  from tradinglib.first_run import ensure_config_yaml
+  ensure_config_yaml()
+
+  # Ganz oben in render():
+  from tradinglib.first_run import maybe_show_setup
+  if maybe_show_setup():
+      st.stop()
 """
 
 import sys
@@ -317,3 +323,77 @@ def maybe_show_setup() -> bool:
         _step_done(col)
 
     return True  # Wizard aktiv → Aufrufer soll st.stop() aufrufen
+
+
+# ---------------------------------------------------------------------------
+# config.yaml — muss VOR TradingApp().__init__() existieren
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CONFIG_YAML = """\
+# Trading App - Authentifizierungs-Konfiguration
+# Standard-Login: admin / changeme
+# Passwort bitte nach dem ersten Login aendern!
+#
+# Neuen Passwort-Hash erzeugen:
+#   python -c "import bcrypt; print(bcrypt.hashpw(b'NEUESPASSWORT', bcrypt.gensalt()).decode())"
+
+credentials:
+  usernames:
+    admin:
+      email: admin@localhost
+      name: Administrator
+      password: {pw_hash}
+
+cookie:
+  expiry_days: 30
+  key: trading_app_secret_key_change_me
+  name: trading_app_auth
+
+preauthorized:
+  emails: []
+"""
+
+
+def ensure_config_yaml() -> bool:
+    """
+    Legt eine Standard-config.yaml an, falls keine vorhanden ist.
+    Muss VOR der Instanziierung von TradingApp() aufgerufen werden,
+    da TradingApp.__init__ die Datei sofort öffnet.
+
+    Verwendet denselben Pfad-Resolver wie TradingApp.load_config()
+    (tools.Tools().get_path), damit TradingDB-Umgebungsvariable
+    konsistent berücksichtigt wird.
+
+    Rückgabe: True wenn neu angelegt, False wenn bereits vorhanden.
+
+    Aufruf in asset_analyzer.py direkt vor TradingApp().render():
+        from tradinglib.first_run import ensure_config_yaml
+        ensure_config_yaml()
+    """
+    try:
+        from tradinglib.tools import Tools
+        config_path = Path(Tools().get_path('', 'config.yaml'))
+    except Exception:
+        # Fallback falls tools nicht importierbar
+        config_path = _app_root() / "config.yaml"
+
+    if config_path.exists():
+        return False
+
+    try:
+        import bcrypt
+        pw_hash = bcrypt.hashpw(b"changeme", bcrypt.gensalt()).decode()
+    except ImportError:
+        # bcrypt nicht verfügbar — Klartext-Fallback (funktioniert mit
+        # streamlit-authenticator nur wenn es intern bcrypt aufruft)
+        pw_hash = "$2b$12$BpqOS0p/5FOARlHbxZ3rWuyciiZYtqSWmzXwD/yLcpfzGMn3YzQeG"
+
+    content = _DEFAULT_CONFIG_YAML.format(pw_hash=pw_hash)
+
+    try:
+        config_path.write_text(content, encoding="utf-8")
+        logger.info("config.yaml angelegt: %s", config_path)
+        return True
+    except OSError as e:
+        logger.error("Konnte config.yaml nicht anlegen: %s", e)
+        return False

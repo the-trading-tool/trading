@@ -2,6 +2,7 @@ from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as p
             main_page as mp, make_query as mq, system_config as sysconf,
             graph_tools as gt )
 from tradinglib.utils import DataUtils
+from tradinglib.i18n import t
 
 from tradinglib.indicator import ewo
 import datetime as dt
@@ -265,9 +266,9 @@ class Performance(tt.TickerTools):
         #st.write(self.get_path(self.db_path,''))
         years.extend(list(self.find_files_with_pattern(self.db_path, r'asset_simulation_(\d+)\.db')))
         self.use_year = int(st.selectbox(
-            "Data as of:",
-            options = sorted(years, reverse=True),
-            index = 0
+            t('perf.data_as_of'),
+            options=sorted(years, reverse=True),
+            index=0,
         ))
 
         if not self.use_year == dt.datetime.now().year:
@@ -280,7 +281,7 @@ class Performance(tt.TickerTools):
         combined_df.fillna(value={'sector':'Other'}, inplace=True)
 
         if combined_df.empty:
-            st.error("No data available for the selected index.")
+            st.error(t('perf.no_data'))
             return
 
         """
@@ -294,7 +295,7 @@ class Performance(tt.TickerTools):
         """
         combined_df.sort_values(['overallValueTrend','sortino','ticker'],ascending=[False,False,True], inplace=True)
         self.select_chart(combined_df, limit=1000, region = st)
-        self.export_to_excel(combined_df, button_label = '📥 Download dataset', file_name = f'simulation_{self.use_year}_dataset.xlsx', region = st )                
+        self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name=f'simulation_{self.use_year}_dataset.xlsx', region=st)                
 
 
                 
