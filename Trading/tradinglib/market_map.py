@@ -1,5 +1,6 @@
 from tradinglib import tools
 from tradinglib import ticker_tools as tt
+from tradinglib.i18n import t
 from datetime import timedelta, datetime
 from tradinglib import main_page as mp
 from tradinglib import make_query as mq
@@ -63,7 +64,7 @@ class DataVisualizer(tt.TickerTools):
 #        df_with_selections = df_with_selections[:2]
         try:
             column_config["details"] = st.column_config.LinkColumn(
-                "Details", display_text="View"
+                t('mm.col_details'), display_text=t('mm.col_view')
             )
             df_with_selections['details'] = df_with_selections['longName'].apply(self.add_url)
             cols = list(df_with_selections)
@@ -182,7 +183,7 @@ class DataVisualizer(tt.TickerTools):
             print(f"Error fetching percentage changes: {e}")
             return pd.DataFrame(columns=["ticker", "day_change", "latestClose"])  # Empty DataFrame as fallback
 
-    @st.dialog('Details',width='large')
+    @st.dialog('Details', width='large')
     def overlay_chart(self, selection, col = 'ticker', region = st, ticker=None):
 
             def normalize(name, dig=1):
@@ -255,7 +256,7 @@ class DataVisualizer(tt.TickerTools):
         
         # Selection
         self.trend = self.sel_tre.selectbox(
-                'Trend by:', 
+                t('mm.trend_by'),
                 options = column_names,
                 index = 2
             )
@@ -270,7 +271,7 @@ class DataVisualizer(tt.TickerTools):
         bs_values = ['marketCap','totalDebt', 'totalRevenue','overallTrend','overallValueTrend']
         #Selection
         box_size = self.sel_size.selectbox(
-                'Tree size by:', 
+                t('mm.size_by'),
                 options = bs_values,
                 index = 0
         )
@@ -280,7 +281,7 @@ class DataVisualizer(tt.TickerTools):
         winner_count = combined_df.loc[combined_df[f'{self.trend}'] > 0, f'{box_size}'].count()
         looser_count = combined_df.loc[combined_df[f'{self.trend}'] < 0, f'{box_size}'].count()
 
-        st.write(f'LOOSER:WINNER {looser_count}:{winner_count} - {box_size}: {round(looser / (winner+looser)*100,0)}:{round(winner / (winner+looser)*100,0)}%' )
+        st.write(t('mm.market_stats', l=looser_count, w=winner_count, box=box_size, l_pct=round(looser/(winner+looser)*100,0), w_pct=round(winner/(winner+looser)*100,0)))
 
         color_labels = [ 'darkred', 'red','indianred','gray','lightgreen','lime','green', 'darkgreen'] 
         color_group = column_names[self.trend]
@@ -300,7 +301,7 @@ class DataVisualizer(tt.TickerTools):
         
         combined_df['details'] = combined_df['longName'].apply(self.add_url)
 
-        df_expander = st.expander(f'Underlying data', expanded = False)
+        df_expander = st.expander(t('mm.underlying_data'), expanded=False)
         with df_expander:
 
 
@@ -312,9 +313,9 @@ class DataVisualizer(tt.TickerTools):
                 pass
             
             df_xlsx = DataUtils.get_bin_excel_data(combined_df)
-            st.download_button(label='📥 Download Current Result',
+            st.download_button(label=t('mm.download_btn'),
                                 data=df_xlsx,
-                                file_name= f'market_map_export.xlsx',
+                                file_name='market_map_export.xlsx',
                                 mime='application/octet-stream'
                                 )
 
@@ -371,23 +372,21 @@ class DataVisualizer(tt.TickerTools):
 
         # Exch Selection
         self.exch_column = self.sel_exch.selectbox(
-                'Exchange:', 
+                t('mm.exchange'),
                 options = exch_names,
                 index = 0
             )
-            
-        # limit selection
+
         limit_list = ['ANY', 500,200,100,50,20,10]
         limit_to = self.sel_limit.selectbox(
-            'Limit:',
+            t('mm.limit'),
             options = limit_list,
             index = 1
         )
 
-        # order selection
         order_list = ['sharpe', 'sortino','ticker', 'marketCap' ]
         order_by = self.sel_ordby.selectbox(
-            'Order by:',
+            t('mm.order_by'),
             options = order_list,
             index = 0
         )
@@ -416,7 +415,7 @@ class DataVisualizer(tt.TickerTools):
             pass
 
         self.index_column = self.sel_idx.selectbox(
-                'Index:', 
+                t('mm.index'),
                 options = column_names,
                 index = pos
             )
@@ -431,12 +430,11 @@ class DataVisualizer(tt.TickerTools):
             '< 10': 'ai.dayHigh < 10',            
         }
         p_range = self.sel_mprice.selectbox(
-                'Price range:', 
+                t('mm.price_range'),
                 options = price_range,
                 index = 0
             )
 
-        #Size        
         capitalization_size = {
             'ANY'   : '',
             #'XXL'   : 'ai.marketCap > 10000000000000',
@@ -447,7 +445,7 @@ class DataVisualizer(tt.TickerTools):
             'S'    : 'ai.marketCap < 1000000000',
         }
         cm_size = self.sel_msize.selectbox(
-                'Market capitalization:', 
+                t('mm.market_cap'),
                 options = capitalization_size,
                 index = 0
             )
@@ -457,7 +455,7 @@ class DataVisualizer(tt.TickerTools):
         combined_df.fillna(value={'sector':'Other'}, inplace=True)
 
         if combined_df.empty:
-            st.error("No data available for the selected index.")
+            st.error(t('mm.no_data'))
             return
 
 #        combined_df.to_csv('combined.csv', sep=';', decimal=',')
