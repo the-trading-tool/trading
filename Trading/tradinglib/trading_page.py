@@ -1337,6 +1337,79 @@ class TradingPage:
                     f'`{"`, `".join(sorted(orphan_in_hist))}` — press 🔄 Sync.'
                 )
 
+        # ── Activity Log ──────────────────────────────────────────────────
+        st.markdown('---')
+        st.markdown('#### 📑 Activity Log')
+        st.caption(
+            'Individual fill events and fees from Alpaca — more granular than orders. '
+            'Each partial fill appears as a separate row.'
+        )
+
+        col_async, col_aclear, _ = st.columns([1, 1, 3])
+        with col_async:
+            do_act_sync = st.button('🔄 Sync Activities', key='btn_sync_activities',
+                                    help='Import FILL and FEE events from Alpaca')
+        with col_aclear:
+            do_act_clear = st.button('🗑 Clear Activities', key='btn_clear_activities',
+                                     type='secondary')
+
+        if do_act_sync:
+            if not broker.is_connected():
+                st.error('Broker not connected.')
+            else:
+                with st.spinner('Syncing activities…'):
+                    res = self.order_log.sync_activities(
+                        broker, bid, mode,
+                        activity_types=['FILL', 'FEE'],
+                    )
+                msg = f'✅ {res["imported"]} new activity record(s) imported.'
+                if res['errors']:
+                    msg += f'  ⚠ {len(res["errors"])} error(s): ' + '; '.join(res['errors'][:3])
+                st.success(msg)
+                st.rerun()
+
+        if do_act_clear:
+            self.order_log.clear_activities(broker=bid, mode=mode)
+            st.success('Activity log cleared.')
+            st.rerun()
+
+        act_df = self.order_log.get_activities_df(broker=bid, mode=mode)
+        if act_df.empty:
+            st.info('No activities yet — press 🔄 Sync Activities.')
+        else:
+            # Summary metrics
+            fills = act_df[act_df['activity_type'] == 'FILL']
+            fees  = act_df[act_df['activity_type'] == 'FEE']
+            fee_total = pd.to_numeric(fees['net_amount'], errors='coerce').sum()
+            ma1, ma2, ma3 = st.columns(3)
+            ma1.metric('Fill events',  len(fills))
+            ma2.metric('Fee events',   len(fees))
+            ma3.metric('Total fees',   f'{fee_total:+,.4f}' if fee_total else '0')
+
+            # Filter
+            act_filter = st.radio('Activity type:', ['FILL', 'FEE', 'All'],
+                                  horizontal=True, key='act_type_filter')
+            show_act = act_df if act_filter == 'All' else act_df[act_df['activity_type'] == act_filter]
+
+            show_act_cols = [c for c in
+                ['activity_type', 'transaction_time', 'symbol', 'side',
+                 'qty', 'price', 'cum_qty', 'leaves_qty', 'order_status',
+                 'net_amount', 'description']
+                if c in show_act.columns]
+            st.dataframe(
+                show_act[show_act_cols].reset_index(drop=True),
+                use_container_width=True,
+                column_config={
+                    'activity_type':   st.column_config.TextColumn('Type', width='small'),
+                    'transaction_time':st.column_config.DatetimeColumn(
+                        'Time', format='YYYY-MM-DD HH:mm:ss'),
+                    'price':           st.column_config.NumberColumn('Price $',    format='%.4f'),
+                    'net_amount':      st.column_config.NumberColumn('Net $',      format='%+.4f'),
+                    'cum_qty':         st.column_config.NumberColumn('Cum qty',    format='%.0f'),
+                    'leaves_qty':      st.column_config.NumberColumn('Leaves qty', format='%.0f'),
+                },
+            )
+
     # ------------------------------------------------------------------ #
     #  Tab: Compare                                                        #
     # ------------------------------------------------------------------ #

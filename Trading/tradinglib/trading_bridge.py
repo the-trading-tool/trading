@@ -47,6 +47,26 @@ class OrderLog(Tools):
                     error_msg       TEXT
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS broker_activities (
+                    id               TEXT PRIMARY KEY,
+                    broker           TEXT,
+                    mode             TEXT,
+                    activity_type    TEXT,
+                    transaction_time TEXT,
+                    symbol           TEXT,
+                    side             TEXT,
+                    qty              REAL,
+                    price            REAL,
+                    cum_qty          REAL,
+                    leaves_qty       REAL,
+                    order_id         TEXT,
+                    order_status     TEXT,
+                    net_amount       REAL,
+                    description      TEXT,
+                    imported_at      TEXT
+                )
+            """)
 
     def save(
         self,
@@ -93,6 +113,100 @@ class OrderLog(Tools):
         if broker:
             query += " AND broker=?"
             params.append(broker)
+        with sqlite3.connect(self._db) as conn:
+            conn.execute(query, params)
+
+    # ------------------------------------------------------------------ #
+    #  Activity log                                                        #
+    # ------------------------------------------------------------------ #
+
+    def sync_activities(
+        self,
+        broker,          # BrokerBase instance
+        broker_id: str,
+        mode: str,
+        activity_types: list[str] | None = None,
+        after: str | None = None,
+    ) -> dict:
+        """Import Alpaca account activities (fills, fees, …) into broker_activities.
+
+        Returns {'imported': N, 'errors': [...]}
+        """
+        summary = {'imported': 0, 'errors': []}
+        try:
+            items = broker.get_activities(
+                activity_types=activity_types or ['FILL', 'FEE'],
+                after=after,
+            )
+        except Exception as e:
+            summary['errors'].append(f'get_activities failed: {e}')
+            return summary
+
+        now = datetime.now().isoformat()
+        for item in items:
+            try:
+                with sqlite3.connect(self._db) as conn:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO broker_activities
+                            (id, broker, mode, activity_type, transaction_time,
+                             symbol, side, qty, price, cum_qty, leaves_qty,
+                             order_id, order_status, net_amount, description, imported_at)
+                        VALUES (?, ?, ?, ?, ?,
+                                ?, ?, ?, ?, ?, ?,
+                                ?, ?, ?, ?, ?)
+                    """, (
+                        item['id'], broker_id, mode,
+                        item['activity_type'], item['transaction_time'],
+                        item['symbol'], item['side'],
+                        item['qty'], item['price'],
+                        item['cum_qty'], item['leaves_qty'],
+                        item['order_id'], item['order_status'],
+                        item['net_amount'], item['description'],
+                        now,
+                    ))
+                    if conn.execute('SELECT changes()').fetchone()[0] > 0:
+                        summary['imported'] += 1
+            except Exception as e:
+                summary['errors'].append(f"activity {item.get('id','?')[:8]}: {e}")
+
+        logger.info('sync_activities: imported=%d errors=%d',
+                    summary['imported'], len(summary['errors']))
+        return summary
+
+    def get_activities_df(
+        self,
+        broker: str | None = None,
+        mode: str | None = None,
+        activity_type: str | None = None,
+    ) -> 'pd.DataFrame':
+        query = "SELECT * FROM broker_activities WHERE 1=1"
+        params: list = []
+        if broker:
+            query += " AND broker=?"
+            params.append(broker)
+        if mode:
+            query += " AND mode=?"
+            params.append(mode)
+        if activity_type:
+            query += " AND activity_type=?"
+            params.append(activity_type)
+        query += " ORDER BY transaction_time DESC"
+        try:
+            with sqlite3.connect(self._db) as conn:
+                return pd.read_sql_query(query, conn, params=params)
+        except Exception as e:
+            logger.error(f'get_activities_df failed: {e}')
+            return pd.DataFrame()
+
+    def clear_activities(self, broker: str | None = None, mode: str | None = None):
+        query = "DELETE FROM broker_activities WHERE 1=1"
+        params: list = []
+        if broker:
+            query += " AND broker=?"
+            params.append(broker)
+        if mode:
+            query += " AND mode=?"
+            params.append(mode)
         with sqlite3.connect(self._db) as conn:
             conn.execute(query, params)
 

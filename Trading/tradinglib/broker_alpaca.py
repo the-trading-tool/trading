@@ -196,6 +196,76 @@ class AlpacaBroker(TradingBroker):
             for o in orders
         ]
 
+    def get_activities(
+        self,
+        activity_types: list[str] | None = None,
+        after: str | None = None,
+        page_size: int = 100,
+    ) -> list[dict]:
+        """Fetch account activities (individual fills, fees, journal entries).
+
+        Uses the raw REST endpoint /v2/account/activities because TradingClient
+        does not expose a typed wrapper for this endpoint.
+
+        Parameters
+        ----------
+        activity_types : list of str, optional
+            e.g. ['FILL', 'FEE'].  None → all types.
+        after : str, optional
+            ISO-8601 timestamp; only return activities after this time.
+        page_size : int
+            Max results per page (Alpaca default 100, max 100).
+        """
+        client = self._get_client()
+        params: dict = {'page_size': min(page_size, 100)}
+        if activity_types:
+            params['activity_types'] = ','.join(activity_types)
+        if after:
+            params['after'] = after
+
+        all_items: list[dict] = []
+        page_token: str | None = None
+
+        while True:
+            if page_token:
+                params['page_token'] = page_token
+            try:
+                resp = client.get('/v2/account/activities', params)
+            except Exception as e:
+                logger.error(f'get_activities failed: {e}')
+                break
+
+            # resp may be a list or a dict with 'activities' key
+            items: list = resp if isinstance(resp, list) else resp.get('activities', [])
+            if not items:
+                break
+
+            for item in items:
+                activity_type = str(item.get('activity_type', ''))
+                raw: dict = {
+                    'id':               str(item.get('id', '')),
+                    'activity_type':    activity_type,
+                    'transaction_time': str(item.get('transaction_time', '')),
+                    'symbol':           str(item.get('symbol', '')),
+                    'side':             str(item.get('side', '')),
+                    'qty':              float(item.get('qty') or 0),
+                    'price':            float(item.get('price') or 0),
+                    'cum_qty':          float(item.get('cum_qty') or 0),
+                    'leaves_qty':       float(item.get('leaves_qty') or 0),
+                    'order_id':         str(item.get('order_id', '')),
+                    'order_status':     str(item.get('order_status', '')),
+                    'net_amount':       float(item.get('net_amount') or 0),
+                    'description':      str(item.get('description', '')),
+                }
+                all_items.append(raw)
+
+            # Pagination: Alpaca returns a page_token for the next page
+            page_token = resp.get('next_page_token') if isinstance(resp, dict) else None
+            if not page_token or len(items) < page_size:
+                break
+
+        return all_items
+
     def cancel_order(self, order_id: str) -> OrderResult:
         try:
             self._get_client().cancel_order_by_id(order_id)
