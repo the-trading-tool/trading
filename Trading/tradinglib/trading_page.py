@@ -1362,10 +1362,13 @@ class TradingPage:
                         broker, bid, mode,
                         activity_types=['FILL', 'FEE'],
                     )
-                msg = f'✅ {res["imported"]} new activity record(s) imported.'
                 if res['errors']:
-                    msg += f'  ⚠ {len(res["errors"])} error(s): ' + '; '.join(res['errors'][:3])
-                st.success(msg)
+                    st.error('Sync errors: ' + ' | '.join(res['errors'][:5]))
+                elif res['imported'] == 0:
+                    st.warning('⚠ Sync completed but 0 records imported. '
+                               'Check broker connection or try again.')
+                else:
+                    st.success(f'✅ {res["imported"]} new activity record(s) imported.')
                 st.rerun()
 
         if do_act_clear:

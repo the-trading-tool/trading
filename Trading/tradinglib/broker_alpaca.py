@@ -204,47 +204,45 @@ class AlpacaBroker(TradingBroker):
     ) -> list[dict]:
         """Fetch account activities (individual fills, fees, journal entries).
 
-        Uses the raw REST endpoint /v2/account/activities because TradingClient
-        does not expose a typed wrapper for this endpoint.
-
-        Parameters
-        ----------
-        activity_types : list of str, optional
-            e.g. ['FILL', 'FEE'].  None → all types.
-        after : str, optional
-            ISO-8601 timestamp; only return activities after this time.
-        page_size : int
-            Max results per page (Alpaca default 100, max 100).
+        Uses a direct requests call with the broker's own API credentials because
+        TradingClient.get() wraps responses in a custom object that is unreliable
+        for list endpoints.
         """
-        client = self._get_client()
-        params: dict = {'page_size': min(page_size, 100)}
+        import requests as _req
+
+        base = ('https://paper-api.alpaca.markets'
+                if self.paper else 'https://api.alpaca.markets')
+        url = f'{base}/v2/account/activities'
+        headers = {
+            'APCA-API-KEY-ID':     self.api_key,
+            'APCA-API-SECRET-KEY': self.secret_key,
+        }
+        params: dict = {'page_size': min(page_size, 100), 'direction': 'desc'}
         if activity_types:
             params['activity_types'] = ','.join(activity_types)
         if after:
             params['after'] = after
 
         all_items: list[dict] = []
-        page_token: str | None = None
 
         while True:
-            if page_token:
-                params['page_token'] = page_token
             try:
-                resp = client.get('/v2/account/activities', params)
+                r = _req.get(url, headers=headers, params=params, timeout=15)
+                r.raise_for_status()
+                data = r.json()
             except Exception as e:
-                logger.error(f'get_activities failed: {e}')
+                logger.error(f'get_activities HTTP failed: {e}')
                 break
 
-            # resp may be a list or a dict with 'activities' key
-            items: list = resp if isinstance(resp, list) else resp.get('activities', [])
+            # Alpaca returns a plain JSON array for this endpoint
+            items: list = data if isinstance(data, list) else []
             if not items:
                 break
 
             for item in items:
-                activity_type = str(item.get('activity_type', ''))
-                raw: dict = {
+                all_items.append({
                     'id':               str(item.get('id', '')),
-                    'activity_type':    activity_type,
+                    'activity_type':    str(item.get('activity_type', '')),
                     'transaction_time': str(item.get('transaction_time', '')),
                     'symbol':           str(item.get('symbol', '')),
                     'side':             str(item.get('side', '')),
@@ -256,13 +254,13 @@ class AlpacaBroker(TradingBroker):
                     'order_status':     str(item.get('order_status', '')),
                     'net_amount':       float(item.get('net_amount') or 0),
                     'description':      str(item.get('description', '')),
-                }
-                all_items.append(raw)
+                })
 
-            # Pagination: Alpaca returns a page_token for the next page
-            page_token = resp.get('next_page_token') if isinstance(resp, dict) else None
-            if not page_token or len(items) < page_size:
+            # Alpaca paginates via the `after` param set to the last item's ID
+            # when the result set equals page_size there may be more pages
+            if len(items) < params['page_size']:
                 break
+            params['after'] = items[-1].get('id', '')
 
         return all_items
 
