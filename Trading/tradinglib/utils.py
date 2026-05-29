@@ -367,9 +367,11 @@ class DataUtils():
         if 'Date' not in working.columns:
             # assume index contains the date
             working = working.reset_index()
-            # rename first column if it's unnamed
-            if 'index' in working.columns and 'Date' not in working.columns:
-                working.rename(columns={'index': 'Date'}, inplace=True)
+            # rename first column if it's unnamed or if yfinance used 'Datetime' (intraday)
+            for _alias in ('index', 'Datetime'):
+                if _alias in working.columns and 'Date' not in working.columns:
+                    working.rename(columns={_alias: 'Date'}, inplace=True)
+                    break
 
         # normalize column names
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
