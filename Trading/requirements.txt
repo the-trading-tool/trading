@@ -6,7 +6,7 @@
 # Falls es fehlschlägt: https://github.com/ta-lib/ta-lib-python
 
 # --- Web-Framework ---
-streamlit>=1.55.0,<2.0
+streamlit>=1.40.0,<1.56.0
 streamlit-nested-layout>=0.1.4
 extra-streamlit-components>=0.1.81
 
