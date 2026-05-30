@@ -149,9 +149,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Info "Alle anderen Pakete installieren …"
-& $PIP install -r requirements.txt --quiet
+# --prefer-binary: nimmt vorkompilierte Wheels statt Quellcode-Build.
+# Verhindert Fehler auf Systemen ohne C-Compiler (z.B. kein Visual Studio).
+& $PIP install -r requirements.txt --prefer-binary --quiet
 if ($LASTEXITCODE -ne 0) {
-    Write-Fail "pip install fehlgeschlagen. Prüfe Netzwerkverbindung und requirements.txt."
+    Write-Fail "pip install fehlgeschlagen."
+    Write-Fail "Moegliche Ursachen:"
+    Write-Fail "  1. Keine Internetverbindung"
+    Write-Fail "  2. Paket benoetigt C-Compiler (Visual Studio Build Tools)"
+    Write-Fail "     Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
+    Write-Fail "  3. Python-Version nicht unterstuetzt — empfohlen: Python 3.11"
+    Write-Fail "     Download: https://www.python.org/downloads/release/python-3119/"
     exit 1
 }
 Write-Ok "Pakete installiert"
