@@ -325,17 +325,29 @@ if ($Init) {
     Write-Warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     $confirm = Read-Host "  Fortfahren? (j/N)"
     if ($confirm -match '^[jJyY]') {
-        # /index_member laedt alle Ticker aus den konfigurierten Indizes
-        # Intervalle: 1d (2 Jahre), 1wk (6 Jahre), 1mo (10 Jahre)
+        # Schritt 1: Aktien aller Indizes laden (INDEX-Gruppe ausgeschlossen)
+        Write-Info "Lade Aktien-Kursdaten (/index_member) ..."
         & $PY get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y
         if ($LASTEXITCODE -ne 0) {
-            Write-Warn "get_asset_data.py mit Fehler beendet."
+            Write-Warn "get_asset_data.py /index_member mit Fehler beendet."
         } else {
-            Write-Ok "OHLC-Daten geladen"
+            Write-Ok "Aktien-OHLC geladen"
+        }
+
+        # Schritt 2: Index-Instrumente laden (^GDAXI, ^GSPC etc.)
+        # Diese werden als erstes Asset in der App angezeigt und muessen vorhanden sein
+        Write-Info "Lade Index-Kursdaten (/index_only) ..."
+        & $PY get_asset_data.py /index_only 1d:2y 1wk:6y 1mo:10y
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "get_asset_data.py /index_only mit Fehler beendet."
+        } else {
+            Write-Ok "Index-OHLC geladen (^GDAXI, ^GSPC, ...)"
         }
     } else {
         Write-Info "OHLC-Download uebersprungen."
-        Write-Info "Spaeter nachholen: .venv\Scripts\python.exe get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y"
+        Write-Info "Spaeter nachholen:"
+        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y"
+        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_only 1d:2y 1wk:6y 1mo:10y"
     }
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
