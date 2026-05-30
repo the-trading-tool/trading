@@ -1,6 +1,12 @@
 import numpy as np
-import talib
 import plotly.graph_objects as go
+
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    talib = None
+    TALIB_AVAILABLE = False
 
 import sys
 try:
@@ -43,9 +49,14 @@ class Adx(macd.Macd):
 
 		self.df["returns"] = np.log(self.df['Close'] / self.df['Close'].shift(1))
 
-		self.df['adx']=talib.ADX(self.df['High'],self.df['Low'], self.df['Close'], self.window)
-		self.df['adx_plus_di']=talib.PLUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
-		self.df['adx_minus_di']=talib.MINUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+		if talib is not None:
+			self.df['adx']=talib.ADX(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+			self.df['adx_plus_di']=talib.PLUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+			self.df['adx_minus_di']=talib.MINUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+		else:
+			self.df['adx'] = 0.0
+			self.df['adx_plus_di'] = 0.0
+			self.df['adx_minus_di'] = 0.0
 
 		conditions=[ (self.df['adx_plus_di']>self.df['adx_minus_di']) & (self.df['adx']>self.down_level) & (self.df['macd'] > 0),
 					(self.df['adx_minus_di']>=self.df['adx_plus_di']) & (self.df['adx']>self.down_level) & (self.df['macd'] <= 0)

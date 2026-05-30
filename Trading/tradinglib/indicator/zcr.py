@@ -1,6 +1,12 @@
 import numpy as np
-import talib
 import plotly.graph_objects as go
+
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    talib = None
+    TALIB_AVAILABLE = False
 
 import sys
 try:

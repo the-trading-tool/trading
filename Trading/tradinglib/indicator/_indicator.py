@@ -1,8 +1,14 @@
 import numpy as np
 import ta
-import talib
 import pandas as pd
 import sys
+
+try:
+    import talib
+    TALIB_AVAILABLE = True
+except ImportError:
+    talib = None
+    TALIB_AVAILABLE = False
 
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
