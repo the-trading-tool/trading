@@ -144,8 +144,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Info "TA-Lib vorab pruefen ..."
+$ErrorActionPreference = 'SilentlyContinue'
 & $PY -c "import talib" 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$talib_exit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($talib_exit -ne 0) {
     Write-Info "TA-Lib wird installiert (kann etwas dauern) ..."
     & $PIP install "TA-Lib>=0.6.0" --prefer-binary --quiet
     if ($LASTEXITCODE -ne 0) {
