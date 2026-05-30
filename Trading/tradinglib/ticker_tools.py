@@ -126,7 +126,10 @@ class TickerTools(tools.Tools):
         for loader, module_name, is_pkg in pkgutil.iter_modules(indicator_pkg.__path__):
             if not module_name.startswith("_"):
                 full_module_name = f"{indicator_pkg.__name__}.{module_name}"
-                self.imported_modules[module_name] = importlib.import_module(full_module_name)
+                try:
+                    self.imported_modules[module_name] = importlib.import_module(full_module_name)
+                except Exception as e:
+                    print(f"⚠️ Indicator '{module_name}' konnte nicht geladen werden: {e}")
 
 
     def init_instance(self, instance_name = None, replace_values_in_df = False, df=pd.DataFrame(), symbol=None):

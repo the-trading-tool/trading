@@ -690,15 +690,15 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
         cci = DataUtils.safe_last(df, 'cci', default=0)
         adx = DataUtils.safe_last(df, 'adx', default=0)
-        adx_angle = DataUtils.safe_last(indicator.angle(df['adx']), default=0)
+        adx_angle = DataUtils.safe_last(indicator.angle(df['adx']), default=0) if 'adx' in df.columns else 0
         adx_plus = DataUtils.safe_last(df, 'adx_plus_di', default=0)
         adx_minus = DataUtils.safe_last(df, 'adx_minus_di', default=0)
         momentum = DataUtils.safe_last(df, 'rsi_momentum', default=0)
         momentum_ema = DataUtils.safe_last(df, 'stoch_ema', default=0)
-        momentum_ema_angle = DataUtils.safe_last(indicator.angle(df['stoch_ema']), default=0)
+        momentum_ema_angle = DataUtils.safe_last(indicator.angle(df['stoch_ema']), default=0) if 'stoch_ema' in df.columns else 0
         rsi_ema = DataUtils.safe_last(df, 'rsi_ema', default=0)
         vola = round(df['daily_returns'].std() * math.sqrt(21), 1) if 'daily_returns' in df.columns else 0
-        ewo_angle = DataUtils.safe_last(indicator.angle(df['ewo']), default=0)
+        ewo_angle = DataUtils.safe_last(indicator.angle(df['ewo']), default=0) if 'ewo' in df.columns else 0
 
         pdict["relVolRatio"] = relVol
         pdict["wkRelVolRatio"] = wkRelVol
@@ -780,7 +780,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['sma50'] = DataUtils.safe_last(df, 'MA50', default=0)
         pdict['sma200'] = DataUtils.safe_last(df, 'MA200', default=0)
         pdict['ema9'] = DataUtils.safe_last(df, 'ema9', default=0)
-        pdict['ema9_angle'] = DataUtils.safe_last(indicator.angle(df['ema9']), default=0)
+        pdict['ema9_angle'] = DataUtils.safe_last(indicator.angle(df['ema9']), default=0) if 'ema9' in df.columns else 0
         pdict['ema21'] = DataUtils.safe_last(df, 'ema21', default=0)
         pdict['ema50'] = DataUtils.safe_last(df, 'ema50', default=0)
         pdict['cci'] = DataUtils.safe_last(df, 'cci', default=0)
