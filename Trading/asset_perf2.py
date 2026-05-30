@@ -1110,7 +1110,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         return pdict
 
     except Exception as e:
-        #print(f"⚠️ Data exception for {symbol}: {e}")
+        import traceback
+        print(f"⚠️ fill_pdict exception for {symbol}: {e}")
+        print(traceback.format_exc())
         return None
 
 
