@@ -74,8 +74,14 @@ $python = $null
 if (Test-Command 'py') {
     $ver = py -3.11 --version 2>$null
     if ($LASTEXITCODE -eq 0) {
-        $python = 'py -3.11'
-        Write-Ok "py -3.11 gefunden: $ver"
+        # Vollstaendigen Pfad zur python.exe auslesen -- vermeidet Probleme
+        # beim Weiterreichen von "-3.11" als Argument in PS5
+        $python_exe = (py -3.11 -c "import sys; print(sys.executable)" 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $python_exe) {
+            $python = $python_exe.Trim()
+            Write-Ok "py -3.11 gefunden: $ver"
+            Write-Info "Python-Pfad: $python"
+        }
     }
 }
 
@@ -109,10 +115,8 @@ if (Test-Path '.venv\Scripts\python.exe') {
     Write-Ok ".venv bereits vorhanden -- ueberspringe Erstellung"
 } else {
     Write-Info "Erstelle .venv ..."
-    # $python kann "py -3.11" (zwei Tokens) oder "python3.11" (ein Token) sein
-    $py_parts = $python.Split(' ')
-    $py_extra = if ($py_parts.Length -gt 1) { $py_parts[1..($py_parts.Length-1)] } else { @() }
-    & $py_parts[0] @($py_extra + @('-m', 'venv', '.venv'))
+    # $python ist immer ein einzelner Pfad (z.B. C:\Python311\python.exe)
+    & $python -m venv .venv
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "venv-Erstellung fehlgeschlagen (exit code $LASTEXITCODE)."
         exit 1
