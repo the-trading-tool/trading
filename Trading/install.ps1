@@ -345,9 +345,10 @@ if ($Init) {
         }
 
         # Schritt 2: Index-Instrumente laden (^GDAXI, ^GSPC etc.)
-        # Diese werden als erstes Asset in der App angezeigt und muessen vorhanden sein
+        # Diese werden als erstes Asset in der App angezeigt und muessen vorhanden sein.
+        # Inkl. Intraday-Daten (30m, 1h) damit kein Yahoo-Fallback noetig ist.
         Write-Info "Lade Index-Kursdaten (/index_only) ..."
-        & $PY get_asset_data.py /index_only 1d:2y 1wk:6y 1mo:10y
+        & $PY get_asset_data.py /index_only 30m:2wk 1h:2wk 1d:2y 1wk:6y 1mo:10y
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "get_asset_data.py /index_only mit Fehler beendet."
         } else {
