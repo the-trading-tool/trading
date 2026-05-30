@@ -1,15 +1,10 @@
 from tradinglib import tools
 from tradinglib import ticker_tools as tt
 from tradinglib.i18n import t
-from datetime import timedelta, datetime
 from tradinglib import main_page as mp
 from tradinglib import make_query as mq
 from tradinglib import system_config as sysconf
 from tradinglib.utils import DataUtils
-
-import yfinance as yf
-from tradinglib import market_data as md
-from io import BytesIO
 
 import sqlite3
 import pandas as pd
@@ -127,61 +122,40 @@ class DataVisualizer(tt.TickerTools):
     
     def day_change(self, tickers):
         """
-        Fetches the closing prices for the last minute for a list of tickers using yfinance.
+        Calculates the day-over-day percentage change from the last two closing
+        prices stored in each ticker's local yf_<TICKER>.db (day_data table).
 
-        Args:
-            tickers (list): List of ticker symbols.
+        Works correctly across weekends and holidays: the two most-recent rows
+        in day_data are always the last two actual trading days, regardless of
+        calendar gaps.
 
         Returns:
-            pd.DataFrame: DataFrame with 'ticker' and 'Close' columns.
+            pd.DataFrame with columns 'ticker', 'day_change', 'latestClose'.
         """
-        def reset_index(df):
-            ftime_str = '%Y-%m-%d'
-            # normalize index and reset if df has rows
-            if DataUtils.get_num_rows(df) > 0:
-                df.index = df.index.strftime(ftime_str)
-                df.index = pd.to_datetime(df.index).strftime(ftime_str)
-                df.index.name = 'Date'
-                df.reset_index(inplace=True)
+        changes = []
+        for ticker in tickers:
+            db_path = tools.Tools().get_path(path=self.db_path, file_name=f'yf_{ticker}.db')
+            try:
+                conn = sqlite3.connect(db_path)
+                df = pd.read_sql_query(
+                    "SELECT Date, Close FROM day_data ORDER BY Date DESC LIMIT 2",
+                    conn
+                )
+                conn.close()
+                if len(df) == 2 and pd.notna(df['Close'].iloc[0]) and pd.notna(df['Close'].iloc[1]):
+                    latest = df['Close'].iloc[0]
+                    prev   = df['Close'].iloc[1]
+                    changes.append({
+                        "ticker":       ticker,
+                        "day_change":   round((latest - prev) / prev * 100, 2),
+                        "latestClose":  round(latest, 2),
+                    })
+                else:
+                    changes.append({"ticker": ticker, "day_change": None, "latestClose": None})
+            except Exception:
+                changes.append({"ticker": ticker, "day_change": None, "latestClose": None})
 
-            return df
-
-        days = -10
-        now = datetime.now() #.strptime(date_str, ts.ftime_str).date()
-        start_date = (now + timedelta(days=days)).strftime("%Y-%m-%d")
-#        if 1:
-        try:
-            # Fetch daily data for the last trading day
-#            from curl_cffi import requests
-#            session = requests.Session(impersonate="chrome")
-            #            daily_data = yf.download(tickers=tickers, interval="1d", start=start_date, actions=False, progress=False, auto_adjust=False, prepost=True, session=session)
-            daily_data = md.download(tickers=tickers, interval="1d", start=start_date, actions=False, progress=False, auto_adjust=False, prepost=True)
-            daily_data = reset_index(daily_data)
-            pos = -2
-            daily_close = daily_data["Close"].iloc[pos]  # Last day's close
-            if pd.isna(daily_close[tickers[0]]):
-                pos = -3
-            # apply corrections for weekends
-#            day_of_week = now.weekday()
-            daily_close = daily_data["Close"].iloc[pos]  # Last day's close
-            last_minute_close =daily_data["Close"].iloc[-1]  # Most recent close price
-            # Combine the data and calculate percentage change
-            changes = []
-            for ticker in tickers:
-                if ticker in daily_close and ticker in last_minute_close:
-                    yesterday_close = daily_close[ticker]
-                    latest_close = round(last_minute_close[ticker],2)
-                    if pd.notna(yesterday_close) and pd.notna(latest_close):
-                        day_change = (latest_close - yesterday_close) / yesterday_close * 100
-                        changes.append({"ticker": ticker, "day_change": day_change, "latestClose": latest_close})
-                    else:
-                        changes.append({"ticker": ticker, "day_change": None, "latestClose": latest_close})
-
-            return pd.DataFrame(changes)
-
-        except Exception as e:
-            print(f"Error fetching percentage changes: {e}")
-            return pd.DataFrame(columns=["ticker", "day_change", "latestClose"])  # Empty DataFrame as fallback
+        return pd.DataFrame(changes) if changes else pd.DataFrame(columns=["ticker", "day_change", "latestClose"])
 
     @st.dialog('Details', width='large')
     def overlay_chart(self, selection, col = 'ticker', region = st, ticker=None):
