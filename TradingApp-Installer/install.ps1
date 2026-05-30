@@ -1,4 +1,4 @@
-#Requires -Version 7
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Trading-App Installer
@@ -111,7 +111,8 @@ if (Test-Path '.venv\Scripts\python.exe') {
     Write-Info "Erstelle .venv …"
     # $python kann "py -3.11" (zwei Tokens) oder "python3.11" (ein Token) sein
     $py_parts = $python.Split(' ')
-    & $py_parts[0] @($py_parts[1..($py_parts.Length-1)] + @('-m', 'venv', '.venv'))
+    $py_extra = if ($py_parts.Length -gt 1) { $py_parts[1..($py_parts.Length-1)] } else { @() }
+    & $py_parts[0] @($py_extra + @('-m', 'venv', '.venv'))
     if (-not (Test-Path '.venv\Scripts\python.exe')) {
         Write-Fail "Erstellung der venv fehlgeschlagen."
         exit 1
