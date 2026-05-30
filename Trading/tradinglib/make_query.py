@@ -68,13 +68,29 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
                 {q_ext}"""
 #                WHERE yt.{index} = "{value}" OR  yt.{index} = {value}
 
-    # Nur Komma einfuegen wenn ap_field_list nicht leer ist -- sonst entsteht
-    # ein haengender Komma im SELECT der zu einem SQL-Syntaxfehler fuehrt.
     fl = f"{field_list},{ap_field_list}" if ap_field_list else field_list
+    perf_table_exists = bool(flds)
+
+    # Wenn die Performance-Tabelle noch nicht existiert (z.B. vor dem ersten
+    # asset_perf2.py-Lauf), faellt der INNER JOIN auf performance_db weg.
+    # Die App zeigt dann nur Asset-Info ohne Performance-Daten.
+    if not perf_table_exists:
+        fallback_q_ext = q_ext if q_ext else ""
+        query = f"""
+            SELECT
+            {field_list}
+            , i.name as index_name
+            FROM stocks AS yt
+            JOIN stock_indices si ON yt.id = si.stock_id
+            JOIN indices i ON si.index_id = i.id
+            LEFT JOIN info_db.asset_info AS ai ON yt.Ticker = ai.ticker
+            {fallback_q_ext}
+        """
+        return query
 
     if q == 1:
         query = f"""
-            SELECT 
+            SELECT
             {fl}
             , i.name as index_name
             FROM stocks AS yt
@@ -87,7 +103,7 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
                     SELECT ticker, MAX(date) AS max_date
                     FROM performance_db.{perf_table}
                     GROUP BY ticker
-                ) ap2 
+                ) ap2
                 ON ap1.ticker = ap2.ticker AND ap1.Date = ap2.max_date
             ) AS ap ON yt.Ticker = ap.ticker
             INNER JOIN info_db.asset_info AS ai ON yt.Ticker = ai.ticker
@@ -116,10 +132,10 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
             INNER JOIN info_db.asset_info AS ai ON yt.Ticker = ai.ticker
             {q_ext}
             """
-    
+
     if q == 3:
-        query = f"""    
-            SELECT     
+        query = f"""
+            SELECT
             {fl}
             , i.name as index_name
             FROM stocks AS yt
