@@ -36,6 +36,18 @@ class BannerPage():
             # Save the data to database
 
             db = tools.Db_tools(db_path=self.db_path, database_name=f'trades{year}.db')
+            db.conn.execute("""
+                CREATE TABLE IF NOT EXISTS trades (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker TEXT,
+                    buyDate TEXT,
+                    sellDate TEXT,
+                    num_assets REAL,
+                    invest REAL,
+                    profit REAL
+                )
+            """)
+            db.conn.commit()
             df = pd.read_sql('select * from trades', db.conn)
             db.conn.close()
 
