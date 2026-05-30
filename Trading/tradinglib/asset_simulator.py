@@ -947,27 +947,27 @@ class AssetSimulator(tt.TickerTools):
         (self.sel_dely, self.sel_fee) = self.sel6.columns(2)
 
         no_assets = self.to_int(self.sel_no_assets.text_input(
-            'Number of assets',
+            _t('sf.no_assets'),
             '5',
             key='asset_sim_no_assets'
             ),5)
 
         invest = self.to_int(self.sel_invest.text_input(
-            'Invest',
+            _t('sf.invest'),
             '100000',
             key='asset_sim_invest'
             ),100000)
 
         buy_delay = 1
         buy_delay = self.to_int(self.sel_dely.text_input(
-            'Delay buy (days):',
+            _t('sf.buy_delay'),
             '1',
             key='asset_sim_buy_delay'
             ),buy_delay)
 
         try:
             fee_pct = round(float(self.sel_fee.text_input(
-                'Fee per trade (%):',
+                _t('sf.fee_pct'),
                 '0.3',
                 key='asset_sim_fee_pct'
             )), 4)
@@ -978,7 +978,7 @@ class AssetSimulator(tt.TickerTools):
         operators =  ', '.join(evaluator.valid_operators)
 
         buy_assets = self.ss_sidebar.text_input(
-            'Buy assets when:',
+            _t('sf.buy_when'),
             self.sys_config.get_value("buy_query",default="(ewo_angle>20)"),
             key = 'asset_sim_buy_assets',
             help  = f"Please only use the following operators: {operators}"
@@ -986,7 +986,7 @@ class AssetSimulator(tt.TickerTools):
 #        if not order_by in buy_assets:
 #            buy_assets = f"{buy_assets}&({order_by}>0)"
         sell_assets = self.ss_sidebar.text_input(
-            'Sell assets when:',
+            _t('sf.sell_when'),
             self.sys_config.get_value("sell_query",default="(ewo_angle<-20"),
             key = 'asset_sim_sell_assets',
             help  = f"Please only use the following operators: {operators}"
