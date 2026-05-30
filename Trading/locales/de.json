@@ -116,6 +116,8 @@
   "perf.data_as_of": "Daten vom:",
   "perf.no_data": "Keine Daten für den gewählten Index verfügbar.",
   "perf.download_btn": "📥 Datensatz herunterladen",
+  "perf.show_grid": "Chart-Grid anzeigen",
+  "perf.grid_count": "Anzahl Assets",
 
   "ota.no_trades_db": "Keine Trades in der Datenbank. Bitte zuerst Trades im Tab **Trade Import/Export** importieren.",
   "ota.no_action_col": "Spalte \"action\" nicht gefunden. Bitte Daten neu importieren.",

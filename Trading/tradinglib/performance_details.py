@@ -1,6 +1,7 @@
 from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as po,
             main_page as mp, make_query as mq, system_config as sysconf,
-            graph_tools as gt )
+            graph_tools as gt, tiny_chart as tc )
+from tradinglib.tiny_chart_grid import ChartsGridRenderer
 from tradinglib.utils import DataUtils
 from tradinglib.i18n import t
 
@@ -295,7 +296,32 @@ class Performance(tt.TickerTools):
         """
         combined_df.sort_values(['overallValueTrend','sortino','ticker'],ascending=[False,False,True], inplace=True)
         self.select_chart(combined_df, limit=1000, region = st)
-        self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name=f'simulation_{self.use_year}_dataset.xlsx', region=st)                
+        self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name=f'simulation_{self.use_year}_dataset.xlsx', region=st)
+
+        col_chk, col_sel = st.columns([1, 2])
+        show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key='perf_show_grid')
+        grid_count = col_sel.selectbox(t('perf.grid_count'), [5, 10, 20], index=1, key='perf_grid_count') if show_grid else 10
+        if show_grid:
+            date = combined_df['Date'].iloc[0] if not combined_df.empty else None
+            tickers = combined_df[combined_df['Date'] == date].sort_values('sortino', ascending=False)['ticker'].head(grid_count)
+            renderer = ChartsGridRenderer(columns=2)
+            (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
+            with st.spinner(t('assets.spinner'), show_time=True):
+                renderer.render(
+                    tickers=tickers,
+                    tc=tc,
+                    period=period,
+                    interval=interval,
+                    overlays=overlays,
+                    oszilators=oszilators,
+                    username=self.username,
+                    url='/?details=true&symbol=',
+                    chart_config=gt.chart_config,
+                    name_df=combined_df,
+                    name_lookup_col='ticker',
+                    name_field='longName',
+                    log_exceptions=True,
+                )
 
 
                 

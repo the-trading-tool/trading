@@ -75,29 +75,32 @@ class AllAssetsView(tt.TickerTools):
 
             selection = ass.AssetSimulator().dataframe_with_selections(df=df,column_config=column_config)
             self.export_to_excel(df, button_label=t('assets.download_btn'), file_name='Asset_dataset.xlsx', region=st)
-            date = df['Date'].iloc[0] if not df.empty else None
-            tickers = df[df['Date']==date].sort_values('sortino', ascending=False)['ticker'].head(10)
+            col_chk, col_sel = st.columns([1, 2])
+            show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key='aa_show_grid')
+            grid_count = col_sel.selectbox(t('perf.grid_count'), [5, 10, 20], index=1, key='aa_grid_count') if show_grid else 10
+            if show_grid:
+                date = df['Date'].iloc[0] if not df.empty else None
+                tickers = df[df['Date']==date].sort_values('sortino', ascending=False)['ticker'].head(grid_count)
 
-            # use renderer to obtain selectors and render charts
-            renderer = ChartsGridRenderer(columns=2)
-            (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
+                renderer = ChartsGridRenderer(columns=2)
+                (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
 
-            with st.spinner(t('assets.spinner'), show_time=True):
-                renderer.render(
-                    tickers=tickers,
-                    tc=tc,
-                    period=period,
-                    interval=interval,
-                    overlays=overlays,
-                    oszilators=oszilators,
-                    username=self.username,
-                    url=self.url,
-                    chart_config=gt.chart_config,
-                    name_df=df,
-                    name_lookup_col='ticker',
-                    name_field='longName',
-                    log_exceptions=True,
-                )
+                with st.spinner(t('assets.spinner'), show_time=True):
+                    renderer.render(
+                        tickers=tickers,
+                        tc=tc,
+                        period=period,
+                        interval=interval,
+                        overlays=overlays,
+                        oszilators=oszilators,
+                        username=self.username,
+                        url=self.url,
+                        chart_config=gt.chart_config,
+                        name_df=df,
+                        name_lookup_col='ticker',
+                        name_field='longName',
+                        log_exceptions=True,
+                    )
 
 #                st.write(f'Last chart update: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
