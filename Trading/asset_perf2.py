@@ -601,14 +601,22 @@ def get_ticker_value(ticker, key, from_json=False):
     except Exception:
         pass
 # 1703980800
+    # asset_info.db speichert alle Spalten als TEXT -- numerische Werte
+    # als float zurueckgeben damit Vergleiche wie > 0 funktionieren.
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except (ValueError, TypeError):
+            pass  # String-Wert bleibt String (z.B. 'USD', 'XETRA')
+
     if value:
         if type(value) == int or type(value) == float:
-            value = round(value,2)
+            value = round(value, 2)
     if value != value:
         value = 0
-    if value == None:
+    if value is None:
         value = 0
-        
+
     return value
 
 
