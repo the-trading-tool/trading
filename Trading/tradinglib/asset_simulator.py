@@ -1,6 +1,7 @@
 from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as po,
             main_page as mp, make_query as mq, system_config as sysconf,
             graph_tools as gt )
+from tradinglib.i18n import t as _t
 
 import datetime as dt
 import numpy as np
@@ -143,7 +144,7 @@ class TradeProcessor:
             raise ValueError("Data not loaded. Call load_data() first.")
 
         if self.data.empty:
-            st.warning("No data")
+            st.warning(_t('sf.no_data_warning'))
             return pd.DataFrame()
         
         self.processed_data = pd.DataFrame()
@@ -465,7 +466,7 @@ class AssetSimulator(tt.TickerTools):
         
         try:
             column_config["details"] = st.column_config.LinkColumn(
-                "Details", display_text="View"
+                _t('sf.details_col'), display_text=_t('sf.view_text')
             )
             df_with_selections['details'] = df_with_selections['longName'].apply(self.add_url,interval=self.sys_config.get_value('interval','30'),period=self.sys_config.get_value('period','1mo'))
             cols = list(df_with_selections)
@@ -764,7 +765,7 @@ class AssetSimulator(tt.TickerTools):
         exch_names.sort()
         # Exch Selection
         self.exch_column = self.sel_exch.selectbox(
-                'Exchange:', 
+                _t('sf.exchange'),
                 options = exch_names,
                 index = 1,
                 key='asset_sim_exchange'
@@ -784,7 +785,7 @@ class AssetSimulator(tt.TickerTools):
         sector_names = list(filter(None, sector_names))
         sector_names.sort()
         self.sector_col = self.sel_sector.selectbox(
-                'Sector:', 
+                _t('sf.sector'),
                 options = sector_names,
                 index = 0,
                 key='asset_sim_sector'
@@ -801,7 +802,7 @@ class AssetSimulator(tt.TickerTools):
         curr_names.sort()
         # Curr Selection
         self.curr_column = self.sel_curr.selectbox(
-                'Currency:', 
+                _t('sf.currency'),
                 options = curr_names,
                 index = 0,
                 key='asset_sim_currency'
@@ -818,7 +819,7 @@ class AssetSimulator(tt.TickerTools):
             for y in range(_current_year, _EARLIEST_SIM_YEAR - 1, -1)
         ]
         _selected_label = self.sel_year.selectbox(
-            "Use data as of:",
+            _t('sf.data_as_of'),
             options=_year_labels,
             index=0,
             key='asset_sim_use_year'
@@ -833,18 +834,18 @@ class AssetSimulator(tt.TickerTools):
             _exit_code = _running_proc.poll()
             if _exit_code is None:
                 # Prozess läuft noch
-                st.info(f"⏳ Berechnung für {self.use_year} läuft (PID {_running_proc.pid}) …")
-                if st.button("↺ Status prüfen", key=f'check_sim_{self.use_year}'):
+                st.info(_t('sf.calc_running', year=self.use_year, pid=_running_proc.pid))
+                if st.button(_t('sf.check_status'), key=f'check_sim_{self.use_year}'):
                     st.rerun()
                 return
             else:
                 # Prozess beendet — Session-State bereinigen
                 del st.session_state[_proc_key]
                 if _exit_code == 0:
-                    st.success(f"✅ Berechnung für {self.use_year} abgeschlossen — Daten werden geladen …")
+                    st.success(_t('sf.calc_done', year=self.use_year))
                     st.rerun()
                 else:
-                    st.error(f"❌ Berechnung für {self.use_year} fehlgeschlagen (Exit-Code {_exit_code}).")
+                    st.error(_t('sf.calc_failed', year=self.use_year, code=_exit_code))
                     return
         # ──────────────────────────────────────────────────────────────────────
 
@@ -856,7 +857,7 @@ class AssetSimulator(tt.TickerTools):
         # order selection
         order_list = ['sharpe', 'sortino', 'marketCap','overallTrend','overallValueTrend','roa','beta','revenueGrowth','ebitMargins' ]
         order_by = self.sel_ordby.selectbox(
-            'Order by:',
+            _t('sf.order_by'),
             options = order_list,
             index = 1,
             key='asset_sim_order_by'
@@ -876,7 +877,7 @@ class AssetSimulator(tt.TickerTools):
             pass
         # Selection
         self.index_column = self.sel_idx.selectbox(
-                'Index:', 
+                _t('sf.index'),
                 options = column_names,
                 index = pos,
                 key='asset_sim_index'
@@ -892,7 +893,7 @@ class AssetSimulator(tt.TickerTools):
             '< 10': 'ai.dayHigh < 10',            
         }
         p_range = self.sel_mprice.selectbox(
-                'Price range:', 
+                _t('sf.price_range'),
                 options = price_range,
                 index = 0,
                 key='asset_sim_price_range'
@@ -909,7 +910,7 @@ class AssetSimulator(tt.TickerTools):
             'S'    : 'ai.marketCap < 1000000000',
         }
         cm_size = self.sel_msize.selectbox(
-                'Market capitalization:', 
+                _t('sf.market_cap'),
                 options = capitalization_size,
                 index = 0,
                 key='asset_sim_cap_size'
@@ -924,13 +925,13 @@ class AssetSimulator(tt.TickerTools):
 
         if combined_df.empty:
             if not _year_has_data:
-                st.info(f"Für {self.use_year} existiert noch keine Simulationsdatenbank (`asset_simulation_{self.use_year}.db`).")
+                st.info(_t('sf.no_data_no_db', year=self.use_year))
             else:
-                st.info(f"Keine Daten für {self.use_year} im gewählten Index verfügbar.")
+                st.info(_t('sf.no_data_index', year=self.use_year))
             if self.is_admin:
                 _script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'asset_perf2.py')
                 _cwd = os.path.dirname(_script)
-                if st.button(f"▶ Berechnung für {self.use_year} starten", key=f'gen_sim_{self.use_year}'):
+                if st.button(_t('sf.start_calc', year=self.use_year), key=f'gen_sim_{self.use_year}'):
                     _proc = subprocess.Popen([sys.executable, _script, f'/year:{self.use_year}'], cwd=_cwd)
                     st.session_state[f'_sim_proc_{self.use_year}'] = _proc
                     st.rerun()
