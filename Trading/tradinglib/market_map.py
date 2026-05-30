@@ -240,18 +240,19 @@ class DataVisualizer(tt.TickerTools):
         combined_df['enterpriseValue']=combined_df['enterpriseValue'].div(1000000).round(2)
         combined_df['enterpriseValue']=combined_df['enterpriseValue'].fillna(0)
         
+        _inf = float('inf')
         column_names = {
-            'sharpe':[-100,-2,-0.5,-0.01,0.01,0.5,2,10,100],
-            'sortino':[-100,-2,-0.5,-0.01,0.01,0.5,2,10,100],
-            'day_change':[-100,-2,-0.5,-0.01,0.01,0.5,2,10,100],
-            'wkTrend':[-100,-2,-0.5,-0.01,0.01,0.5,2,10,100],
-            'moTrend':[-100,-2,-0.5,-0.01,0.01,0.5,2,10,100],
-            'marketCap':[0, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 10000000],
-            'enterpriseValue':[-100000000, -10000, 20000, 50000, 100000, 200000, 500000, 1000000, 10000000],
-            'momentum':[0,2,5,10,25,65,85,95,100],
-            'overallTrend':     [-100,-10,15,20,30,50,65,85,100],
-            'overallValueTrend':[-100,-10,15,20,30,50,65,85,100],
-            'ebitdaMargins':[-1,-.5,-0.2,-0.1,0.1,0.2,0.3,0.5,1]            
+            'sharpe':         [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
+            'sortino':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
+            'day_change':     [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
+            'wkTrend':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
+            'moTrend':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
+            'marketCap':      [0, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
+            'enterpriseValue':[-_inf, -10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
+            'momentum':       [-_inf,2,5,10,25,65,85,95,_inf],
+            'overallTrend':   [-_inf,-10,15,20,30,50,65,85,_inf],
+            'overallValueTrend':[-_inf,-10,15,20,30,50,65,85,_inf],
+            'ebitdaMargins':  [-_inf,-.5,-0.2,-0.1,0.1,0.2,0.3,0.5,_inf],
         }
         
         # Selection
