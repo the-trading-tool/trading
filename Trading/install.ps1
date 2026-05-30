@@ -105,6 +105,25 @@ if (-not $python) {
     exit 1
 }
 
+# Sicherstellen dass 64-bit Python verwendet wird (32-bit hat keine vorkompilierten
+# Wheels fuer scipy/scikit-learn und wuerde einen C-Compiler benoetigen)
+$ErrorActionPreference = 'SilentlyContinue'
+$bits = (& $python -c "import struct; print(struct.calcsize('P') * 8)" 2>&1)
+$ErrorActionPreference = 'Stop'
+if ($bits -ne '64') {
+    Write-Fail "32-bit Python erkannt (gefunden: $python)."
+    Write-Fail "Diese App benoetigt 64-bit Python 3.11."
+    Write-Fail ""
+    Write-Fail "Loesung:"
+    Write-Fail "  1. Aktuelles Python deinstallieren (Windows-Einstellungen -> Apps)"
+    Write-Fail "  2. 64-bit Version installieren:"
+    Write-Fail "     https://www.python.org/downloads/release/python-3119/"
+    Write-Fail "     --> Datei: python-3.11.9-amd64.exe  (nicht die win32-Version!)"
+    Write-Fail "  3. Haekchen setzen: 'Add python.exe to PATH'"
+    exit 1
+}
+Write-Ok "64-bit Python bestaetigt"
+
 # ---------------------------------------------------------------------------
 # Phase 1B: Virtuelle Umgebung
 # ---------------------------------------------------------------------------
