@@ -13,7 +13,7 @@ from tradinglib import (
     main_page as mp,
     multi_select as ms, search as sr, system_config as sysconf, banner_page as bp,
     live_ticker as lt, file_provider as fp, graph_tools as gt,
-    performance_details as pd, all_assets as aa,
+    performance_details as perfdetails, all_assets as aa,
     option_calculator as op, parity as pr, earnings_calendar as ec
 )
 from tradinglib.premium_availability import STRATEGY_ENGINE_AVAILABLE, PAPER_TRADING_AVAILABLE
@@ -462,6 +462,7 @@ class TradingApp:
         main_links = {
             t('nav.asset_viewer'): '/',
             t('nav.asset_summary'): '/?summary=true',
+            t('nav.performance'): '/?performance=true',
         }
         _links_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'external_links.json')
         try:
@@ -472,7 +473,6 @@ class TradingApp:
         self.sidebar_header = st.sidebar.empty()
         if self.is_admin:
             main_links[t('nav.admin')] = '/?admin=true'
-            main_links[t('nav.all_assets')] = '/?all_assets=true'
             if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
                 main_links[t('nav.strategy_finder')] = '/?strategy_finder=true'
                 main_links[t('nav.multi_strategies')] = '/?multi=true'
@@ -578,7 +578,14 @@ class TradingApp:
                     self.live_chart(region=st)
                 elif parms.get('performance'):
                     self.set_page_config(t('page.performance'))
-                    pd.Performance(username=self.username).render()
+                    if self.is_admin:
+                        tab_perf, tab_all = st.tabs([t('page.performance'), t('nav.all_assets')])
+                        with tab_perf:
+                            perfdetails.Performance(username=self.username).render()
+                        with tab_all:
+                            aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
+                    else:
+                        perfdetails.Performance(username=self.username).render()
                 elif parms.get('multi'):
                     self.set_page_config(t('page.strategies'))
                     if mu is None:
@@ -647,9 +654,6 @@ class TradingApp:
                 elif parms.get('option_calc'):
                     self.set_page_config(t('page.option_price'))
                     op.OptionCalculator()
-                elif parms.get('all_assets'):
-                    self.set_page_config(t('page.weekly_performance'))
-                    aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
                 else:
                     self.set_page_config(t('page.asset_details'))
                     tab_details = False

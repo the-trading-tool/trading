@@ -76,7 +76,7 @@ class AllAssetsView(tt.TickerTools):
             selection = ass.AssetSimulator().dataframe_with_selections(df=df,column_config=column_config)
             self.export_to_excel(df, button_label=t('assets.download_btn'), file_name='Asset_dataset.xlsx', region=st)
             date = df['Date'].iloc[0] if not df.empty else None
-            tickers = df[df['Date']==date]['ticker']
+            tickers = df[df['Date']==date].sort_values('sortino', ascending=False)['ticker'].head(10)
 
             # use renderer to obtain selectors and render charts
             renderer = ChartsGridRenderer(columns=2)

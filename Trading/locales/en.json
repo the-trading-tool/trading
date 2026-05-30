@@ -6,6 +6,7 @@
   "nav.asset_summary": "Asset summary",
   "nav.admin": "Admin",
   "nav.all_assets": "All assets",
+  "nav.performance": "Performance data",
   "nav.multi_strategies": "Multi strategies",
   "nav.trading": "Paper / Live Trading",
   "nav.own_transactions": "Own transactions",
@@ -26,7 +27,6 @@
   "page.market_map": "Market map",
   "page.summary": "Summary",
   "page.option_price": "Option price",
-  "page.weekly_performance": "Weekly performance",
   "page.selected_view": "Selected view: {title}",
 
   "cfg.title": "Configuration",
