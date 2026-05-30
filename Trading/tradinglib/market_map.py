@@ -293,7 +293,7 @@ class DataVisualizer(tt.TickerTools):
             labels=color_labels
             )
 
-        price_data = 'dayHigh'
+        price_data = 'close'
         try:
             if not combined_df['latestClose'].iloc[-1] == None:
                 price_data = 'latestClose'
