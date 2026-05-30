@@ -76,7 +76,7 @@ class FullTextSearch(tools.Db_tools):
             if 'ticker' in existing_cols and 'longName' in existing_cols:
                 cursor.execute(f"""
                 INSERT INTO {self.fts_table_name} (ticker, longName)
-                SELECT ticker, longName FROM {self.table_name};
+                SELECT DISTINCT ticker, longName FROM {self.table_name};
                 """)
             # Wenn Spalten fehlen (noch kein get_asset_info.py gelaufen),
             # bleibt die FTS-Tabelle leer -- Suche liefert dann keine Treffer.

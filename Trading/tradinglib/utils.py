@@ -433,8 +433,16 @@ class DataUtils():
         cur.execute(f"PRAGMA table_info('{table_name}')")
         existing = {row[1] for row in cur.fetchall()}
         if not existing:
-            # create table with TEXT columns for flexibility
-            cols_def = ', '.join([f"{c} TEXT" for c in superset_cols])
+            # Erster Key wird als UNIQUE PRIMARY KEY angelegt damit
+            # INSERT OR REPLACE echtes Upsert-Verhalten zeigt (keine Duplikate).
+            first_col = superset_cols[0] if superset_cols else None
+            cols_def_parts = []
+            for c in superset_cols:
+                if c == first_col:
+                    cols_def_parts.append(f"{c} TEXT PRIMARY KEY")
+                else:
+                    cols_def_parts.append(f"{c} TEXT")
+            cols_def = ', '.join(cols_def_parts)
             cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, {cols_def})")
             existing = set(superset_cols) | {'timestamp'}
         else:
