@@ -68,7 +68,9 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
                 {q_ext}"""
 #                WHERE yt.{index} = "{value}" OR  yt.{index} = {value}
 
-    fl = f"{field_list},{ap_field_list}"
+    # Nur Komma einfuegen wenn ap_field_list nicht leer ist -- sonst entsteht
+    # ein haengender Komma im SELECT der zu einem SQL-Syntaxfehler fuehrt.
+    fl = f"{field_list},{ap_field_list}" if ap_field_list else field_list
 
     if q == 1:
         query = f"""
