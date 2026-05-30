@@ -264,19 +264,16 @@ class DataVisualizer(tt.TickerTools):
 
         if self.trend == 'day_change':
             day_changes_df = self.day_change(tickers)
-            # Merge the percentage changes into combined_df
-            combined_df = pd.merge(combined_df, day_changes_df, on="ticker", how="left")        
-            combined_df['day_change']=combined_df['day_change'].round(2)
-
+            combined_df = pd.merge(combined_df, day_changes_df, on="ticker", how="left")
+            combined_df['day_change'] = combined_df['day_change'].round(2)
 
         bs_values = ['marketCap','totalDebt', 'totalRevenue','overallTrend','overallValueTrend']
-        #Selection
         box_size = self.sel_size.selectbox(
                 t('mm.size_by'),
                 options = bs_values,
                 index = 0
         )
-        
+
         winner = combined_df.loc[combined_df[f'{self.trend}'] > 0, f'{box_size}'].sum().round(0)
         looser = combined_df.loc[combined_df[f'{self.trend}'] < 0, f'{box_size}'].sum().round(0)
         winner_count = combined_df.loc[combined_df[f'{self.trend}'] > 0, f'{box_size}'].count()
@@ -284,21 +281,25 @@ class DataVisualizer(tt.TickerTools):
 
         st.write(t('mm.market_stats', l=looser_count, w=winner_count, box=box_size, l_pct=round(looser/(winner+looser)*100,0), w_pct=round(winner/(winner+looser)*100,0)))
 
-        color_labels = [ 'darkred', 'red','indianred','gray','lightgreen','lime','green', 'darkgreen'] 
+        color_labels = [ 'darkred', 'red','indianred','gray','lightgreen','lime','green', 'darkgreen']
         color_group = column_names[self.trend]
 
+        # NaN trend values → 0 so pd.cut assigns the gray bucket instead of NaN
+        combined_df[f'{self.trend}'] = combined_df[f'{self.trend}'].fillna(0)
+
         combined_df['colors'] = pd.cut(
-            combined_df[f'{self.trend}'], 
-            bins=color_group, 
+            combined_df[f'{self.trend}'],
+            bins=color_group,
             labels=color_labels
             )
 
-        price_data = 'close'
-        try:
-            if not combined_df['latestClose'].iloc[-1] == None:
-                price_data = 'latestClose'
-        except Exception:
-            pass
+        # Build a display price column: prefer live latestClose (day_change mode),
+        # fall back to simulation close for rows where latestClose is missing/NaN.
+        if 'latestClose' in combined_df.columns:
+            combined_df['_display_price'] = combined_df['latestClose'].fillna(combined_df['close'])
+        else:
+            combined_df['_display_price'] = combined_df['close']
+        price_data = '_display_price'
         
         combined_df['details'] = combined_df['longName'].apply(self.add_url)
 
