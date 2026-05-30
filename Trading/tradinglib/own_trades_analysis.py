@@ -193,6 +193,19 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
     raw = pd.DataFrame()
     try:
+        dbt.conn.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                ticker    TEXT,
+                side      TEXT,
+                qty       REAL,
+                price     REAL,
+                currency  TEXT,
+                broker    TEXT
+            )
+        """)
+        dbt.conn.commit()
         raw = pd.read_sql_query('SELECT * FROM trades ORDER BY timestamp ASC', dbt.conn)
     except Exception as e:
         r.error(f'Error reading trades.db: {e}')
