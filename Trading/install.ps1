@@ -280,7 +280,10 @@ cookie:
   name: trading_auth
 "@
 
-    Set-Content -Path 'config.yaml' -Value $yaml_content -Encoding UTF8
+    # UTF-8 ohne BOM schreiben -- PS5 Set-Content -Encoding UTF8 fuegt BOM hinzu,
+    # was Python's yaml.load() als ungueltige Zeichen vor "credentials:" liest.
+    $utf8_no_bom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText((Join-Path $ROOT 'config.yaml'), $yaml_content, $utf8_no_bom)
     Write-Ok "config.yaml erstellt (Benutzer: $username)"
     Write-Warn "WICHTIG: config.yaml enthaelt Passwort-Hash -- niemals in Git committen!"
 }
