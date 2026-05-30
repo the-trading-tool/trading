@@ -1000,14 +1000,13 @@ class AssetSimulator(tt.TickerTools):
         if calc_key not in st.session_state:
             st.session_state[calc_key] = False
 
-        if self.cal_l.button('Calculate', key=f'calc_{calc_key}',use_container_width=True):
-#        if col_calc.button('Calculate', key=f'calc_{calc_key}'):
+        if self.cal_l.button(_t('sf.calc_btn'), key=f'calc_{calc_key}', use_container_width=True):
             st.session_state[calc_key] = True
-        if self.cal_r.button('Reset', key=f'reset_{calc_key}',use_container_width=True):
+        if self.cal_r.button(_t('sf.reset_btn'), key=f'reset_{calc_key}', use_container_width=True):
             st.session_state[calc_key] = False
 
         if not st.session_state[calc_key]:
-            st.info('Press Calculate to load data and run the simulation for the selected criteria')
+            st.info(_t('sf.calc_hint'))
             return
 
         # Populate any missing indicators referenced in buy/sell expressions (lazy, cached)
@@ -1044,17 +1043,17 @@ class AssetSimulator(tt.TickerTools):
         processor.process_trades()
 
         combined_df.sort_values(['Date','overallValueTrend','ticker'],ascending=[False,False,True], inplace=True)
-        dataset_expander = self.ss_main.expander(f'Full dataset:', expanded = False)
-        with dataset_expander:    
-            
+        dataset_expander = self.ss_main.expander(_t('sf.full_dataset'), expanded=False)
+        with dataset_expander:
+
                 limit = st.selectbox(
-                    'Limit:', 
+                    _t('sf.limit'),
                     options = [100, 1000, 5000, 999999],
                     index = 0
                     )
 
-                self.select_chart(combined_df, limit=limit, region = st)
-                self.export_to_excel(combined_df, button_label = '📥 Download dataset', file_name = f'simulation_{self.use_year}_dataset.xlsx', region = st )                
+                self.select_chart(combined_df, limit=limit, region=st)
+                self.export_to_excel(combined_df, button_label=_t('sf.download_dataset'), file_name=f'simulation_{self.use_year}_dataset.xlsx', region=st)
 
 
         data = processor.processed_data
@@ -1103,10 +1102,10 @@ class AssetSimulator(tt.TickerTools):
                 t_gain_total = round((gain - invest + unrealized_gain) / invest * 100, 1) if invest > 0 else t_gain
                 # ─────────────────────────────────────────────────────────────
 
-                self.ss_main.write(f'Dataset implied vola: {implied_vola}%, with average value trend: {avg_value}, min:{int(combined_df["overallValueTrend"].min())}, max:{ int(combined_df["overallValueTrend"].max())}')
-                fee_note = f', fee/trade: {fee_pct}%' if fee_pct > 0 else ''
+                self.ss_main.write(_t('sf.dataset_stats', vola=implied_vola, trend=avg_value, min=int(combined_df["overallValueTrend"].min()), max=int(combined_df["overallValueTrend"].max())))
+                fee_note = _t('sf.fee_note', pct=fee_pct) if fee_pct > 0 else ''
                 unrealized_note = (
-                    f', unrealized: {unrealized_gain}, est. total gain: {t_gain_total}%'
+                    _t('sf.unrealized_note', unrealized=unrealized_gain, total=t_gain_total)
                     if portfolio.portfolio else ''
                 )
                 try:
@@ -1121,7 +1120,7 @@ class AssetSimulator(tt.TickerTools):
                         _win_rate_str = 'n/a'
                 except Exception:
                     _win_rate_str = 'n/a'
-                self.ss_main.write(f'Total cash: {round(portfolio.cash,2)}, still invested: {-total_invest}, total value: {gain}, total gain: {t_gain}%{fee_note}{unrealized_note}, win-rate: {_win_rate_str}, trades: {num_trades}.')
+                self.ss_main.write(_t('sf.sim_stats', cash=round(portfolio.cash,2), invested=-total_invest, value=gain, gain=t_gain, fee=fee_note, unrealized=unrealized_note, winrate=_win_rate_str, trades=num_trades))
                 data.sort_values(['sellDate'],ascending=[True], inplace=True)
                 data['cumulative_gain'] = data['gain'].cumsum()
                 data.sort_values(['sellDate'],ascending=[False], inplace=True)
