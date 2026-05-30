@@ -1,12 +1,15 @@
 from tradinglib import (
         ticker_tools as tt,
         graph_tools as gt,
-        asset_simulator as ass,
         search as sr,
         system_config as sysconf,
         tiny_chart as tc,
         fetch_data as fd,
     )
+try:
+    from tradinglib.premium import asset_simulator as ass
+except ImportError:
+    ass = None
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
 from tradinglib.i18n import t
 import pandas as pd

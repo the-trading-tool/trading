@@ -12,8 +12,11 @@ warnings.filterwarnings("ignore")
 
 from tradinglib.indicator import indicator
 from tradinglib import (fetch_data, ticker_tools as tt,
-                        system_config as sysconf,
-                        multi_transaction as mt)
+                        system_config as sysconf)
+try:
+    from tradinglib.premium import multi_transaction as mt
+except ImportError:
+    mt = None
 from tradinglib.tools import Tools as _Tools
 import logging
 from tradinglib.utils import DataUtils

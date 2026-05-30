@@ -26,6 +26,15 @@ private_key.pem
 public_key_b64.txt
 license.json
 
+# Premium modules — distributed separately to licensed users
+# Files in this folder are NOT committed to the public repo.
+# Licensed users receive them as a separate ZIP archive.
+tradinglib/premium/
+
+# License tooling — developer-only, never publish
+generate_license.py
+generate_license_keys.py
+
 # Logs
 *.log
 

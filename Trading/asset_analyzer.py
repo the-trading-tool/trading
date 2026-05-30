@@ -10,12 +10,25 @@ import numpy as np
 from streamlit_authenticator import Authenticate
 from tradinglib import (
     portfolio as po, tiny_chart as tc, tools as ts, admin, market_map as mm, ticker_tools as tt,
-    asset_simulator as ass, main_page as mp, multi_transaction as mu, 
+    main_page as mp,
     multi_select as ms, search as sr, system_config as sysconf, banner_page as bp,
     live_ticker as lt, file_provider as fp, graph_tools as gt,
     performance_details as pd, all_assets as aa,
     option_calculator as op, parity as pr, earnings_calendar as ec
 )
+from tradinglib.premium_availability import STRATEGY_ENGINE_AVAILABLE, PAPER_TRADING_AVAILABLE
+from tradinglib.license_manager import has_feature, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING
+
+# Premium modules — only imported when the files are present
+ass = None
+mu = None
+if STRATEGY_ENGINE_AVAILABLE:
+    try:
+        from tradinglib.premium import asset_simulator as ass
+        from tradinglib.premium import multi_transaction as mu
+    except Exception as _e:
+        import logging as _log
+        _log.getLogger(__name__).warning("Premium strategy modules could not be loaded: %s", _e)
 from tradinglib.indicator import indicator
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
 
@@ -448,7 +461,6 @@ class TradingApp:
 
         main_links = {
             t('nav.asset_viewer'): '/',
-            t('nav.strategy_finder'): '/?strategy_finder=true',
             t('nav.asset_summary'): '/?summary=true',
         }
         _links_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'external_links.json')
@@ -461,8 +473,11 @@ class TradingApp:
         if self.is_admin:
             main_links[t('nav.admin')] = '/?admin=true'
             main_links[t('nav.all_assets')] = '/?all_assets=true'
-            main_links[t('nav.multi_strategies')] = '/?multi=true'
-            main_links[t('nav.trading')] = '/?trading=true'
+            if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                main_links[t('nav.strategy_finder')] = '/?strategy_finder=true'
+                main_links[t('nav.multi_strategies')] = '/?multi=true'
+            if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                main_links[t('nav.trading')] = '/?trading=true'
             main_links[t('nav.own_transactions')] = '/?own_trades=true'
         st.sidebar.markdown("""---""")
         st.sidebar.link_button(t('nav.market_map'), '/?marketmap=true')
@@ -566,7 +581,10 @@ class TradingApp:
                     pd.Performance(username=self.username).render()
                 elif parms.get('multi'):
                     self.set_page_config(t('page.strategies'))
-                    mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
+                    if mu is None:
+                        st.error("Strategy Engine nicht verfügbar — bitte Lizenz prüfen.")
+                    else:
+                        mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
                 elif parms.get('own_trades'):
                     self.set_page_config(t('page.own_transactions'))
                     try:
@@ -584,24 +602,33 @@ class TradingApp:
                                 system_currency=system_currency,
                             )
                         with tab_trades:
-                            render_import_export(
-                                tab_trades,
-                                simulator=ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username),
-                                username=self.username,
-                                db_path='database',
-                            )
+                            if ass is not None:
+                                render_import_export(
+                                    tab_trades,
+                                    simulator=ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username),
+                                    username=self.username,
+                                    db_path='database',
+                                )
+                            else:
+                                tab_trades.info("Import/Export benötigt die Strategy Engine Lizenz.")
                     except Exception as e:
                         st.error(t('error.load_own_trades', error=e))
                 elif parms.get('strategy_finder'):
                     self.set_page_config(t('page.finder'))
-                    ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
+                    if ass is None:
+                        st.error("Strategy Finder nicht verfügbar — bitte Lizenz prüfen.")
+                    else:
+                        ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
                 elif parms.get('trading'):
                     self.set_page_config(t('page.trading'))
-                    try:
-                        from tradinglib.trading_page import TradingPage
-                        TradingPage(username=self.username, db_path='database').render()
-                    except Exception as e:
-                        st.error(t('error.load_trading', error=e))
+                    if not PAPER_TRADING_AVAILABLE:
+                        st.error("Trading nicht verfügbar — bitte Lizenz prüfen.")
+                    else:
+                        try:
+                            from tradinglib.premium.trading_page import TradingPage
+                            TradingPage(username=self.username, db_path='database').render()
+                        except Exception as e:
+                            st.error(t('error.load_trading', error=e))
                 elif parms.get('rotation'):
                     self.set_page_config(t('page.sector_rotation'))
                     try:

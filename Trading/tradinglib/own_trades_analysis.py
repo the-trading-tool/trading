@@ -8,7 +8,11 @@ import plotly.express as px
 import plotly.graph_objs as go
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from tradinglib import tools, ticker_tools as tt, asset_simulator as ass, main_page as mp
+from tradinglib import tools, ticker_tools as tt, main_page as mp
+try:
+    from tradinglib.premium import asset_simulator as ass
+except ImportError:
+    ass = None
 from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
