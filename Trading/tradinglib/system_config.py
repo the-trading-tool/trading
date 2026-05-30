@@ -120,7 +120,7 @@ class SystemConfig(tools.Db_tools):
                 overlays = [self.get_value('overlay','')]
                 overlays = eval(overlays[0])
             except Exception:
-                overlays = ['pre']
+                overlays = ['heikin', 'atc', 'bar']
                 if not self.bare_mode:
                     st.error(f"{error_text} [{ol}]")
                 pass
@@ -133,7 +133,7 @@ class SystemConfig(tools.Db_tools):
                 oszilators = [self.get_value('oszilator','')]
                 oszilators = eval(oszilators[0])
             except Exception:
-                oszilators = ['macd']
+                oszilators = ['macd', 'ewo']
                 if not self.bare_mode:
                     st.error(f"{error_text} [{oz}]")
                 pass
