@@ -154,7 +154,7 @@ $PIP = Join-Path $ROOT '.venv\Scripts\pip.exe'
 # Phase 1C: Pakete installieren
 # ---------------------------------------------------------------------------
 
-Write-Step "Phase 1C: Pakete installieren (requirements.txt)"
+Write-Step "Phase 1C: Pakete installieren (requirements.txt + NLTK-Daten)"
 
 Write-Info "pip upgrade ..."
 & $PY -m pip install --upgrade pip --quiet
@@ -196,6 +196,16 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Ok "Pakete installiert"
+
+Write-Info "NLTK vader_lexicon herunterladen (Sentiment-Analyse) ..."
+# SSL-Zertifikat-Pruefung deaktivieren -- noetig in eingeschraenkten Umgebungen
+& $PY -c "import nltk, ssl; ssl._create_default_https_context = ssl._create_unverified_context; nltk.download('vader_lexicon', quiet=False)"
+if ($LASTEXITCODE -ne 0) {
+    Write-Warn "vader_lexicon konnte nicht heruntergeladen werden."
+    Write-Warn "Die Sentiment-Analyse in der App wird deaktiviert."
+} else {
+    Write-Ok "vader_lexicon heruntergeladen"
+}
 
 # ---------------------------------------------------------------------------
 # Phase 1D: Verzeichnisse anlegen

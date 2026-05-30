@@ -3,17 +3,23 @@ import requests
 import re
 import feedparser
 import nltk
-from nltk.sentiment import SentimentIntensityAnalyzer
 import pandas as pd
 import plotly.express as px
-#from selenium import webdriver
-#from selenium.webdriver.chrome.service import Service
-#from selenium.webdriver.chrome.options import Options
-#from selenium.webdriver.common.by import By
-#from selenium.webdriver.common.keys import Keys
 from datetime import datetime
 
+# vader_lexicon herunterladen -- SSL-Bypass fuer eingeschraenkte Umgebungen
+try:
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
 nltk.download('vader_lexicon', quiet=True)
+
+try:
+    from nltk.sentiment import SentimentIntensityAnalyzer
+    _SIA_AVAILABLE = True
+except Exception:
+    _SIA_AVAILABLE = False
 
 class YahooNewsSentiment:
 
@@ -21,7 +27,13 @@ class YahooNewsSentiment:
         self.ticker = ticker
         self.screen_region = screen_region
         self.url = f"https://finance.yahoo.com/rss/headline?s={ticker}"
-        self.sia = SentimentIntensityAnalyzer()
+        if _SIA_AVAILABLE:
+            try:
+                self.sia = SentimentIntensityAnalyzer()
+            except Exception:
+                self.sia = None
+        else:
+            self.sia = None
  #       self.driver = self.init_driver()
 
  #   def init_driver(self):
@@ -59,6 +71,11 @@ class YahooNewsSentiment:
             return None
 
     def analyze_sentiment(self, articles, single=False):
+        if self.sia is None:
+            # Sentiment-Analyse nicht verfuegbar (vader_lexicon fehlt)
+            if single:
+                return {'neg': 0.0, 'neu': 1.0, 'pos': 0.0, 'compound': 0.0}
+            return articles
         if not single:
             for article in articles:
                 text = self.fetch_article_text(article['link'])
