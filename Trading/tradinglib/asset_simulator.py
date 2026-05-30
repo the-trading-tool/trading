@@ -1125,16 +1125,16 @@ class AssetSimulator(tt.TickerTools):
                 data['cumulative_gain'] = data['gain'].cumsum()
                 data.sort_values(['sellDate'],ascending=[False], inplace=True)
 
-                portfolio_expander = self.ss_main.expander(f'Portfolio:', expanded = False)
-                with portfolio_expander:    
-                
+                portfolio_expander = self.ss_main.expander(_t('sf.portfolio'), expanded=False)
+                with portfolio_expander:
+
                     if portfolio.bought_assets:
-                        st.write(f'assets still in portfolio: {portfolio.bought_assets}')
+                        st.write(_t('sf.assets_in_portfolio', assets=portfolio.bought_assets))
 
-                    self.select_chart(data, limit=-1, region = st)
-                    self.export_to_excel(processor.processed_data, button_label = '📥 Download Trades', file_name = f'simulation_{self.use_year}_trades.xlsx', region = st )                
+                    self.select_chart(data, limit=-1, region=st)
+                    self.export_to_excel(processor.processed_data, button_label=_t('sf.download_trades'), file_name=f'simulation_{self.use_year}_trades.xlsx', region=st)
 
-                total_gain_expander = self.ss_main.expander(f'Cumulative gain:', expanded = True)
+                total_gain_expander = self.ss_main.expander(_t('sf.cumulative_gain'), expanded=True)
                 with total_gain_expander:    
                     fig = px.line(
                         data,
@@ -1157,6 +1157,6 @@ class AssetSimulator(tt.TickerTools):
                 data = pd.merge(processor.processed_data, df2[['ticker','longName']], on=['ticker','longName'])
                 data.sort_values('buyDate', ascending=True, inplace=True)
                 suffix = f'{order_by}_{self.index_column}_{invest}_{no_assets}_{t_gain}'
-                self.ss_main.write(f"Simulation based on asset parity (buy once and rebalance based on volatility). Compared to trading {no_assets} different assets during same time : {t_gain}% ")
+                self.ss_main.write(_t('sf.parity_note', n=no_assets, gain=t_gain))
                 self.render_parity(data, suffix=suffix, region = self.ss_main, invest = invest, preselect_count = no_assets)
                 
