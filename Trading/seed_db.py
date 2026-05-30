@@ -39,7 +39,6 @@ MDAXI = [
     'AIXA.DE',  # Aixtron
     'BOSS.DE',  # Hugo Boss
     'DHER.DE',  # Delivery Hero
-    'DMG.DE',   # Dürr
     'DWS.DE',   # DWS Group
     'EVD.DE',   # CTS Eventim
     'FNTN.DE',  # freenet
@@ -57,22 +56,17 @@ MDAXI = [
     'WAF.DE',   # Siltronic
 ]
 
-# SDAX-Auswahl (~14 Titel)
+# SDAX-Auswahl (~12 Titel)
 SDAXI = [
     'AFX.DE',    # Carl Zeiss Meditec
     'BVB.DE',    # Borussia Dortmund
-    'ECZ.DE',    # Eckert & Ziegler
     'GXI.DE',    # Gerresheimer
-    'HABN.DE',   # HHLA
-    'IONOS.DE',  # IONOS Group
     'KSB3.DE',   # KSB SE (Vorzüge)
     'MBB.DE',    # MBB Industries
     'NDA.DE',    # Aurubis
     'SBS.DE',    # Stabilus
     'STO3.DE',   # Sto SE (Vorzüge)
     'TTK.DE',    # Takkt AG
-    'GBFS.DE',   # Grenke AG
-    'SDVP.DE',   # Schaeffler Vorzüge (Beispiel)
 ]
 
 # S&P 500 — 40 Blue Chips
