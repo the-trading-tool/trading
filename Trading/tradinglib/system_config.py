@@ -120,7 +120,7 @@ class SystemConfig(tools.Db_tools):
                 overlays = [self.get_value('overlay','')]
                 overlays = eval(overlays[0])
             except Exception:
-                overlays = ['heikin', 'atc', 'bar']
+                overlays = ['heikin', 'atl', 'bar']
                 if not self.bare_mode:
                     st.error(f"{error_text} [{ol}]")
                 pass
