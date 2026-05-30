@@ -6,23 +6,23 @@
 .DESCRIPTION
     Phase 1 (immer):      Python pruefen - .venv anlegen - Pakete installieren - Verzeichnisse erstellen
     Phase 2 (immer):      config.yaml anlegen, falls noch nicht vorhanden (Benutzer wird abgefragt)
-    Phase 3 (--Seed):     yf_tickers.db mit Beispiel-Tickern befüllen
+    Phase 3 (--Seed):     yf_tickers.db mit Beispiel-Tickern befuellen
     Phase 4 (--Init):     Asset-Metadaten + OHLC-Daten + Performance berechnen (dauert Stunden!)
 
 .PARAMETER Seed
-    Nur Ticker-DB befüllen (seed_db.py), keine Yahoo-Downloads.
+    Nur Ticker-DB befuellen (seed_db.py), keine Yahoo-Downloads.
 
 .PARAMETER Init
-    Vollständige DB-Initialisierung inkl. Yahoo-Downloads (braucht Internet, dauert lang).
+    Vollstaendige DB-Initialisierung inkl. Yahoo-Downloads (braucht Internet, dauert lang).
 
 .PARAMETER InitInfo
-    Nur asset_info.db befüllen (Metadaten, kein OHLC-Download).
+    Nur asset_info.db befuellen (Metadaten, kein OHLC-Download).
 
 .EXAMPLE
     .\install.ps1                  # Umgebung + Config
-    .\install.ps1 -Seed            # + Ticker-DB befüllen
+    .\install.ps1 -Seed            # + Ticker-DB befuellen
     .\install.ps1 -InitInfo        # + Ticker-DB + Metadaten von Yahoo
-    .\install.ps1 -Init            # Vollständige Initialisierung
+    .\install.ps1 -Init            # Vollstaendige Initialisierung
 #>
 param(
     [switch]$Seed,
@@ -49,7 +49,7 @@ function Test-Command {
 }
 
 # ---------------------------------------------------------------------------
-# Verzeichnis-Prüfung — Installer muss im Trading-Ordner laufen
+# Verzeichnis-Pruefung -- Installer muss im Trading-Ordner laufen
 # ---------------------------------------------------------------------------
 
 if (-not (Test-Path 'asset_analyzer.py')) {
@@ -106,15 +106,19 @@ if (-not $python) {
 Write-Step "Phase 1B: Virtuelle Umgebung"
 
 if (Test-Path '.venv\Scripts\python.exe') {
-    Write-Ok ".venv bereits vorhanden — überspringe Erstellung"
+    Write-Ok ".venv bereits vorhanden -- ueberspringe Erstellung"
 } else {
     Write-Info "Erstelle .venv ..."
     # $python kann "py -3.11" (zwei Tokens) oder "python3.11" (ein Token) sein
     $py_parts = $python.Split(' ')
     $py_extra = if ($py_parts.Length -gt 1) { $py_parts[1..($py_parts.Length-1)] } else { @() }
     & $py_parts[0] @($py_extra + @('-m', 'venv', '.venv'))
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "venv-Erstellung fehlgeschlagen (exit code $LASTEXITCODE)."
+        exit 1
+    }
     if (-not (Test-Path '.venv\Scripts\python.exe')) {
-        Write-Fail "Erstellung der venv fehlgeschlagen."
+        Write-Fail "venv wurde nicht korrekt erstellt (.venv\Scripts\python.exe fehlt)."
         exit 1
     }
     Write-Ok ".venv erstellt"
@@ -131,19 +135,22 @@ Write-Step "Phase 1C: Pakete installieren (requirements.txt)"
 
 Write-Info "pip upgrade ..."
 & $PY -m pip install --upgrade pip --quiet
-
-Write-Info "TA-Lib vorab prüfen ..."
-$talib_ok = & $PY -c "import talib" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Info "TA-Lib wird installiert (benötigt C-Library, kann etwas dauern) ..."
-    & $PIP install "TA-Lib>=0.6.0" --quiet
+    Write-Warn "pip upgrade fehlgeschlagen -- fahre trotzdem fort."
+}
+
+Write-Info "TA-Lib vorab pruefen ..."
+& $PY -c "import talib" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Info "TA-Lib wird installiert (kann etwas dauern) ..."
+    & $PIP install "TA-Lib>=0.6.0" --prefer-binary --quiet
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "TA-Lib-Installation fehlgeschlagen."
         Write-Warn "Alternativer Versuch mit vorkompiliertem Wheel:"
-        & $PIP install "TA-Lib" --quiet
+        & $PIP install "TA-Lib" --prefer-binary --quiet
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "TA-Lib konnte nicht installiert werden."
-            Write-Warn "Die App läuft ohne TA-Lib, einige Indikatoren sind dann nicht verfügbar."
+            Write-Warn "Die App laeuft ohne TA-Lib, einige Indikatoren sind dann nicht verfuegbar."
         }
     }
 }
@@ -158,7 +165,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Fail "  1. Keine Internetverbindung"
     Write-Fail "  2. Paket benoetigt C-Compiler (Visual Studio Build Tools)"
     Write-Fail "     Download: https://visualstudio.microsoft.com/visual-cpp-build-tools/"
-    Write-Fail "  3. Python-Version nicht unterstuetzt — empfohlen: Python 3.11"
+    Write-Fail "  3. Python-Version nicht unterstuetzt -- empfohlen: Python 3.11"
     Write-Fail "     Download: https://www.python.org/downloads/release/python-3119/"
     exit 1
 }
@@ -186,9 +193,9 @@ foreach ($dir in @('database', 'logs')) {
 Write-Step "Phase 2: Authentifizierungs-Konfiguration"
 
 if (Test-Path 'config.yaml') {
-    Write-Info "config.yaml bereits vorhanden — überspringe"
+    Write-Info "config.yaml bereits vorhanden -- ueberspringe"
 } else {
-    Write-Info "config.yaml fehlt — neuen Admin-Benutzer anlegen"
+    Write-Info "config.yaml fehlt -- neuen Admin-Benutzer anlegen"
     Write-Host ""
 
     do {
@@ -205,12 +212,12 @@ if (Test-Path 'config.yaml') {
 
     do {
         $pw1 = Read-Host "  Passwort" -AsSecureString
-        $pw2 = Read-Host "  Passwort bestätigen" -AsSecureString
+        $pw2 = Read-Host "  Passwort bestaetigen" -AsSecureString
         $plain1 = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
                       [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw1))
         $plain2 = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
                       [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw2))
-        if ($plain1 -ne $plain2) { Write-Warn "Passwörter stimmen nicht überein." }
+        if ($plain1 -ne $plain2) { Write-Warn "Passwoerter stimmen nicht ueberein." }
         if ($plain1.Length -lt 8) { Write-Warn "Mindestens 8 Zeichen erforderlich." }
     } while ($plain1 -ne $plain2 -or $plain1.Length -lt 8)
 
@@ -226,7 +233,7 @@ print(bcrypt.hashpw(pw, bcrypt.gensalt(12)).decode())
         exit 1
     }
 
-    # Zufälligen Cookie-Key erzeugen
+    # Zufaelligen Cookie-Key erzeugen
     $cookie_key = & $PY -c "import secrets; print(secrets.token_hex(32))"
 
     $yaml_content = @"
@@ -249,24 +256,24 @@ cookie:
 
     Set-Content -Path 'config.yaml' -Value $yaml_content -Encoding UTF8
     Write-Ok "config.yaml erstellt (Benutzer: $username)"
-    Write-Warn "WICHTIG: config.yaml enthält Passwort-Hash — niemals in Git committen!"
+    Write-Warn "WICHTIG: config.yaml enthaelt Passwort-Hash -- niemals in Git committen!"
 }
 
 # ---------------------------------------------------------------------------
-# Phase 3: Ticker-DB befüllen (--Seed / --Init / --InitInfo)
+# Phase 3: Ticker-DB befuellen (--Seed / --Init / --InitInfo)
 # ---------------------------------------------------------------------------
 
 if ($Seed -or $Init -or $InitInfo) {
-    Write-Step "Phase 3: Ticker-Datenbank befüllen (seed_db.py)"
+    Write-Step "Phase 3: Ticker-Datenbank befuellen (seed_db.py)"
     & $PY seed_db.py
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "seed_db.py fehlgeschlagen."
         exit 1
     }
-    Write-Ok "yf_tickers.db befüllt"
+    Write-Ok "yf_tickers.db befuellt"
 } else {
-    Write-Info "Ticker-DB nicht befüllt (kein -Seed / -Init / -InitInfo angegeben)"
-    Write-Info "Zum Befüllen: .\install.ps1 -Seed"
+    Write-Info "Ticker-DB nicht befuellt (kein -Seed / -Init / -InitInfo angegeben)"
+    Write-Info "Zum Befuellen: .\install.ps1 -Seed"
 }
 
 # ---------------------------------------------------------------------------
@@ -275,18 +282,18 @@ if ($Seed -or $Init -or $InitInfo) {
 
 if ($InitInfo -or $Init) {
     Write-Step "Phase 4A: Asset-Metadaten laden (get_asset_info.py)"
-    Write-Info "Lädt Ticker-Stammdaten von Yahoo Finance ..."
+    Write-Info "Laedt Ticker-Stammdaten von Yahoo Finance ..."
     & $PY get_asset_info.py
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden möglicherweise übersprungen)."
+        Write-Warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden moeglicherweise uebersprungen)."
     } else {
-        Write-Ok "asset_info.db befüllt"
+        Write-Ok "asset_info.db befuellt"
     }
 }
 
 if ($Init) {
     Write-Step "Phase 4B: OHLC-Kursdaten laden (get_asset_data.py init)"
-    Write-Warn "Dies lädt historische Kurse für alle Ticker — kann Stunden dauern!"
+    Write-Warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     $confirm = Read-Host "  Fortfahren? (j/N)"
     if ($confirm -match '^[jJyY]') {
         & $PY get_asset_data.py init
@@ -296,17 +303,17 @@ if ($Init) {
             Write-Ok "OHLC-Daten geladen"
         }
     } else {
-        Write-Info "OHLC-Download übersprungen."
-        Write-Info "Später nachholen: .venv\Scripts\python.exe get_asset_data.py init"
+        Write-Info "OHLC-Download uebersprungen."
+        Write-Info "Spaeter nachholen: .venv\Scripts\python.exe get_asset_data.py init"
     }
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
-    Write-Info "Berechnet Scores für alle Ticker ..."
+    Write-Info "Berechnet Scores fuer alle Ticker ..."
     & $PY asset_perf2.py init
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "asset_perf2.py mit Fehler beendet."
     } else {
-        Write-Ok "Performance-DB befüllt"
+        Write-Ok "Performance-DB befuellt"
     }
 }
 
@@ -324,9 +331,9 @@ Write-Host "   .\start.bat"
 Write-Host "   oder: .venv\Scripts\streamlit.exe run asset_analyzer.py"
 Write-Host ""
 if (-not ($Seed -or $Init -or $InitInfo)) {
-    Write-Host " Ticker-DB noch leer. Nächster Schritt:" -ForegroundColor Yellow
+    Write-Host " Ticker-DB noch leer. Naechster Schritt:" -ForegroundColor Yellow
     Write-Host "   .\install.ps1 -Seed       # nur Ticker eintragen"
     Write-Host "   .\install.ps1 -InitInfo   # Ticker + Metadaten"
-    Write-Host "   .\install.ps1 -Init       # Vollständige DB-Initialisierung"
+    Write-Host "   .\install.ps1 -Init       # Vollstaendige DB-Initialisierung"
     Write-Host ""
 }
