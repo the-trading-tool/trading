@@ -281,6 +281,7 @@ credentials:
       logged_in: false
       name: ${username}
       password: ${hash}
+      admin: true
 pre-authorized:
   emails:
   - ${email}
