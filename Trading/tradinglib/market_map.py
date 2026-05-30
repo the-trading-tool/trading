@@ -149,13 +149,18 @@ class DataVisualizer(tt.TickerTools):
                         "ticker":       ticker,
                         "day_change":   round((latest - prev) / prev * 100, 2),
                         "latestClose":  round(latest, 2),
+                        "dc_date_cur":  df['Date'].iloc[0],
+                        "dc_date_prev": df['Date'].iloc[1],
                     })
                 else:
-                    changes.append({"ticker": ticker, "day_change": None, "latestClose": None})
+                    changes.append({"ticker": ticker, "day_change": None, "latestClose": None,
+                                    "dc_date_cur": None, "dc_date_prev": None})
             except Exception:
-                changes.append({"ticker": ticker, "day_change": None, "latestClose": None})
+                changes.append({"ticker": ticker, "day_change": None, "latestClose": None,
+                                "dc_date_cur": None, "dc_date_prev": None})
 
-        return pd.DataFrame(changes) if changes else pd.DataFrame(columns=["ticker", "day_change", "latestClose"])
+        return (pd.DataFrame(changes) if changes
+                else pd.DataFrame(columns=["ticker", "day_change", "latestClose", "dc_date_cur", "dc_date_prev"]))
 
     @st.dialog('Details', width='large')
     def overlay_chart(self, selection, col = 'ticker', region = st, ticker=None):
@@ -240,6 +245,21 @@ class DataVisualizer(tt.TickerTools):
             day_changes_df = self.day_change(tickers)
             combined_df = pd.merge(combined_df, day_changes_df, on="ticker", how="left")
             combined_df['day_change'] = combined_df['day_change'].round(2)
+
+            # Show which two trading days are being compared.
+            # Use the most common date pair (handles mixed-exchange holidays).
+            _day_abbr = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+            def _fmt_date(d):
+                try:
+                    dt = pd.to_datetime(d)
+                    return f"{_day_abbr[dt.weekday()]} {dt.strftime('%d.%m.%Y')}"
+                except Exception:
+                    return str(d)
+            _valid = combined_df[combined_df['dc_date_cur'].notna()]
+            if not _valid.empty:
+                _pair = (_valid[['dc_date_cur', 'dc_date_prev']]
+                         .apply(tuple, axis=1).value_counts().idxmax())
+                st.caption(f"Tagesveränderung: {_fmt_date(_pair[1])} → {_fmt_date(_pair[0])}")
 
         bs_values = ['marketCap','totalDebt', 'totalRevenue','overallTrend','overallValueTrend']
         box_size = self.sel_size.selectbox(
