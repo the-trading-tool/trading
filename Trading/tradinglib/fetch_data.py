@@ -127,8 +127,31 @@ class FetchData(tt.TickerTools):
             return pd.DataFrame(df)
 
         df = load_data_into_dataframe(conn, symbol)
-#        print(type(df))
-        # Verbindung schließen
+
+        # Fallback: Ticker-Info von Yahoo holen und lokal speichern wenn nicht vorhanden
+        if symbol != '' and df.empty:
+            try:
+                self.logger.info("load_ticker_data: %s nicht in asset_info.db -- lade von Yahoo", symbol)
+                info = md.ticker_info(symbol, use_cache=False)
+                if info:
+                    import json as _json
+                    row_map = {'ticker': symbol}
+                    for key, value in info.items():
+                        col = f"_{key}" if key and key[0].isdigit() else key
+                        if isinstance(value, (list, dict)):
+                            value = _json.dumps(value)
+                        row_map[col] = value
+                    from tradinglib.utils import DataUtils
+                    conn2 = sqlite3.connect(asset_db)
+                    DataUtils.bulk_upsert_dicts(conn2, 'asset_info', [row_map])
+                    conn2.close()
+                    # Neu laden
+                    conn3 = sqlite3.connect(asset_db)
+                    df = load_data_into_dataframe(conn3, symbol)
+                    conn3.close()
+            except Exception as e:
+                self.logger.warning("load_ticker_data Yahoo-Fallback fuer %s fehlgeschlagen: %s", symbol, e)
+
         conn.close()
         return df
     
