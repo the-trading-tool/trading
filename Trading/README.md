@@ -7,8 +7,8 @@ Diese Anleitung erklärt Schritt für Schritt, wie du die Trading-App auf einem 
 ## Was du brauchst
 
 - Windows 10 oder 11
-- Internetverbindung
-- Ca. 15–30 Minuten Zeit
+- Internetverbindung (zwingend erforderlich — die App lädt Kursdaten von Yahoo Finance)
+- Ca. 30–60 Minuten Zeit (davon ~20 Min. für den Daten-Download)
 
 ---
 
@@ -100,19 +100,53 @@ Am Ende siehst du:
 
 ---
 
-## Schritt 5 — App starten
+## Schritt 5 — Daten laden (Pflicht!)
+
+> ⚠️ **Ohne diesen Schritt zeigt die App keine Daten an.**
+
+Die App benötigt Ticker-Stammdaten von Yahoo Finance. Gib im PowerShell-Fenster ein:
+
+```
+.\install.ps1 -InitInfo
+```
+
+Das Script lädt Metadaten (Name, Sektor, Branche) für alle ~130 vordefinierten Ticker.  
+**Bitte warte — das dauert ca. 10–20 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
+
+Einige Ticker können mit `404 Not Found` fehlschlagen — das ist normal, Yahoo Finance kennt nicht jeden Ticker. Der Rest wird trotzdem geladen.
+
+Am Ende erscheint wieder:
+```
+===========================================
+ Installation abgeschlossen!
+===========================================
+```
+
+---
+
+## Schritt 6 — App starten
 
 Doppelklicke auf die Datei **`start.bat`** im Trading-Ordner.
 
 Ein schwarzes Fenster öffnet sich kurz, danach startet automatisch dein Browser mit der Trading-App.
 
-> Falls der Browser nicht automatisch öffnet: Gib manuell `http://localhost:8501` in die Adressleiste ein.
+> Falls der Browser nicht automatisch öffnet: Gib manuell `http://localhost:8080` in die Adressleiste ein.
 
 ---
 
 ## App beenden
 
 Schließe das schwarze PowerShell/Terminal-Fenster, das beim Start geöffnet wurde.
+
+---
+
+## Übersicht der Installationsschritte
+
+| Schritt | Befehl | Pflicht? | Dauer |
+|---|---|---|---|
+| Umgebung + Config anlegen | `.\install.ps1` | ✅ Ja | ~5 Min |
+| Ticker-Stammdaten laden | `.\install.ps1 -InitInfo` | ✅ Ja | ~20 Min |
+| Historische Kursdaten laden | `.\install.ps1 -Init` | Optional | Stunden |
 
 ---
 
@@ -138,28 +172,7 @@ Ein anderes Programm blockiert Port 8501. Starte den PC neu und versuche es erne
 
 ---
 
-## Nächste Schritte nach der Installation
-
-Nach der Erstinstallation ist die Datenbank noch leer. Um Ticker-Daten zu laden:
-
-**Nur Ticker eintragen** (schnell, kein Internet nötig):
-```
-.\install.ps1 -Seed
-```
-
-**Ticker + Metadaten von Yahoo Finance laden** (braucht Internet, ~10–20 Min):
-```
-.\install.ps1 -InitInfo
-```
-
-**Vollständige Initialisierung inkl. Kursdaten** (braucht Internet, dauert Stunden):
-```
-.\install.ps1 -Init
-```
-
----
-
 ## Ab dem nächsten Mal
 
 Für jeden weiteren Start reicht ein Doppelklick auf **`start.bat`**.  
-Die Installation muss nur einmal gemacht werden.
+Die Installation (Schritte 1–5) muss nur einmal gemacht werden.

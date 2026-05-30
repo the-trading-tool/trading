@@ -360,9 +360,13 @@ Write-Host "   .\start.bat"
 Write-Host "   oder: .venv\Scripts\streamlit.exe run asset_analyzer.py"
 Write-Host ""
 if (-not ($Seed -or $Init -or $InitInfo)) {
-    Write-Host " Ticker-DB noch leer. Naechster Schritt:" -ForegroundColor Yellow
-    Write-Host "   .\install.ps1 -Seed       # nur Ticker eintragen"
-    Write-Host "   .\install.ps1 -InitInfo   # Ticker + Metadaten"
-    Write-Host "   .\install.ps1 -Init       # Vollstaendige DB-Initialisierung"
+    Write-Host ""
+    Write-Host "  WICHTIG: Die App benoetigt Ticker-Stammdaten um zu funktionieren!" -ForegroundColor Red
+    Write-Host "  Bitte jetzt ausfuehren:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "    .\install.ps1 -InitInfo   <-- PFLICHT (laedt Daten von Yahoo Finance, ~20 Min)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Optional danach:" -ForegroundColor Gray
+    Write-Host "    .\install.ps1 -Init       # + Kursdaten laden (dauert Stunden)"
     Write-Host ""
 }
