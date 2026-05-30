@@ -95,13 +95,16 @@ class Headlines(tt.TickerTools):
             value=round(float(self.df['High'].max()),digits),
         )
 
-        ret_val = self.get_ticker_value(self.ticker, 'volume') 
+        ret_val = self.get_ticker_value(self.ticker, 'volume')
         if ret_val:
             lbl = "Volume"
-            p_vol.metric(
-                label=lbl,
-                value=f"{round(ret_val/1000,1)} k"
-            )
+            try:
+                p_vol.metric(
+                    label=lbl,
+                    value=f"{round(float(ret_val)/1000,1)} k"
+                )
+            except (TypeError, ValueError):
+                p_vol.metric(label=lbl, value=str(ret_val))
 
         price_low = 0
         ret_val = self.get_ticker_value(self.ticker, 'fiftyTwoWeekLow') 
