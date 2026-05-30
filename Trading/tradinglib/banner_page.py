@@ -92,8 +92,16 @@ class BannerPage():
 
             db_table = 'banner_notes'
             db = tools.Db_tools(db_path=self.db_path, database_name=f"{db_table}.db")
+            db.conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {db_table} (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ticker TEXT,
+                    text TEXT,
+                    buyDate TEXT
+                )
+            """)
+            db.conn.commit()
             b_df = pd.read_sql(f'select * from {db_table}', db.conn)
-#            b_df.reset_index(inplace=True)
             db.conn.close()
             try:
                 ticker = b_df.iloc[-1]['ticker']
