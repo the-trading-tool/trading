@@ -335,9 +335,17 @@ if ($Init) {
     Write-Warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     $confirm = Read-Host "  Fortfahren? (j/N)"
     if ($confirm -match '^[jJyY]') {
+        # Nur die 4 Basis-Intervalle werden von Yahoo geholt:
+        #   1m  -> min_data   (Intraday-Minuten, max. 7 Tage History bei Yahoo)
+        #   60m -> h60_data   (Stunden, max. 60 Tage)
+        #   1d  -> day_data   (Tage; asset_perf2 braucht moeglichst viel History)
+        #   1mo -> month_data (Monate; asset_perf2 fragt 10y ab -> :max noetig)
+        # 1wk wird NICHT separat geladen -- Wochendaten werden aus day_data aggregiert.
+        # Alle anderen Intervalle (30m, 4h usw.) werden ebenfalls lokal aggregiert.
+
         # Schritt 1: Aktien aller Indizes laden (INDEX-Gruppe ausgeschlossen)
         Write-Info "Lade Aktien-Kursdaten (/index_member) ..."
-        & $PY get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y
+        & $PY get_asset_data.py /index_member 1m:7d 60m:60d 1d:max 1mo:max
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "get_asset_data.py /index_member mit Fehler beendet."
         } else {
@@ -345,12 +353,6 @@ if ($Init) {
         }
 
         # Schritt 2: Index-Instrumente laden (^GDAXI, ^GSPC etc.)
-        # Nur die 4 Basis-Intervalle werden von Yahoo geholt:
-        #   1m  -> min_data  (Intraday-Minuten)
-        #   60m -> h60_data  (Stunden)
-        #   1d  -> day_data  (Tage + Wochen)
-        #   1mo -> month_data (Monate)
-        # Alle anderen Intervalle (30m, 4h, 2h usw.) werden lokal aggregiert.
         Write-Info "Lade Index-Kursdaten (/index) ..."
         & $PY get_asset_data.py /index 1m:7d 60m:60d 1d:max 1mo:max
         if ($LASTEXITCODE -ne 0) {
@@ -361,7 +363,7 @@ if ($Init) {
     } else {
         Write-Info "OHLC-Download uebersprungen."
         Write-Info "Spaeter nachholen:"
-        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y"
+        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_member 1m:7d 60m:60d 1d:max 1mo:max"
         Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index 1m:7d 60m:60d 1d:max 1mo:max"
     }
 
