@@ -233,7 +233,11 @@ if __name__ == '__main__':
             keys = info.keys()
 
             # Build mapping (normalize keys and serialize lists/dicts)
-            row_map = {}
+            # ticker muss als erstes eingetragen werden -- bulk_upsert_dicts
+            # erstellt die Tabelle aus den row_map-Keys; ohne expliziten Eintrag
+            # wuerde die ticker-Spalte fehlen und fetch_data.py mit
+            # "no such column: ticker" scheitern.
+            row_map = {'ticker': ticker}
             for key in keys:
                 if key[0].isdigit():
                     column_name = f"_{key}"

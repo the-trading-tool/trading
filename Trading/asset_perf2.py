@@ -1352,8 +1352,7 @@ if __name__ == "__main__":
         """)
         sim_db.conn.commit()
     except sqlite3.Error as e:
-        logger.exception("Error removing duplicates: %s", e)
-        pass
+        logger.warning("Duplikate konnten nicht entfernt werden (Tabelle evtl. leer): %s", e)
 
     sim_db.close()
 
@@ -1370,4 +1369,7 @@ if __name__ == "__main__":
     if year == '' and not all:
         if simulate and not silent:
             logger.info("notifying via pushover...")
-            mt.run_notifier()
+            if mt is not None:
+                mt.run_notifier()
+            else:
+                logger.warning("Pushover-Notifier nicht konfiguriert -- Benachrichtigung uebersprungen.")
