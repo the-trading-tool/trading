@@ -70,11 +70,16 @@ class FullTextSearch(tools.Db_tools):
         # Überprüfen, ob bereits Daten vorhanden sind
         cursor.execute(f"SELECT COUNT(*) FROM {self.fts_table_name};")
         if cursor.fetchone()[0] == 0:
-            # Daten aus Originaltabelle kopieren
-            cursor.execute(f"""
-            INSERT INTO {self.fts_table_name} (ticker, longName)
-            SELECT ticker, longName FROM {self.table_name};
-            """)
+            # Pruefen ob Quell-Tabelle die benoetigten Spalten hat
+            cursor.execute(f"PRAGMA table_info({self.table_name})")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            if 'ticker' in existing_cols and 'longName' in existing_cols:
+                cursor.execute(f"""
+                INSERT INTO {self.fts_table_name} (ticker, longName)
+                SELECT ticker, longName FROM {self.table_name};
+                """)
+            # Wenn Spalten fehlen (noch kein get_asset_info.py gelaufen),
+            # bleibt die FTS-Tabelle leer -- Suche liefert dann keine Treffer.
 
         conn.commit()
         conn.close()
