@@ -1079,17 +1079,17 @@ class AssetSimulator(tt.TickerTools):
                             .drop_duplicates('ticker', keep='last')
                             .set_index('ticker')
                         )
-                        for _t, _pos in portfolio.portfolio.items():
-                            if _t not in _last_by_ticker.index:
+                        for _tk, _pos in portfolio.portfolio.items():
+                            if _tk not in _last_by_ticker.index:
                                 continue
-                            _lp       = float(_last_by_ticker.loc[_t, 'close'])
-                            _ld       = _last_by_ticker.loc[_t, 'Date']
+                            _lp       = float(_last_by_ticker.loc[_tk, 'close'])
+                            _ld       = _last_by_ticker.loc[_tk, 'Date']
                             _sh       = float(_pos['shares'])
                             _buy_cost = round(_sh * _pos['buy_price'] * (1 + fee_pct / 100), 2)
                             _sell_val = round(_sh * _lp * (1 - fee_pct / 100), 2)
                             _t_gain   = round(_sell_val - _buy_cost, 2)
                             unrealized_gain += _t_gain
-                            _mask = data['ticker'] == _t
+                            _mask = data['ticker'] == _tk
                             if _mask.any():
                                 data.loc[_mask, 'sellPrice'] = round(_lp, 2)
                                 data.loc[_mask, 'sellDate']  = pd.to_datetime(_ld)
