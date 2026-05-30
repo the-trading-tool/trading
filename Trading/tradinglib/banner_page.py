@@ -58,13 +58,23 @@ class BannerPage():
             _raw_transactions = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
             transactions = eval(_raw_transactions) if isinstance(_raw_transactions, str) else _raw_transactions
             for item in transactions:
-                for id in transactions[item]:
-#                    total_transactions += 1                    
-                    num_assets = transactions[item][id]['num_assets']
-                    invest = transactions[item][id]['invest']
+                inner = transactions[item]
+                # Unterstuetze beide Formate:
+                # 2-stufig: {gruppe: {num_assets: x, invest: y, ...}}  (Default aus system_config)
+                # 3-stufig: {gruppe: {id: {num_assets: x, invest: y, ...}}}  (gespeichertes Format)
+                if isinstance(inner, dict) and 'num_assets' in inner:
+                    positions = {item: inner}
+                else:
+                    positions = inner
+                for id in positions:
+                    pos = positions[id]
+                    if not isinstance(pos, dict):
+                        continue
+                    num_assets = pos.get('num_assets', 0)
+                    invest = pos.get('invest', 0)
                     self.total_invest += invest
                     self.num_assets += num_assets
-                    self.assets += id+", "  
+                    self.assets += id+", "
             gain = 0
             for i, row in df.iterrows():
                 if not math.isnan(row['cumulative_gain']):
