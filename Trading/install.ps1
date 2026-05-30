@@ -348,9 +348,9 @@ if ($Init) {
         # Diese werden als erstes Asset in der App angezeigt und muessen vorhanden sein.
         # Inkl. Intraday-Daten (30m, 1h) damit kein Yahoo-Fallback noetig ist.
         Write-Info "Lade Index-Kursdaten (/index_only) ..."
-        & $PY get_asset_data.py /index_only 30m:2wk 1h:2wk 1d:2y 1wk:6y 1mo:10y
+        & $PY get_asset_data.py /index 30m:2wk 1h:2wk 1d:2y 1wk:6y 1mo:10y
         if ($LASTEXITCODE -ne 0) {
-            Write-Warn "get_asset_data.py /index_only mit Fehler beendet."
+            Write-Warn "get_asset_data.py /index mit Fehler beendet."
         } else {
             Write-Ok "Index-OHLC geladen (^GDAXI, ^GSPC, ...)"
         }
@@ -358,7 +358,7 @@ if ($Init) {
         Write-Info "OHLC-Download uebersprungen."
         Write-Info "Spaeter nachholen:"
         Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y"
-        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index_only 1d:2y 1wk:6y 1mo:10y"
+        Write-Info "  .venv\Scripts\python.exe get_asset_data.py /index 1d:2y 1wk:6y 1mo:10y"
     }
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
