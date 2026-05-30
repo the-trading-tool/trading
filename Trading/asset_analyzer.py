@@ -609,15 +609,21 @@ class TradingApp:
                                 system_currency=system_currency,
                             )
                         with tab_trades:
+                            # Trade Import/Export ist fuer alle Nutzer verfuegbar.
+                            # Falls die Strategy Engine (ass) lizenziert ist, wird
+                            # der Simulator mitgegeben fuer erweiterte Funktionen.
+                            _simulator = None
                             if ass is not None:
-                                render_import_export(
-                                    tab_trades,
-                                    simulator=ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username),
-                                    username=self.username,
-                                    db_path='database',
-                                )
-                            else:
-                                tab_trades.info("Import/Export benötigt die Strategy Engine Lizenz.")
+                                try:
+                                    _simulator = ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username)
+                                except Exception:
+                                    pass
+                            render_import_export(
+                                tab_trades,
+                                simulator=_simulator,
+                                username=self.username,
+                                db_path='database',
+                            )
                     except Exception as e:
                         st.error(t('error.load_own_trades', error=e))
                 elif parms.get('strategy_finder'):
