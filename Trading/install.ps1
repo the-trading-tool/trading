@@ -321,11 +321,13 @@ if ($InitInfo -or $Init) {
 }
 
 if ($Init) {
-    Write-Step "Phase 4B: OHLC-Kursdaten laden (get_asset_data.py init)"
+    Write-Step "Phase 4B: OHLC-Kursdaten laden (get_asset_data.py)"
     Write-Warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     $confirm = Read-Host "  Fortfahren? (j/N)"
     if ($confirm -match '^[jJyY]') {
-        & $PY get_asset_data.py init
+        # /index_member laedt alle Ticker aus den konfigurierten Indizes
+        # Intervalle: 1d (2 Jahre), 1wk (6 Jahre), 1mo (10 Jahre)
+        & $PY get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "get_asset_data.py mit Fehler beendet."
         } else {
@@ -333,7 +335,7 @@ if ($Init) {
         }
     } else {
         Write-Info "OHLC-Download uebersprungen."
-        Write-Info "Spaeter nachholen: .venv\Scripts\python.exe get_asset_data.py init"
+        Write-Info "Spaeter nachholen: .venv\Scripts\python.exe get_asset_data.py /index_member 1d:2y 1wk:6y 1mo:10y"
     }
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
