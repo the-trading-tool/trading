@@ -237,7 +237,12 @@ class MarketSearch(tools.Db_tools):
         db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name=perf_db_file)}' AS performance_db")
         db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name='asset_info.db')}' AS info_db")
         query = mq.make_query(perf_table, index=index, q=q, q_ext="", conn=db.conn)
-        self.df = pd.read_sql_query(query, db.conn)
+        try:
+            self.df = pd.read_sql_query(query, db.conn)
+        except Exception:
+            # asset_info.db hat noch keine ticker-Spalte (get_asset_info.py
+            # noch nicht gelaufen) -- leeren DataFrame zurueckgeben
+            self.df = pd.DataFrame()
 
     def get_index_list(self):
         table_name = "indices"
