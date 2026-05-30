@@ -38,7 +38,7 @@ ALL_FEATURES = [FEATURE_FREE, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING]
 # DER-encoded Ed25519 public key, base64-encoded.
 # Replace this placeholder by running:  python generate_license_keys.py
 # That script prints the PUBLIC_KEY_B64 value to paste here.
-_PUBLIC_KEY_B64: str = "REPLACE_ME_RUN_generate_license_keys_py"
+_PUBLIC_KEY_B64: str = "MCowBQYDK2VwAyEAziZUe33KbCHRH6owVUZkwscEgQwUuknKCzN5JaQC+iA="
 
 # ── Optional server validation ───────────────────────────────────────────────
 # Set to your validation endpoint URL to enable server checks.
