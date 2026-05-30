@@ -45,7 +45,11 @@ def load_language(lang: str) -> None:
         lang = _DEFAULT_LANG
     _translations = data
     _current_lang = lang
-    st.session_state["_i18n_lang"] = lang
+    # st.session_state may not be available outside a Streamlit context
+    try:
+        st.session_state["_i18n_lang"] = lang
+    except Exception:
+        pass
 
 
 def init_from_session(sys_config=None) -> None:
@@ -69,8 +73,12 @@ def current_language() -> str:
 def t(key: str, **kwargs) -> str:
     """Return the translated string for *key*, with optional {placeholder} substitution.
 
-    Falls back to the key itself so missing translations are always visible.
+    Lazy-initialises English on the first call if no language has been loaded yet,
+    so translations work even without an explicit init_from_session() call.
+    Falls back to the key itself when a key is missing.
     """
+    if not _translations:
+        load_language(_DEFAULT_LANG)
     text = _translations.get(key, key)
     if kwargs:
         try:
