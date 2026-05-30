@@ -4,7 +4,7 @@
     Trading-App Installer
 
 .DESCRIPTION
-    Phase 1 (immer):      Python prüfen · .venv anlegen · Pakete installieren · Verzeichnisse erstellen
+    Phase 1 (immer):      Python pruefen - .venv anlegen - Pakete installieren - Verzeichnisse erstellen
     Phase 2 (immer):      config.yaml anlegen, falls noch nicht vorhanden (Benutzer wird abgefragt)
     Phase 3 (--Seed):     yf_tickers.db mit Beispiel-Tickern befüllen
     Phase 4 (--Init):     Asset-Metadaten + OHLC-Daten + Performance berechnen (dauert Stunden!)
@@ -108,7 +108,7 @@ Write-Step "Phase 1B: Virtuelle Umgebung"
 if (Test-Path '.venv\Scripts\python.exe') {
     Write-Ok ".venv bereits vorhanden — überspringe Erstellung"
 } else {
-    Write-Info "Erstelle .venv …"
+    Write-Info "Erstelle .venv ..."
     # $python kann "py -3.11" (zwei Tokens) oder "python3.11" (ein Token) sein
     $py_parts = $python.Split(' ')
     $py_extra = if ($py_parts.Length -gt 1) { $py_parts[1..($py_parts.Length-1)] } else { @() }
@@ -129,13 +129,13 @@ $PIP = Join-Path $ROOT '.venv\Scripts\pip.exe'
 
 Write-Step "Phase 1C: Pakete installieren (requirements.txt)"
 
-Write-Info "pip upgrade …"
+Write-Info "pip upgrade ..."
 & $PY -m pip install --upgrade pip --quiet
 
-Write-Info "TA-Lib vorab prüfen …"
+Write-Info "TA-Lib vorab prüfen ..."
 $talib_ok = & $PY -c "import talib" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    Write-Info "TA-Lib wird installiert (benötigt C-Library, kann etwas dauern) …"
+    Write-Info "TA-Lib wird installiert (benötigt C-Library, kann etwas dauern) ..."
     & $PIP install "TA-Lib>=0.6.0" --quiet
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "TA-Lib-Installation fehlgeschlagen."
@@ -148,7 +148,7 @@ if ($LASTEXITCODE -ne 0) {
     }
 }
 
-Write-Info "Alle anderen Pakete installieren …"
+Write-Info "Alle anderen Pakete installieren ..."
 # --prefer-binary: nimmt vorkompilierte Wheels statt Quellcode-Build.
 # Verhindert Fehler auf Systemen ohne C-Compiler (z.B. kein Visual Studio).
 & $PIP install -r requirements.txt --prefer-binary --quiet
@@ -195,7 +195,7 @@ if (Test-Path 'config.yaml') {
         $username = Read-Host "  Admin-Benutzername (Standard: admin)"
         if ([string]::IsNullOrWhiteSpace($username)) { $username = 'admin' }
         $valid_user = $username -match '^[a-zA-Z0-9_]{3,32}$'
-        if (-not $valid_user) { Write-Warn "Nur Buchstaben, Ziffern und _ erlaubt (3–32 Zeichen)." }
+        if (-not $valid_user) { Write-Warn "Nur Buchstaben, Ziffern und _ erlaubt (3-32 Zeichen)." }
     } while (-not $valid_user)
 
     do {
@@ -214,7 +214,7 @@ if (Test-Path 'config.yaml') {
         if ($plain1.Length -lt 8) { Write-Warn "Mindestens 8 Zeichen erforderlich." }
     } while ($plain1 -ne $plain2 -or $plain1.Length -lt 8)
 
-    Write-Info "bcrypt-Hash wird berechnet …"
+    Write-Info "bcrypt-Hash wird berechnet ..."
     $hash = & $PY -c @"
 import bcrypt, sys
 pw = sys.argv[1].encode()
@@ -275,7 +275,7 @@ if ($Seed -or $Init -or $InitInfo) {
 
 if ($InitInfo -or $Init) {
     Write-Step "Phase 4A: Asset-Metadaten laden (get_asset_info.py)"
-    Write-Info "Lädt Ticker-Stammdaten von Yahoo Finance …"
+    Write-Info "Lädt Ticker-Stammdaten von Yahoo Finance ..."
     & $PY get_asset_info.py
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden möglicherweise übersprungen)."
@@ -301,7 +301,7 @@ if ($Init) {
     }
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
-    Write-Info "Berechnet Scores für alle Ticker …"
+    Write-Info "Berechnet Scores für alle Ticker ..."
     & $PY asset_perf2.py init
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "asset_perf2.py mit Fehler beendet."
