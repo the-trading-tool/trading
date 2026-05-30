@@ -44,7 +44,8 @@ class BannerPage():
                     sellDate TEXT,
                     num_assets REAL,
                     invest REAL,
-                    profit REAL
+                    profit REAL,
+                    cumulative_gain REAL
                 )
             """)
             db.conn.commit()
@@ -123,17 +124,17 @@ class BannerPage():
             self.region.dataframe(df)
             
 #            df.sort_values(['sellDate','ticker'], ascending=[False,True],inplace=True)
-            fig1 = px.line(
-                        df,
-                        x='sellDate',
-                        y='cumulative_gain',
-                       title=t('banner.total_gain'),
-                        labels={'buyDate': 'Date', 'cumulative_gain': 'Gain'}
-                    )
-            st.plotly_chart(
-                                fig1,
-                                use_container_width = True,
-                                #sharing="streamlit",
-                    )
+            if not df.empty and 'cumulative_gain' in df.columns:
+                fig1 = px.line(
+                            df,
+                            x='sellDate',
+                            y='cumulative_gain',
+                           title=t('banner.total_gain'),
+                            labels={'buyDate': 'Date', 'cumulative_gain': 'Gain'}
+                        )
+                st.plotly_chart(
+                                    fig1,
+                                    use_container_width = True,
+                        )
     
         
