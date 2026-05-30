@@ -55,7 +55,8 @@ class BannerPage():
             self.assets = ""
             self.total_invest = 0
             self.num_assets = 0
-            transactions = eval(self.sys_conf.get_value('multi_transactions',self.sys_conf.transactions))
+            _raw_transactions = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
+            transactions = eval(_raw_transactions) if isinstance(_raw_transactions, str) else _raw_transactions
             for item in transactions:
                 for id in transactions[item]:
 #                    total_transactions += 1                    
