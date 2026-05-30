@@ -369,7 +369,9 @@ if ($Init) {
 
     Write-Step "Phase 4C: Performance berechnen (asset_perf2.py init)"
     Write-Info "Berechnet Scores fuer alle Ticker ..."
-    & $PY asset_perf2.py init
+    # /worker:2 -- begrenzt Parallelitaet um OOM in speicherarmen Umgebungen
+    # (z.B. Windows Sandbox) zu vermeiden. Standard waere cpu_count/2-1.
+    & $PY asset_perf2.py init /worker:2
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "asset_perf2.py mit Fehler beendet."
     } else {

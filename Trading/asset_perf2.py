@@ -1290,7 +1290,11 @@ if __name__ == "__main__":
     # === Parallel: pro Symbol rechnen ===
     max_workers = 1
     if sys.platform == 'win32':
-        max_workers = max(1, (os.cpu_count() // 2) - 1)
+        # Auf Windows begrenzen wir auf max. 2 Worker um OOM zu vermeiden.
+        # Jeder Worker laedt einen vollen DataFrame + Indikatoren in den RAM.
+        # Mit cpu_count/2-1 koennen auf vielkernigen Systemen zu viele
+        # Prozesse entstehen und die Sandbox / den PC zum Absturz bringen.
+        max_workers = min(2, max(1, (os.cpu_count() // 2) - 1))
     if worker > 0:
         max_workers = worker
     logger.info("Using %d threads.", max_workers)
