@@ -469,8 +469,12 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             disp_cols_o = [c for c in ['ticker', 'longName', 'isin', 'shares', 'avg_price',
                                         'current_price', 'buy_value', 'current_value',
                                         'unrealized_pnl', 'pnl_pct', 'weight_pct'] if c in agg.columns]
-            st.dataframe(agg[disp_cols_o], hide_index=True, use_container_width=True,
+            _agg_disp = agg[disp_cols_o].copy()
+            if 'ticker' in _agg_disp.columns:
+                _agg_disp.insert(0, 'details', _agg_disp['ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
+            st.dataframe(_agg_disp, hide_index=True, use_container_width=True,
                          column_config={
+                             'details':       st.column_config.LinkColumn('Details', display_text='View'),
                              'ticker':        st.column_config.TextColumn(_t('ota.col_ticker')),
                              'longName':      st.column_config.TextColumn(_t('ota.col_name')),
                              'shares':        st.column_config.NumberColumn(_t('ota.col_shares'),       format='%.2f'),
@@ -558,10 +562,13 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 parity_df['Invested']  = (parity_df['Current %'] / 100 * total_invest).round(2)
                 parity_df['Delta']     = (parity_df['Target'] - parity_df['Invested']).round(2)
 
+                _parity_disp = parity_df[['Ticker', 'Current %', 'Parity %', 'Diff %',
+                               'Action', 'Target', 'Invested', 'Delta']].copy()
+                _parity_disp.insert(0, 'details', _parity_disp['Ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
                 st.dataframe(
-                    parity_df[['Ticker', 'Current %', 'Parity %', 'Diff %',
-                               'Action', 'Target', 'Invested', 'Delta']],
+                    _parity_disp,
                     column_config={
+                        'details':   st.column_config.LinkColumn('Details', display_text='View'),
                         'Current %': st.column_config.NumberColumn(_t('ota.col_cost_basis_pct'), format='%.2f'),
                         'Parity %':  st.column_config.NumberColumn(_t('ota.col_parity_pct'),     format='%.2f'),
                         'Diff %':    st.column_config.NumberColumn(_t('ota.col_diff_pct'),        format='%.2f'),
@@ -1008,66 +1015,73 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     Look up Yahoo Finance ticker for an ISIN.
 
     Resolution order:
-      1. broker_symbol_cache in asset_info.db  (keyed by yf_isin)
-      2. asset_info table in asset_info.db      (ticker/symbol + isin columns)
-      3. yfinance: yf.Ticker(isin).info['symbol']
-      4. Fallback: return isin unchanged
+      1. yf_tickers.db → stocks table  (primary local source; ISIN column)
+      2. yfinance: yf.Ticker(isin).info['symbol']  (network fallback)
+         → result is written back to yf_tickers.db/stocks for future lookups
 
-    Successful results from step 3 are written back to broker_symbol_cache.
+    Fallback: return isin unchanged.
     """
+    import sqlite3 as _sq
+    import os
+
     if not isin or not isinstance(isin, str):
         return isin or ''
     isin = isin.strip().upper()
 
-    # ── 1. broker_symbol_cache ─────────────────────────────────────────────
+    tickers_db = os.path.join(db_path, 'yf_tickers.db')
+
+    # ── 1. yf_tickers.db / stocks ─────────────────────────────────────────
     try:
-        import sqlite3 as _sq
-        import os
-        info_db = os.path.join(db_path, 'asset_info.db')
-        with _sq.connect(info_db) as conn:
+        with _sq.connect(tickers_db) as conn:
+            # Ensure ISIN column exists (added by ensure_isin_column below if needed)
             row = conn.execute(
-                "SELECT yahoo_ticker FROM broker_symbol_cache WHERE yf_isin=? LIMIT 1",
+                "SELECT Ticker FROM stocks WHERE UPPER(ISIN)=? AND Ticker IS NOT NULL LIMIT 1",
                 (isin,),
             ).fetchone()
         if row and row[0]:
-            return row[0]
+            return str(row[0]).strip().upper()
     except Exception:
         pass
 
-    # ── 2. asset_info table ────────────────────────────────────────────────
-    try:
-        with _sq.connect(info_db) as conn:
-            row = conn.execute(
-                "SELECT ticker, symbol FROM asset_info WHERE isin=? LIMIT 1",
-                (isin,),
-            ).fetchone()
-        if row:
-            t = row[0] or row[1]
-            if t:
-                return str(t).strip().upper()
-    except Exception:
-        pass
-
-    # ── 3. yfinance lookup ─────────────────────────────────────────────────
+    # ── 2. yfinance network lookup ─────────────────────────────────────────
     try:
         import yfinance as yf
         info = yf.Ticker(isin).info
-        symbol = info.get('symbol') or ''
+        symbol = (info.get('symbol') or '').strip().upper()
         if symbol and symbol != isin:
-            # Cache result
+            # Write back to yf_tickers.db so next lookup is local
             try:
-                with _sq.connect(info_db) as conn:
+                with _sq.connect(tickers_db) as conn:
+                    # Ensure table + ISIN column exist
                     conn.execute("""
-                        INSERT INTO broker_symbol_cache
-                            (yahoo_ticker, yf_isin, resolved_at, source)
-                        VALUES (?, ?, ?, 'isin_lookup')
-                        ON CONFLICT(yahoo_ticker) DO UPDATE SET
-                            yf_isin=excluded.yf_isin,
-                            resolved_at=excluded.resolved_at,
-                            source=excluded.source
-                    """, (symbol.upper(), isin, dt.datetime.now().isoformat()))
-            except Exception:
-                pass
+                        CREATE TABLE IF NOT EXISTS stocks (
+                            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                            Ticker  TEXT,
+                            Date    TEXT,
+                            INVESTED REAL,
+                            ISIN    TEXT
+                        )
+                    """)
+                    try:
+                        conn.execute("ALTER TABLE stocks ADD COLUMN ISIN TEXT")
+                    except Exception:
+                        pass  # column already exists
+                    # Update existing row or insert new one
+                    existing = conn.execute(
+                        "SELECT id FROM stocks WHERE Ticker=? LIMIT 1", (symbol,)
+                    ).fetchone()
+                    if existing:
+                        conn.execute(
+                            "UPDATE stocks SET ISIN=? WHERE id=?",
+                            (isin, existing[0]),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO stocks (Ticker, ISIN, Date) VALUES (?, ?, ?)",
+                            (symbol, isin, dt.datetime.now().strftime('%Y-%m-%d')),
+                        )
+            except Exception as e:
+                logger.debug(f'Could not write ISIN→ticker to yf_tickers.db: {e}')
             return symbol.upper()
     except Exception:
         pass
@@ -1559,8 +1573,12 @@ def render_trade_entry(region=st, db_path: str = 'database', system_currency: st
 
         if not df_recent.empty:
             r.markdown(f'**{_t("own_trades.entry_recent_header")}**')
-            r.dataframe(df_recent, hide_index=True, use_container_width=True,
+            _recent_disp = df_recent.copy()
+            if 'ticker' in _recent_disp.columns:
+                _recent_disp.insert(0, 'details', _recent_disp['ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
+            r.dataframe(_recent_disp, hide_index=True, use_container_width=True,
                         column_config={
+                            'details':   st.column_config.LinkColumn('Details', display_text='View'),
                             'timestamp': st.column_config.TextColumn('Date/Time'),
                             'shares':    st.column_config.NumberColumn(format='%.4f'),
                             'price':     st.column_config.NumberColumn(format='%.4f'),
