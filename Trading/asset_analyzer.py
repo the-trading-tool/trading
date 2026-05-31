@@ -595,11 +595,15 @@ class TradingApp:
                 elif parms.get('own_trades'):
                     self.set_page_config(t('page.own_transactions'))
                     try:
-                        from tradinglib.own_trades_analysis import render_import_export, render_portfolio_analysis, render_trade_entry
+                        from tradinglib.own_trades_analysis import (
+                            render_import_export, render_portfolio_analysis,
+                            render_trade_entry, render_scalable_import,
+                        )
                         system_currency = self.sys_config.get_value('system_currency', 'EUR')
-                        tab_portfolio, tab_entry, tab_trades = st.tabs([
+                        tab_portfolio, tab_entry, tab_scalable, tab_trades = st.tabs([
                             t('own_trades.tab_portfolio'),
                             t('own_trades.tab_entry'),
+                            t('own_trades.tab_scalable'),
                             t('own_trades.tab_trades'),
                         ])
                         with tab_portfolio:
@@ -612,6 +616,12 @@ class TradingApp:
                         with tab_entry:
                             render_trade_entry(
                                 region=tab_entry,
+                                db_path='database',
+                                system_currency=system_currency,
+                            )
+                        with tab_scalable:
+                            render_scalable_import(
+                                region=tab_scalable,
                                 db_path='database',
                                 system_currency=system_currency,
                             )

@@ -75,6 +75,7 @@
   "session.expires_in": "Session expires in: {days} days.",
 
   "own_trades.tab_portfolio": "Portfolio Analysis",
+  "own_trades.tab_scalable": "Scalable Capital",
   "own_trades.tab_trades": "Trade Import/Export",
   "own_trades.tab_entry": "Add Trade",
   "own_trades.entry_header": "Manually enter a trade",
