@@ -963,6 +963,114 @@ def import_trades(df_u: pd.DataFrame, user_map: dict = None, username: str = '',
     return inserted, mapped, processed
 
 
+def render_trade_entry(region=st, db_path: str = 'database', system_currency: str = 'EUR'):
+    """Tab for manually entering a single trade (buy or sell) into trades.db."""
+    r = region
+    r.markdown(f"### {_t('own_trades.entry_header')}")
+
+    with r.form('trade_entry_form', clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        trade_date = col1.date_input(_t('own_trades.entry_date'), value=dt.date.today(), format='YYYY-MM-DD')
+        trade_time = col2.text_input(_t('own_trades.entry_time'), value='12:00')
+
+        col3, col4 = st.columns(2)
+        action = col3.selectbox(_t('own_trades.entry_action'), options=['buy', 'sell'])
+        ticker = col4.text_input(_t('own_trades.entry_ticker'), placeholder='e.g. AAPL')
+
+        col5, col6, col7 = st.columns(3)
+        shares = col5.number_input(_t('own_trades.entry_shares'), min_value=0.0, step=1.0, format='%f')
+        price = col6.number_input(_t('own_trades.entry_price'), min_value=0.0, step=0.01, format='%f')
+        currency = col7.text_input(_t('own_trades.entry_currency'), value=system_currency)
+
+        col8, col9 = st.columns(2)
+        longname = col8.text_input(_t('own_trades.entry_longname'), placeholder='e.g. Apple Inc.')
+        isin = col9.text_input(_t('own_trades.entry_isin'), placeholder='e.g. US0378331005')
+
+        submitted = st.form_submit_button(_t('own_trades.entry_submit'), type='primary')
+
+    if submitted:
+        ticker = ticker.strip().upper()
+        if not ticker:
+            r.error(_t('own_trades.entry_ticker_required'))
+        elif shares <= 0:
+            r.error(_t('own_trades.entry_shares_positive'))
+        elif price <= 0:
+            r.error(_t('own_trades.entry_price_positive'))
+        else:
+            try:
+                time_str = trade_time.strip() if trade_time.strip() else '12:00'
+                timestamp = f'{trade_date.strftime("%Y-%m-%d")} {time_str}:00'
+                value = round(shares * price, 6)
+
+                row_dict = {
+                    'uuid':      uuid.uuid4().hex,
+                    'timestamp': timestamp,
+                    'action':    action,
+                    'ticker':    ticker,
+                    'shares':    shares,
+                    'price':     price,
+                    'value':     value,
+                    'currency':  currency.strip().upper() or system_currency,
+                    'longName':  longname.strip() or None,
+                    'isin':      isin.strip().upper() or None,
+                }
+
+                dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
+                try:
+                    dbt.ensure_table_and_columns(
+                        keys=list(row_dict.keys()),
+                        row_dict=row_dict,
+                        database_name='trades',
+                    )
+                    dbt.insert_data(
+                        keys=list(row_dict.keys()),
+                        row_dict=row_dict,
+                        database_name='trades',
+                        replace=False,
+                    )
+                    dbt.conn.commit()
+                finally:
+                    try:
+                        dbt.close()
+                    except Exception:
+                        pass
+
+                r.success(_t('own_trades.entry_success',
+                             action=action, shares=shares, ticker=ticker,
+                             price=price, currency=currency))
+            except Exception as e:
+                r.error(_t('own_trades.entry_error', error=e))
+
+    # Recent trades preview
+    try:
+        dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
+        try:
+            df_recent = pd.read_sql_query(
+                'SELECT timestamp, action, ticker, shares, price, value, currency, longName, isin '
+                'FROM trades ORDER BY timestamp DESC LIMIT 20',
+                dbt.conn,
+            )
+        except Exception:
+            df_recent = pd.DataFrame()
+        finally:
+            try:
+                dbt.close()
+            except Exception:
+                pass
+
+        if not df_recent.empty:
+            r.markdown(f'**{_t("own_trades.entry_recent_header")}**')
+            r.dataframe(df_recent, hide_index=True, use_container_width=True,
+                        column_config={
+                            'timestamp': st.column_config.TextColumn('Date/Time'),
+                            'shares':    st.column_config.NumberColumn(format='%.4f'),
+                            'price':     st.column_config.NumberColumn(format='%.4f'),
+                            'value':     st.column_config.NumberColumn(format='%.2f'),
+                        })
+    except Exception:
+        pass
+
+
 def render_import_export(region, simulator=None, username='', db_path='database'):
     """Render the Streamlit Import/Export UI for own trades.
 
