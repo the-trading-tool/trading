@@ -1022,13 +1022,12 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     Fallback: return isin unchanged.
     """
     import sqlite3 as _sq
-    import os
 
     if not isin or not isinstance(isin, str):
         return isin or ''
     isin = isin.strip().upper()
 
-    tickers_db = os.path.join(db_path, 'yf_tickers.db')
+    tickers_db = tools.Tools().get_path(path=db_path, file_name='yf_tickers.db')
 
     # ── 1. yf_tickers.db / stocks ─────────────────────────────────────────
     try:
