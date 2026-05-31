@@ -1117,9 +1117,16 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
     # ── timestamp ─────────────────────────────────────────────────────────
     date_s = _s('date').astype(str).str.strip()
     time_s = _s('time').astype(str).str.strip()
+    combined = date_s + ' ' + time_s
+    # Try strict format first, fall back to dayfirst inference
     df['_timestamp'] = pd.to_datetime(
-        date_s + ' ' + time_s, format='%d.%m.%Y %H:%M:%S', errors='coerce'
+        combined, format='%d.%m.%Y %H:%M:%S', errors='coerce'
     )
+    still_nat = df['_timestamp'].isna()
+    if still_nat.any():
+        df.loc[still_nat, '_timestamp'] = pd.to_datetime(
+            combined[still_nat], dayfirst=True, errors='coerce'
+        )
 
     # ── numeric columns ───────────────────────────────────────────────────
     for src, dst in [('shares', '_shares'), ('price', '_price'),
@@ -1223,6 +1230,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             uploaded,
             sep=';',
             dtype=str,
+            encoding='utf-8-sig',   # handles UTF-8 BOM from European apps
             skip_blank_lines=True,
         ).dropna(how='all')
     except Exception as e:
