@@ -1222,9 +1222,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         df_raw = pd.read_csv(
             uploaded,
             sep=';',
-            decimal=',',
-            thousands='.',
-            dtype=str,          # read everything as string first
+            dtype=str,
             skip_blank_lines=True,
         ).dropna(how='all')
     except Exception as e:
