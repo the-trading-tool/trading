@@ -4,6 +4,7 @@ from tradinglib import file_explorer as fe
 from tradinglib import sqlite_editor as sq
 from tradinglib import excel_executor as ee
 from tradinglib import ksplib
+from tradinglib import system_config as sysconf
 import pandas as pd
 import streamlit as st
 import logging
@@ -308,7 +309,9 @@ class Admin():
                         df_failed['failed_intervals'] = df_failed['failed_intervals'].apply(
                             lambda x: ', '.join(x) if isinstance(x, list) else str(x)
                         )
-                        st.dataframe(df_failed, use_container_width=True)
+                        df_failed.insert(0, 'details', df_failed['ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
+                        st.dataframe(df_failed, use_container_width=True,
+                                     column_config={'details': st.column_config.LinkColumn('Details', display_text='View')})
 
                         st.markdown("---")
                         sel_failed = st.selectbox(
@@ -613,6 +616,174 @@ class Admin():
 
             banner_notes_expander = st.expander('Banner note', expanded=False)
             with banner_notes_expander:
+                st.markdown("**Auto-Analyse via KI**")
+
+                # ── Provider-Auswahl ─────────────────────────────────────────
+                _provider_opts = {
+                    'auto':   '🔄 Auto (Groq → Gemini → Ollama)',
+                    'groq':   '⚡ Groq  (kostenlos, schnell)',
+                    'gemini': '🔷 Gemini (Google, kostenlos)',
+                    'ollama': '🖥️ Ollama (lokal, kein Limit)',
+                }
+                _ai_cfg = sysconf.SystemConfig(
+                    db_path=self.db_path, username=self.username
+                )
+                # Use sentinel None so we can detect "never saved" and write the
+                # default to DB — otherwise this key never appears in Copy Config.
+                _saved_provider = _ai_cfg.get_value('ai_provider', None)
+                if _saved_provider is None or _saved_provider not in _provider_opts:
+                    _saved_provider = 'auto'
+                    _ai_cfg.set_value('ai_provider', _saved_provider)  # ensure in DB
+
+                _provider_sel = st.selectbox(
+                    "KI-Provider:",
+                    options=list(_provider_opts.keys()),
+                    format_func=lambda k: _provider_opts[k],
+                    index=list(_provider_opts.keys()).index(_saved_provider),
+                    key="bn_ai_provider",
+                )
+                if _provider_sel != _saved_provider:
+                    _ai_cfg.set_value('ai_provider', _provider_sel)
+
+                # Kurzhinweis je Provider
+                _hints = {
+                    'groq':   "API-Key: https://console.groq.com → Credentials → Name: **groq**",
+                    'gemini': "API-Key: https://aistudio.google.com → Credentials → Name: **gapi**",
+                    'ollama': "Lokal installieren: https://ollama.com → `ollama serve` → Modell in Credentials → Name: **ollama**",
+                    'auto':   "Nutzt den ersten verfügbaren Provider (Groq → Gemini → Ollama).",
+                }
+                st.caption(_hints.get(_provider_sel, ''))
+
+                st.divider()
+                _bn_col1, _bn_col2 = st.columns(2)
+                _force_regen = _bn_col1.checkbox(
+                    "Neu erzwingen (auch wenn heute schon analysiert)",
+                    value=False, key="bn_ai_force"
+                )
+                _debug_mode = _bn_col2.checkbox(
+                    "🔍 Debug: Prompt vor API-Aufruf anzeigen",
+                    value=False, key="bn_ai_debug"
+                )
+
+                if _debug_mode:
+                    # Debug-Ergebnis im session_state speichern, damit es
+                    # Streamlit-Reruns (z.B. durch Checkbox-Klick) überlebt.
+                    if st.button("🔍 Debug-Info laden (kein API-Call)", key="bn_ai_debug_run"):
+                        try:
+                            from tradinglib.banner_ai import BannerAiGenerator
+                            with st.spinner("Daten aus lokalen DBs laden…"):
+                                st.session_state['_bn_dbg'] = BannerAiGenerator(
+                                    username=self.username
+                                ).build_debug_info()
+                        except Exception as _dbg_exc:
+                            st.session_state['_bn_dbg'] = {'error': str(_dbg_exc)}
+
+                    if st.button("🗑️ Ergebnis löschen", key="bn_ai_debug_clear"):
+                        st.session_state.pop('_bn_dbg', None)
+
+                    # Anzeige — immer sichtbar solange _bn_dbg im state ist
+                    if '_bn_dbg' in st.session_state:
+                        dbg = st.session_state['_bn_dbg']
+                        if 'error' in dbg:
+                            st.error(dbg['error'])
+                        else:
+                            _tr  = dbg.get('trade_row', {})
+                            _sim = dbg.get('sim_row', {})
+                            _sc  = dbg.get('strategy_ctx', {})
+
+                            # ── Zusammenfassung ──────────────────────────
+                            st.success(
+                                f"**{dbg['ticker']}**  —  {_tr.get('longName', '')}  |  "
+                                f"Index: {_tr.get('stockIndex', 'n/a')}  |  "
+                                f"Strategie: {_tr.get('Strategy', 'n/a')}  |  "
+                                f"Kaufdatum: {str(_tr.get('buyDate',''))[:10]}"
+                            )
+
+                            _dc1, _dc2 = st.columns(2)
+                            _dc1.metric("Sortino",       round(_sim.get('sortino', 0), 3))
+                            _dc2.metric("Sharpe",        round(_sim.get('sharpe', 0), 3))
+                            _dc3, _dc4 = st.columns(2)
+                            _dc3.metric("Trend-Score",   _sim.get('overallValueTrend', 'n/a'))
+                            _dc4.metric("Markov-Regime", _sim.get('markov_regime', 'n/a'))
+
+                            # ── Letzter Trade ────────────────────────────
+                            with st.expander("🏷️ Letzter Trade (trades{year}.db)", expanded=True):
+                                st.json({k: str(v) for k, v in _tr.items()})
+
+                            # ── Strategie-Bedingungen ────────────────────
+                            with st.expander("⚙️ Strategie-Bedingungen (multi_transactions)", expanded=True):
+                                if _sc:
+                                    st.json(_sc)
+                                else:
+                                    st.warning("Keine passenden Strategie-Bedingungen gefunden.")
+
+                            # ── Asset-Info ───────────────────────────────
+                            with st.expander("📋 Asset-Metadaten (asset_info.db)", expanded=False):
+                                st.json(dbg['asset_info'])
+
+                            # ── Simulation-Row ───────────────────────────
+                            with st.expander(
+                                f"📊 Alle {len(_sim)} Simulationskennzahlen (asset_simulation_all.db)",
+                                expanded=False
+                            ):
+                                _sg = dbg.get('context', {}).get('sim_grouped', {})
+                                if _sg:
+                                    for _grp, _vals in _sg.items():
+                                        st.markdown(f"**{_grp}**")
+                                        st.json(_vals)
+                                else:
+                                    st.json({k: str(v) for k, v in _sim.items()})
+
+                            # ── OHLC ────────────────────────────────────
+                            with st.expander("📈 OHLC letzte 20 Tage", expanded=False):
+                                if not dbg['ohlc_df'].empty:
+                                    st.dataframe(dbg['ohlc_df'], use_container_width=True)
+                                else:
+                                    st.warning("Keine OHLC-Daten gefunden.")
+
+                            # ── Bestehender Eintrag ──────────────────────
+                            if dbg['existing_note']:
+                                with st.expander("💾 Bereits gespeicherter Eintrag (heute)", expanded=False):
+                                    st.info(dbg['existing_note'])
+
+                            # ── Prompt ───────────────────────────────────
+                            with st.expander(
+                                f"📝 Fertig gebauter Prompt (~{dbg['token_estimate']} Tokens)",
+                                expanded=True
+                            ):
+                                st.code(dbg['prompt'], language='text')
+
+                else:
+                    _prov_label = _provider_opts.get(_provider_sel, _provider_sel)
+                    if st.button(f"🤖 Top-Signal analysieren  ({_prov_label})", key="bn_ai_generate"):
+                        try:
+                            from tradinglib.banner_ai import BannerAiGenerator
+                            from tradinglib.ai_client import AiRateLimitError, AiProviderError
+                            with st.spinner(f"KI analysiert das Top-Buy-Signal ({_prov_label})…"):
+                                gen_ticker, gen_text = BannerAiGenerator(
+                                    username=self.username
+                                ).run(force=_force_regen)
+                            st.success(f"Analyse für **{gen_ticker}** gespeichert.")
+                            st.info(gen_text)
+                        except AiProviderError as _pe:
+                            st.error(
+                                f"⚙️ **Provider-Konfigurationsfehler**\n\n{_pe}\n\n"
+                                "API-Credentials unter **Admin → API Credentials** eintragen."
+                            )
+                        except AiRateLimitError as _rle:
+                            st.warning(
+                                "⏳ **Rate-Limit / Quota erschöpft.**\n\n"
+                                "Alle konfigurierten Provider haben ihr Limit erreicht. "
+                                "Alternativen:\n"
+                                "- Anderen Provider wählen (z.B. Groq oder Ollama)\n"
+                                "- Warten bis Quota-Reset (~1 Min für RPM, Mitternacht UTC für Tagesquote)\n\n"
+                                f"Details: {_rle}"
+                            )
+                        except Exception as _ai_exc:
+                            st.error(f"KI-Analyse fehlgeschlagen: {_ai_exc}")
+
+                st.divider()
+                st.markdown("**Manuelle Eingabe**")
                 db_table = 'banner_notes'
                 db = tools.Db_tools(db_path=self.db_path, database_name=f"{db_table}.db")
                 try:
