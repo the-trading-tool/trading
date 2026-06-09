@@ -418,8 +418,8 @@ class Performance(tt.TickerTools):
         combined_df = self.fetch_combined_data_with_attach("")
         combined_df = combined_df.fillna(value={'sector': 'Other'})
 
-        if combined_df.empty:
-            st.error(t('perf.no_data'))
+        if combined_df.empty or 'overallValueTrend' not in combined_df.columns:
+            st.info(t('perf.no_data'))
             return
 
         """
