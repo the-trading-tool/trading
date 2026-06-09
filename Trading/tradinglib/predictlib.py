@@ -1,4 +1,3 @@
-#from tradinglib import lib as tl
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -36,22 +35,17 @@ class predict():
 
     # prepare data
     def prepare_lag(self):
-        # Füge Lag-Funktionen hinzu
+        """Add num_days lag columns (lag_1 … lag_N) of the Close price to self.df."""
         for i in range(1, 1+self.num_days):
             self.df[f'lag_{i}'] = self.df['Close'].shift(i)
 
     def prepare_data(self, standard_model=False):
-
+        """Add shifted OHLC columns and lag features to self.df for model training."""
         if standard_model:
 
             # add RSI
-#            self.df['RSI'] = RSI(self.df['Close'], timeperiod=14)
 
             # add mean average
-#            self.df['MA10'] = self.df['Close'].rolling(window=10).mean()
-#            self.df['MA20'] = self.df['Close'].rolling(window=20).mean()
-#            self.df['MA50'] = self.df['Close'].rolling(window=50).mean()
-#            self.df['MA200'] = self.df['Close'].rolling(window=200).mean()
 
             pass
 
@@ -63,21 +57,20 @@ class predict():
 
         self.prepare_lag()
 
-    # train model
-    def train_model(self,X_train, y_train):
+    def train_model(self, X_train, y_train):
+        """Fit the XGBoost model on the training split."""
         self.model.fit(X_train, y_train)
 
-    # eval models
     def evaluate_model(self, X_test, y_test):
+        """Generate predictions on the test split and store them in self.y_pred."""
         self.y_pred = self.model.predict(X_test)
 
-    # predict future price range
     def predict_next_days(self, recent_data):
+        """Predict the next N price values from the most recent feature rows."""
         self.next_days = self.model.predict(recent_data)
         
     def load_model(self):
-
-            #self.df.astype(float).fillna(0, inplace=True)
+            """Split data 80/20, train the model, evaluate it, and predict the next num_days prices."""
             #Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
             self.df.index = pd.to_datetime(self.df.index).strftime(self.ftime_str)
 
@@ -99,9 +92,11 @@ class predict():
             self.predict_next_days(recent_data)
 
         
-    # init module
-    def __init__(self, symbol=None, precise = False):
+    def __init__(self, symbol=None, precise=False):
+        """Initialize the XGBoost price predictor; fetches data and trains immediately when symbol is given.
 
+        precise=True uses a tuned hyperparameter set; False uses XGBoost defaults.
+        """
         if precise:
 
             self.model = XGBRegressor(
@@ -128,4 +123,3 @@ class predict():
 
             self.load_model()
 
-    

@@ -20,7 +20,7 @@ import logging
 import yfinance as yf
 
 from tradinglib import logging_config
-from tradinglib.tools import Tools
+from tradinglib.tools import Tools, open_db
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,7 @@ DEFAULT_DELAY_MS = 300  # Millisekunden zwischen API-Calls
 # ── CLI-Parsing ────────────────────────────────────────────────────────────
 
 def parse_args(argv=None):
+    """Parse /pref-style CLI options into a configuration dict."""
     if argv is None:
         argv = sys.argv
 
@@ -75,7 +76,7 @@ def parse_args(argv=None):
 # ── Hilfsfunktionen ────────────────────────────────────────────────────────
 
 def fetch_isin(ticker: str) -> str | None:
-    """Gibt die ISIN zurück oder None wenn nicht verfügbar."""
+    """Return the ISIN for ticker via yfinance, or None when unavailable."""
     try:
         isin = yf.Ticker(ticker).isin
         if isin and isin != '-':
@@ -86,7 +87,7 @@ def fetch_isin(ticker: str) -> str | None:
 
 
 def load_missing(conn: sqlite3.Connection, limit: int | None) -> list[str]:
-    """Alle Ticker aus stocks laden, bei denen ISIN noch fehlt."""
+    """Return all tickers from the stocks table that have no ISIN value."""
     sql = "SELECT Ticker FROM stocks WHERE ISIN IS NULL OR ISIN = ''"
     if limit:
         sql += f" LIMIT {limit}"
@@ -95,6 +96,7 @@ def load_missing(conn: sqlite3.Connection, limit: int | None) -> list[str]:
 
 
 def update_isin(conn: sqlite3.Connection, ticker: str, isin: str):
+    """Write isin into the stocks table for ticker (does not commit)."""
     conn.execute(
         "UPDATE stocks SET ISIN = ? WHERE Ticker = ?",
         (isin, ticker),
@@ -104,6 +106,7 @@ def update_isin(conn: sqlite3.Connection, ticker: str, isin: str):
 # ── Hauptprogramm ──────────────────────────────────────────────────────────
 
 def main():
+    """Iterate over tickers without ISINs, fetch from yfinance, and write results to DB."""
     opts = parse_args()
     logging_config.configure_logging(
         to_console=opts['log_to_console'],
@@ -118,7 +121,7 @@ def main():
     if dry_run:
         logger.info("*** DRY-RUN — keine Änderungen werden gespeichert ***")
 
-    with sqlite3.connect(db_path) as conn:
+    with open_db(db_path) as conn:
         tickers = load_missing(conn, opts['limit'])
         total   = len(tickers)
 

@@ -40,10 +40,10 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _app_root() -> Path:
-    """
-    Gibt das Wurzelverzeichnis der App zurück.
-    Sucht vom aktuellen Arbeitsverzeichnis aufwärts nach 'asset_analyzer.py'.
-    Fallback: Verzeichnis von first_run.py / tradinglib/..
+    """Return the app root directory containing asset_analyzer.py.
+
+    Searches the current working directory first, then falls back to the
+    parent of this file's tradinglib/ package directory.
     """
     # 1. Aktuelles Arbeitsverzeichnis (normal beim `streamlit run` Aufruf)
     cwd = Path(os.getcwd())
@@ -59,6 +59,7 @@ def _app_root() -> Path:
 
 
 def _db_dir() -> Path:
+    """Return the database directory, respecting the TradingDB environment variable."""
     tdb = os.environ.get("TradingDB", "")
     if tdb:
         return Path(tdb)
@@ -66,7 +67,7 @@ def _db_dir() -> Path:
 
 
 def _find_python() -> str:
-    """Findet das Python-Executable, das gerade die App ausführt."""
+    """Return the Python executable that is currently running the app."""
     return sys.executable
 
 
@@ -75,6 +76,7 @@ def _find_python() -> str:
 # ---------------------------------------------------------------------------
 
 def _tickers_db_exists() -> bool:
+    """Return True when yf_tickers.db exists in the database directory."""
     return (_db_dir() / "yf_tickers.db").exists()
 
 
@@ -92,6 +94,28 @@ def setup_needed() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Welcome-Page-Marker  (einmalige Anzeige beim ersten App-Start)
+# ---------------------------------------------------------------------------
+
+_WELCOME_FLAG = "welcome_shown"          # Dateiname im database/-Verzeichnis
+
+
+def welcome_shown() -> bool:
+    """True wenn die WelcomePage bereits einmal angezeigt wurde."""
+    return (_db_dir() / _WELCOME_FLAG).exists()
+
+
+def mark_welcome_shown() -> None:
+    """Create the welcome_shown marker file so the WelcomePage is not shown again."""
+    flag = _db_dir() / _WELCOME_FLAG
+    try:
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.touch()
+    except OSError as exc:
+        logger.warning("Konnte welcome_shown-Marker nicht anlegen: %s", exc)
+
+
+# ---------------------------------------------------------------------------
 # Hintergrund-Task-Tracking via st.session_state
 # ---------------------------------------------------------------------------
 
@@ -103,6 +127,7 @@ _KEY_DONE       = "first_run_done"          # bool: gesamter Setup abgeschlossen
 
 
 def _init_state():
+    """Initialise all first-run wizard keys in st.session_state with default values."""
     defaults = {
         _KEY_STEP:    0,
         _KEY_LOG:     [],
@@ -116,14 +141,14 @@ def _init_state():
 
 
 def _append_log(line: str):
+    """Append a log line to the session-state log buffer."""
     st.session_state[_KEY_LOG].append(line)
 
 
 def _run_script_in_thread(script_path: str, args: list[str]):
-    """
-    Führt ein Python-Script in einem Background-Thread aus.
-    Schreibt stdout/stderr zeilenweise in den Session-State-Log.
-    Setzt _KEY_RUNNING=False und _KEY_SUCCESS wenn fertig.
+    """Run a Python script in a background thread, streaming output to the session-state log.
+
+    Sets _KEY_RUNNING=False and _KEY_SUCCESS=True/False when the process finishes.
     """
     python = _find_python()
     cmd = [python, script_path] + args
@@ -166,6 +191,7 @@ _STEPS = [
 
 
 def _step_welcome(col):
+    """Render the welcome/disclaimer step of the setup wizard."""
     col.title("🚀 Willkommen bei Trading Tools")
     col.markdown("""
 Diese App benötigt beim ersten Start eine kurze Einrichtung:
@@ -173,16 +199,48 @@ Diese App benötigt beim ersten Start eine kurze Einrichtung:
 | Schritt | Was passiert |
 |---------|-------------|
 | 1 | Ticker-Datenbank mit DAX, MDAX, S&P 500 wird angelegt |
-| 2 | Erste Tages-Kursdaten werden von Yahoo Finance geladen |
+| 2 | Erste Tages-Kursdaten werden geladen |
 
 **Dauer:** ca. 2–5 Minuten (abhängig von der Internetverbindung).
     """)
-    if col.button("▶ Einrichtung starten", type="primary", use_container_width=True):
+
+    col.divider()
+    col.subheader("⚖️ Rechtlicher Hinweis / Legal Disclaimer")
+    col.markdown("""
+**DE** — Diese App ist ein persönliches Werkzeug für den privaten, nicht-kommerziellen Gebrauch.
+Sie enthält selbst **keine Marktdaten**. Kursdaten werden zur Laufzeit von Drittanbietern
+(z. B. Yahoo Finance, Financial Modeling Prep) abgerufen. Jeder Nutzer ist **selbst verantwortlich**
+für die Einhaltung der jeweiligen Nutzungsbedingungen dieser Anbieter.
+Die App dient ausschließlich zu Informations- und Analysezwecken und stellt
+**keine Anlage- oder Finanzberatung** dar. Handlungen auf Basis der angezeigten Daten
+erfolgen auf eigene Verantwortung und eigenes Risiko.
+
+---
+
+**EN** — This app is a personal tool for private, non-commercial use.
+It contains **no market data** of its own. Price data is fetched at runtime from third-party
+providers (e.g. Yahoo Finance, Financial Modeling Prep). Each user is **solely responsible**
+for complying with the terms of service of those providers.
+The app is provided for informational and analytical purposes only and does
+**not constitute investment or financial advice**. Any actions taken based on the
+information displayed are at the user's own responsibility and risk.
+    """)
+
+    accepted = col.checkbox(
+        "Ich habe den Haftungsausschluss gelesen und akzeptiere ihn. / "
+        "I have read and accept the disclaimer.",
+        key="_disclaimer_accepted",
+    )
+    col.divider()
+
+    if col.button("▶ Einrichtung starten", type="primary",
+                  use_container_width=True, disabled=not accepted):
         st.session_state[_KEY_STEP] = 1
         st.rerun()
 
 
 def _step_seed_db(col):
+    """Render step 1: run seed_db.py in the background and show live log output."""
     col.subheader("Schritt 1 — Ticker-Datenbank anlegen")
 
     root = _app_root()
@@ -216,6 +274,7 @@ def _step_seed_db(col):
 
 
 def _step_price_data(col):
+    """Render step 2: run get_asset_data.py for initial daily price data."""
     col.subheader("Schritt 2 — Erste Preisdaten laden")
     col.markdown("""
 Es werden Tages-Kursdaten (`1d:1mo`) für alle Ticker geladen.
@@ -262,6 +321,7 @@ Das kann einige Minuten dauern.
 
 
 def _step_done(col):
+    """Render the final step: success message and 'Start app' button."""
     col.title("🎉 Einrichtung abgeschlossen!")
     col.markdown("""
 Die Trading App ist jetzt einsatzbereit.
@@ -282,17 +342,10 @@ Scheduler oder manuell über `get_asset_data.py` nachgeladen werden.
 # ---------------------------------------------------------------------------
 
 def maybe_show_setup() -> bool:
-    """
-    Prüft ob eine Ersteinrichtung nötig ist und zeigt ggf. den Wizard.
+    """Check whether first-time setup is needed and show the wizard if so.
 
-    Rückgabe:
-        True  → Wizard wurde angezeigt; Aufrufer soll `st.stop()` ausführen.
-        False → Keine Einrichtung nötig; App kann normal starten.
-
-    Typischer Aufruf in asset_analyzer.py::render():
-        from tradinglib.first_run import maybe_show_setup
-        if maybe_show_setup():
-            st.stop()
+    Returns True when the wizard was rendered (caller should call st.stop()),
+    or False when setup is complete and the app can proceed normally.
     """
     _init_state()
 
@@ -355,20 +408,13 @@ preauthorized:
 
 
 def ensure_config_yaml() -> bool:
-    """
-    Legt eine Standard-config.yaml an, falls keine vorhanden ist.
-    Muss VOR der Instanziierung von TradingApp() aufgerufen werden,
-    da TradingApp.__init__ die Datei sofort öffnet.
+    """Create a default config.yaml if one does not exist yet.
 
-    Verwendet denselben Pfad-Resolver wie TradingApp.load_config()
-    (tools.Tools().get_path), damit TradingDB-Umgebungsvariable
-    konsistent berücksichtigt wird.
+    Must be called before TradingApp() is instantiated because TradingApp.__init__
+    opens the file immediately. Uses the same path resolver as TradingApp.load_config()
+    so the TradingDB environment variable is handled consistently.
 
-    Rückgabe: True wenn neu angelegt, False wenn bereits vorhanden.
-
-    Aufruf in asset_analyzer.py direkt vor TradingApp().render():
-        from tradinglib.first_run import ensure_config_yaml
-        ensure_config_yaml()
+    Returns True when the file was newly created, False when it already existed.
     """
     try:
         from tradinglib.tools import Tools

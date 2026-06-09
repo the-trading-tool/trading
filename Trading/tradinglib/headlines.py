@@ -4,22 +4,23 @@ import math
 
 class Headlines(tt.TickerTools):
     
-    def __init__(self, df, ticker, data, system_currency = 'EUR', screen_region_row1 = st, screen_region_row2 = st, interval = '1d', index_name = ""):
-
+    def __init__(self, df, ticker, data, system_currency='EUR', screen_region_row1=st, screen_region_row2=st, interval='1d', index_name=""):
+        """Set up the headline metrics view with price data, ticker metadata, and layout regions."""
         self.df = df
         self.index_name = index_name
         if index_name == "":
             self.index_name = "Index not found"
         self.ticker = ticker
         self.data = data
-        #self.index_name = data['index_name']
         self.interval = interval
         self.system_currency = system_currency
         self.screen_region_row1 = screen_region_row1
         self.screen_region_row2 = screen_region_row2
     
     def render(self):
-    
+        """Render the two-row metrics strip: price/volume/rating row and financial KPI row."""
+        if self.df is None or self.df.empty:
+            return
         st.markdown(
                 """
                 <style>
@@ -35,7 +36,7 @@ class Headlines(tt.TickerTools):
         headline_row1 = self.screen_region_row1.empty()
         (p_date, p_close, p_currency, p_open, p_low, p_high, p_target, p_rating, p_asset, p_vol  ) = headline_row1.columns(10, gap='small')
         headline_row2 = self.screen_region_row2.empty()
-        ( eps, ptb, div, roa, tpe, beta, l52w, h52w ,sor ,shar  ) = headline_row2.columns(10, gap='small')
+        ( eps, ptb, div, roa, tpe, beta, l52w, h52w ,sor  ) = headline_row2.columns(9, gap='small')
         
         digits = 2
         if self.df['Close'].iloc[-1] < 1:
@@ -48,11 +49,32 @@ class Headlines(tt.TickerTools):
         x_rate = 1
         if not currency == self.system_currency:
             x_rate = self.get_exchange_rate(currency,self.system_currency)
-        
-        d_txt = f"{round(tt.calculate_investment(self.df['log_vola'].iloc[-1])/x_rate,digits) } {self.system_currency}" 
+
+        # Exposed for callers that need the headline figures outside this view
+        # (e.g. main_page's quick-order buttons use close_price/suggested_investment).
+        self.close_price = close_price
+        self.currency = currency
+        self.x_rate = x_rate
+        self.suggested_investment = None
+
+        if 'log_vola' in self.df.columns and not self.df['log_vola'].isna().all():
+            self.suggested_investment = round(tt.calculate_investment(self.df['log_vola'].iloc[-1])/x_rate, digits)
+            d_txt = f"{self.suggested_investment} {self.system_currency}"
+        else:
+            d_txt = ''
+
+        delta_pct = None
+        if 'daily_returns' in self.df.columns and not math.isnan(self.df['daily_returns'].iloc[-1]):
+            delta_pct = round(float(self.df['daily_returns'].iloc[-1]), 2)
+        elif len(self.df) > 1:
+            prev_close = float(self.df['Close'].iloc[-2])
+            if prev_close:
+                delta_pct = round((close_price - prev_close) / prev_close * 100, 2)
+
         p_close.metric(
             label=f"Close: ",
             value=close_price,
+            delta=f"{delta_pct} %" if delta_pct is not None else None,
             help=d_txt
         )
 
@@ -65,14 +87,13 @@ class Headlines(tt.TickerTools):
                 help=d_txt
             )
 
-#        trade = tl.get_trend(self.df, tl.trend_end-1)
 
         try:
-            ret_val = round(self.data['buySell'].iloc[0],2) 
+            ret_val = round(self.data['overallValueTrend'].iloc[0], 2)
             p_asset.metric(
-                label="Buy / sell",
+                label="Value",
                 value=ret_val,
-                help=f"Value: {self.data['overallValueTrend'].iloc[0]}, Trend: {self.data['trendDirection'].iloc[0]}"
+                help=f"Range: -100 to 100, Index: {self.index_name}"
             )
         except Exception:
             pass
@@ -134,18 +155,6 @@ class Headlines(tt.TickerTools):
         if ret_val:
             lbl = "Sortino ratio"
             sor.metric(
-                label=lbl,
-                value=ret_val
-                )
-
-        ret_val = 0
-        try:
-            ret_val = round(self.data['sharpe'].iloc[0],2) 
-        except Exception:
-            pass
-        if ret_val:
-            lbl = "Sharpe ratio"
-            shar.metric(
                 label=lbl,
                 value=ret_val
                 )

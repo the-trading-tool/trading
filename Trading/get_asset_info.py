@@ -9,9 +9,8 @@ from tradinglib import ticker_tools as tt
 from tradinglib import tools as ts
 from tradinglib.utils import DataUtils
 from tradinglib import cli, logging_config, market_data
+from tradinglib.tools import open_db
 
-#import os
-#os.environ["TradingDB"]=r'C:\\Users\\Kurt\\Documents\\Trading2\\database'
 
 ftime_str = '%Y-%m-%d %H:%M:%S'
 
@@ -19,26 +18,23 @@ ftime_str = '%Y-%m-%d %H:%M:%S'
 db_name = ts.Tools().get_path(path = 'database', file_name="asset_info.db")
 
 # Verbindung zur SQLite-Datenbank herstellen (oder erstellen, falls sie nicht existiert)
-conn = sqlite3.connect(db_name, timeout=10)
+conn = open_db(db_name, timeout=10)
 cursor = conn.cursor()
 
 # Liste der Tickersymbole
-#excel_file = 'ALL_Stocks_May_2024.xlsx'
-#df = pd.read_excel(excel_file, index_col=0, comment='#')
 
 class AssetList(tt.TickerTools):
     
     def read_assets(self):
+        """Load the full ticker list from yf_tickers.db into a DataFrame."""
         df = self.read_stock_list(db_path='database', db_name='yf_tickers.db')
         return df
     
 df = AssetList().read_assets()
-#print(df)
-#exit()
 if df.empty:
 
         db_info =  ts.Tools().get_path(path = 'database', file_name='yf_tickers.db')
-        conn2 = sqlite3.connect(db_info)
+        conn2 = open_db(db_info)
 
         # Zweite Datenbank anhängen
         cursor2 = conn2.cursor()
@@ -73,7 +69,6 @@ def get_num_rows(df):
 
 def get_data_yf(symbol, period='1d', interval='1m'):
 
-#    yf.pdr_override()
     logging.getLogger('yfinance').setLevel(logging.CRITICAL)
     ticker = None
     df = {}
@@ -86,7 +81,6 @@ def get_data_yf(symbol, period='1d', interval='1m'):
             df.index = df.index.strftime(ftime_str)
             df.index = pd.to_datetime(df.index).strftime(ftime_str)
             df.index.name = 'Date'
-#            info = ticker.get_info()
 
     except Exception:
         pass
@@ -212,7 +206,6 @@ if __name__ == '__main__':
         time.sleep(0.5)
         try:
             # get data from tradinglib.market_data (wraps yfinance) and force network fetch
-            # use_cache=False forces fresh data from Yahoo
             info = market_data.ticker_info(ticker, use_cache=False)
             financials = market_data.ticker_financials(ticker, use_cache=False)
             balance_sheet = market_data.ticker_balance_sheet(ticker, use_cache=False)

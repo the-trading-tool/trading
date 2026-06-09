@@ -16,6 +16,7 @@ _p = Path(__file__).parent / "premium"
 
 
 def _has(*filenames: str) -> bool:
+    """Return True when all given filenames exist inside the premium/ package directory."""
     return all((_p / f).exists() for f in filenames)
 
 

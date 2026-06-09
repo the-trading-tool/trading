@@ -1,3 +1,4 @@
+import logging
 import sqlite3
 import pandas as pd
 from typing import List
@@ -6,10 +7,14 @@ import os
 import yfinance as yf
 from tradinglib import market_data as md
 from tradinglib import tools
+from tradinglib.tools import open_db
+
+logger = logging.getLogger(__name__)
 
 class MultiDataDownloader:
     def __init__(self, tickers: List[str], chunk_size: int = 100,
                  interval: str = '1m', period: str = '1d', db_folder: str = 'database'):
+        """Configure the batch downloader with ticker list, chunk size, interval, and target folder."""
         self.tickers = tickers
         self.chunk_size = chunk_size
         self.interval = interval
@@ -17,13 +22,15 @@ class MultiDataDownloader:
         self.db_folder = tools.Tools().get_path(path = db_folder, file_name='') 
         
     def chunked(self, iterable, size):
+        """Yield successive slices of length size from iterable."""
         it = iter(iterable)
         while chunk := list(islice(it, size)):
             yield chunk
 
     def save_single_ticker_to_sqlite(self, ticker: str, df: pd.DataFrame):
+        """Upsert OHLCV rows from df into yf_<ticker>.db minute_data table."""
         if df.empty:
-            print(f"No data for {ticker}")
+            logger.debug("No data for %s", ticker)
             return
 
         df = df.reset_index().rename(columns={'index': 'Datetime'})
@@ -32,7 +39,7 @@ class MultiDataDownloader:
         cols = df.columns.tolist()
 
         db_path = os.path.join(self.db_folder, f"yf_{ticker}.db")
-        conn = sqlite3.connect(db_path)
+        conn = open_db(db_path)
         cursor = conn.cursor()
 
         col_defs = ", ".join([
@@ -57,13 +64,14 @@ class MultiDataDownloader:
         try:
             cursor.executemany(sql, df[cols].values.tolist())
             conn.commit()
-            print(f"{ticker}: Saved {len(df)} rows.")
+            logger.debug("%s: Saved %d rows.", ticker, len(df))
         except Exception as e:
-            print(f"Error saving data for {ticker}: {e}")
+            logger.error("Error saving data for %s: %s", ticker, e)
         finally:
             conn.close()
 
     def process_chunk(self, ticker_chunk: List[str]):
+        """Download and save data for one chunk of tickers via the market_data wrapper."""
         try:
             data = md.download( 
                 tickers=ticker_chunk,
@@ -80,17 +88,18 @@ class MultiDataDownloader:
                     df = data[ticker].filter(['Date','Close','Open','High','Low','Volume'])
                     self.save_single_ticker_to_sqlite(ticker, df)
                 except KeyError:
-                    print(f"No data found for {ticker} in chunk.")
+                    logger.debug("No data found for %s in chunk.", ticker)
         except Exception as e:
-            print(f"Chunk failed: {e}")
+            logger.error("Chunk failed: %s", e)
 
     def run(self):
+        """Download and save data for all tickers, processing them in chunk_size batches."""
         chunks = list(self.chunked(self.tickers, self.chunk_size))
         for chunk in chunks:
             try:
                 self.process_chunk(chunk) 
             except Exception as e:
-                print(f"Chunk {chunk} failed: {e}")
+                logger.error("Chunk %s failed: %s", chunk, e)
 
 # Beispielnutzung:
 if __name__ == "__main__":

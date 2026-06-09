@@ -4,31 +4,23 @@ import streamlit as st
 from tradinglib import tools
 from tradinglib import ticker_tools as tt
 from tradinglib.utils import DataUtils
+from tradinglib.tools import open_db
 import io
 
 class SQLiteEditor(tt.TickerTools):
 
     def __init__(self, db_path="asset_simulation_.db"):
-        """
-        Initialisiert den SQLite-Editor mit einem Datenbankpfad.
-        :param db_path: Standardpfad zur SQLite-Datenbank
-        """
+        """Initialize the SQLite editor and resolve the full database file path."""
         self.db_path = tools.Tools().get_path(path = "database", file_name=db_path)
 
     def set_database(self, db_path):
-        """
-        Setzt den Pfad zur SQLite-Datenbank.
-        :param db_path: Pfad zur SQLite-Datenbank
-        """
+        """Resolve and update the active database file path."""
         self.db_path = tools.Tools().get_path(path = "database", file_name=db_path)
 
     def list_tables(self):
-        """
-        Listet alle Tabellen in der Datenbank auf.
-        :return: Liste von Tabellennamen
-        """
+        """Return a list of all table names in the current database."""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = open_db(self.db_path, readonly=True)
         except Exception as e:
             self.main.error(f"Error: {e}")
         try:
@@ -45,12 +37,8 @@ class SQLiteEditor(tt.TickerTools):
                 pass
 
     def list_columns(self, table_name):
-        """
-        Listet alle Spalten einer Tabelle auf.
-        :param table_name: Name der Tabelle
-        :return: Liste von Spaltennamen
-        """
-        conn = sqlite3.connect(self.db_path)
+        """Return a list of column names for table_name via PRAGMA table_info."""
+        conn = open_db(self.db_path, readonly=True)
         try:
             query = f"PRAGMA table_info({table_name});"
             columns = pd.read_sql_query(query, conn)["name"].tolist()
@@ -62,12 +50,8 @@ class SQLiteEditor(tt.TickerTools):
             conn.close()
 
     def execute_query(self, query):
-        """
-        Führt eine SQL-Abfrage aus. Unterstützt sowohl SELECT als auch schreibende Abfragen.
-        :param query: SQL-Abfrage
-        :return: DataFrame bei SELECT-Abfragen, sonst None
-        """
-        conn = sqlite3.connect(self.db_path)
+        """Execute a SQL query and return a DataFrame for SELECT/PRAGMA, or None for write queries."""
+        conn = open_db(self.db_path)
         try:
             if query.strip().upper().startswith("SELECT") or query.strip().upper().startswith("PRAGMA"):
                 # SELECT-Abfrage ausführen und DataFrame zurückgeben
@@ -87,12 +71,8 @@ class SQLiteEditor(tt.TickerTools):
             conn.close()
         
     def update_table(self, df, table_name):
-        """
-        Überschreibt eine Tabelle in der Datenbank mit einem DataFrame.
-        :param df: DataFrame mit den neuen Daten
-        :param table_name: Name der Tabelle, die aktualisiert werden soll
-        """
-        conn = sqlite3.connect(self.db_path)
+        """Replace all rows in table_name with the contents of df."""
+        conn = open_db(self.db_path)
         cursor = conn.cursor()
         try:
             # Löscht bestehende Daten in der Tabelle und fügt die neuen ein
@@ -106,9 +86,7 @@ class SQLiteEditor(tt.TickerTools):
             conn.close()
 
     def render_editor(self):
-        """
-        Stellt die gesamte Oberfläche für den SQLite-Editor in Streamlit bereit.
-        """
+        """Render the full SQLite editor UI: table selector, query input, result grid, and save button."""
         frame = st.empty()
         (self.sb, _, self.main) = frame.columns([1,0.1, 4])
 
@@ -120,7 +98,6 @@ class SQLiteEditor(tt.TickerTools):
         # Tabellen auflisten
         tables = self.list_tables()
         if tables:
-#            self.sb.write("Accessible Tables:")
             selected_table = self.sb.selectbox("Table", tables)
 
             if selected_table:

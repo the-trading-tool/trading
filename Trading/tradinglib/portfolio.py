@@ -1,4 +1,7 @@
 # Importing libraries
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Pandas & NumPy
 import pandas as pd
@@ -88,25 +91,34 @@ class portfolio:
             ts = dt.datetime.timestamp(dt.datetime.now())
             self.df.to_csv(f'./prtf_in{ts}.csv',sep=';',quotechar='"', decimal=',')
 
-        # Checking if there is data available in the given date range
+        # Checking if there is data available in the given date range.
+        # Allow up to 7 calendar days of delay (weekends, holidays) before
+        # treating a ticker as truly missing.
+        _grace = (dt.datetime.strptime(self.start_date, self.ftime_str) + dt.timedelta(days=7)).strftime(self.ftime_str)
         if isinstance(self.df.columns, pd.MultiIndex):
             missing_data_tickers = []
             for ticker in self.tickers_and_values.keys():
-                first_valid_index = self.df['Adj Close'][ticker].first_valid_index()
-                if first_valid_index is None or first_valid_index.strftime('%Y-%m-%d') > self.start_date:
+                try:
+                    first_valid_index = self.df['Adj Close'][ticker].first_valid_index()
+                except KeyError:
+                    try:
+                        first_valid_index = self.df['Close'][ticker].first_valid_index()
+                    except KeyError:
+                        first_valid_index = None
+                if first_valid_index is None or first_valid_index.strftime(self.ftime_str) > _grace:
                     missing_data_tickers.append(ticker)
-            
-            RED_BOLD_TEXT = '\033[1;31m'
-            RESET_TEXT = '\033[0m'
 
             if missing_data_tickers:
-                print(f"{RED_BOLD_TEXT}\n No data available for the following tickers starting from {self.start_date}: {', '.join(missing_data_tickers)}{RESET_TEXT}")
+                logger.warning("No data for tickers %s within 7 days of %s", missing_data_tickers, self.start_date)
                 return
         else:
             # For a single ticker, simply check the first valid index
-            first_valid_index = self.df['Adj Close'].first_valid_index()
-            if first_valid_index is None or first_valid_index.strftime('%Y-%m-%d') > self.start_date:
-                print(f"{RED_BOLD_TEXT}\n No data available for the ticker starting from {self.start_date}{RESET_TEXT}")
+            try:
+                first_valid_index = self.df['Adj Close'].first_valid_index()
+            except KeyError:
+                first_valid_index = self.df.first_valid_index()
+            if first_valid_index is None or first_valid_index.strftime(self.ftime_str) > _grace:
+                logger.warning("No data for ticker within 7 days of %s", self.start_date)
                 return
     
         # Calculating portfolio value
@@ -196,13 +208,11 @@ class portfolio:
                 # Creating subplots for comparison across securities
                 self.fig_portfolio_trend = make_subplots(rows = 1, cols = 1, horizontal_spacing=0.2,
                             column_titles=['Historical Performance Assets', 'Risk-Reward'],
-                            #column_widths=[.50, .50],
                             shared_xaxes=False, shared_yaxes=False)
 
                 # Creating subplots for comparison across securities
                 self.fig_portfolio_sharp_ratio = make_subplots(rows = 1, cols = 1, horizontal_spacing=0.2,
                             column_titles=['Historical Performance Assets', 'Risk-Reward'],
-                            #column_widths=[.50, .50],
                             shared_xaxes=False, shared_yaxes=False)
         
         # Adding the historical returns for each ticker on the first subplot    
@@ -212,7 +222,6 @@ class portfolio:
                                   mode = 'lines',
                                   name = f'{ticker} - {self.ticker_names[ticker]}',
                                   hovertemplate = '%{y:.2f}%',
-#                                  showlegend=False
                                   ),
                             row=1, col=1)
 
@@ -234,7 +243,6 @@ class portfolio:
                               name = 'Returns',
                               text = ticker_names, #individual_cumsum.columns.tolist(),
                               textfont=dict(color='white'),
-#                              showlegend=False,
                               hovertemplate = '%{y:.2f}%<br>Annualized Volatility: %{x:.2f}%<br>Sharpe Ratio: %{marker.color:.2f}<br>%{text}',
                               textposition='middle center'),
                         row=1, col=1)
@@ -243,13 +251,11 @@ class portfolio:
         self.fig_portfolio_trend.update_layout(title={'text': f'<b>Portfolio Analysis</b>'},
                        template = 'plotly_white',
                        height = 700, width = 1000,
-                       #hovermode = 'x unified'
                        )
         
         self.fig_portfolio_sharp_ratio.update_layout(title={'text': f'<b>Portfolio Analysis</b>'},
                        template = 'plotly_white',
                        height = 700, width = 1000,
-                       #hovermode = 'x unified'
                        )
         
         self.fig_portfolio_trend.update_yaxes(title_text='Returns (%)', col=1)
@@ -325,9 +331,8 @@ class portfolio:
                              row=1,col=1)
         benchmark_cumsum.index = pd.to_datetime(benchmark_cumsum.index)
         portfolio_cumsum.index = pd.to_datetime(portfolio_cumsum.index)
-        benchmark_cumsum.fillna(0,inplace=True)
-        benchmark_cumsum.rename(columns={ benchmark_cumsum.columns[0]: 0 }, inplace = True)    
-#        st.write(benchmark_cumsum)
+        benchmark_cumsum = benchmark_cumsum.fillna(0)
+        benchmark_cumsum = benchmark_cumsum.rename(columns={ benchmark_cumsum.columns[0]: 0 })
         # Adding the cumulative returns for the benchmark
         self.fig_portfolio_trend_summary.add_trace(go.Scatter(x=benchmark_cumsum.index, 
                              y = benchmark_cumsum[0],
@@ -363,24 +368,26 @@ class portfolio:
         self.fig_portfolio_trend_summary.update_xaxes(title_text = 'Annualized Volatility (%)', col =2)
 
 
-    # init module
-    def __init__(self, tickers, ticker_names = {}, start_date='2024-02-01', end_date='2024-12-31', benchmark='^GDAXI'):
-
+    def __init__(self, tickers, ticker_names={}, start_date='2024-02-01', end_date='2024-12-31', benchmark='^GDAXI'):
+        """Initialize the portfolio, download price data, and compute returns and performance figures."""
         self.tickers_and_values = tickers
         self.ticker_names = ticker_names
         self.start_date = start_date
         self.end_date = end_date
         self.benchmark = benchmark
-        
+
         # calc portfolio returns
         self.portfolio_returns()
 
+        # portfolio_returns() may return early (no data) leaving tickers_weights as int 0
+        if not isinstance(self.tickers_weights, dict) or not self.tickers_weights:
+            return
+
         # Running function to compare portfolio and benchmark
-        self.portfolio_vs_benchmark()    
-        
-        # If we have more than one security in the portfolio, 
+        self.portfolio_vs_benchmark()
+
+        # If we have more than one security in the portfolio,
         # we run function to evaluate each security individually
         if len(self.tickers_weights) > 1:
             self.perform_portfolio_analysis()
-        
 

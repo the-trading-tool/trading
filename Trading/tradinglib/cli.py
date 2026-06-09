@@ -3,6 +3,7 @@ from typing import Dict, Any
 
 
 def print_help():
+    """Print usage information for the CLI scripts to stdout."""
     print("Please run using parameters:\n"
           "  true - true = all index members but 5 days back only,\n"
           "  init - init = all index members full year,\n"
@@ -16,6 +17,8 @@ def print_help():
           "  /rescore - re-compute overallTrend/overallValueTrend from stored DB columns (fast, no yfinance),\n"
           "  /backfill:ind1,ind2 - fill missing indicator columns from local OHLCV (fast, no yfinance),\n"
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc\n"
+          "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
+          "                      (use when column was added with DEFAULT 0 and all values are 0),\n"
           "  /log:LEVEL - enable console logging at LEVEL (DEBUG, INFO, ...),\n"
           "  /logfile:PATH - also write logs to PATH")
 
@@ -50,6 +53,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         # fast modes (no yfinance)
         'rescore': False,
         'backfill': None,   # list[str] when set
+        'force': False,     # skip already-filled check in backfill
     }
 
     if len(argv) <= 1:
@@ -109,6 +113,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['rescore'] = True
             if pref == 'backfill' and suf:
                 result['backfill'] = [s.strip() for s in suf.split(',') if s.strip()]
+            if pref == 'force':
+                result['force'] = True
 
     return result
 

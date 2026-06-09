@@ -10,12 +10,9 @@ from alpaca.trading.client import TradingClient  # optional für Order etc.
 import logging
 
 class AlpacaData:
-    def __init__(self,
-                 symbol: str,
-                 api_key: Optional[str] = None,
-                 secret_key: Optional[str] = None,
-                 base_url: Optional[str] = None,
-                 data_url: Optional[str] = None):
+    def __init__(self, symbol: str, api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                 base_url: Optional[str] = None, data_url: Optional[str] = None):
+        """Initialize the Alpaca data client for a single symbol, reading keys from env when absent."""
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv("APCA_API_KEY_ID")
         self.secret_key = secret_key or os.getenv("APCA_API_SECRET_KEY")
@@ -28,12 +25,10 @@ class AlpacaData:
         self.data_client = StockHistoricalDataClient(
             api_key=self.api_key,
             secret_key=self.secret_key,
-            #url_override=self.base_url,
-            #ata_url=self.data_url,
         )
 
     def _resolve_period(self, period: str) -> Optional[Tuple[datetime, datetime]]:
-        """Berechnet Start/Ende auf Basis des period-Strings (z.B. '6mo', '1y')."""
+        """Convert a period string like '6mo' or '1y' to a (start, end) datetime tuple."""
         period_map = {
             "1d": timedelta(days=1),
             "5d": timedelta(days=5),
@@ -64,7 +59,7 @@ class AlpacaData:
 
 
     def _aggregate_bars(self, df: pd.DataFrame, target_interval: str) -> pd.DataFrame:
-        """Aggregiert feinere Alpaca-Daten (z. B. 1m → 15m, 1h, 1d, etc.)."""
+        """Resample fine-grained Alpaca bars (e.g. 1m → 15m, 1h, 1d) using standard OHLCV rules."""
         # Mapping von Zeitintervall zu Pandas-Frequenz
         freq_map = {
             "1m": "1T",
@@ -101,11 +96,7 @@ class AlpacaData:
                  end: Optional[Union[str, datetime]] = None,
                  period: Optional[str] = None,
                  interval: str = "1d") -> pd.DataFrame:
-        """
-        Lade historische Daten wie yfinance.download().
-        interval: z. B. "1d", "1h", "1m"
-        period: z. B. "6mo", "1y", "max"
-        """
+        """Download historical OHLCV bars from Alpaca with a yfinance-compatible signature."""
         # Period‐Handling
         if period and not start:
             start_dt, end_dt = self._resolve_period(period)
@@ -141,12 +132,10 @@ class AlpacaData:
         df = bars.df  # liefert DataFrame mit MultiIndex wenn mehrere Symbole
         df = df.droplevel("symbol") if "symbol" in df.index.names else df
 
-#        df.index = df.index.tz_localize("UTC").tz_convert("Europe/Berlin")
         df.index = df.index.tz_convert("Europe/Berlin")
 
         # Wenn nur ein Symbol, kolonnenbereinigung:
 #        if self.symbol in df.columns.get_level_values(0):
-#            df = df[self.symbol]
         # Optionally: Rename columns etc.
         # z. B. df.columns = ['open', 'high', 'low', 'close', 'volume']
         df = df.rename(columns={
@@ -164,7 +153,7 @@ class AlpacaData:
         return df
 
     def _map_interval(self, interval: str):
-        """Konvertiert Nutzer-Intervalle zu Alpaca TimeFrame Objekten."""
+        """Map a yfinance-style interval string to an Alpaca TimeFrame object."""
         from alpaca.data.timeframe import TimeFrame
         mapping = {
             "1m": TimeFrame.Minute,
@@ -183,9 +172,7 @@ class AlpacaData:
                      order_type: str = "market",
                      time_in_force: str = "day",
                      symbol: Optional[str] = None):
-        """
-        Beispiel: submit market order.
-        """
+        """Submit a market order for the given symbol via the Alpaca trading client."""
         symbol = symbol or self.symbol
         trading_client = TradingClient(
             api_key=self.api_key,
@@ -202,12 +189,9 @@ class AlpacaData:
         return resp
 
 class AlpacaTickers:
-    def __init__(self,
-                 tickers: List[str],
-                 api_key: Optional[str] = None,
-                 secret_key: Optional[str] = None,
-                 base_url: Optional[str] = None,
-                 data_url: Optional[str] = None):
+    def __init__(self, tickers: List[str], api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                 base_url: Optional[str] = None, data_url: Optional[str] = None):
+        """Initialize the multi-ticker Alpaca client with a list of symbols and credentials."""
         self.tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key or os.getenv("APCA_API_KEY_ID")
         self.secret_key = secret_key or os.getenv("APCA_API_SECRET_KEY")
@@ -222,12 +206,9 @@ class AlpacaTickers:
             data_url=self.data_url
         )
 
-    def download(self,
-                 start: Optional[Union[str, datetime]] = None,
-                 end: Optional[Union[str, datetime]] = None,
-                 period: Optional[str] = None,
-                 interval: str = "1d",
+    def download(self, start=None, end=None, period=None, interval: str = "1d",
                  show_progress: bool = True) -> pd.DataFrame:
+        """Download bars for all tickers and combine into a MultiIndex DataFrame."""
         from tqdm import tqdm
         results = {}
         iterator = self.tickers
@@ -244,3 +225,4 @@ class AlpacaTickers:
         # MultiIndex DataFrame erstellen
         combined = pd.concat(results, axis=1)
         return combined
+

@@ -20,7 +20,7 @@ class AllAssetsView(tt.TickerTools):
     url="/?details=true&symbol="
     
     def __init__(self, username=None, is_admin=False):
-#        super().__init__()
+        """Initialize the all-assets screener view and immediately render it."""
         self.username = username
         self.is_admin = is_admin
         self.sys_config = sysconf.SystemConfig(username=username, is_admin = self.is_admin)
@@ -28,12 +28,38 @@ class AllAssetsView(tt.TickerTools):
         self.render()
 
 
+    @st.dialog('Chart', width='large')
+    def overlay_chart(self, selection):
+        """Show a tiny_chart overlay for the selected row; keep full-viewer link."""
+        try:
+            ticker = selection['ticker'].iloc[0]
+            longname = selection['longName'].iloc[0] if 'longName' in selection.columns else ticker
+        except Exception:
+            st.error("No asset selected.")
+            return
+        viewer_url = f"{self.url}{ticker}"
+        st.markdown(f"[{t('assets.view_text')} (Full details) →]({viewer_url})")
+        (interval, period, overlays, oszilators) = self.sys_config.get_selectors()
+        with st.spinner(t('assets.spinner')):
+            t_chart = tc.tiny_chart(
+                symbol=ticker,
+                longname=longname,
+                interval=interval,
+                period=period,
+                add_overlays=overlays,
+                add_sub_plots=oszilators,
+                username=self.username,
+                url=self.url,
+            )
+        if t_chart.fig:
+            st.plotly_chart(t_chart.fig, use_container_width=True)
+        else:
+            st.warning(f"No chart data available for {ticker}.")
+
     def render(self):
-        
+        """Render the full screener: filtered asset table, Excel export, and optional mini-chart grid."""
         db_name = "asset_simulation_all"
-#        qv = st.checkbox("Quick view",False)
 #        if qv:
-#            db_name = "asset_short"            
         db = tt.tools.Db_tools(db_path='database', database_name=f'{db_name}.db')
         # Attach die anderen Datenbanken
         buy_query = self.sys_config.get_value("buy_query",default="(ewo>ewo_ema)")
@@ -55,25 +81,32 @@ class AllAssetsView(tt.TickerTools):
             st.error(t('assets.no_data_error'))
             df = pd.DataFrame()
             pass
-        column_config = {
-            "details": st.column_config.LinkColumn(t('assets.details_col'), display_text=t('assets.view_text')),
-            }
         try:
-            df['details'] = df['longName'].apply(self.add_url)
-#            df['invest'] = df['logVola'].apply(tt.calculate_investment)
             cols = list(df)
             cols.insert(0, cols.pop(cols.index('invest')))
             df = df.loc[:, cols]
-#            cols.insert(0, cols.pop(cols.index('details')))
-#            df = df.loc[:, cols]
-
         except Exception:
             pass
 
 
         if not df.empty:
 
-            selection = ass.AssetSimulator().dataframe_with_selections(df=df,column_config=column_config)
+            event = st.dataframe(
+                df,
+                hide_index=True,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key="aa_asset_table",
+            )
+            if event.selection.rows:
+                selected_ticker = df.iloc[event.selection.rows[0]]['ticker']
+                if st.session_state.get("aa_last_shown") != selected_ticker:
+                    st.session_state["aa_last_shown"] = selected_ticker
+                    self.overlay_chart(df.iloc[[event.selection.rows[0]]])
+            else:
+                st.session_state.pop("aa_last_shown", None)
+
             self.export_to_excel(df, button_label=t('assets.download_btn'), file_name='Asset_dataset.xlsx', region=st)
             col_chk, col_sel = st.columns([1, 2])
             show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key='aa_show_grid')
@@ -102,7 +135,6 @@ class AllAssetsView(tt.TickerTools):
                         log_exceptions=True,
                     )
 
-#                st.write(f'Last chart update: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
         if False:
 #        if qv:
@@ -136,7 +168,7 @@ class AllAssetsView(tt.TickerTools):
             df['vola'] = None
             self.simulator = ass.AssetSimulator("yf_tickers.db", f"{db_name}.db", "asset_info.db", db_path='database', username=self.username)
 
-            df.sort_values(['Date'], inplace=True, ascending=[True])
+            df = df.sort_values(['Date'], ascending=[True])
 
             try:
                 signal_gen = ass.tools.BuySellSignalGenerator(df=df, 
@@ -149,19 +181,13 @@ class AllAssetsView(tt.TickerTools):
                 portfolio.simulate()
 
                 # use DataUtils helper for conversions instead of creating converter instance
-                # converter = fd.CurrencyConverter(self.system_currency)
                 transact_df = portfolio.get_transaction_dataframe()
                 if not transact_df.empty:
-                    transact_df.sort_values(['timestamp','ticker'], inplace=True, ascending=[False,True])
+                    transact_df = transact_df.sort_values(['timestamp','ticker'], ascending=[False,True])
                     #for idx, row in transact_df.iterrows():
                     #    if pd.isna(transact_df.loc[idx,f'sellValue']):
-                    #        transact_df.loc[idx,f'sellValue'] = round(transact_df.loc[idx,'sellPrice'] * transact_df.loc[idx,'buyVolume'],2)
-                    #transact_df[f'buyValue{self.system_currency}'] = 0
-                    #transact_df[f'sellValue{self.system_currency}'] = 0
                     #transact_df[f'sellValue{self.system_currency}'] = transact_df.apply(lambda row: float(converter.convert(row["sellDate"], row["sellValue"], row["currency"])), axis=1)
                     #transact_df[f'buyValue{self.system_currency}'] = transact_df.apply(lambda row: float(converter.convert(row["buyDate"], row["buyValue"], row["currency"])), axis=1)
-                    #transact_df[f'buyPrice{self.system_currency}'] = -round(transact_df[f'buyValue{self.system_currency}'] / transact_df[f'buyVolume'],2)
-                    #transact_df[f'sellPrice{self.system_currency}'] = round(transact_df[f'sellValue{self.system_currency}'] / transact_df[f'buyVolume'],2)
 
 
                     selection = self.simulator.dataframe_with_selections(transact_df, region = st)    

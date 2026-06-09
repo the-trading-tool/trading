@@ -16,6 +16,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
+from tradinglib.tools import open_db
 
 DRY_RUN = '--dry-run' in sys.argv
 
@@ -175,6 +176,32 @@ def seed(conn: sqlite3.Connection):
     return inserted, skipped
 
 
+def get_config_db_path() -> str:
+    tdb = os.environ.get('TradingDB', '')
+    if tdb:
+        base = Path(tdb)
+    else:
+        base = Path(sys.argv[0]).resolve().parent / 'database'
+    base.mkdir(exist_ok=True)
+    return str(base / 'config.db')
+
+
+def seed_config(conn: sqlite3.Connection):
+    """Seed config.db with FMP as the default data provider (free-version default)."""
+    import json
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
+    conn.execute(
+        "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+        ("_app:data_provider", json.dumps("fmp")),
+    )
+    conn.commit()
+
+
 def main():
     db_path = get_db_path()
     total   = sum(len(v) for v in ALL_GROUPS.values())
@@ -187,10 +214,16 @@ def main():
             print(f"  {name:8s} ({len(tickers):3d}): {', '.join(tickers[:5])} …")
         return
 
-    with sqlite3.connect(db_path) as conn:
+    with open_db(db_path) as conn:
         inserted, skipped = seed(conn)
 
     print(f"Fertig — {inserted} neu eingetragen, {skipped} bereits vorhanden.")
+
+    cfg_path = get_config_db_path()
+    print(f"Config-DB: {cfg_path}")
+    with open_db(cfg_path) as conn:
+        seed_config(conn)
+    print("Config geseedet — Standard-Provider: FMP.")
 
 
 if __name__ == '__main__':

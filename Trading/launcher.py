@@ -46,7 +46,7 @@ POLL_INTERVAL  = 0.5       # Sekunden zwischen Server-Checks
 # ---------------------------------------------------------------------------
 
 def get_base_dir() -> Path:
-    """Verzeichnis, in dem der Launcher (oder die .exe) liegt."""
+    """Return the directory containing the launcher (or .exe when frozen by PyInstaller)."""
     if getattr(sys, 'frozen', False):
         # PyInstaller-Bundle: sys.executable ist die .exe
         return Path(sys.executable).parent
@@ -54,13 +54,9 @@ def get_base_dir() -> Path:
 
 
 def find_python(base: Path) -> str:
-    """
-    Sucht das Python-Executable.
-    Reihenfolge:
-      1. <base>/python/python.exe  (portables Bundle)
-      2. <base>/.venv/Scripts/python.exe  (lokales venv)
-      3. sys.executable  (dasselbe Python, das den Launcher ausführt)
-      4. 'python' im PATH
+    """Locate the Python executable to use for launching Streamlit.
+
+    Priority: portable bundle → local .venv → sys.executable → PATH 'python'.
     """
     candidates = [
         base / "python"  / "python.exe",
@@ -82,11 +78,12 @@ def find_python(base: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def is_first_run(base: Path) -> bool:
+    """Return True when yf_tickers.db does not yet exist (setup has not been run)."""
     return not (base / "database" / "yf_tickers.db").exists()
 
 
 def run_seed(python: str, base: Path):
-    """Führt seed_db.py synchron aus und zeigt den Output im Terminal."""
+    """Run seed_db.py synchronously and print its output to the terminal."""
     seed_script = base / "seed_db.py"
     if not seed_script.exists():
         print("[Launcher] seed_db.py nicht gefunden — übersprungen.")
@@ -107,6 +104,7 @@ def run_seed(python: str, base: Path):
 # ---------------------------------------------------------------------------
 
 def start_streamlit(python: str, base: Path) -> subprocess.Popen:
+    """Launch asset_analyzer.py via 'streamlit run' and return the Popen object."""
     app = base / APP_SCRIPT
     cmd = [
         python, "-m", "streamlit", "run", str(app),
@@ -119,7 +117,7 @@ def start_streamlit(python: str, base: Path) -> subprocess.Popen:
 
 
 def wait_for_server(timeout: int = STARTUP_TIMEOUT) -> bool:
-    """Pollt http://localhost:<PORT>, bis er antwortet oder Timeout."""
+    """Poll http://localhost:<PORT> until it responds or the timeout elapses."""
     url = f"http://localhost:{PORT}"
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -136,10 +134,9 @@ def wait_for_server(timeout: int = STARTUP_TIMEOUT) -> bool:
 # ---------------------------------------------------------------------------
 
 def run_tray_icon(stop_callback):
-    """
-    Zeigt ein System-Tray-Icon mit "Trading App beenden".
-    Wird in einem eigenen Thread gestartet.
-    Benötigt: pip install pystray pillow
+    """Show a system-tray icon with a 'Quit' menu item that calls stop_callback.
+
+    Requires: pip install pystray pillow. Silently does nothing when unavailable.
     """
     try:
         import pystray
@@ -174,6 +171,7 @@ def run_tray_icon(stop_callback):
 # ---------------------------------------------------------------------------
 
 def main():
+    """Orchestrate first-run setup, Streamlit startup, browser opening, and tray icon."""
     base   = get_base_dir()
     python = find_python(base)
 

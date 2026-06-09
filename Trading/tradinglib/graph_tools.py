@@ -1,8 +1,11 @@
+import logging
 from turtle import st
 import pandas as pd
 import pandas_market_calendars as mcal
-import time 
+import time
 from tradinglib import tools
+
+logger = logging.getLogger(__name__)
 
 chart_config = {
                     "scrollZoom": True,
@@ -21,6 +24,7 @@ chart_config = {
 class GraphTools:
     
     def time_string_to_decimals(self, time_string):
+        """Convert an 'HH:MM:SS' string to a decimal hour value (e.g. '09:30:00' → 9.5)."""
         fields = time_string.split(":")
         hours = fields[0] if len(fields) > 0 else 0.0
         minutes = fields[1] if len(fields) > 1 else 0.0
@@ -28,12 +32,12 @@ class GraphTools:
     
         return float(hours) + (float(minutes) / 60.0) + (float(seconds) / pow(60.0, 2))
 
-    def prepare_df(self,df):
-
-        df.reset_index(drop=True, inplace=True)
+    def prepare_df(self, df):
+        """Reset the index, add a dt_idx column, and ensure a DatetimeIndex for range-break calculations."""
+        df = df.reset_index(drop=True)
         df['dt_idx'] = df['Date']
         df['Date'] = pd.to_datetime(df['Date'])
-        df.set_index('dt_idx', inplace=True)
+        df = df.set_index('dt_idx')
 
         # Sicherstellen, dass der Index ein DatetimeIndex ist
         if not isinstance(df.index, pd.DatetimeIndex):
@@ -46,13 +50,18 @@ class GraphTools:
         return df
 
     def get_range_breaks(self, df, exchange=''):
+        """Return Plotly rangebreaks for the given DataFrame and exchange code (delegates to NewV3)."""
         breaks = self.get_range_breaks_NewV3(df, exchange=exchange)
-#        import streamlit as st
-#        st.write(f"Determined range breaks: {breaks} exchange: {exchange}")
         return breaks
     
 
     def get_range_breaks_NewV3(self, df, exchange=''):
+        """Compute Plotly rangebreaks by deriving trading hours directly from the data.
+
+        Automatically detects 24/7 assets (crypto) and skips overnight breaks for them.
+        For intraday data, night gaps are added; for daily data, missing weekdays
+        (holidays) are added as explicit value breaks.
+        """
         df = df.copy()
         df['Date'] = pd.to_datetime(df['Date'])
 
@@ -122,9 +131,10 @@ class GraphTools:
         return breaks
 
     def get_clean_plot_data_and_breaks(self, df, h_start=8.0, h_end=16.5):
-        """
-        1. Berechnet die Rangebreaks.
-        2. Filtert den DataFrame, damit keine 'illegalen' Daten die Achse verbiegen.
+        """Filter df to the trading window [h_start, h_end] and compute matching Plotly rangebreaks.
+
+        Strips pre-/post-market rows that would otherwise distort the x-axis, then
+        adds night, weekend, and holiday breaks consistent with the filtered data.
         """
         df = df.copy()
         df['Date'] = pd.to_datetime(df['Date'])
@@ -167,6 +177,7 @@ class GraphTools:
         return breaks
 
     def get_range_breaks_1304261323(self, df, exchange=''):
+        """Legacy rangebreak implementation (superseded by NewV3) — kept for reference."""
         df = df.copy()
         df['Date'] = pd.to_datetime(df['Date'])
         
@@ -214,6 +225,7 @@ class GraphTools:
         return breaks
 
     def get_range_breaks_1304261310(self, df, exchange=''):
+        """Legacy rangebreak implementation with exchange-specific hour windows (superseded by NewV3)."""
         # 1. Daten-Vorbereitung
         df['Date'] = pd.to_datetime(df['Date'])
         
@@ -288,6 +300,7 @@ class GraphTools:
         return breaks
 
     def get_range_breaks_1304261222(self, df, exchange=''):
+        """Legacy rangebreak implementation with hardcoded exchange hour maps (superseded by NewV3)."""
         # Sicherstellen, dass 'Date' im datetime-Format vorliegt
         df['Date'] = pd.to_datetime(df['Date'])
         
@@ -377,8 +390,8 @@ class GraphTools:
             return rb_daily
 
 
-    def get_range_breaks_old(self, df, exchange = ''):
-        
+    def get_range_breaks_old(self, df, exchange=''):
+        """Legacy rangebreak implementation using exchange-mapped mcal hours (superseded by NewV3)."""
         df = self.prepare_df(df)
         last_w_day = -1
         try:
@@ -431,8 +444,6 @@ class GraphTools:
             dec_start = 11.5
             dec_end = 20.5
 
-#        dec_start = 0
-#        dec_end = 0
         rb_hourly = [
             dict(bounds=[dec_end, dec_start], pattern="hour")
         ]
@@ -461,6 +472,7 @@ class GraphTools:
                 return rb_daily
 
     def get_range_breaks_newV1(self, df, exchange=''):
+        """Legacy rangebreak implementation with pandas_market_calendars holiday lookup (superseded by NewV3)."""
         df = self.prepare_df(df)
         
         # ... Dein bestehendes YFINANCE_TO_MCAL Mapping ...
@@ -536,8 +548,6 @@ class GraphTools:
             dec_start = 11.5
             dec_end = 20.5
 
-#        dec_start = 0
-#        dec_end = 0
                 
         # ... Deine bestehende Zeitlogik (dec_start, dec_end) ...
         # Angenommen dec_start/end sind definiert wie in deinem Code
@@ -570,7 +580,7 @@ class GraphTools:
                 if holidays:
                     holiday_breaks.append(dict(values=holidays)) # Fügt die spezifischen Tage hinzu
             except Exception as e:
-                print(f"Fehler beim Kalender-Lookup: {e}")
+                logger.warning("Fehler beim Kalender-Lookup: %s", e)
 
         # --- RANGE BREAKS ZUSAMMENSTELLEN ---
         
@@ -593,3 +603,4 @@ class GraphTools:
                 return rb_daily
         except Exception:
             return rb_daily
+

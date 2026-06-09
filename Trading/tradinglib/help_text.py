@@ -1,3 +1,4 @@
+# Legacy variable kept for backward compatibility — content moved to HELP/ovt_de.html / HELP/ovt_en.html
 helptext_general = """
 <style type="text/css">
 table, th, td {
@@ -69,7 +70,7 @@ For better structuring, the following table provides an overview of these indica
 <tr><td>dTrend wkTrend moTrend</td><td></td><td></td><td>-1 to 1</td><td> (-100 to 100 percent), an indicator based on daily weekly and monthly percentage changes</td></tr>
 <tr><td>vola / 2 < moTrend</td><td> 1</td><td> 1</td><td> </td><td> in case asset vola half is less than monthly trend pct change</td></tr>
 <tr><td>vola &lt; moTrend</td><td> 1</td><td> 1</td><td> </td><td> in case asset vola is less than monthly trend change. Note this comes in additon to the former.</td></tr>
-<tr><td>macdTrend > 1</td><td> 1</td><td> 1</td><td> </td><td> tests if macdTrend is currently rising or falling</td></tr>
+<tr><td>macd_trend > 1</td><td> 1</td><td> 1</td><td> </td><td> tests if macd_trend is currently rising or falling</td></tr>
 <tr><td>roa &gt; 2%</td><td> 1</td><td> 1</td><td> </td><td> roa (Return on Asset) shall be above 2%</td></tr>
 <tr><td>roa &lt; 5%</td><td> 0</td><td> -1</td><td></td><td> we just reduce the weighting for our overall Trend by 1 in case roa is less 5%</td></tr>
 <tr><td>logVola &lt; 10%</td><td> 1</td><td> 1</td><td></td><td> considerd positive if logVola is lower 10%</td></tr>
@@ -95,3 +96,15 @@ For better structuring, the following table provides an overview of these indica
 <tr><td>priceTrend &gt; high</td><td>0,2</td><td></td><td></td><td> in case price is rising</td></tr>
 </table>
 """
+
+import os as _os
+
+def load_help(module_name: str) -> str:
+    """Load a help HTML file from the HELP/ folder next to the Trading root."""
+    _help_dir = _os.path.join(_os.path.dirname(__file__), '..', 'HELP')
+    path = _os.path.join(_help_dir, f'{module_name}.html')
+    try:
+        with open(path, encoding='utf-8') as _f:
+            return _f.read()
+    except FileNotFoundError:
+        return f'<p style="color:#888">Keine Hilfe verfügbar für: <code>{module_name}</code></p>'

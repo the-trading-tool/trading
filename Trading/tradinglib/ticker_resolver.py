@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
-from tradinglib.tools import Tools
+from tradinglib.tools import Tools, open_db
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,7 @@ class TickerResolver(Tools):
     CACHE_MAX_AGE_DAYS = 30
 
     def __init__(self, db_path: str = 'database'):
+        """Open asset_info.db and config.db and create the cache/override tables."""
         self.db_path = db_path
         self._info_db = self.get_path(path=db_path, file_name='asset_info.db')
         self._config_db = self.get_path(path=db_path, file_name='config.db')
@@ -65,6 +66,7 @@ class TickerResolver(Tools):
     # ------------------------------------------------------------------ #
 
     def resolve(self, yahoo_ticker: str) -> BrokerSymbols:
+        """Resolve a Yahoo ticker to broker symbols using the configured resolution order."""
         t = yahoo_ticker.strip().upper()
 
         override = self._get_override(t)
@@ -89,6 +91,7 @@ class TickerResolver(Tools):
         return result
 
     def resolve_for_broker(self, yahoo_ticker: str, broker_id: str) -> Optional[str]:
+        """Return the broker-specific symbol string for the given broker_id ('alpaca' or 'ibkr')."""
         sym = self.resolve(yahoo_ticker)
         if broker_id == 'alpaca':
             return sym.alpaca_symbol
@@ -97,11 +100,13 @@ class TickerResolver(Tools):
         return None
 
     def resolve_batch(self, tickers: list[str]) -> dict[str, BrokerSymbols]:
+        """Resolve a list of Yahoo tickers and return a dict mapping ticker → BrokerSymbols."""
         return {t: self.resolve(t) for t in tickers}
 
     def get_all_overrides(self) -> list[dict]:
+        """Return all manual override entries from the broker_symbol_override table."""
         try:
-            with sqlite3.connect(self._config_db) as conn:
+            with open_db(self._config_db, readonly=True) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute("SELECT * FROM broker_symbol_override").fetchall()
             return [dict(r) for r in rows]
@@ -117,7 +122,8 @@ class TickerResolver(Tools):
         ibkr_currency: Optional[str],
         note: str = '',
     ):
-        with sqlite3.connect(self._config_db) as conn:
+        """Upsert a manual override entry and invalidate the cache for that ticker."""
+        with open_db(self._config_db) as conn:
             conn.execute("""
                 INSERT INTO broker_symbol_override
                     (yahoo_ticker, alpaca_symbol, ibkr_symbol, ibkr_exchange, ibkr_currency, note)
@@ -134,7 +140,8 @@ class TickerResolver(Tools):
         self._delete_cache(yahoo_ticker.upper())
 
     def delete_override(self, yahoo_ticker: str):
-        with sqlite3.connect(self._config_db) as conn:
+        """Remove the manual override entry for the given Yahoo ticker."""
+        with open_db(self._config_db) as conn:
             conn.execute(
                 "DELETE FROM broker_symbol_override WHERE yahoo_ticker=?",
                 (yahoo_ticker.upper(),),
@@ -145,8 +152,9 @@ class TickerResolver(Tools):
     # ------------------------------------------------------------------ #
 
     def _ensure_tables(self):
+        """Create broker_symbol_cache (asset_info.db) and broker_symbol_override (config.db) if absent."""
         try:
-            with sqlite3.connect(self._info_db) as conn:
+            with open_db(self._info_db) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS broker_symbol_cache (
                         yahoo_ticker   TEXT PRIMARY KEY,
@@ -163,7 +171,7 @@ class TickerResolver(Tools):
             logger.debug(f"broker_symbol_cache table setup skipped: {e}")
 
         try:
-            with sqlite3.connect(self._config_db) as conn:
+            with open_db(self._config_db) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS broker_symbol_override (
                         yahoo_ticker   TEXT PRIMARY KEY,
@@ -182,8 +190,9 @@ class TickerResolver(Tools):
     # ------------------------------------------------------------------ #
 
     def _get_override(self, ticker: str) -> Optional[BrokerSymbols]:
+        """Look up a user-defined override for ticker; returns None when absent."""
         try:
-            with sqlite3.connect(self._config_db) as conn:
+            with open_db(self._config_db, readonly=True) as conn:
                 row = conn.execute(
                     "SELECT alpaca_symbol, ibkr_symbol, ibkr_exchange, ibkr_currency "
                     "FROM broker_symbol_override WHERE yahoo_ticker=?",
@@ -205,8 +214,9 @@ class TickerResolver(Tools):
     # ------------------------------------------------------------------ #
 
     def _get_cache(self, ticker: str) -> Optional[BrokerSymbols]:
+        """Look up a cached resolution for ticker; returns None when absent or expired."""
         try:
-            with sqlite3.connect(self._info_db) as conn:
+            with open_db(self._info_db, readonly=True) as conn:
                 row = conn.execute(
                     "SELECT yahoo_ticker, yf_isin, alpaca_symbol, ibkr_symbol, "
                     "ibkr_exchange, ibkr_currency, resolved_at, source "
@@ -227,8 +237,9 @@ class TickerResolver(Tools):
         return None
 
     def _save_cache(self, sym: BrokerSymbols):
+        """Upsert a resolved BrokerSymbols entry into the broker_symbol_cache table."""
         try:
-            with sqlite3.connect(self._info_db) as conn:
+            with open_db(self._info_db) as conn:
                 conn.execute("""
                     INSERT INTO broker_symbol_cache
                         (yahoo_ticker, yf_isin, alpaca_symbol, ibkr_symbol,
@@ -251,8 +262,9 @@ class TickerResolver(Tools):
             logger.debug(f"Cache save failed for {sym.yahoo_ticker}: {e}")
 
     def _delete_cache(self, ticker: str):
+        """Remove the cached resolution for ticker from broker_symbol_cache."""
         try:
-            with sqlite3.connect(self._info_db) as conn:
+            with open_db(self._info_db) as conn:
                 conn.execute(
                     "DELETE FROM broker_symbol_cache WHERE yahoo_ticker=?", (ticker,)
                 )
@@ -264,6 +276,7 @@ class TickerResolver(Tools):
     # ------------------------------------------------------------------ #
 
     def _apply_suffix_rule(self, ticker: str) -> Optional[BrokerSymbols]:
+        """Map a ticker to broker symbols using the SUFFIX_MAP or a US-stock heuristic."""
         # Known non-US suffixes
         for suffix, (exchange, currency, alpaca_ok) in self.SUFFIX_MAP.items():
             if ticker.endswith(suffix):
@@ -289,6 +302,7 @@ class TickerResolver(Tools):
         return None
 
     def _resolve_via_isin(self, ticker: str) -> Optional[BrokerSymbols]:
+        """Fetch the ticker's ISIN via yfinance and derive broker symbols from the country code."""
         try:
             import yfinance as yf
             t = yf.Ticker(ticker)
