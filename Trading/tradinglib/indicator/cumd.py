@@ -52,10 +52,14 @@ class Cumd(_indicator._Indicator):
             self.build_range_bars()
 
     def calculate_cumulative_delta(self, df):
+        """Calculate per-bar and cumulative buy/sell volume delta."""
         df = df.copy()
+        date_was_index = ('Date' not in df.columns and df.index.name == 'Date')
+        if date_was_index:
+            df = df.reset_index()
         if not pd.api.types.is_datetime64_any_dtype(df['Date']):
             df['Date'] = pd.to_datetime(df['Date'])
-        df = df.sort_values("Date")
+        df = df.sort_values("Date").reset_index(drop=True)
 
         delta = []
         for i in range(len(df)):
@@ -85,10 +89,13 @@ class Cumd(_indicator._Indicator):
         else:
             df['cumd_cum_delta'] = np.cumsum(df['cumd_delta'])
 
+        if date_was_index:
+            df = df.set_index('Date')
         return df
 
     def center_cumdelta(self):
-        if 'CumDelta' not in self.df.columns:
+        """Center the cumulative delta series around zero."""
+        if 'cumd_cum_delta' not in self.df.columns:
             return
         min_val = self.df['cumd_cum_delta'].min()
         max_val = self.df['cumd_cum_delta'].max()
@@ -96,6 +103,7 @@ class Cumd(_indicator._Indicator):
         self.df['cumd_cum_delta'] = self.df['cumd_cum_delta'] - center
 
     def build_range_bars(self):
+        """Aggregate tick data into range bars of a fixed price increment."""
         bars = []
         if 'Close' not in self.df.columns:
             raise ValueError("DataFrame muss 'Close' Spalte enthalten")
@@ -113,7 +121,7 @@ class Cumd(_indicator._Indicator):
             if high_price - low_price >= self.range_size:
                 close_price = price
                 bars.append({
-                    'Date': row['Date'],
+                    'Date': row['Date'] if 'Date' in self.df.columns else idx,
                     'open': open_price,
                     'high': high_price,
                     'low': low_price,
@@ -127,6 +135,7 @@ class Cumd(_indicator._Indicator):
         return self.range_bars
 
     def add_rangebar_candles(self):
+        """Add range-bar candlestick traces to the figure."""
 
         self.fig.add_trace(go.Candlestick(
             x=self.range_bars['Date'],
@@ -162,7 +171,7 @@ class Cumd(_indicator._Indicator):
             last_vol = row["cumd_cum_delta"]
 
             cvd_bars.append({
-                "Date": row["Date"],
+                "Date": row["Date"] if "Date" in self.df.columns else idx,
                 "open": open_vol,
                 "high": max_vol,
                 "low": min_vol,
@@ -190,6 +199,7 @@ class Cumd(_indicator._Indicator):
         return cvd_df
 
     def add_impulse_markers(self):
+        """Add impulse/marker glyphs to the figure."""
         if self.impulse_factor is None or self.range_bars is None:
             return
 
@@ -288,19 +298,13 @@ class Cumd(_indicator._Indicator):
 
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         self.add_cvd_candles()
         self.add_impulse_markers()
-#        cvd_df = self.add_cvd_candles()
         # nur Trendwechsel, mit Custom Symbolen
-#        self.add_cvd_markers(
 #            cvd_df, 
-#            impulse_factor=7, 
-#            trend_change_only=True, 
-#            bull_symbol="star", 
-#            bear_symbol="x", 
-#            bull_color="limegreen", 
-#            bear_color="orange"
 #        )               
         self.fig.add_hline(y=0, line=dict(color="black", width=1, dash="dot"))
         return self.fig
+

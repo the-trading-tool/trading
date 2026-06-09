@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -22,6 +22,7 @@ class Bar(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", color_up='', color_down='', show_volume=False, volume_opacity=4):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.color_up = color_up or 'limegreen'
         self.color_down = color_down or 'indianred'
@@ -30,14 +31,16 @@ class Bar(_indicator._Indicator):
         self.add_fig()
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         pass
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
 
         df = self.df.copy()
         try:
-            df.reset_index(inplace=True)
+            df = df.reset_index()
         except Exception:
             pass
 

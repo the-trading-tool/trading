@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -22,11 +22,11 @@ class Vol(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", cumd=False):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		super().__init__(df=df, symbol=symbol)
 		self.cumd = cumd
 		
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): # Volume
@@ -34,6 +34,7 @@ class Vol(_indicator._Indicator):
 		pass
 		
 	def calculate_cumulative_delta(self, df, ma_window=21):
+		"""Compute the indicator values and attach them as columns to self.df."""
 		"""
 		Berechnet kumulatives Delta und optional einen gleitenden Durchschnitt.
 		"""
@@ -86,10 +87,11 @@ class Vol(_indicator._Indicator):
 
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -106,3 +108,4 @@ class Vol(_indicator._Indicator):
 
 		if self.cumd:
 			self.add_cumulative_delta()
+

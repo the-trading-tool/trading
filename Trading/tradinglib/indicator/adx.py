@@ -12,9 +12,10 @@ import sys
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import macd
+from tradinglib.indicator import indicator
 
 class Adx(macd.Macd):
 
@@ -32,6 +33,7 @@ class Adx(macd.Macd):
 	}
 
 	def __init__(self, df, symbol = "", window=14, window_fast=12, window_slow=26, down_level=25):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.window = window
 		self.window_fast = window_fast
@@ -42,7 +44,6 @@ class Adx(macd.Macd):
 		super().__init__(df=self.df, symbol=symbol)
 
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): #Adx
@@ -50,16 +51,19 @@ class Adx(macd.Macd):
 		self.df["returns"] = np.log(self.df['Close'] / self.df['Close'].shift(1))
 
 		if talib is not None:
+			"""Compute the indicator values and attach them as columns to self.df."""
 			self.df['adx']=talib.ADX(self.df['High'],self.df['Low'], self.df['Close'], self.window)
-			self.df['adx_plus_di']=talib.PLUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
-			self.df['adx_minus_di']=talib.MINUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+			self.df['adx_plus']=talib.PLUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
+			self.df['adx_minus']=talib.MINUS_DI(self.df['High'],self.df['Low'], self.df['Close'], self.window)
 		else:
 			self.df['adx'] = 0.0
-			self.df['adx_plus_di'] = 0.0
-			self.df['adx_minus_di'] = 0.0
+			self.df['adx_plus'] = 0.0
+			self.df['adx_minus'] = 0.0
 
-		conditions=[ (self.df['adx_plus_di']>self.df['adx_minus_di']) & (self.df['adx']>self.down_level) & (self.df['macd'] > 0),
-					(self.df['adx_minus_di']>=self.df['adx_plus_di']) & (self.df['adx']>self.down_level) & (self.df['macd'] <= 0)
+		self.df['adx_angle'] = indicator.angle(self.df['adx'])
+
+		conditions=[ (self.df['adx_plus']>self.df['adx_minus']) & (self.df['adx']>self.down_level) & (self.df['macd'] > 0),
+					(self.df['adx_minus']>=self.df['adx_plus']) & (self.df['adx']>self.down_level) & (self.df['macd'] <= 0)
 					]
 					
 		values=[1,-1]
@@ -73,10 +77,11 @@ class Adx(macd.Macd):
 
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 		try:
@@ -117,7 +122,6 @@ class Adx(macd.Macd):
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['adx'],
-#					visible = "legendonly",
 					line_color = 'blue',
 					name = f'adx',
 					showlegend = False,
@@ -127,8 +131,7 @@ class Adx(macd.Macd):
 		# Plot plus di trace on nth row
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
-					y=self.df['adx_plus_di'],
-#					visible = "legendonly",
+					y=self.df['adx_plus'],
 					line_color = 'green',
 					name = f'adx plus',
 					showlegend = False,
@@ -138,8 +141,7 @@ class Adx(macd.Macd):
 		# Plot minus di trace on nth row
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
-					y=self.df['adx_minus_di'],
-#					visible = "legendonly",
+					y=self.df['adx_minus'],
 					line_color = 'red',
 					name = f'adx minus',
 					showlegend = False,
@@ -151,3 +153,4 @@ class Adx(macd.Macd):
 		self.fig.add_hline(y=0, line_width=0.1, line_dash="dash", line_color="white", opacity = 1)
 		self.fig.add_hline(y=75, line_width=1, line_dash="dash", line_color="grey")
 		self.fig.add_hline(y=25, line_width=1, line_dash="dash", line_color="green")		
+

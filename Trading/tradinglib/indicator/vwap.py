@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -24,6 +24,7 @@ class Vwap(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", timeframe = "M", show_prevwap=True, show_bcolors=False):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.timeframe = timeframe
         self.show_prevwap = show_prevwap
@@ -31,6 +32,7 @@ class Vwap(_indicator._Indicator):
         self.data()
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         self.df1 = self.df.copy()
 
         try:
@@ -67,12 +69,17 @@ class Vwap(_indicator._Indicator):
             pass
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
+        try:
+            self.df1 = self.df1.reset_index()
+        except Exception:
+            pass
 
         try:
             # VWAP als Linie
@@ -87,23 +94,28 @@ class Vwap(_indicator._Indicator):
         except Exception:
             pass
 
-
         if self.show_prevwap:
-            self.fig.add_trace(go.Scatter(
-                x=self.df1["Date"],
-                y=self.df1["PrevVWAP"],
-                mode="lines",
-                name="Prev VWAP",
-		        showlegend = False,
-                line=dict(color="orange", width=1, dash="dash")
-            ))
+            try:
+                self.fig.add_trace(go.Scatter(
+                    x=self.df1["Date"],
+                    y=self.df1["PrevVWAP"],
+                    mode="lines",
+                    name="Prev VWAP",
+		            showlegend = False,
+                    line=dict(color="orange", width=1, dash="dash")
+                ))
+            except Exception:
+                pass
 
         # Optional: Bar Coloring
         if self.show_bcolors:
-            self.fig.add_trace(go.Bar(
-                x=self.df1["Date"],
-                y=self.df1["Close"],
-                marker_color=self.df1["Color"],
-		        showlegend = False,
-                name="Bars"
-            ))
+            try:
+                self.fig.add_trace(go.Bar(
+                    x=self.df1["Date"],
+                    y=self.df1["Close"],
+                    marker_color=self.df1["Color"],
+		            showlegend = False,
+                    name="Bars"
+                ))
+            except Exception:
+                pass

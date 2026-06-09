@@ -6,12 +6,11 @@ import streamlit as st
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 from tradinglib.indicator import indicator
 
-#import streamlit as st 
 
 class Ewo(_indicator._Indicator):
 
@@ -26,6 +25,7 @@ class Ewo(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.short_window = short_window
 		self.long_window = long_window
 		self.ema_span = ema_span
@@ -33,9 +33,9 @@ class Ewo(_indicator._Indicator):
 		super().__init__(df=df, symbol=symbol)
 
 		self.data()
-#		self.add_fig()
 		
 	def find_local_extrema(self, series, window=3):
+		"""Find local price extrema within the configured window."""
 		highs = []
 		lows = []
 	
@@ -67,10 +67,10 @@ class Ewo(_indicator._Indicator):
 		return short_sma - long_sma		
 
 	def filter_alternating_signals(self,angle=0.01):
+		"""Ensure buy/sell signals strictly alternate."""
 		state = "NEUTRAL"  # Initialzustand
 		buy_signals = []
 		sell_signals = []
-#		st.write(self.df)
 		self.df['ewo_buy_signal'] = np.where((self.df['ewo_angle']>angle),self.df['ewo'],np.nan)
 		self.df['ewo_sell_signal'] = np.where((self.df['ewo_angle']<-angle),self.df['ewo'],np.nan)
 
@@ -102,15 +102,20 @@ class Ewo(_indicator._Indicator):
 		self.df['ewo_ema'] = self.df['ewo'].transform(lambda x: x.ewm(span=self.ema_span, adjust=False).mean())
 		self.df['ewo_diff'] = self.df['ewo_ema'].diff()
 		self.df['ewo_angle'] = indicator.angle(self.df['ewo'])
+		# Richtung des EWO ggü. dem Vortageswert (+1 steigend, -1 fallend);
+		# wird u.a. für ewo_trend_day/wk/mo (asset_perf2) genutzt
+		self.df['ewo_trend'] = np.where(self.df['ewo'].diff() > 0, 1, -1)
 		self.filter_alternating_signals(self.angle)
 
 	def add_fig(self):
+		"""Compute the indicator values and attach them as columns to self.df."""
+		"""Add the indicator traces to the given Plotly figure."""
 
 		show_ewo = True
 		show_ewo_diff = True
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -122,7 +127,6 @@ class Ewo(_indicator._Indicator):
 				go.Bar(x=self.df['Date'],
 					y=self.df['ewo_diff'],
 					marker_color=colors,
-#					 visible = "legendonly",
 					showlegend = False,
 					name = f'EWO diff',
 					))
@@ -158,25 +162,16 @@ class Ewo(_indicator._Indicator):
 				go.Scatter(x=self.df['Date'],
 					y=self.df['ewo'],
 					name = f'EWO',
-#					visible = "legendonly",
 					showlegend = False,
 					line=dict(color='black', width=2)
 					))
 
-#			self.fig.add_trace(
-#				go.Scatter(x=self.df['Date'],
-#					y=self.df['ewo_cum'],
-#					name = f'EWO Cum',
-#					visible = "legendonly",
-#					showlegend = False,
-#					line=dict(color='green', width=2)
 #					))
 
 			self.fig.add_trace(
 				go.Scatter(x=self.df['Date'],
 					y=self.df['ewo_ema'],
 					name = f'EMA',
-#					visible = "legendonly",
 					showlegend = False,
 					line=dict(color='orange', width=2)
 					))
@@ -224,3 +219,4 @@ class Ewo(_indicator._Indicator):
 					  )
 
 """
+

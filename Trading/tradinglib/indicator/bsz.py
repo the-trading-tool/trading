@@ -1,13 +1,16 @@
 import ta
 import sys
+import logging
 import plotly.graph_objects as go
 import pandas as pd
 from tradinglib.indicator import ewo, indicator
 
+logger = logging.getLogger(__name__)
+
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -23,12 +26,13 @@ class Bsz(_indicator._Indicator):
     }
 
     def __init__(self, df=pd.DataFrame(), symbol = None, lookback=5, rr_ratio=1.5, zone_len=30):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         self.ewo = ewo.Ewo(df=df)
         df = self.ewo.df
         try:
-            df.reset_index(inplace=True)
+            df = df.reset_index()
             df['timestamp'] = df['Date']
-            df.set_index('timestamp', inplace=True)
+            df = df.set_index('timestamp')
             # ✅ Ensure index is datetime
             if not isinstance(df.index, pd.DatetimeIndex):
                 df.index = pd.to_datetime(df.index)
@@ -41,10 +45,10 @@ class Bsz(_indicator._Indicator):
         self.zone_len = zone_len
         self.zones = []
         self.data()
-#        self.add_fig()
         
         
     def data(self): 
+        """Compute the indicator values and attach them as columns to self.df."""
 
         zones = []
         df = self.df.copy()
@@ -61,7 +65,6 @@ class Bsz(_indicator._Indicator):
                 df['ema9'].iloc[i] > max(df['ema20'].iloc[i-self.lookback:i]) and
                 df['ewo'].iloc[i] > df['ewo_ema'].iloc[i] and
                 df['close'].iloc[i+1] > df['open'].iloc[i+1] #and  # bullish candle
-#                df['close'].iloc[i] > df['close'].rolling(20).mean().iloc[i]  # uptrend
             ):
             ## Demand zone (buy area)
             #if df['low'].iloc[i] < min(df['low'].iloc[i - self.lookback:i]) and df['close'].iloc[i + 1] > df['high'].iloc[i]:
@@ -85,7 +88,6 @@ class Bsz(_indicator._Indicator):
                 df['ema9'].iloc[i] < min(df['ema20'].iloc[i-self.lookback:i]) and
                 df['ewo'].iloc[i] < df['ewo_ema'].iloc[i] and
                 df['close'].iloc[i+1] < df['open'].iloc[i+1] #and  # bullish candle
- #               df['close'].iloc[i] < df['close'].rolling(20).mean().iloc[i]  # uptrend
             ):
             # Supply zone (sell area)
                 entry = df['close'].iloc[i + 1]
@@ -110,10 +112,11 @@ class Bsz(_indicator._Indicator):
                 closest_index = self.df.index[self.df.index.get_indexer([z['timestamp']], method='nearest')[0]]
                 self.df.at[closest_index, 'zones'] = z
             except Exception as e:
-                print(f"Error tagging zone at {z['timestamp']}: {e}")
+                logger.error("Error tagging zone at %s: %s", z['timestamp'], e)
         self.df
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
         zone_shapes = []
@@ -199,3 +202,4 @@ class Bsz(_indicator._Indicator):
             ))
 
         self.fig.update_layout(shapes=zone_shapes)
+

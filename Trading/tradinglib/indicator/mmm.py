@@ -1,7 +1,10 @@
 import sys
+import logging
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
@@ -21,10 +24,12 @@ class Mmm(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", show_trend=False):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.show_trend = show_trend
 
     def calculate_phases(self, data):
+        """Classify each candle into a market phase (trend/consolidation)."""
         high_low = data['High'] - data['Low']
         high_close = (data['High'] - data['Close'].shift()).abs()
         low_close = (data['Low'] - data['Close'].shift()).abs()
@@ -61,6 +66,7 @@ class Mmm(_indicator._Indicator):
         return data
 
     def aggregate_to_htf(self, df, rule="1H"):
+        """Resample OHLCV data to a higher timeframe."""
         df_htf = df.resample(rule, on="Date").agg({
             'Open': 'first',
             'High': 'max',
@@ -70,6 +76,7 @@ class Mmm(_indicator._Indicator):
         return df_htf
 
     def heikin_ashi_colors(self, df):
+        """Map Heikin-Ashi candle direction to color values."""
         ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
         ha_open = [(df['Open'].iloc[0] + df['Close'].iloc[0]) / 2]
         for i in range(1, len(df)):
@@ -87,6 +94,7 @@ class Mmm(_indicator._Indicator):
     # Swing / Fibonacci utilities
     # ---------------------------
     def detect_local_extrema(self, order=5):
+        """Detect swing highs and lows in the price series."""
         highs = []
         lows = []
         n = len(self.df)
@@ -107,6 +115,7 @@ class Mmm(_indicator._Indicator):
         return highs, lows
 
     def get_alternating_pairs(self, order=5):
+        """Extract alternating high/low pairs from the extrema list."""
         highs, lows = self.detect_local_extrema(order=order)
         events = []
         for idx in highs:
@@ -340,6 +349,7 @@ class Mmm(_indicator._Indicator):
                 scale = (pr_max - pr_min) / (cd_max - cd_min)
 
             def scale_val(v):
+                """Scale a value to the target display range."""
                 return pr_min + (v - cd_min) * scale
 
             scaled.append({
@@ -374,9 +384,10 @@ class Mmm(_indicator._Indicator):
         ))
         
     def add_fig(self, htf_rule="4H"):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
@@ -388,25 +399,13 @@ class Mmm(_indicator._Indicator):
         df_high = self.aggregate_to_htf(self.df, rule=htf_rule)
         df_high = self.calculate_phases(df_high)
 
-        self.df.set_index('Date', inplace=True)
-        df_high.set_index(df_high.index, inplace=True)
+        self.df = self.df.set_index('Date')
+        df_high = df_high.set_index(df_high.index)
         self.df['mmm_htf_phase'] = df_high['mmm_phase'].reindex(self.df.index, method='ffill')
 
-#        ha_colors = self.heikin_ashi_colors(self.df.reset_index())
 
         # Candlestick-Farben korrekt zuweisen (Color per point nicht direkt möglich, daher mit custom line traces)
 #        for i in range(len(self.df)):
-#            self.fig.add_trace(
-#                go.Candlestick(
-#                    x=[self.df.index[i]],
-#                    open=[self.df['Open'].iloc[i]],
-#                    high=[self.df['High'].iloc[i]],
-#                    low=[self.df['Low'].iloc[i]],
-#                    close=[self.df['Close'].iloc[i]],
-#                    increasing_line_color=ha_colors[i],
-#                    decreasing_line_color=ha_colors[i],
-#                    opacity = 0.6,
-#                    showlegend=False
 #                )
 #            )
 
@@ -510,13 +509,13 @@ class Mmm(_indicator._Indicator):
                     )
                 )
         else:
-            print(f"[WARNUNG] Nicht genug Daten für Volume-Delta-Berechnung (len={len(self.df)}, gap={gap})")
+            logger.warning("Nicht genug Daten für Volume-Delta-Berechnung (len=%s, gap=%s)", len(self.df), gap)
         """
         # Fibonacci: letztes Paar, optional bis zum Chartende
 #        self.add_fibonacci(n=0, order=5, annotate=True, annotation_side='left', direction="low_to_high", to_extreme=True)
         self.add_fibonacci(n=1, order=6, annotate=True, direction="low_to_high")
 #        self.add_fibonacci(n=3, order=10, annotate=True, direction="low_to_high")
         
-#        self.add_cumdelta_candles_scaled(rule="1T")
         
         return self.fig
+

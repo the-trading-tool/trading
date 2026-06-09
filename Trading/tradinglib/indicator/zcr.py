@@ -12,7 +12,7 @@ import sys
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -26,12 +26,12 @@ class Zcr(_indicator._Indicator): # Zscore
 	}
 
 	def __init__(self, df, symbol = "", window=20):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.window = window
 		self.symbol = symbol
 		self.df = df
 		self.data()
-#		self.add_fig()
 		
 	def calculate_z_score(self):
 		mean = self.df['Close'].rolling(window=self.window).mean()
@@ -45,10 +45,12 @@ class Zcr(_indicator._Indicator): # Zscore
 
 
 	def add_fig(self):
+		"""Compute the indicator values and attach them as columns to self.df."""
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -56,7 +58,6 @@ class Zcr(_indicator._Indicator): # Zscore
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['zcr'],
-#					visible = "legendonly",
 					line_color = 'blue',
 					name = f'Z-score',
 					showlegend = False,
@@ -70,3 +71,4 @@ class Zcr(_indicator._Indicator): # Zscore
 		self.fig.add_hline(y=-1, line_width=1, line_dash="dash", line_color="green", opacity = 1)
 		self.fig.add_hline(y=2, line_width=.5, line_dash="dash", line_color="grey", opacity = .8)
 		self.fig.add_hline(y=-2, line_width=.5, line_dash="dash", line_color="grey", opacity = .8)
+

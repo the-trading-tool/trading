@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -19,18 +19,19 @@ class Fvg(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", percentage=50):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.percentage = percentage
 		super().__init__(df=df, symbol=symbol)
 		self.df['fvg'] = None #self.df['High'] - (self.df['High']-self.df['Low'])
 
 		self.data()
-#		self.add_fig()
 
 	def data(self): #Fvg
     
 		if self.has_index(self.df):
-			self.df.reset_index(inplace=True)
+			"""Compute the indicator values and attach them as columns to self.df."""
+			self.df = self.df.reset_index()
 
 		high_shifted = self.df['High'].shift(periods=2)
 		condition = (high_shifted < self.df['Low'])
@@ -47,15 +48,16 @@ class Fvg(_indicator._Indicator):
 		self.df['gap_end_date'] = np.where(condition, self.df['Date'], self.df['gap_end_date'])
 
 		try:
-			self.df.set_index('Date', inplace=True)
+			self.df = self.df.set_index('Date')
 		except Exception:
 			pass
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -63,14 +65,12 @@ class Fvg(_indicator._Indicator):
 		gap_data = self.df[self.df['fvg'].notna()]
 		for index, row in gap_data.iterrows():
 			color = 'red' if row['gap_type'] == 'bearish' else 'green'
-#			gap_type = row['gap_type']
 			self.fig.add_shape(
 				type="line",
 				x0=row['gap_start_date'],
 				x1=row['gap_end_date'],
 				y0=row['fvg'],
 				y1=row['fvg'],
-#				name=f'FVG {gap_type}',
 				line=dict(color=color, width=2, dash='dash')
 			)
 		"""
@@ -79,7 +79,6 @@ class Fvg(_indicator._Indicator):
 			go.Scatter(x=self.df['Date'].shift(periods=1),
 					y=self.df['fvg'],
                     mode = "markers",
-#					visible = "legendonly",
 					line_color = 'gray',
                     marker_symbol= "line-ew", #"square-cross", 
                     marker_color="blue",
@@ -89,3 +88,4 @@ class Fvg(_indicator._Indicator):
 					)
 			)
 		pass
+

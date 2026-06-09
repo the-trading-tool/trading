@@ -13,7 +13,7 @@ except ImportError:
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 class _Indicator():
 
@@ -46,6 +46,7 @@ class _Indicator():
     }
     
     def __init__(self, symbol=None, df=pd.DataFrame()):
+                """Initialize the indicator with the provided DataFrame and optional symbol/params."""
                 self.symbol = symbol
                 df = df.copy()
                 self.df = df                
@@ -71,5 +72,30 @@ class _Indicator():
 
         raise NotImplementedError("You need to implement this class before using it.")
         pass
+
+    def _add_hline_outside(self, y, text, line_color='grey', line_dash='dot', line_width=1, font_color='white'):
+        """Add hline with label arrow positioned in the left margin.
+        Annotations use xref='paper' so tiny_chart.py transfers them without coordinate distortion."""
+        self.fig.add_hline(
+            y=y,
+            line_width=line_width,
+            line_dash=line_dash,
+            line_color=line_color,
+        )
+        self.fig.add_annotation(
+            x=0.0,
+            y=y,
+            xref='paper',
+            yref='y',
+            text=f' {text} ',
+            showarrow=False,
+            xanchor='left',
+            yanchor='middle',
+            bgcolor=line_color,
+            font=dict(color=font_color, size=13),
+            bordercolor=line_color,
+            borderpad=3,
+            opacity=0.9,
+        )
 
 

@@ -5,13 +5,12 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 import pandas as pd
 
 def calculate_atr(df, period=14):
-    """Berechnet die Average True Range (ATR) über einen bestimmten Zeitraum"""
     
     df = df.copy()  # Vermeidung von Änderungen im Original-DF
     df['High-Low'] = df['High'] - df['Low']
@@ -22,7 +21,6 @@ def calculate_atr(df, period=14):
     
     # ATR als einfacher gleitender Durchschnitt (SMA) oder EMA berechnen
     df['ATR'] = df['TrueRange'].rolling(window=period).mean()  # SMA-Version
-    # df['ATR'] = df['TrueRange'].ewm(span=period, adjust=False).mean()  # EMA-Version
 
     return df['ATR']
 
@@ -38,18 +36,19 @@ class Bos(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", ignore_pips = 1):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		super().__init__(df=df, symbol=symbol)
 		self.break_points = []
 		self.ignore_pips = ignore_pips
 		self.data()
-#		self.add_fig()
 
 	
 	def data(self):  # BoS mit ATR-basiertem Pip-Filter
 
 		try:
-			self.df.reset_index(inplace=True)
+			"""Compute the indicator values and attach them as columns to self.df."""
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -85,10 +84,11 @@ class Bos(_indicator._Indicator):
 			pass
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -110,3 +110,4 @@ class Bos(_indicator._Indicator):
 		
 
 		pass
+

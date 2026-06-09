@@ -1,11 +1,12 @@
 import ta
 import sys
+import numpy as np
 import plotly.graph_objects as go
 
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -24,6 +25,7 @@ class Macd(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", window_sign=9, window_fast=12, window_slow=26, down_level=25):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.window = window_sign
 		self.window_fast = window_fast
 		self.window_slow = window_slow
@@ -31,10 +33,10 @@ class Macd(_indicator._Indicator):
 		super().__init__(df=df, symbol=symbol)
 		
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): # MACD
+		"""Compute the indicator values and attach them as columns to self.df."""
 	
 		macd = ta.trend.MACD(close=self.df['Close'],
 			window_slow=self.window_slow,
@@ -45,11 +47,19 @@ class Macd(_indicator._Indicator):
 		self.df['macd_diff'] = macd.macd_diff()
 		self.df['macd_signal'] = macd.macd_signal()
 
+		# Trend-Score: +/-0.5 je nachdem ob macd_diff steigt/fällt, und
+		# +/-0.5 je nachdem ob macd über/unter macd_signal liegt (Range -1..+1).
+		# Wird u.a. für macd_trend/_wk/_mo (asset_perf2) genutzt.
+		diff_dir = np.where(self.df['macd_diff'].diff() > 0, 0.5, -0.5)
+		signal_dir = np.where(self.df['macd'] > self.df['macd_signal'], 0.5, -0.5)
+		self.df['macd_trend'] = diff_dir + signal_dir
+
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -59,7 +69,6 @@ class Macd(_indicator._Indicator):
 		self.fig.add_trace(go.Bar(x=self.df['Date'],
 					y=self.df['macd_diff'],
 					marker_color=colors,
-#					 visible = "legendonly",
 					showlegend = False,
 					name = f'MACD diff',
 					))
@@ -67,14 +76,12 @@ class Macd(_indicator._Indicator):
 		self.fig.add_trace(go.Scatter(x=self.df['Date'],
 					y=self.df['macd'],
 					name = f'MACD',
-#					visible = "legendonly",
 					showlegend = False,
 					line=dict(color='black', width=2)
 					))
 
 		self.fig.add_trace(go.Scatter(x=self.df['Date'],
 					y=self.df['macd_signal'],
-#					visible = "legendonly",
 					name = f'MACD signal',
 					line=dict(color='blue', width=2),
 					showlegend = False,
@@ -98,3 +105,4 @@ class Macd(_indicator._Indicator):
 					  )
 
 """
+

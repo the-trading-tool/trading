@@ -1,14 +1,17 @@
 import sys
+import logging
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from sklearn.linear_model import LinearRegression
 from typing import Tuple
 
+logger = logging.getLogger(__name__)
+
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -24,8 +27,9 @@ class Atl(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol = "", dev_multi = 2.0, use_gog_scale = False, use_exp_weight = False ,anchors = ["high", "low", "zero"], channel_colors=["darkred", "darkgreen", "darkblue"]):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         if df.empty:
-            print("Empty dataframe")
+            logger.debug("Empty dataframe")
         # Do NOT mutate the passed df — reset_index(inplace=True) would destroy
         # the caller's DatetimeIndex (in fetch_data.py / tiny_chart.py) and
         # cause NaN values downstream ("Change in period: nan", y-axis 0–25000).
@@ -37,7 +41,6 @@ class Atl(_indicator._Indicator):
         self.channel_colors = channel_colors
         self.max_bars = len(self.df)   # use len(), not len(df['Date']) — works for all index types
         self.data()
-#        self.add_fig()
                 
     def transform_price(self, p: pd.Series) -> pd.Series:
         """Transform price data using log scale if enabled."""
@@ -109,10 +112,10 @@ class Atl(_indicator._Indicator):
     
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
 
         if isinstance(self.df.columns, pd.MultiIndex):
             self.df.columns = self.df.columns.get_level_values(0)
-        #self.df.dropna(inplace=True)
 
         self.close = self.df["Close"]
         self.high = self.df["High"]
@@ -121,6 +124,7 @@ class Atl(_indicator._Indicator):
         self.close_t = self.transform_price(self.close)
 
         def add_array(values, name):
+            """Append array-level plot traces (fill areas, bands) to the figure."""
             new_col = np.full(len(self.df), np.nan)
             new_col[-len(values):] = values
             self.df[name] = new_col
@@ -144,7 +148,7 @@ class Atl(_indicator._Indicator):
                 add_array(self.inverse_transform_price(top), f"atl_top_{name}")
                 add_array(self.inverse_transform_price(bot), f"atl_bot_{name}")
             except Exception as e:
-                print(e)
+                logger.error("%s", e)
                 pass
 
         if 'atl_bot_low' in self.df:
@@ -153,6 +157,7 @@ class Atl(_indicator._Indicator):
             self.df['atl_high'] = self.df['atl_top_high']                        
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
 
@@ -217,18 +222,10 @@ class Atl(_indicator._Indicator):
             except Exception:
                 pass
 
-#            ax.fill_between(xvals, bot_plot, top_plot, color=color, alpha=0.15)
 
 #            trend = "Up" if slope > 0.01 else "Down" if slope < -0.01 else "Flat"
-#            last_mid = mid_plot[-1]
 
-#            self.fig.add_annotation(x=xvals[-1], y=last_mid,
-#                text=f"{name}\nL={length}\nR={r_val:.2f}",
-#                showarrow=False,
-#                yshift=10)
 
- #      channel_info = []
- 
         """
 
     channel_info.append({
@@ -272,3 +269,4 @@ if channel_info:
     else:
         current_condition = "Within Channels"
         """            
+

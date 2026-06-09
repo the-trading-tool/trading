@@ -15,6 +15,7 @@ class Nsdt(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", open_len=21, close_len=14, ma_len=100, steps=5):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.open_len = open_len
         self.close_len = close_len
@@ -23,6 +24,7 @@ class Nsdt(_indicator._Indicator):
         self.data()
 
     def _calculate_ma(self, series, length, ma_type):
+        """Compute the moving average series for the indicator."""
         if ma_type == 'EMA':
             return series.ewm(span=length, adjust=False).mean()
         elif ma_type == 'WMA':
@@ -32,6 +34,7 @@ class Nsdt(_indicator._Indicator):
             return series.rolling(length).mean()
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         # 0. Hilfsvariablen berechnen (hl2 für die MA Line)
         self.df['hl2'] = (self.df['High'] + self.df['Low']) / 2
 
@@ -99,9 +102,10 @@ class Nsdt(_indicator._Indicator):
         self.df['hama_color'] = colors
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
         
