@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Asset Details – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Asset Details <small style="font-size:.6em;color:#888">main_page.py</small></h1>
+
+<p>Die Hauptansicht der App. Zeigt das interaktive Kursdiagramm eines Wertpapiers mit technischen Indikatoren, Fundamentaldaten, Finanzdaten und aktuellen Nachrichten.</p>
+
+<h2>Asset auswählen</h2>
+<table>
+<tr><th>Feld</th><th>Funktion</th></tr>
+<tr><td><b>Select asset by market</b></td><td>Dropdown: Börsenplatz → Index → Einzeltitel wählen</td></tr>
+<tr><td><b>Select asset by full text search</b></td><td>Freitext-Suche nach Firmenname oder Ticker-Symbol</td></tr>
+<tr><td>URL-Parameter <code>/?symbol=…</code></td><td>Direktaufruf eines Assets per URL, z.&nbsp;B. <code>/?symbol=AAPL</code></td></tr>
+</table>
+
+<h2>Chart-Steuerung</h2>
+<table>
+<tr><th>Steuerung</th><th>Optionen / Erklärung</th></tr>
+<tr><td><b>Interval</b></td><td>Kerzen-Zeitrahmen: 5m · 30m · 1h · 1d · 1wk · 1mo</td></tr>
+<tr><td><b>Period</b></td><td>Dargestellter Zeitraum: 2d · 2wk · 1mo · 6mo · 1y · 5y</td></tr>
+<tr><td><b>Overlay</b></td><td>Auf den Kurs gelegte Indikatoren (Heikin-Ashi, Candle, ATC …)</td></tr>
+<tr><td><b>Oszillator</b></td><td>Separate Untercharts (EWO, ZCR …)</td></tr>
+<tr><td><b>Select range</b></td><td>Schieberegler zum Einschränken des dargestellten Datenzeitraums</td></tr>
+</table>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td><b>Trend</b></td><td>Interaktives Plotly-Kursdiagramm mit Kauf-/Verkaufssignalen</td></tr>
+<tr><td><b>Info</b></td><td>Fundamentaldaten: Sektor, KGV, Marktkapitalisierung, Analysten-Kursziel</td></tr>
+<tr><td><b>Income sheet</b></td><td>Gewinn- und Verlustrechnung (letzte Quartale)</td></tr>
+<tr><td><b>Balance sheet</b></td><td>Bilanz: Aktiva, Passiva, Eigenkapital</td></tr>
+<tr><td><b>News</b></td><td>Aktuelle Schlagzeilen aus Yahoo Finance für das gewählte Asset</td></tr>
+</table>
+
+<h2>Kursdiagramm bedienen</h2>
+<ul>
+  <li>Zoom: Mausrad oder Auswahlrahmen ziehen</li>
+  <li>Pan: Klicken + Ziehen (nach Doppelklick-Reset)</li>
+  <li>Kamera-Icon (oben rechts im Chart): Screenshot als PNG</li>
+  <li>Plotly-Toolbar: Zoom-Reset, Achsenskalierung, Datenpunkte verbergen</li>
+</ul>
+
+<div class="info">Der Chart lädt Daten zunächst aus der lokalen SQLite-Datenbank; fehlen neuere Kurse, wird automatisch Yahoo Finance als Fallback abgefragt.</div>
+
+<h2>Kauf-/Verkaufssignale im Chart</h2>
+<ul>
+  <li><b>▲ grün</b> – Kaufsignal (overallValueTrend überschreitet Schwellwert)</li>
+  <li><b>▼ rot</b> – Verkaufssignal (EWO unter EMA oder OVT fällt unter Schwellwert)</li>
+</ul>
+
+<div class="warn">Signale sind keine Anlageempfehlung. Immer eigenes Urteil und Stop-Loss verwenden.</div>
+</body>
+</html>

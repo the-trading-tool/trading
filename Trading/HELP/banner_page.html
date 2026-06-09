@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Dashboard – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Dashboard <small style="font-size:.6em;color:#888">banner_page.py</small></h1>
+
+<p>Die Startseite der App. Gibt einen Überblick über das Gesamtportfolio, aktuelle KI-Handelstipps und die historische Strategie-Performance.</p>
+
+<h2>Bereichsübersicht</h2>
+<table>
+<tr><th>Bereich</th><th>Inhalt</th></tr>
+<tr><td><b>Metriken-Zeile</b></td><td>Startkapital · Aktueller Portfoliowert · Performance (%) · Maximale Positionen</td></tr>
+<tr><td><b>Strategie-Labels</b></td><td>Aktive Handelsstrategie(n) und deren zugehörige Indizes</td></tr>
+<tr><td><b>KI-Handelstipp</b></td><td>Automatisch generierte Analyse des zuletzt gekauften Assets (Groq / Gemini)</td></tr>
+<tr><td><b>Trades-Tabelle</b></td><td>Alle offenen und geschlossenen Positionen mit Gewinn/Verlust</td></tr>
+<tr><td><b>Kumulierter Gewinn-Chart</b></td><td>Zeitlicher Verlauf des realisierten Gesamtgewinns</td></tr>
+<tr><td><b>Strategie-Kennzahlen</b></td><td>Profit-Faktor, Trefferquote, Ø Gewinn/Trade je Strategie</td></tr>
+<tr><td><b>Monatliche Heatmap</b></td><td>RdYlGn-Farbkodierung: Gewinne (grün) vs. Verluste (rot) pro Monat/Jahr</td></tr>
+<tr><td><b>Portfolio-Overlap-Warnung</b></td><td>Hinweis, wenn ein Asset in mehreren Strategien gleichzeitig aktiv ist</td></tr>
+<tr><td><b>Disclaimer</b></td><td>Rechtlicher Hinweis (zugeklappt)</td></tr>
+</table>
+
+<h2>Sprachauswahl</h2>
+<p>Oben links: Dropdown zwischen <b>Deutsch</b> und <b>English</b>. Die Auswahl wird in <code>config.db</code> gespeichert und bleibt sitzungsübergreifend erhalten.</p>
+
+<h2>Strategie-Kennzahlen lesen</h2>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th></tr>
+<tr><td>Profit-Faktor</td><td>Summe Gewinne ÷ Summe Verluste (Wert &gt; 1 = profitabel)</td></tr>
+<tr><td>Trefferquote</td><td>Anteil gewinnbringender Trades in %</td></tr>
+<tr><td>Ø Gewinn/Trade</td><td>Durchschnittlicher realisierter Gewinn pro abgeschlossenem Trade</td></tr>
+<tr><td>Realisierter Gewinn</td><td>Gesamtsumme aller abgeschlossenen Positionen</td></tr>
+<tr><td>Längste Gewinnserie</td><td>Maximale Anzahl aufeinanderfolgender Gewinntrades</td></tr>
+</table>
+
+<div class="info">Der KI-Tipp wird automatisch erzeugt, wenn <code>run_agent.py</code> oder <code>asset_perf2.py</code> ein neues Kaufsignal verarbeitet. Kein API-Schlüssel → kein Tipp.</div>
+<div class="warn">⚠️ Bei Strategien mit „Value Trend" im Namen erscheint automatisch ein Geopolitik-Hinweis, da die Strategie geopolitische Ereignisse nicht berücksichtigt.</div>
+</body>
+</html>

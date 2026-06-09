@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>backfill_isin.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>ISIN-Befüllung <small style="font-size:.6em;color:#888">backfill_isin.py</small></h1>
+
+<p>Ergänzt fehlende ISINs in der Ticker-Datenbank (<code>yf_tickers.db</code>) durch Abfrage von Yahoo Finance. Nützlich nach dem Import neuer Ticker ohne ISIN-Angabe.</p>
+
+<h2>Aufruf</h2>
+<pre>python backfill_isin.py [Optionen]</pre>
+
+<h2>Parameter</h2>
+<table>
+<tr><th>Parameter</th><th>Standard</th><th>Bedeutung</th></tr>
+<tr><td><code>/limit:N</code></td><td>alle</td><td>Maximale Anzahl zu verarbeitender Ticker</td></tr>
+<tr><td><code>/delay:ms</code></td><td>500</td><td>Wartezeit zwischen Anfragen in Millisekunden (Yahoo Rate-Limit)</td></tr>
+<tr><td><code>/dry</code></td><td>Nein</td><td>Nur anzeigen, was gefunden würde – nichts in DB schreiben</td></tr>
+<tr><td><code>/log:LEVEL</code></td><td>INFO</td><td>Log-Level: DEBUG · INFO · WARNING · ERROR</td></tr>
+</table>
+
+<h2>Typische Verwendung</h2>
+<ul>
+  <li>Nach dem Import einer Broker-CSV mit neuen Tickern ohne ISIN</li>
+  <li>Nach <code>seed_db.py</code>, wenn ISINs für die Volltextsuche benötigt werden</li>
+</ul>
+<pre># Erst testen:
+python backfill_isin.py /dry /limit:20
+
+# Dann ausführen:
+python backfill_isin.py /limit:100 /delay:1000</pre>
+
+<div class="info">Ticker, für die Yahoo Finance keine ISIN liefert (ETFs, Indizes), werden übersprungen und beim nächsten Lauf erneut versucht.</div>
+</body>
+</html>

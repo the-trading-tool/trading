@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>OVT-Indikator – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.6;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 14px}
+h2{color:#1f78d1;font-size:1.05em;margin:18px 0 6px}
+h3{color:#444;font-size:.97em;margin:12px 0 4px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.88em}
+th{background:#e8f0fe;color:#174ea6;font-weight:600}
+th,td{border:1px solid #dee2e6;padding:6px 10px;text-align:left;vertical-align:top}
+tr:nth-child(even) td{background:#fafbff}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.hero{background:linear-gradient(135deg,#e8f0fe 0%,#f0f7ff 100%);border:1px solid #c5d8f7;border-radius:6px;padding:12px 16px;margin:0 0 16px}
+.hero .score{font-size:2em;font-weight:700;color:#1f78d1;line-height:1}
+.hero .label{font-size:.8em;color:#666;margin-top:2px}
+.metrics{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0}
+.metric{background:#f8faff;border:1px solid #dde8f8;border-radius:5px;padding:8px 14px;text-align:center;min-width:90px}
+.metric .val{font-size:1.4em;font-weight:700;color:#1f78d1}
+.metric .lbl{font-size:.75em;color:#666;margin-top:2px}
+ul,ol{padding-left:1.4em;margin:6px 0}li{margin:4px 0}
+.plus{color:#1e8e3e;font-weight:600}
+.minus{color:#c5221f;font-weight:600}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+
+<h1>Der overallValueTrend (OVT) Indikator</h1>
+
+<div class="hero">
+  <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+    <div>
+      <div class="score">−100 → +100</div>
+      <div class="label">Bewertungsskala des OVT</div>
+    </div>
+    <div style="flex:1;min-width:200px;font-size:.93em">
+      Der OVT verdichtet bis zu 29 technische und fundamentale Kriterien zu einem einzigen Scoring-Wert. Je höher der Wert, desto attraktiver ist ein Titel im aktuellen Marktumfeld.
+    </div>
+  </div>
+</div>
+
+<div class="metrics">
+  <div class="metric"><div class="val">≥ 25 %</div><div class="lbl">ann. Rendite (Backtest seit 2019)</div></div>
+  <div class="metric"><div class="val">&gt; 2 : 1</div><div class="lbl">Gewinn-Verlust-Verhältnis</div></div>
+  <div class="metric"><div class="val">Tage – Wochen</div><div class="lbl">Typischer Anlagehorizont</div></div>
+  <div class="metric"><div class="val">3 – 8</div><div class="lbl">Titel je Index</div></div>
+</div>
+
+<h2>Was ist der OVT?</h2>
+<p>Der <b>overallValueTrend</b> ist ein proprietärer Gesamtindikator, der verschiedene Klassen von Bewertungskriterien kombiniert:</p>
+<ul>
+  <li><b>Technische Trendstärke:</b> Tages-, Wochen- und Monatstrendrichtung, MACD, RSI, ADX, EWO, Momentum</li>
+  <li><b>Volatilitätsmasse:</b> logarithmische Volatilität, Volatilität relativ zur Kursbewegung</li>
+  <li><b>Fundamentaldaten:</b> ROA, KGV (forward &amp; trailing), Gewinnwachstum, Dividende, operative Margen, KBV, Verschuldungsgrad</li>
+  <li><b>Marktsentiment:</b> Analystenpreisgziele, durchschnittliches Handelsvolumen, Sharpe Ratio</li>
+  <li><b>Machine Learning:</b> XGBoost-Kursprognose als zusätzliches Filtersignal</li>
+</ul>
+<p>Jedes Kriterium liefert einen Teilpunktwert und ein Gewicht. Der OVT ist das gewichtete Mittel aller Beiträge, normiert auf die Skala −100 bis +100.</p>
+
+<h2>Meine Handelsstrategie mit dem OVT</h2>
+
+<h3>Kaufsignal</h3>
+<ul>
+  <li>OVT des Titels liegt <b>mindestens 15–20 Punkte über dem Indexdurchschnitt</b></li>
+  <li>EWO (Elliott-Wellen-Oszillator) steigt und liegt über seinem EMA (Periode 9)</li>
+  <li>Zur Bestätigung: weitere Overlay-/Oszillator-Indikatoren hinzuziehen, um Fehlsignale zu reduzieren</li>
+</ul>
+
+<h3>Verkaufssignal</h3>
+<ul>
+  <li>EWO fällt unter seinen 9-Perioden-EMA, <b>oder</b></li>
+  <li>OVT fällt unter den festgelegten Schwellwert</li>
+</ul>
+
+<h3>Portfolioaufbau</h3>
+<ul>
+  <li><b>3–8 Titel je Index</b> (SPX, GDAXI, MDAXI, SDAX usw.) für breite Risikostreuung</li>
+  <li>So viele Indizes wie möglich abdecken → max. ~40 Positionen gleichzeitig</li>
+  <li><b>Stop-Loss:</b> halbe durchschnittliche Volatilität des Titels (typisch ca. −3 % vom Kaufpreis)</li>
+  <li>Stop-Loss täglich nach oben nachziehen (ATR-Trailing-Stop)</li>
+  <li><b>Anlagehorizont:</b> wenige Tage bis einige Wochen – kein Day-Trading</li>
+</ul>
+
+<div class="info">Alle Kursdaten stammen von Yahoo Finance und werden mit leichter Verzögerung geliefert. Das ist für diese Strategie vollkommen ausreichend – sie ist nicht auf Sekundenpräzision angewiesen.</div>
+
+<h2>OVT mit anderen Indikatoren kombinieren</h2>
+<p>Der OVT ist ein starkes, aber kein alleinstehendes Signal. Falsch-positive Signale lassen sich deutlich verringern, indem der OVT mit weiteren Indikatoren aus der App kombiniert wird:</p>
+<ul>
+  <li><b>Overlay:</b> Heikin-Ashi-Kerzen, Bollinger Bands, Support/Resistance</li>
+  <li><b>Oszillator:</b> EWO (primäres Verkaufssignal), RSI, MACD-Histogramm</li>
+</ul>
+<p>Faustregel: Kaufen, wenn OVT ≥ Schwellwert <em>und</em> mindestens ein weiterer Indikator positiv ist.</p>
+
+<h2>Bewertungsparameter im Detail</h2>
+<p>Die folgende Tabelle zeigt alle Kriterien, die in den OVT einfließen, ihren Punktbeitrag und ihre Gewichtung.</p>
+
+<table>
+<tr>
+  <th>Kriterium</th>
+  <th>Punkte</th>
+  <th>Gewicht</th>
+  <th>Wertebereich</th>
+  <th>Erläuterung</th>
+</tr>
+<tr><td>Tages-, Wochen- und Monatstrend</td><td class="plus">3</td><td>3</td><td></td><td>Positiv bewertet, wenn alle drei Zeitebenen gleichzeitig steigen</td></tr>
+<tr><td><code>trendDirection</code></td><td class="plus">1</td><td>3</td><td>−1 bis 2</td><td>Eigener Indikator aus ADX, Momentum, RSI und Schlusskurs</td></tr>
+<tr><td><code>dTrend · wkTrend · moTrend</code></td><td>—</td><td>—</td><td>−1 bis 1</td><td>Prozentuale Kursveränderung auf Tages-, Wochen- und Monatsbasis, normiert</td></tr>
+<tr><td><code>vola / 2 &lt; moTrend</code></td><td class="plus">1</td><td>1</td><td></td><td>Die halbe Volatilität liegt unter dem monatlichen Kursanstieg → gutes Chance/Risiko-Verhältnis</td></tr>
+<tr><td><code>vola &lt; moTrend</code></td><td class="plus">1</td><td>1</td><td></td><td>Volle Volatilität liegt unter dem Monatstrend → zusätzlicher Bonuspunkt</td></tr>
+<tr><td><code>macd_trend &gt; 1</code></td><td class="plus">1</td><td>1</td><td></td><td>MACD-Trend steigt aktuell</td></tr>
+<tr><td><code>ROA &gt; 2 %</code></td><td class="plus">1</td><td>1</td><td></td><td>Return on Assets über 2 % – Unternehmen arbeitet profitabel</td></tr>
+<tr><td><code>ROA &lt; 5 %</code></td><td>0</td><td class="minus">−1</td><td></td><td>Wenn ROA unter 5 % liegt, wird das Gesamtgewicht leicht reduziert</td></tr>
+<tr><td><code>logVola &lt; 10 %</code></td><td class="plus">1</td><td>1</td><td></td><td>Logarithmische Volatilität unter 10 % – Titel bewegt sich ruhig</td></tr>
+<tr><td><code>forwardEPS &gt; 0,1</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Prognostizierter Gewinn je Aktie positiv und substanziell</td></tr>
+<tr><td><code>forwardKGV &gt; 0 und &lt; 25</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>KGV im attraktiven Bereich; Fallback auf trailingKGV falls kein forward-Wert vorhanden</td></tr>
+<tr><td><code>Kursziel-Abstand &gt; 10 %</code></td><td class="plus">1</td><td>0,5</td><td></td><td>Aktueller Kurs liegt mehr als 10 % unter dem höchsten Analysten-Kursziel</td></tr>
+<tr><td><code>Kursziel-Abstand &gt; 20 %</code></td><td class="plus">0</td><td>0,5</td><td></td><td>Zusätzliche Gewichtung, wenn Potenzial &gt; 20 % – Punkte bleiben gleich, Gewicht steigt</td></tr>
+<tr><td><code>Kursziel-Abstand &lt; 0 %</code></td><td>0</td><td class="minus">−1</td><td></td><td>Kurs liegt über Analysten-Kursziel → Gewicht wird reduziert</td></tr>
+<tr><td><code>Dividende &gt; 0</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Unternehmen schüttet Dividende aus</td></tr>
+<tr><td><code>Gewinnwachstum &gt; 0</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Positives Gewinnwachstum</td></tr>
+<tr><td><code>operative Marge &gt; 0</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Operatives Ergebnis positiv</td></tr>
+<tr><td><code>KBV &gt; 50</code></td><td class="plus">1</td><td>1</td><td></td><td>Hohes Kurs-Buchwert-Verhältnis signalisiert starkes Käuferinteresse</td></tr>
+<tr><td><code>KBV &lt; 5</code></td><td>0</td><td>0,5</td><td></td><td>Möglicherweise unterbewerteter Titel – wird berücksichtigt, ohne das Gewicht zu verändern</td></tr>
+<tr><td><code>KBV &lt; 0</code></td><td>0</td><td>0,5</td><td></td><td>Negatives Buchvermögen – beide Seiten der Medaille werden betrachtet; kombiniert mit anderen Kriterien bleibt das Risiko überschaubar</td></tr>
+<tr><td><code>EV / Gesamtverschuldung &gt; 3</code></td><td class="plus">1</td><td>1</td><td></td><td>Geringer Verschuldungsgrad – finanziell solides Unternehmen</td></tr>
+<tr><td><code>Ø Volumen &gt; 1 Mio.</code></td><td class="plus">1</td><td>0,5</td><td></td><td>Ausreichend liquide handelbar</td></tr>
+<tr><td><code>Ø Volumen &gt; 10 Mio.</code></td><td>0</td><td>0,5</td><td></td><td>Sehr liquider Titel – zusätzliche Gewichtung</td></tr>
+<tr><td><code>RSI &gt; 20 und &lt; 80</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>RSI im neutralen Bereich – weder überkauft noch überverkauft</td></tr>
+<tr><td><code>Sharpe-Ratio &gt; 1</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Rendite übersteigt das eingegangene Risiko</td></tr>
+<tr><td><code>Sharpe-Ratio &gt; 2</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>Sehr gutes Risiko-Rendite-Profil – zusätzlicher Bonuspunkt</td></tr>
+<tr><td><code>ML-Prognose: predictedHigh &lt; low</code></td><td class="plus">0,5</td><td>0,5</td><td></td><td>XGBoost-Modell schätzt, dass der vorhergesagte Höchstkurs unter dem aktuellen Tief liegt → starkes Käuferinteresse signalisiert</td></tr>
+<tr><td><code>priceTrend &lt; low</code></td><td class="minus">2</td><td class="minus">−2</td><td></td><td>Preis fällt unter seinen Trendkanal → klares Warnsignal, starke Abwertung</td></tr>
+<tr><td><code>priceTrend &gt; high</code></td><td class="plus">0,2</td><td>—</td><td></td><td>Preis bricht nach oben aus seinem Trendkanal aus → leicht positiv</td></tr>
+</table>
+
+<div class="warn">
+  <b>Haftungsausschluss:</b> Der OVT-Indikator und alle daraus abgeleiteten Handelssignale dienen ausschließlich zu Informationszwecken und stellen keine Anlageberatung oder Kaufempfehlung dar. Vergangene Backtesting-Ergebnisse sind keine Garantie für zukünftige Renditen. Handeln Sie stets auf eigene Verantwortung und nach eigenem Urteil.
+</div>
+</body>
+</html>

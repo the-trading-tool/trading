@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Sektorrotation – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Sektorrotation <small style="font-size:.6em;color:#888">sector_rotation_page.py</small></h1>
+
+<p>Dreistu­figes Dashboard zur Analyse der Kapitalflüsse zwischen Marktsektoren – vom Makro-Überblick bis zum Einzelaktien-Drill-down.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td><b>RRG Weekly</b></td><td>Relative Rotation Graph (Wochenbasis) aller Sektoren gegenüber dem Referenzindex</td></tr>
+<tr><td><b>RRG Daily</b></td><td>Relative Rotation Graph (Tagesbasis) – kurzfristigerer Blickwinkel</td></tr>
+<tr><td><b>Treemap</b></td><td>Kapitalfluss-Treemap: Kachelgröße = Marktgewicht, Farbe = Relative Stärke</td></tr>
+<tr><td><b>Sector Matrix</b></td><td>Tabellarische Gegenüberstellung aller Sektoren mit RSC, CMF und OBV</td></tr>
+<tr><td><b>Industry Drill-down</b></td><td>Sektor auswählen → Branchen-Detail mit den stärksten Einzelaktien</td></tr>
+<tr><td><b>Best of Sector</b></td><td>Top-Titel je Sektor nach RSC vs. ETF-Anreicherung</td></tr>
+</table>
+
+<h2>RRG lesen</h2>
+<table>
+<tr><th>Quadrant</th><th>Phase</th><th>Bedeutung</th></tr>
+<tr><td>Rechts oben</td><td>Leading</td><td>Stärker als der Markt und weiter zunehmend → <b>übergewichten</b></td></tr>
+<tr><td>Rechts unten</td><td>Weakening</td><td>Stärker als Markt, aber Dynamik nimmt ab → beobachten</td></tr>
+<tr><td>Links unten</td><td>Lagging</td><td>Schwächer als Markt und weiter abnehmend → <b>meiden</b></td></tr>
+<tr><td>Links oben</td><td>Improving</td><td>Schwächer als Markt, aber Dynamik dreht → Einstieg prüfen</td></tr>
+</table>
+
+<h2>Verwendete Indikatoren</h2>
+<ul>
+  <li><b>RSC</b> – Relative Strength Comparison (vs. Benchmark-ETF)</li>
+  <li><b>CMF</b> – Chaikin Money Flow (Kapitalzu-/abfluss)</li>
+  <li><b>OBV</b> – On Balance Volume (kumulative Volumen-Richtung)</li>
+</ul>
+
+<h2>Universum wählen</h2>
+<p>Oben im Dashboard: <b>US</b> (S&amp;P 500-Sektoren), <b>EU</b> (STOXX 600-Sektoren) oder <b>EM</b> (Emerging Markets). Das gewählte Universum bestimmt Sektoren, ETFs und Referenzindex.</p>
+
+<div class="info">Die Seite ist über den Menüpunkt <b>Sector Rotation</b> erreichbar oder direkt via <code>/?rotation=true</code>.</div>
+</body>
+</html>
