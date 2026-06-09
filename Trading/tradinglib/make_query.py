@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from tradinglib import tools
 from tradinglib.tools import open_db
@@ -89,6 +90,10 @@ def make_query(perf_table='', index='', value=1, q=1, q_ext="", conn=None):
     # Die App zeigt dann nur Asset-Info ohne Performance-Daten.
     if not perf_table_exists:
         fallback_q_ext = q_ext if q_ext else ""
+        # Simulation columns (sharpe, sortino, …) don't exist in the fallback
+        # SELECT, so any ORDER BY referencing them would crash.  Strip it.
+        fallback_q_ext = re.sub(r'\bORDER\s+BY\s+[\w.]+(\s+(ASC|DESC))?\b', '',
+                                 fallback_q_ext, flags=re.IGNORECASE)
         query = f"""
             SELECT
             {field_list}
