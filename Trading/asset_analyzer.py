@@ -1,3 +1,4 @@
+import ast
 import os
 import streamlit as st
 import datetime as dt
@@ -33,7 +34,6 @@ from tradinglib.indicator import indicator
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
 
 import pandas as pd
- #import numpy as np
 from tradinglib import market_data as md
 from tradinglib.fetch_data import FetchData
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -49,6 +49,7 @@ lgc.enable_logging(to_console=False, level='DEBUG')
 
 class PortfolioOptimizer:
     def __init__(self, tickers, investment_per_asset=2000):
+        """Set up the optimizer with a ticker list and a per-asset investment budget."""
         self.tickers = tickers
         self.total_budget = len(tickers) * investment_per_asset
         self.results = None
@@ -57,9 +58,15 @@ class PortfolioOptimizer:
         self.allow_network = True
 
     def set_allow_network(self, allow: bool):
+        """Enable or disable remote yfinance fallback when local data is unavailable."""
         self.allow_network = bool(allow)
 
     def fetch_and_calculate(self, period="1y"):
+        """Download close prices for all tickers and compute inverse-volatility weights.
+
+        Prefers local SQLite data via FetchData; falls back to yfinance when allow_network=True.
+        Returns a DataFrame with Ticker, Gewichtung (%), and Anlagebetrag (€) columns.
+        """
         # Use threaded per-ticker local reads to avoid blocking Streamlit main thread
         def _load_series_for_ticker(ticker_symbol: str):
             try:
@@ -160,6 +167,7 @@ class PortfolioOptimizer:
         return self.results
 
     def plot_portfolio(self):
+        """Build a Plotly donut chart from self.results and store it in self.fig."""
         if self.results is None:
             return
         
@@ -182,6 +190,7 @@ class TradingApp:
     url="/?symbol="
 
     def __init__(self):
+        """Configure Streamlit page layout, load config.yaml, and initialize the authenticator."""
         self.title = "The Trading Tools"
         if 'title' not in st.session_state:
             st.set_page_config(self.title, initial_sidebar_state='collapsed', layout="wide" )
@@ -192,13 +201,12 @@ class TradingApp:
         self.config = self.load_config()
         self.authenticator = self.init_authenticator()
         self.msg_text = st.empty()
-#        self.init_session()
-#        self.sys_config = sysconf.SystemConfig(username=self.username)
         self.markdown_main() 
         self.lt = None
         self.logger = logging.getLogger(__name__)
 
     def markdown_main(self):
+        """Inject global CSS overrides (transparent header, reduced top padding)."""
         st.markdown(
             """
             <style>
@@ -210,31 +218,83 @@ class TradingApp:
                    .block-container {
                         padding-top: 2rem;
                     }
+
+                    /* Large full-screen spinner overlay */
+                    @keyframes tt-spin {
+                        to { transform: rotate(360deg); }
+                    }
+                    div[data-testid="stSpinner"] {
+                        position: fixed !important;
+                        top: 0 !important;
+                        left: 0 !important;
+                        right: 0 !important;
+                        bottom: 0 !important;
+                        width: 100vw !important;
+                        height: 100vh !important;
+                        margin: 0 !important;
+                        background: rgba(10, 12, 20, 0.55) !important;
+                        z-index: 99999 !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+                    div[data-testid="stSpinner"] > div {
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: center !important;
+                        gap: 2rem !important;
+                        padding: 3rem 4rem !important;
+                        border-radius: 1.5rem !important;
+                        background: rgba(255, 255, 255, 0.08) !important;
+                        backdrop-filter: blur(12px) !important;
+                        -webkit-backdrop-filter: blur(12px) !important;
+                    }
+                    div[data-testid="stSpinner"] svg {
+                        display: none !important;
+                    }
+                    div[data-testid="stSpinner"] > div::before {
+                        content: '' !important;
+                        display: block !important;
+                        width: 80px !important;
+                        height: 80px !important;
+                        border-radius: 50% !important;
+                        border: 6px solid rgba(255, 255, 255, 0.15) !important;
+                        border-top-color: #5b9cf6 !important;
+                        animation: tt-spin 0.85s linear infinite !important;
+                        flex-shrink: 0 !important;
+                    }
+                    div[data-testid="stSpinner"] p {
+                        color: #dce4ef !important;
+                        font-size: 1.4rem !important;
+                        font-weight: 500 !important;
+                        margin: 0 !important;
+                        letter-spacing: 0.04em !important;
+                    }
+                    div[data-testid="stSpinner"] p::before {
+                        content: 'Loading: ' !important;
+                        opacity: 0.5 !important;
+                        font-size: 0.8em !important;
+                        font-weight: 400 !important;
+                        letter-spacing: 0.1em !important;
+                        text-transform: uppercase !important;
+                    }
             </style>
             """,
             unsafe_allow_html=True,
         )
-#        # Inject custom CSS to set the width of the sidebar
-#        st.markdown(
-#            """
-#                <style>
-#                    section[data-testid="stSidebar"] {
-#                        width: 420px !important; # Set the width to your desired value
-#                    }
-#                </style>
-#                """,
-#                unsafe_allow_html=True,
-#            )
         
     def load_config(self):
+        """Parse config.yaml and return the configuration dict."""
         with open(ts.Tools().get_path('', self.config_file)) as file:
             return yaml.load(file, Loader=SafeLoader)    
 
     def local_css(self, file_name):
+        """Inject a local CSS file into the Streamlit app via st.markdown."""
         with open(file_name) as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
     def init_authenticator(self):
+        """Create and return a streamlit-authenticator Authenticate instance from config.yaml."""
         return Authenticate(
             self.config['credentials'],
             self.config['cookie']['name'],  
@@ -243,14 +303,15 @@ class TradingApp:
         )
     
     def init_session(self):
+        """Read username, auth status, and admin flag from session_state and build SystemConfig."""
         self.username = st.session_state.get("username", 'api_key')
         self.authentication_status = st.session_state.get("authentication_status", None)
         self.is_admin = st.session_state.get("is_admin", False)
         self.sys_config = sysconf.SystemConfig(username=self.username)
-#        self.rt_prices = self.sys_config.get_value('rt_prices',False)
 #        if self.rt_prices and sys.platform == 'win32':
     
     def set_page_title(self, title=None, icon=None):
+        """Update the sidebar header with the active page title."""
         if title:
             st.session_state['title'] = title
         if icon:
@@ -259,6 +320,7 @@ class TradingApp:
 #        self.sidebar_header.write(f"{title}\n")    
         
     def set_page_config(self, title):
+        """Attempt to set the Streamlit page config and update the sidebar header title."""
         try:
             st.set_page_config(title, layout="wide", initial_sidebar_state='collapsed')
         except Exception:
@@ -267,21 +329,23 @@ class TradingApp:
 
         
     def login_overlay(self):
+        """Process the session cookie without rendering any UI widget.
 
+        The visible login widget is rendered by BannerPage / WelcomePage in the
+        header row (next to the language selector).
+        """
         try:
-            self.authenticator.login()
-        except Exception as e:
-            print(e)
-            pass
-
+            self.authenticator.login(location='unrendered')
+        except Exception as exc:
+            self.logger.warning("Login (unrendered) error: %s", exc)
         self.init_session()
         self.sys_config = sysconf.SystemConfig(username=self.username)
 
     # get_selectors moved to tradinglib.tiny_chart_grid.ChartsGridRenderer
 
     @st.fragment(run_every='300s')
-    def render_chart(self, index_columns, region = st):
-        
+    def render_chart(self, index_columns, region=st):
+        """Render a tiny trend chart for index_columns, auto-refreshing every 5 minutes."""
         if not index_columns == 'ANY':
 
                 renderer = ChartsGridRenderer()
@@ -289,7 +353,6 @@ class TradingApp:
                 
                 region.plotly_chart(tc.tiny_chart( f'{index_columns}',f' {interval}/{period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays,url=f"{self.url}").fig,
                     use_container_width = True,
-                    #sharing="streamlit",
                     theme="streamlit",
                     config = gt.chart_config,
                 )
@@ -297,18 +360,19 @@ class TradingApp:
     
     @st.fragment(run_every='120s')
     def live_chart(self, region=st):
-        #if self.rt_prices and sys.platform == 'win32':
-#        st.write(f'Last page reload: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        """Render the live ticker strip, auto-refreshing every 2 minutes."""
         if self.lt == None:
             
             self.lt = lt.LiveTicker(init=True,username=self.username, is_admin=self.is_admin, days_back=10)
         self.lt.render(region=region)                                       
         pass
     
-#    @st.fragment(run_every='3600s')
     def render_summary(self):
-    
-#        @st.cache_data()
+        """Render the market summary overview. Regime Flow is a separate sidebar entry."""
+        self._render_summary_overview()
+
+    def _render_summary_overview(self):
+        """Original summary content: portfolio optimizer, optional earnings, chart grid."""
         def get_earings():
             past = 1
             future = 1
@@ -316,7 +380,6 @@ class TradingApp:
             eca.run_app()
 
         mkt = sr.MarketSearch(show_market_only=True, hide_render=True)
-#        fts = sr.FullTextSearch(region=sr_right, symbol='^GDAXI', search_ticker_only=True, is_admin=self.is_admin)
 
         results = mkt.get_index_list()
         pos = 1
@@ -349,7 +412,10 @@ class TradingApp:
         if not isinstance(tickers, str):
             tickers.sort()
         ti = st.text_input(t('summary.members'), tickers)
-        tickers = eval(ti)
+        try:
+            tickers = ast.literal_eval(ti)
+        except (ValueError, SyntaxError):
+            tickers = [ti] if ti else []
 
         # Create optimizer and set whether network access is allowed from system config
         optimizer = PortfolioOptimizer(tickers, investment_per_asset=2000)
@@ -366,15 +432,11 @@ class TradingApp:
         st.plotly_chart(
             optimizer.fig,
             use_container_width = True,
-            #sharing="streamlit",
             theme="streamlit",
             config = gt.chart_config,
         )
         """
 
-#        for ch in ['[',']',"'",'"']:
-#           ti = ti.replace(ch,'')
-#        ti = [t.strip().upper() for t in ti.split(",") if t.strip()]
         if show_earnings:
             if "^GDAXI" in tickers:
                 allow_show_earnings = False
@@ -386,15 +448,7 @@ class TradingApp:
                     pass
         renderer = ChartsGridRenderer()
         (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
-#        interval = "1d"
-#        period = "1mo"
-#        overlays = ['pre']
-#        oszilators = ['macd']
         if show_assets:
-    #        interval = self.sys_config.get_value("interval","30m")
-    #        period = self.sys_config.get_value("period","2mo")
-    #        overlays = ['mmm','bos','sup','atl']
-    #        oszilators = ['ewo','zcr']
             asset_index = '^GDAXI'
             try:
                 if not asset_index in tickers:
@@ -405,21 +459,8 @@ class TradingApp:
                     p_df['shares'] = round(p_df['weight']*1000 / p_df['close'],0)
                     p_df['invest'] = round(p_df['shares']*p_df['close'],0)
                     mtrans = mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin)
-#                    if not p_df['ticker'].isna().any():
-#                        idc_exp = st.expander("Invest")
-#                        with idc_exp:
-#                            p_df['isin'] = ''
-#                            p_df['stockIndex'] = selected_ticker
-#                            p_df['currency'] = self.sys_config.get_value("currency",'EUR')
-#                            p_df['buyVolume'] = 0
-#                            p_df['sellVolume'] = 0
-#                            p_df['buyPrice'] = 0
-#                            p_df['sellPrice'] = 0
-#                            mtrans.overlay_selector(selection=p_df.loc[p_df['ticker']==symbol])
 
-#                            st.dataframe(p_df)
             except Exception as e:
-                #st.write(f"Error: {e}")
                 pass
 
             with st.spinner(t('summary.wait_graphs'), show_time=True):
@@ -440,93 +481,125 @@ class TradingApp:
                 st.write(t('summary.last_chart_update', ts=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     
     def show_navigation_links(self):
-
+        """Build the sidebar navigation with grouped expanders and same-tab button navigation."""
         self.local_css("style.css")
 
-#        # Logging toggle in the sidebar
-#        try:
-#            enabled = lgc.is_enabled()
-#        except Exception:
-#            enabled = False
-#        new_state = st.sidebar.checkbox('Enable logging', value=enabled)
-#        try:
-#            if new_state and not enabled:
-#                lgc.enable_logging(to_console=True, level='INFO', logfile='out.txt')
-#                self.logger.info('Logging enabled via sidebar')
-#            elif not new_state and enabled:
-#                lgc.disable_logging()
-#                self.logger.info('Logging disabled via sidebar')
-#        except Exception:
-#            pass
-
-        main_links = {
-            t('nav.asset_viewer'): '/',
-            t('nav.asset_summary'): '/?summary=true',
-            t('nav.performance'): '/?performance=true',
-        }
         _links_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'external_links.json')
         try:
             with open(_links_file, encoding='utf-8') as _f:
                 external_links = {e['label']: e['url'] for e in json.load(_f)}
         except Exception:
             external_links = {}
-        self.sidebar_header = st.sidebar.empty()
-        if self.is_admin:
-            main_links[t('nav.admin')] = '/?admin=true'
-            if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
-                main_links[t('nav.strategy_finder')] = '/?strategy_finder=true'
-                main_links[t('nav.multi_strategies')] = '/?multi=true'
-            if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
-                main_links[t('nav.trading')] = '/?trading=true'
-            main_links[t('nav.own_transactions')] = '/?own_trades=true'
-        st.sidebar.markdown("""---""")
-        st.sidebar.link_button(t('nav.market_map'), '/?marketmap=true')
-        st.sidebar.link_button(t('nav.sector_rotation'), '/?rotation=true')
-        st.sidebar.markdown("""---""")
-        for k, v in main_links.items():
-            st.sidebar.link_button(k, v)
-        st.sidebar.markdown("""---""")
 
+        st.sidebar.markdown(
+            '<style>'
+            '[data-testid="stSidebar"] hr{margin:1rem 0;}'
+            '[data-testid="stSidebar"] h2{margin:0.1rem 0;}'
+            '[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{gap:0.35rem;}'
+            '[data-testid="stSidebar"] div.stButton{margin:0;}'
+            '</style>',
+            unsafe_allow_html=True,
+        )
+
+        self.sidebar_header = st.sidebar.empty()
+
+        st.sidebar.markdown("---")
+        bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="0.5rem")
+        st.sidebar.markdown("---")
+
+        def _nav(label, **params):
+            """Navigate within the same tab in one click via session state.
+
+            Sets '_nav_params' in session_state and calls st.rerun() so the routing
+            in render() picks up the new params immediately — no query_params race
+            condition, no browser reload, no new tab.
+            Must be called inside a with-block (expander/container).
+            """
+            _key = f'_nav_{"_".join(f"{k}{v}" for k, v in sorted(params.items())) or "home"}'
+            if st.button(label, use_container_width=True, key=_key):
+                st.session_state['_nav_params'] = params
+                st.rerun()
+
+        # ── Markt ──────────────────────────────────────────────────────────
+        with st.sidebar.expander(t('nav.group_market'), expanded=False):
+            _nav(t('nav.market_map'), marketmap='true')
+            _nav(t('nav.sector_rotation'), rotation='true')
+            _nav(t('nav.market_overview'), market_overview='true')
+
+        # ── Assets & Performance ────────────────────────────────────────────
+        with st.sidebar.expander(t('nav.group_assets'), expanded=True):
+            _nav(t('nav.asset_viewer'))
+            _nav(t('nav.asset_summary'), summary='true')
+            _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
+            _nav(t('nav.performance'), performance='true')
+            if self.is_admin:
+                _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
+            _nav(t('nav.compound_simulation'), compound='true')
+
+        # ── Portfolio ───────────────────────────────────────────────────────
+        if self.is_admin:
+            with st.sidebar.expander(t('nav.group_portfolio'), expanded=False):
+                if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                    _nav(t('nav.strategy_finder'), strategy_finder='true')
+                    _nav(t('nav.multi_strategies'), multi='true')
+                if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                    _nav(t('nav.trading'), trading='true')
+                _nav(t('nav.own_transactions'), own_trades='true')
+
+        # ── Admin (always last) ─────────────────────────────────────────────
+        if self.is_admin:
+            st.sidebar.markdown("---")
+            with st.sidebar.expander(t('nav.group_admin'), expanded=False):
+                _nav(t('nav.admin_ticker'),      admin='true', section='ticker')
+                _nav(t('nav.admin_database'),    admin='true', section='database')
+                _nav(t('nav.admin_credentials'), admin='true', section='credentials')
+                _nav(t('nav.admin_system'),      admin='true', section='system')
+                _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
+
+        # ── External links ──────────────────────────────────────────────────
+        st.sidebar.markdown("---")
         _ext_placeholder = t('nav.external_links_placeholder')
         selection = st.sidebar.selectbox(
             t('nav.external_links'),
             [_ext_placeholder] + list(external_links.keys()),
         )
-
         if selection != _ext_placeholder:
             url = external_links[selection]
-            # JS-Injektion zum Öffnen des Links
-            #js = f'window.open("{url}", "_blank");'
             js = f'window.parent.window.open("{url}", "_blank");'
-            st.components.v1.html(f'<script>{js}</script>', height=0)#        external_link = st.sidebar.selectbox("External links", external_links.keys())
+            st.components.v1.html(f'<script>{js}</script>', height=0)
 
-#        for k, v in external_links.items():
-#            st.sidebar.link_button(k, v)
-        st.sidebar.markdown("""---""")
+        st.sidebar.markdown("---")
 
     
 #    @st.fragment(run_every='30s')
 #    def update_price(self, region = st):
 
-#        self.lt.load_from_db()
-#        price_line = ""
 #        symbols = self.lt.symbol_list
-#        l_df = self.lt.df.copy()
-#        l_df.sort_values(['timestamp'],ascending=[False],inplace=True)
 #        for symbol in symbols:
-#            df = l_df.loc[l_df['symbol']==symbol].iloc[0]
 #            price_line += f"- {symbol} : {df['price']} @ {df['timestamp'][10:]} - "
 
-#        region.write(price_line)
 #        self.lt.render()
 
 
     def render(self):
+        """Route the request to the correct page based on URL query parameters.
+
+        Handles login, all main pages (admin, performance, strategies, own trades,
+        sector rotation, market map, summary, …), and the API stream endpoint.
+        """
         from tradinglib.first_run import maybe_show_setup
         if maybe_show_setup():
             st.stop()
 
-        parms = st.query_params.to_dict()
+        # Session state takes priority over URL params (set by _nav() sidebar buttons).
+        # _nav_params is NOT popped — it persists across widget-triggered reruns so
+        # the current page stays active while the user interacts with dropdowns etc.
+        # A new sidebar click overwrites it; a fresh page load initialises from URL.
+        if '_nav_params' in st.session_state:
+            parms = st.session_state['_nav_params']
+        else:
+            parms = st.query_params.to_dict()
+            st.session_state['_nav_params'] = parms
         if parms.get('stream') == "api":
                 data = json.loads(parms.get('data'))
                 api_key = data["api_key"]
@@ -552,18 +625,23 @@ class TradingApp:
             fp.FileProvider()
         else:
 
-            self.login_overlay()
+            with st.spinner("Trading Tools"):
+                self.login_overlay()
 
-            # i18n init happens here — AFTER login_overlay() so the real username
-            # is in session_state and sys_config reads the correct language from config.db.
-            _username = st.session_state.get("username", "admin")
-            _sc = sysconf.SystemConfig(username=_username, bare_mode=True)
-            i18n.init_from_session(sys_config=_sc)
+                # i18n init happens here — AFTER login_overlay() so the real username
+                # is in session_state and sys_config reads the correct language from config.db.
+                _username = st.session_state.get("username", "admin")
+                _sc = sysconf.SystemConfig(username=_username, bare_mode=True)
+                i18n.init_from_session(sys_config=_sc)
 
             self.authentication_status = st.session_state.get('authentication_status')
             if not self.authentication_status:
-                
-                bp.BannerPage()
+                from tradinglib.first_run import welcome_shown, mark_welcome_shown
+                if not welcome_shown():
+                    mark_welcome_shown()
+                    bp.WelcomePage(authenticator=self.authenticator)
+                else:
+                    bp.BannerPage(authenticator=self.authenticator)
 
             else:
                 
@@ -572,117 +650,156 @@ class TradingApp:
         
                 if self.is_admin and parms.get('admin'):
                     self.set_page_config(t('page.admin'))
-                    admin.Admin(scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator = self.authenticator)
+                    with st.spinner(t('page.admin') + " …"):
+                        admin.Admin(scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator=self.authenticator, section=parms.get('section'))
                 elif parms.get('live_chart'):
                     self.set_page_config(t('page.live_chart'))
-                    self.live_chart(region=st)
+                    with st.spinner(t('page.live_chart') + " …"):
+                        self.live_chart(region=st)
                 elif parms.get('performance'):
                     self.set_page_config(t('page.performance'))
-                    if self.is_admin:
-                        tab_perf, tab_all = st.tabs([t('page.performance'), t('nav.all_assets')])
-                        with tab_perf:
-                            perfdetails.Performance(username=self.username).render()
-                        with tab_all:
+                    with st.spinner(t('page.performance') + " …"):
+                        if self.is_admin and parms.get('tab') == 'all_assets':
                             aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
-                    else:
-                        perfdetails.Performance(username=self.username).render()
+                        else:
+                            perfdetails.Performance(username=self.username).render()
                 elif parms.get('multi'):
                     self.set_page_config(t('page.strategies'))
-                    if mu is None:
-                        st.error("Strategy Engine nicht verfügbar — bitte Lizenz prüfen.")
-                    else:
-                        mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
+                    with st.spinner(t('page.strategies') + " …"):
+                        if mu is None:
+                            st.error("Strategy Engine nicht verfügbar — bitte Lizenz prüfen.")
+                        else:
+                            mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
                 elif parms.get('own_trades'):
                     self.set_page_config(t('page.own_transactions'))
                     try:
                         from tradinglib.own_trades_analysis import (
                             render_import_export, render_portfolio_analysis,
                             render_trade_entry, render_scalable_import,
+                            render_risk_management,
                         )
                         system_currency = self.sys_config.get_value('system_currency', 'EUR')
-                        tab_portfolio, tab_entry, tab_scalable, tab_trades = st.tabs([
-                            t('own_trades.tab_portfolio'),
-                            t('own_trades.tab_entry'),
-                            t('own_trades.tab_scalable'),
-                            t('own_trades.tab_trades'),
-                        ])
-                        with tab_portfolio:
-                            render_portfolio_analysis(
-                                region=tab_portfolio,
-                                db_path='database',
-                                username=self.username,
-                                system_currency=system_currency,
-                            )
-                        with tab_entry:
-                            render_trade_entry(
-                                region=tab_entry,
-                                db_path='database',
-                                system_currency=system_currency,
-                            )
-                        with tab_scalable:
-                            render_scalable_import(
-                                region=tab_scalable,
-                                db_path='database',
-                                system_currency=system_currency,
-                            )
-                        with tab_trades:
-                            # Trade Import/Export ist fuer alle Nutzer verfuegbar.
-                            # Falls die Strategy Engine (ass) lizenziert ist, wird
-                            # der Simulator mitgegeben fuer erweiterte Funktionen.
-                            _simulator = None
-                            if ass is not None:
-                                try:
-                                    _simulator = ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username)
-                                except Exception:
-                                    pass
-                            render_import_export(
-                                tab_trades,
-                                simulator=_simulator,
-                                username=self.username,
-                                db_path='database',
-                            )
+                        with st.spinner(t('page.own_transactions') + " …"):
+                            tab_portfolio, tab_entry, tab_risk, tab_scalable, tab_trades = st.tabs([
+                                t('own_trades.tab_portfolio'),
+                                t('own_trades.tab_entry'),
+                                t('own_trades.tab_risk'),
+                                t('own_trades.tab_scalable'),
+                                t('own_trades.tab_trades'),
+                            ])
+                            with tab_portfolio:
+                                render_portfolio_analysis(
+                                    region=tab_portfolio,
+                                    db_path='database',
+                                    username=self.username,
+                                    system_currency=system_currency,
+                                )
+                            with tab_entry:
+                                render_trade_entry(
+                                    region=tab_entry,
+                                    db_path='database',
+                                    system_currency=system_currency,
+                                )
+                            with tab_risk:
+                                render_risk_management(
+                                    region=tab_risk,
+                                    db_path='database',
+                                    system_currency=system_currency,
+                                )
+                            with tab_scalable:
+                                render_scalable_import(
+                                    region=tab_scalable,
+                                    db_path='database',
+                                    system_currency=system_currency,
+                                )
+                            with tab_trades:
+                                # Trade Import/Export ist fuer alle Nutzer verfuegbar.
+                                # Falls die Strategy Engine (ass) lizenziert ist, wird
+                                # der Simulator mitgegeben fuer erweiterte Funktionen.
+                                _simulator = None
+                                if ass is not None:
+                                    try:
+                                        _simulator = ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username)
+                                    except Exception:
+                                        pass
+                                render_import_export(
+                                    tab_trades,
+                                    simulator=_simulator,
+                                    username=self.username,
+                                    db_path='database',
+                                )
                     except Exception as e:
                         st.error(t('error.load_own_trades', error=e))
                 elif parms.get('strategy_finder'):
                     self.set_page_config(t('page.finder'))
-                    if ass is None:
-                        st.error("Strategy Finder nicht verfügbar — bitte Lizenz prüfen.")
-                    else:
-                        ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
+                    with st.spinner(t('page.finder') + " …"):
+                        if ass is None:
+                            st.error("Strategy Finder nicht verfügbar — bitte Lizenz prüfen.")
+                        else:
+                            ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
                 elif parms.get('trading'):
                     self.set_page_config(t('page.trading'))
-                    if not PAPER_TRADING_AVAILABLE:
-                        st.error("Trading nicht verfügbar — bitte Lizenz prüfen.")
-                    else:
-                        try:
-                            from tradinglib.premium.trading_page import TradingPage
-                            TradingPage(username=self.username, db_path='database').render()
-                        except Exception as e:
-                            st.error(t('error.load_trading', error=e))
+                    with st.spinner(t('page.trading') + " …"):
+                        if not PAPER_TRADING_AVAILABLE:
+                            st.error("Trading nicht verfügbar — bitte Lizenz prüfen.")
+                        else:
+                            try:
+                                from tradinglib.premium.trading_page import TradingPage
+                                TradingPage(username=self.username, db_path='database').render()
+                            except Exception as e:
+                                st.error(t('error.load_trading', error=e))
                 elif parms.get('rotation'):
                     self.set_page_config(t('page.sector_rotation'))
-                    try:
-                        from tradinglib.sector_rotation_page import SectorRotationPage
-                        SectorRotationPage(username=self.username).render()
-                    except Exception as e:
-                        st.error(t('error.load_rotation', error=e))
+                    with st.spinner(t('page.sector_rotation') + " …"):
+                        try:
+                            from tradinglib.sector_rotation_page import SectorRotationPage
+                            SectorRotationPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_rotation', error=e))
+                elif parms.get('market_overview'):
+                    self.set_page_config(t('page.market_overview'))
+                    with st.spinner(t('page.market_overview') + " …"):
+                        try:
+                            from tradinglib.market_overview_page import MarketOverviewPage
+                            MarketOverviewPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_market_overview', error=e))
+                elif parms.get('compound'):
+                    self.set_page_config(t('page.compound_simulation'))
+                    with st.spinner(t('page.compound_simulation') + " …"):
+                        try:
+                            from tradinglib.compound_simulation import render_compound_simulation
+                            render_compound_simulation()
+                        except Exception as e:
+                            st.error(t('error.load_compound_sim', error=e))
                 elif parms.get('marketmap'):
                     self.set_page_config(t('page.market_map'))
-                    visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username)
-                    visualizer.render(index_filter=1)
+                    with st.spinner(t('page.market_map') + " …"):
+                        visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username)
+                        visualizer.render(index_filter=1)
                     self.render_chart(index_columns=visualizer.index_column)
                 elif parms.get('summary'):
                     self.set_page_config(t('page.summary'))
-                    self.render_summary()
+                    with st.spinner(t('page.summary') + " …"):
+                        if parms.get('tab') == 'flow':
+                            try:
+                                from tradinglib.regime_flow_page import RegimeFlowPage
+                                RegimeFlowPage(username=self.username, sys_config=self.sys_config).render()
+                            except Exception as _rfe:
+                                st.error(f"Regime Flow: {_rfe}")
+                        else:
+                            self.render_summary()
                 elif parms.get('option_calc'):
                     self.set_page_config(t('page.option_price'))
-                    op.OptionCalculator()
+                    with st.spinner(t('page.option_price') + " …"):
+                        op.OptionCalculator()
                 else:
                     self.set_page_config(t('page.asset_details'))
                     tab_details = False
                     if parms.get('details','false').lower() == 'true':
                         tab_details = True
-                    mp.render_mainpage(region=st, symbol=parms.get('symbol', ''), search_ticker_only=True, username=self.username, is_admin=self.is_admin, interval=parms.get('interval', None), period=parms.get('period', None), multi_trends=False, tab_details=tab_details)
+                    with st.spinner(t('page.asset_details') + " …"):
+                        mp.render_mainpage(region=st, symbol=parms.get('symbol', ''), search_ticker_only=True, username=self.username, is_admin=self.is_admin, interval=parms.get('interval', None), period=parms.get('period', None), multi_trends=False, tab_details=tab_details)
 
                 self.authenticator.logout('Logout', 'sidebar')
                 try:
