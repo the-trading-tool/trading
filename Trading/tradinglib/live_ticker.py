@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 import time
 import logging
 
+logger = logging.getLogger(__name__)
+
 for name, l in logging.root.manager.loggerDict.items():
     if "streamlit" in name:
         l.disabled = True
@@ -35,8 +37,8 @@ class LiveTicker(fetch_data.FetchData):
                         "eraseshape"]
                     }
 
-    def __init__(self, db_path = 'database', db_table="ticker_data", init=False, region=st, username = 'admin', is_admin=False, days_back = 10):
-
+    def __init__(self, db_path='database', db_table="ticker_data", init=False, region=st, username='admin', is_admin=False, days_back=10):
+        """Initialize the live ticker, optionally create the DB table, and load historical tick data."""
         # create empty index (timestamp + symbol)
         self.df = pd.DataFrame(columns=["timestamp", "symbol", "price"])
         # set path
@@ -62,18 +64,17 @@ class LiveTicker(fetch_data.FetchData):
 
         
         # Datenbank laden
-#        self.load_from_file_backwards(f"{db_table}.db")
         self.load_from_db(db_name=f"{db_table}.db")
     
-    def _connect_db(self, db_name = ''):
-        """Stellt eine Verbindung zur SQLite-Datenbank her."""
+    def _connect_db(self, db_name=''):
+        """Open and return a SQLite connection to the ticker_data database."""
         if db_name == "":
             db_name = f"{self.db_table}.db"
         db = tt.tools.Db_tools(db_path=self.db_path, database_name=db_name)            
         return db.conn
         
     def _initialize_db(self):
-        """Erstellt die Tabelle mit einem Primärschlüssel für (timestamp, symbol)."""
+        """Create the ticker_data table with a (timestamp, symbol) primary key if absent."""
         
         conn = self._connect_db()
         cursor = conn.cursor()
@@ -89,7 +90,7 @@ class LiveTicker(fetch_data.FetchData):
         conn.close()
     
     def save_to_db(self):
-        """Speichert aktuelle Tick-Daten in die SQLite-Datenbank, ohne Duplikate."""
+        """Persist current tick data to SQLite using INSERT OR REPLACE to avoid duplicates."""
         conn = self._connect_db()
         self.df = self.df[~self.df.index.duplicated(keep='last')]  # Entfernt doppelte Einträge
         for idx, row  in self.df.iterrows():
@@ -106,6 +107,7 @@ class LiveTicker(fetch_data.FetchData):
         conn.close()
 
     def get_time_strings(self):
+        """Return (now, today_str, yesterday_str, tomorrow_str) as formatted date strings."""
         now = datetime.now()
         today_str = now.strftime("%Y-%m-%d")
         yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -113,7 +115,7 @@ class LiveTicker(fetch_data.FetchData):
         return (now, today_str, yesterday_str, tomorrow_str) 
        
     def resolve_timestamp(self, time_str):
-        """Bestimmt, ob die Zeit zu heute oder gestern gehört und gibt das vollständige Datum zurück."""
+        """Determine whether an HH:MM:SS string belongs to today or yesterday and return the full datetime string."""
         (now, today_str, yesterday_str, tomorrow_str) = self.get_time_strings()
 
         full_timestamp_today = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
@@ -125,7 +127,7 @@ class LiveTicker(fetch_data.FetchData):
             return full_timestamp_yesterday.strftime("%Y-%m-%d %H:%M:%S")  # Gehört zu gesten
    
     def add_tick_data(self, time_str, symbol, price):
-        """Fügt einen neuen Tick zum DataFrame hinzu und speichert ihn ohne Duplikate."""
+        """Append a new tick to self.df and persist it to the database without duplicates."""
         timestamp = self.resolve_timestamp(time_str)
         
         new_data = pd.DataFrame({"timestamp": [timestamp], 
@@ -136,7 +138,7 @@ class LiveTicker(fetch_data.FetchData):
         self.save_to_db()
     
     def rename_db(self, file_date=''):
-
+        """Archive the current database file with a timestamp suffix and create a fresh one."""
         path = self.get_path(path=self.db_path, file_name=f"{self.db_table}.db")
         day_diff = 0
         if file_date == '':
@@ -149,10 +151,7 @@ class LiveTicker(fetch_data.FetchData):
         pass
 
     def load_from_file_backwards(self, db_name: str):
-        """
-        Lädt Daten rückwärts beginnend ab einer gegebenen Startdatei (z. B. 'ticker_data.db' oder 'ticker_data_YYYY-MM-DD HH-MM-SS.db')
-        und führt die Daten aus bis zu `days` Tagen zusammen.
-        """
+        """Load and merge tick data from up to days_back archived database files, starting from db_name."""
 
         days = self.days_back    
         db_files = []
@@ -166,7 +165,7 @@ class LiveTicker(fetch_data.FetchData):
                 ts = base_name.replace("ticker_data_", "").replace(".db", "")
                 start_datetime = datetime.strptime(ts, "%Y-%m-%d %H-%M-%S")
             except ValueError as ve:
-                print(f"Ungültiges Start-Dateiformat: {db_name}")
+                logger.warning("Ungültiges Start-Dateiformat: %s", db_name)
                 return
 
         # Startdatei zuerst einfügen
@@ -174,7 +173,7 @@ class LiveTicker(fetch_data.FetchData):
         if os.path.exists(full_start_path):
             db_files.append((start_datetime, full_start_path))
         else:
-            print(f"Startdatei nicht gefunden: {full_start_path}")
+            logger.warning("Startdatei nicht gefunden: %s", full_start_path)
             return
 
         # Rückwärts für n-1 weitere Tage
@@ -203,24 +202,21 @@ class LiveTicker(fetch_data.FetchData):
                 df = pd.read_sql(f"SELECT * FROM {self.db_table}", conn)
                 all_data.append(df)
             except Exception as e:
-                print(f"Fehler beim Laden von {db_file}:", e)
+                logger.error("Fehler beim Laden von %s: %s", db_file, e)
             finally:
                 conn.close()
 
         # Zusammenführen
         if all_data:
             self.df = pd.concat(all_data, ignore_index=True)
-            self.df.sort_values(by=self.df.columns[0], inplace=True)
+            self.df = self.df.sort_values(by=self.df.columns[0])
         else:
             self.df = pd.DataFrame()
 
-#        st.write(self.df)
         self.get_symbol_list()
     
     def load_from_db(self, timestamp="", db_name = ''):
         """Lädt gespeicherte Tick-Daten aus der SQLite-Datenbank."""
-#        now = datetime.now()
-#        start_date = now.strftime("%Y-%m-%d 08:00:00")
         where = ""
 #        if not timestamp == "" and db_name == "":
 #            where = f' WHERE timestamp > "{start_date}"'
@@ -229,18 +225,19 @@ class LiveTicker(fetch_data.FetchData):
         try:
             self.df = pd.read_sql(query, conn)
         except Exception as e:
-            print(f"Error, loading data from {self.db_table}:", e)
+            logger.error("Error, loading data from %s: %s", self.db_table, e)
         finally:
             conn.close()
         self.get_symbol_list()
         
     def get_price_line(self):
+        """Query the latest price for each symbol and format a price-line summary string."""
         query = f"SELECT MAX(timestamp),timestamp,symbol,price FROM  {self.db_table} GROUP BY symbol"
         conn = self._connect_db()
         try:
             ticker_df = pd.read_sql(query, conn)
         except Exception as e:
-            print("Keine gespeicherten Daten gefunden oder Fehler beim Laden:", e)
+            logger.warning("Keine gespeicherten Daten gefunden oder Fehler beim Laden: %s", e)
         finally:
             conn.close()
         price_line = ""
@@ -263,7 +260,7 @@ class LiveTicker(fetch_data.FetchData):
         df_combined = df_combined.sort_values(by=["symbol", "timestamp"])
 
         df_combined["timestamp"] = pd.to_datetime(df_combined.get("timestamp", []))
-        df_combined.set_index(["timestamp", "symbol"], inplace=True)
+        df_combined = df_combined.set_index(["timestamp", "symbol"])
         if not df_combined.empty:
             ohlc = df_combined.groupby("symbol").resample(interval, level=0).agg({"price": ["first", "max", "min", "last"]}).dropna()
             ohlc.columns = ["Open", "High", "Low", "Close"]
@@ -279,21 +276,17 @@ class LiveTicker(fetch_data.FetchData):
 
     def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False):
         """Erstellt einen Plotly Candlestick Chart für ein Symbol."""
-#        now = datetime.now()
-#        start_date = now.strftime("%Y-%m-%d 06:00:00")
 
         ohlc_df = self.aggregate_ohlc(symbol=symbol, interval=interval)
         if symbol not in ohlc_df.index:
-            print(f"No data for {symbol}")
+            logger.debug("No data for %s", symbol)
             return None
 
-        ohlc_df.reset_index(inplace=True)
-        ohlc_df.rename(columns={"timestamp":"Date"},inplace=True)
+        ohlc_df = ohlc_df.reset_index()
+        ohlc_df = ohlc_df.rename(columns={"timestamp":"Date"})
         ohlc_df['Date'] = pd.to_datetime(ohlc_df['Date'], format='%Y-%m-%d %H:%M:%S')
         ohlc_df = ohlc_df.loc[ohlc_df['symbol']==symbol]
 
-#        start_date = ohlc_df['Date'].iloc[-1].strftime("%Y-%m-%d 06:00:00")
-#        ohlc_df = ohlc_df[ohlc_df['Date'] >start_date ]       
 
         if ohlc_df.empty:
             st.write(f"Still no data for {interval}")
@@ -379,7 +372,6 @@ class LiveTicker(fetch_data.FetchData):
         row = 1
         for ovl in overlays:
 #            if interval == "1min" or interval == "5min":# and (ovl == 'fvg' or ovl == "bsz" or 'ici' or 'lzq'):
-#                continue
             try:
                 self.init_instance(ovl, df=ohlc_df, symbol=symbol)
                 obj = getattr(self, ovl)
@@ -432,18 +424,14 @@ class LiveTicker(fetch_data.FetchData):
             spikesnap='cursor',
             showspikes=True,
             spikethickness=0.5,
-            #showticklabels=False,
             )
 
         fig.update_yaxes(
-            #showgrid=False,
-            #zeroline=False,
             showticklabels=True,
             showspikes=True,
             spikethickness=0.5,
             spikemode='across',
             spikesnap='cursor',
-            #showline=False,
             spikedash='solid'
             )
 
@@ -462,7 +450,6 @@ class LiveTicker(fetch_data.FetchData):
         ohlc_df = ohlc_df.fillna(0).infer_objects(copy=False)
         if 1:
 #        if self.symbol == "^GDAXI":
-#            st.write(ohlc_df)
 
             self.trend_ticker = self.symbol
             self.market_price = round(ohlc_df['Close'].iloc[-1],1)
@@ -519,7 +506,8 @@ class LiveTicker(fetch_data.FetchData):
 
         return fig
     
-    def get_idx_selected(self, v_list, v_key, default=0):    
+    def get_idx_selected(self, v_list, v_key, default=0):
+        """Return the index of v_key in v_list, or default when not found."""
         try:
             default = v_list.index(v_key)
         except Exception:
@@ -527,9 +515,11 @@ class LiveTicker(fetch_data.FetchData):
         return default
 
     def get_symbol_list(self):
+        """Populate self.symbol_list with the unique symbol names present in self.df."""
         self.symbol_list = self.df["symbol"].unique().tolist()
 
     def cleanup(self):
+        """Archive the current database file when no file for today exists yet."""
         now = dt.datetime.now()
         file_date = now.strftime("%Y-%m-%d %H:%M:%S")
         try:
@@ -541,15 +531,15 @@ class LiveTicker(fetch_data.FetchData):
         if files == []:           
             self.rename_db(file_date=file_date.replace(":","-"))
     
-    def get_database_files(self, asterik = '*'):
-            path = self.get_path(path=self.db_path, file_name=f"{self.db_table}_{asterik}.db")
-            db_files = sorted(glob.glob(path),reverse=True)
-            return [os.path.basename(db) for db in db_files]
+    def get_database_files(self, asterik='*'):
+        """Return a sorted list of archived database filenames matching the glob pattern."""
+        path = self.get_path(path=self.db_path, file_name=f"{self.db_table}_{asterik}.db")
+        db_files = sorted(glob.glob(path), reverse=True)
+        return [os.path.basename(db) for db in db_files]
 
-    def render(self, default = "^GDAXI", region=st, bare_mode = False ):
-        """Startet die Streamlit-App zur Live-Anzeige des Candlestick-Charts."""
+    def render(self, default="^GDAXI", region=st, bare_mode=False):
+        """Render the live candlestick chart and price ticker in the Streamlit app."""
 #        if not bare_mode:
-#            st.title("Live Chart")
         
         databases = self.get_database_files()
         databases.insert(0, "")
@@ -561,7 +551,6 @@ class LiveTicker(fetch_data.FetchData):
             if selected_db and selected_db != "":
                 
                 # Daten aus der gewählten Datenbank laden
-#                self.load_from_db(db_name=selected_db)
                 self.load_from_file_backwards(selected_db)
                 limit_start = False
 
@@ -585,7 +574,6 @@ class LiveTicker(fetch_data.FetchData):
                 self.url = f"/?symbol="        
 
         if limit_start:
-#            self.load_from_file_backwards("ticker_data.db") # timestamp='06:00'
             self.load_from_db(timestamp='06:00',db_name="ticker_data.db") # timestamp='06:00'
 
         self.symbol_list.sort()
@@ -620,7 +608,7 @@ class LiveTicker(fetch_data.FetchData):
         if not bare_mode:
             st.write(message)
         else:
-            print(message)
+            logger.info("%s", message)
 
         del_btn = st.button("Delete cached ticker entries")
         if del_btn:
@@ -635,24 +623,23 @@ class LiveTicker(fetch_data.FetchData):
 
                     st.plotly_chart(tc.tiny_chart(self.symbol,f' {interval} / {period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays, trend_length=trend_length, zoom=True).fig,
                         use_container_width = True,
-                        #sharing="streamlit",
                         theme="streamlit",
                         config = self.charts_config
                     )
         except Exception:
             pass
         
-    def notifier(self, bare_mode = False):
-        
+    def notifier(self, bare_mode=False):
+        """Send a Pushover notification with the current trend signal and price information."""
         message = f"""Symbol: {self.trend_ticker}
 Indicator: {round(self.value,1)}, Trend: {self.trend}
 Momentum: {round(self.momentum,1)}
 Market price: {self.market_price}
 """
         if not bare_mode:
-#            st.write(message)
             pass
         else:
             if abs(self.trend) > 0 and abs(self.value) >= 30:
-                print(f"notifiying: {message}")
+                logger.info("notifiying: %s", message)
                 self.notfr.send_notification(ticker=self.symbol,price=self.market_price, date=self.df['timestamp'].iloc[-1],message=message, title=f"""Dax {"SHORT" if self.value < 0 else "LONG"} indicator""")
+

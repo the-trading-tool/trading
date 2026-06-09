@@ -5,26 +5,43 @@ from tradinglib import main_page as mp
 from tradinglib import make_query as mq
 from tradinglib import system_config as sysconf
 from tradinglib.utils import DataUtils
+from tradinglib.tools import open_db
 
 import sqlite3
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
+
+@st.cache_resource
+def _cached_ticker_conn(ticker_path: str, perf_path: str, info_path: str):
+    """Return a cached SQLite connection to yf_tickers.db with perf and info DBs attached."""
+    conn = open_db(ticker_path, check_same_thread=False)
+    conn.execute(f"ATTACH DATABASE '{perf_path}' AS performance_db")
+    conn.execute(f"ATTACH DATABASE '{info_path}' AS info_db")
+    return conn
+
+
+@st.cache_resource
+def _cached_info_conn(info_path: str):
+    """Return a cached read-only SQLite connection to asset_info.db."""
+    return open_db(info_path, readonly=True, check_same_thread=False)
+
 import os
-#os.environ["TradingDB"]=r'C:\\Users\\Kurt\\Documents\\Trading2\\database'
   
 class DataVisualizer(tt.TickerTools):
 
     exch_column = 'ANY'
     
     def attach_dbs(self):
-
-        self.ticker_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=self.ticker_db))
-        # Attach die anderen Datenbanken
-        self.ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name=self.performance_db)}' AS performance_db")
-        self.ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name=self.info_db)}' AS info_db")
+        """Resolve DB paths and populate self.ticker_conn via the cached connection helper."""
+        t = tools.Tools()
+        ticker_path = t.get_path(path=self.db_path, file_name=self.ticker_db)
+        perf_path   = t.get_path(path=self.db_path, file_name=self.performance_db)
+        info_path   = t.get_path(path=self.db_path, file_name=self.info_db)
+        self.ticker_conn = _cached_ticker_conn(ticker_path, perf_path, info_path)
 
     def __init__(self, ticker_db, performance_db, info_db, index_column, db_path = 'database', username = ''):
         """
@@ -47,16 +64,15 @@ class DataVisualizer(tt.TickerTools):
         
         self.attach_dbs()     
 
-        #self.performance_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=performance_db))
-        self.info_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=info_db))
+        info_path = tools.Tools().get_path(path=self.db_path, file_name=info_db)
+        self.info_conn = _cached_info_conn(info_path)
         self.index_column = index_column
         self.trend = 'moTrend'
         
 
-    def dataframe_with_selections(self, df, column_config={}): #, sort_by = 'ticker'):
-
+    def dataframe_with_selections(self, df, column_config={}):
+        """Render a data_editor with a Select checkbox and a Details link column."""
         df_with_selections = df.copy()
-#        df_with_selections = df_with_selections[:2]
         try:
             column_config["details"] = st.column_config.LinkColumn(
                 t('mm.col_details'), display_text=t('mm.col_view')
@@ -74,20 +90,16 @@ class DataVisualizer(tt.TickerTools):
         edited_df = st.data_editor(
                 df_with_selections,
                 hide_index=True,
-#                num_rows='dynamic',
                 column_config=dict(list(column_config.items()) + list({"Select": st.column_config.CheckboxColumn(required=False)}.items())),
-#               disabled=df.columns,
             )
-#        st.write(edited_df)
 
         # Filter the dataframe using the temporary column, then drop the column
-#        edited_df.sort_values(by=[sort_by], ascending = False, inplace=True)            
         selected_rows = edited_df[edited_df.Select]
         return selected_rows.drop('Select', axis=1)
 
 
-    def fetch_combined_data_with_attach(self, index_filter, c_size = '', m_price = '', o_by = '', lim = 0, query_on_yf = True):
-
+    def fetch_combined_data_with_attach(self, index_filter, c_size='', m_price='', o_by='', lim=0, query_on_yf=True):
+        """Run the simulation query with optional market-cap/price filters and return the result DataFrame."""
         qry_ext = ''
         if not c_size == '' and not m_price == '':
             qry_ext = f' {qry_ext} AND {c_size} AND {m_price}'
@@ -115,7 +127,6 @@ class DataVisualizer(tt.TickerTools):
         # attached performance_db (asset_simulation_.db) directly.
         query = mq.make_query('asset_simulation', self.index_column, index_filter,
                                q_ext=qry_ext, conn=self.ticker_conn)
-#        st.write(query)
         combined_df = pd.read_sql_query(query, self.ticker_conn)
         combined_df = combined_df.drop_duplicates(subset=['Date', 'ticker'], keep='last')
         return combined_df
@@ -136,7 +147,7 @@ class DataVisualizer(tt.TickerTools):
         for ticker in tickers:
             db_path = tools.Tools().get_path(path=self.db_path, file_name=f'yf_{ticker}.db')
             try:
-                conn = sqlite3.connect(db_path)
+                conn = open_db(db_path, readonly=True)
                 df = pd.read_sql_query(
                     "SELECT Date, Close FROM day_data ORDER BY Date DESC LIMIT 2",
                     conn
@@ -163,9 +174,10 @@ class DataVisualizer(tt.TickerTools):
                 else pd.DataFrame(columns=["ticker", "day_change", "latestClose", "dc_date_cur", "dc_date_prev"]))
 
     @st.dialog('Details', width='large')
-    def overlay_chart(self, selection, col = 'ticker', region = st, ticker=None):
-
+    def overlay_chart(self, selection, col='ticker', region=st, ticker=None):
+            """Open an asset detail dialog for the selected row."""
             def normalize(name, dig=1):
+                """Extract and round a scalar value from the selection DataFrame."""
                 value = ''
                 try:
                     value = selection[name][selection[col].index[0]]
@@ -207,7 +219,6 @@ class DataVisualizer(tt.TickerTools):
         # use central util for excel export
 
         tickers = combined_df["ticker"].tolist()
-#        st.write(tickers)
         combined_df['marketCap']=combined_df['marketCap'].astype('float')
         combined_df['dTrend']=combined_df['dTrend'].round(2)
         combined_df['wkTrend']=combined_df['wkTrend'].round(2)
@@ -250,6 +261,7 @@ class DataVisualizer(tt.TickerTools):
             # Use the most common date pair (handles mixed-exchange holidays).
             _day_abbr = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
             def _fmt_date(d):
+                """Format a date value as a short 'Weekday DD.MM.YYYY' string."""
                 try:
                     dt = pd.to_datetime(d)
                     return f"{_day_abbr[dt.weekday()]} {dt.strftime('%d.%m.%Y')}"
@@ -316,7 +328,6 @@ class DataVisualizer(tt.TickerTools):
                                 )
 
         combined_df['longName'] = combined_df['longName'].str[:20]
-#        combined_df['url'] = "https://trading.cloogidoo.com/?symbol=" + combined_df['ticker']
         for col in combined_df.select_dtypes(include=['category']).columns:
             combined_df[col] = combined_df[col].astype('str')
         fig = px.treemap(
@@ -342,10 +353,80 @@ class DataVisualizer(tt.TickerTools):
         )
         fig.data[0].texttemplate = "<b>%{customdata[2]}<br>%{label}</b><br>%{customdata[0]}<br>Price: %{customdata[3]:.2f}"#:.2p
 
-#        fig.data[0].on_click(on_click)
 
         return fig
 
+
+    def _render_markov_breadth(self, index_name: str):
+        """Kompaktes Breadth-Widget: Bull/Bär/Seitwärts-Verteilung aller Mitglieder
+        des aktuell gewählten Zielmarkts auf Tages-/Wochen-/Monatsbasis
+        (Markov-Regime, gecached über compute_index_breadth), plus daraus
+        abgeleiteter Gesamtzustand des Marktes (Score + Alignment-Hinweis).
+        """
+        from tradinglib.indicator.markov import Markov
+        from tradinglib.regime_data_engine import compute_index_breadth, summarize_breadth
+
+        idx_label = index_name.lstrip('^') or index_name
+        st.markdown(f"#### {t('mm.breadth_title', index=idx_label)}")
+
+        with st.spinner(t('mm.breadth_loading', index=idx_label)):
+            df = compute_index_breadth(index_name)
+        summary = summarize_breadth(df)
+
+        if df.empty or not summary:
+            st.info(t('mm.breadth_no_data', index=idx_label))
+            return
+
+        _names    = {1: t('mm.breadth_bull'), 2: t('mm.breadth_bear'), 0: t('mm.breadth_side')}
+        _keys     = {1: 'bull', 2: 'bear', 0: 'side'}
+        _order    = [1, 2, 0]
+        _colors   = {k: Markov._PALETTE[k]['solid'] for k in _order}
+        _tf_label = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
+                     'month': t('mm.breadth_tf_month')}
+
+        # ── Stacked horizontal bars: eine Zeile je Zeitebene ──────────────────
+        fig = go.Figure()
+        for tf in ('month', 'week', 'day'):   # von unten nach oben: Monat → Tag
+            stats = summary.get(tf) or {}
+            if not stats.get('n'):
+                continue
+            for regime in _order:
+                pct = stats[_keys[regime]]
+                fig.add_trace(go.Bar(
+                    y=[_tf_label[tf]], x=[pct], orientation='h',
+                    name=_names[regime], marker_color=_colors[regime],
+                    legendgroup=str(regime), showlegend=(tf == 'day'),
+                    text=f"{pct:.0f}%" if pct >= 8 else '',
+                    textposition='inside', insidetextanchor='middle',
+                    textfont=dict(color='white', size=11),
+                    hovertemplate=f"{_tf_label[tf]} · {_names[regime]}: %{{x:.0f}}%<extra></extra>",
+                ))
+
+        fig.update_layout(
+            barmode='stack',
+            height=170,
+            margin=dict(l=60, r=20, t=10, b=30),
+            xaxis=dict(range=[0, 100], ticksuffix='%', showgrid=False),
+            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ── Abgeleiteter Gesamtzustand ────────────────────────────────────────
+        score, state_code, aligned = summary['score'], summary['state'], summary['aligned']
+        _state_label = {
+            'bull':    t('mm.breadth_state_bull'),
+            'bear':    t('mm.breadth_state_bear'),
+            'neutral': t('mm.breadth_state_neutral'),
+        }
+        arrow = '▲' if score > 0.20 else '▼' if score < -0.20 else '─'
+        align_txt = t('mm.breadth_aligned') if aligned else t('mm.breadth_unaligned')
+        st.caption(t(
+            'mm.breadth_summary',
+            arrow=arrow, state=_state_label[state_code],
+            score=score, n=len(df), align=align_txt,
+        ))
 
     def render(self, index_filter=1):
         """
@@ -362,7 +443,7 @@ class DataVisualizer(tt.TickerTools):
         SELECT exchange FROM asset_info GROUP BY exchange
         """
         exch_df = pd.read_sql_query(exch_query, self.info_conn)
-        exch_df.dropna(inplace=True)
+        exch_df = exch_df.dropna()
         exch_names = ['ANY']
         exch_names.extend(list(exch_df.exchange.tolist()))
 
@@ -416,6 +497,10 @@ class DataVisualizer(tt.TickerTools):
                 index = pos
             )
 
+        if self.index_column != 'ANY':
+            self._render_markov_breadth(self.index_column)
+            st.markdown("---")
+
         #Price range
         price_range = {
             'ANY': '',
@@ -448,13 +533,12 @@ class DataVisualizer(tt.TickerTools):
         
         # Fetch combined data
         combined_df = self.fetch_combined_data_with_attach(index_filter, c_size=capitalization_size[cm_size], m_price=price_range[p_range], o_by=order_by, lim=limit_to)
-        combined_df.fillna(value={'sector':'Other'}, inplace=True)
+        combined_df = combined_df.fillna(value={'sector':'Other'})
 
         if combined_df.empty:
             st.error(t('mm.no_data'))
             return
 
-#        combined_df.to_csv('combined.csv', sep=';', decimal=',')
         # Generate and display treemap
         fig = self.generate_treemap(combined_df, order_by)
     
@@ -463,3 +547,4 @@ class DataVisualizer(tt.TickerTools):
 # Usage example in a Streamlit script (streamlit run <script.py>):
 #visualizer = DataVisualizer("yf_tickers.db", "asset_simulation.db", "asset_info.db", "GDAXI", db_path='C:/Users/Kurt/Development/database')
 #visualizer.render(index_filter=1)
+

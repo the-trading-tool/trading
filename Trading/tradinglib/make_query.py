@@ -1,5 +1,6 @@
 import sqlite3
 from tradinglib import tools
+from tradinglib.tools import open_db
 
 field_list = """
             ai.ticker,
@@ -25,8 +26,20 @@ field_list = """
     """    
 
 
-def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None):
+def make_query(perf_table='', index='', value=1, q=1, q_ext="", conn=None):
+    """Build a SQL SELECT query joining yf_tickers, asset_info, and the simulation table.
 
+    q controls the query variant:
+      1/2 — latest row per ticker (MAX Date subquery, variant differs in join style)
+      3   — all rows (time series)
+      4   — index-only join against asset_info
+      5   — single asset_info lookup by ticker
+      6   — ticker + close + index_name (lightweight)
+      7   — ticker + longName + shortName for an index
+
+    When conn is None the function opens and closes its own DB connection.
+    Falls back gracefully when the performance table doesn't exist yet.
+    """
     exclude_list = ['ticker']
     _opened_conn = None  # track connections opened here so we can close them
     if conn is None:
@@ -38,7 +51,7 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
         new_path = tools.Tools().get_path(path='database', file_name=new_fname)
         old_path = tools.Tools().get_path(path='database', file_name=old_fname)
         db_file = new_path if os.path.exists(new_path) else old_path
-        performance_conn = sqlite3.connect(db_file)
+        performance_conn = open_db(db_file, readonly=True)
         _opened_conn = performance_conn
     else:
         # When an existing connection is provided it typically has performance_db
@@ -47,7 +60,7 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
         # guaranteed to match the SQL that will run on the same connection.
         performance_conn = conn
     def get_existing_columns(conn, table_name):
-        """Liest Spaltennamen einer Tabelle aus."""
+        """Return the set of column names for table_name via PRAGMA table_info."""
         cursor = conn.execute(f"PRAGMA table_info({table_name});")
         return {col[1] for col in cursor.fetchall()}
 
@@ -163,7 +176,6 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
             """
 
 #    if q == 6:
-#        query = f"""
 #        SELECT yt.Ticker AS ticker FROM stocks AS yt JOIN stock_indices si ON yt.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index}";
 #        """
 
@@ -196,6 +208,4 @@ def make_query(perf_table = '', index = '', value = 1, q=1, q_ext="", conn=None)
             WHERE i.name = "{index}"
         """
     return query
-
-
 

@@ -21,9 +21,28 @@ try:
 except Exception:
     _SIA_AVAILABLE = False
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_fetch_news(ticker: str, url: str) -> list:
+    """Fetch Yahoo Finance RSS feed; cached per ticker for 5 minutes."""
+    feed = feedparser.parse(url)
+    return [{'title': e.title, 'link': e.link, 'published': e.published} for e in feed.entries]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_fetch_article_text(url: str):
+    """Fetch article body text; cached per URL for 5 minutes."""
+    try:
+        response = requests.get(url, timeout=5)
+        text = ' '.join(re.findall(r'<p>(.*?)</p>', response.text))
+        return text if text else None
+    except Exception:
+        return None
+
+
 class YahooNewsSentiment:
 
-    def __init__(self, ticker, screen_region = st):
+    def __init__(self, ticker, screen_region=st):
+        """Set up the sentiment analyser for the given Yahoo Finance ticker."""
         self.ticker = ticker
         self.screen_region = screen_region
         self.url = f"https://finance.yahoo.com/rss/headline?s={ticker}"
@@ -34,43 +53,17 @@ class YahooNewsSentiment:
                 self.sia = None
         else:
             self.sia = None
- #       self.driver = self.init_driver()
-
- #   def init_driver(self):
- #       options = Options()
- #       options.add_argument("--headless")
- #       options.add_argument("--disable-gpu")
- #       options.add_argument("--no-sandbox")
- #       options.add_argument("--disable-dev-shm-usage")
- #       service = Service("chromedriver")
- #       driver = webdriver.Chrome(service=service, options=options)
- #       return driver
 
     def fetch_news(self):
-        feed = feedparser.parse(self.url)
-        articles = [{'title': entry.title, 'link': entry.link, 'published': entry.published} for entry in feed.entries]
-        return articles
-#        return feed
-
-  #  def fetch_article_text(self, url):
-  #      try:
-  #          self.driver.get(url)
-  #          time.sleep(3)  # Warten auf das Laden der Seite
-  #          paragraphs = self.driver.find_elements(By.TAG_NAME, "p")
-  #          text = ' '.join([para.text for para in paragraphs])
-  #          return text if text else None
-  #      except Exception:
-  #          return None
+        """Parse the Yahoo Finance RSS feed and return a list of article dicts."""
+        return _cached_fetch_news(self.ticker, self.url)
 
     def fetch_article_text(self, url):
-        try:
-            response = requests.get(url, timeout=5)
-            text = ' '.join(re.findall(r'<p>(.*?)</p>', response.text))
-            return text if text else None
-        except Exception:
-            return None
+        """Fetch raw article text by scraping paragraph tags from the URL."""
+        return _cached_fetch_article_text(url)
 
     def analyze_sentiment(self, articles, single=False):
+        """Score sentiment with VADER; single=True returns a score dict for one text string."""
         if self.sia is None:
             # Sentiment-Analyse nicht verfuegbar (vader_lexicon fehlt)
             if single:
@@ -87,8 +80,8 @@ class YahooNewsSentiment:
             return self.sia.polarity_scores(articles)
 
     def render(self):
-        # Streamlit App
-        self.screen_region.title("Yahoo Finance News Sentiment Analysis")
+        """Fetch news, analyze sentiment, and render a bar chart of average scores."""
+        self.screen_region.subheader("Yahoo Finance News Sentiment Analysis")
 
         articles = self.fetch_news()
         self.list_articles(articles)
@@ -96,7 +89,6 @@ class YahooNewsSentiment:
         df = pd.DataFrame(analyzed_articles)
         
         #self.screen_region.write(f"### Sentiment Analyse für {self.ticker}")
-        #self.screen_region.dataframe(df[['title', 'compound', 'pos', 'neu', 'neg']])
         # 
         try:        
             fig = px.bar(
@@ -112,58 +104,53 @@ class YahooNewsSentiment:
             pass
 
     def list_articles(self, articles):
+        """Render a table of news items sorted by publish date (newest first), with per-headline sentiment scores."""
+        if not articles:
+            return
 
         news_items = []
-        if articles:
-            for article in articles:
-                
-                sentiment = self.analyze_sentiment(article['title'],True)
-                compound_score = sentiment['compound']
+        for article in articles:
+            sentiment = self.analyze_sentiment(article['title'], True)
+            compound_score = sentiment['compound']
 
-                # Determine sentiment category
-                if compound_score >= 0.05:
-                    sentiment_category = "Positive"
-                    color = "green"
-                elif compound_score <= -0.05:
-                    sentiment_category = "Negative"
-                    color = "red"
-                else:
-                    sentiment_category = "Neutral"
-                    color = "gray"
+            if compound_score >= 0.05:
+                sentiment_category = "Positive"
+            elif compound_score <= -0.05:
+                sentiment_category = "Negative"
+            else:
+                sentiment_category = "Neutral"
 
-                news_items.append({
-                    'title': article['title'],
-                    'link': article['link'],
-                    'published': article['published'],
-                    'sentiment_category': sentiment_category,
-                    'compound_score': compound_score,
-                    'color': color
-                })
+            try:
+                published_dt = datetime.strptime(article['published'], "%a, %d %b %Y %H:%M:%S %z")
+            except ValueError:
+                published_dt = datetime.min  # Falls das Datum fehlt, nach hinten sortieren
 
-                # Sort news items by published date (latest first)
-                for item in news_items:
-                    try:
-                        item['published_dt'] = datetime.strptime(item['published'], "%a, %d %b %Y %H:%M:%S %z")
-                    except ValueError:
-                        item['published_dt'] = datetime.min  # Falls das Datum fehlt, nach hinten sortieren
+            news_items.append({
+                'published_dt': published_dt,
+                'Published': article['published'],
+                'Title': article['title'],
+                'Sentiment': sentiment_category,
+                'Score': round(compound_score, 2),
+                'Link': article['link'],
+            })
 
-            # Sort news items by published date (latest first) and take the latest 10
-            latest_news_entries = sorted(news_items, key=lambda x: x['published_dt'], reverse=True) #[:10]
+        # Neueste zuerst
+        news_items.sort(key=lambda x: x['published_dt'], reverse=True)
 
-            # Sort the latest 10 news by sentiment score (highest to lowest)
-#                            latest_news_entries.sort(key=lambda x: x['compound_score'], reverse=True)
+        total_sentiment_score = sum(item['Score'] for item in news_items)
+        self.screen_region.markdown(f"<h5 style='color: gray;'>Total Sentiment Score: {total_sentiment_score:.2f}</h5>", unsafe_allow_html=True)
 
-            # Calculate total sentiment score for the latest 10 news items
-            total_sentiment_score = sum(item['compound_score'] for item in latest_news_entries)
+        df = pd.DataFrame(news_items)[['Published', 'Title', 'Sentiment', 'Score', 'Link']]
 
-            # Display total sentiment score in red
-            self.screen_region.markdown(f"<h3 style='color: gray;'>Total Sentiment Score: {total_sentiment_score:.2f}</h3>", unsafe_allow_html=True)
+        def _color_sentiment(val):
+            color = {'Positive': 'green', 'Negative': 'red', 'Neutral': 'gray'}.get(val, 'gray')
+            return f'color: {color}'
 
-            # Display sorted news items
-            for item in latest_news_entries:
-                self.screen_region.markdown(f"**{item['title']}**")
-                self.screen_region.markdown(f"[Read more]({item['link']})")
-                self.screen_region.markdown(f"*Published: {item['published']}*")
-                self.screen_region.markdown(f"Sentiment: <span style='color:{item['color']}'>{item['sentiment_category']}</span> (Score: {item['compound_score']:.2f})", unsafe_allow_html=True)
-                self.screen_region.markdown("---")
+        styled = df.style.map(_color_sentiment, subset=['Sentiment'])
+        self.screen_region.dataframe(
+            styled,
+            column_config={'Link': st.column_config.LinkColumn('Link', display_text='Read more')},
+            hide_index=True,
+            use_container_width=True,
+        )
 
