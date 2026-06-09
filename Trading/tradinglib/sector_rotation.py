@@ -212,6 +212,7 @@ class SectorRotation:
         period: str = DEFAULT_PERIOD,
         weights: dict[str, float] | None = None,
     ) -> None:
+        """Configure the sector rotation engine with ETF map, benchmark, period, and weights."""
         self.sector_etfs = sector_etfs or dict(US_SECTOR_ETFS)
         self.benchmark = benchmark
         self.period = period
@@ -261,6 +262,7 @@ class SectorRotation:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _close_weekly(self, ticker: str) -> pd.Series:
+        """Return a weekly-resampled (Friday close) price series for ticker."""
         df = self.sector_data.get(ticker)
         if df is None or df.empty:
             return pd.Series(dtype=float)
@@ -445,6 +447,7 @@ class SectorRotation:
 
     @staticmethod
     def rrg_status(rs_ratio: float, rs_momentum: float) -> str:
+        """Return the RRG quadrant label: Leading / Weakening / Improving / Lagging / N/A."""
         if np.isnan(rs_ratio) or np.isnan(rs_momentum):
             return "N/A"
         if rs_ratio >= 100 and rs_momentum >= 100:
@@ -456,6 +459,7 @@ class SectorRotation:
         return "Lagging"
 
     def _get_forward_pe(self, ticker: str) -> float:
+        """Fetch the forward PE ratio for ticker via yfinance; returns NaN on failure."""
         try:
             import yfinance as yf
             info = yf.Ticker(ticker).info
@@ -510,6 +514,7 @@ class SectorRotation:
 
     @property
     def summary(self) -> pd.DataFrame:
+        """Return the cached summary DataFrame, building it on first access if needed."""
         if self._summary is None:
             self.build_summary()
         return self._summary

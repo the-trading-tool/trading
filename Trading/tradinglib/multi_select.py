@@ -1,3 +1,4 @@
+import ast
 import streamlit as st
 import uuid
 from tradinglib.indicator import indicator
@@ -32,41 +33,176 @@ class MultiCheckboxSelector:
 
         self.instance_id = st.session_state[f"{self.instance_name}_uuid"]
 
-        # Build the set of default-selected short names from sys_conf (Overlay + Oszilator).
-        # Only used for first-time initialization (when the session_state key is absent).
-        defaults: set[str] = set()
-        if sys_conf is not None:
-            import json
-            for conf_key in ('overlay', 'oszilator'):
-                raw = sys_conf.get_value(conf_key, '')
-                if not raw:
-                    continue
+        # ------------------------------------------------------------------ #
+        # Resolve defaults from sys_conf for all four selectors.            #
+        # Kept separate per list so the post-init guarantee can use the     #
+        # actual user-configured values, not just hardcoded factory ones.   #
+        # ------------------------------------------------------------------ #
+        import json as _json
+
+        _FALLBACK_OVERLAY   = ['heikin', 'bar', 'sup']
+        _FALLBACK_OSZILATOR = ['macd']
+
+        def _resolve_list(conf_key: str, fallback: list) -> set:
+            """Read conf_key from sys_conf and return a set of lowercased names.
+            Falls back to *fallback* when the key is absent or the value is empty."""
+            if sys_conf is None:
+                return {s.lower() for s in fallback}
+            raw = sys_conf.get_value(conf_key, None)
+            if not raw:          # None, [], or '' → use factory fallback
+                return {s.lower() for s in fallback}
+            # get_value already json-decodes, so raw may already be a Python list.
+            if isinstance(raw, list):
+                parsed = raw
+            else:
                 parsed = None
                 try:
-                    parsed = json.loads(raw)
+                    parsed = _json.loads(raw)
                 except Exception:
                     pass
-                if parsed is None:
+                if not isinstance(parsed, list):
                     try:
-                        parsed = eval(raw)  # noqa: S307 — legacy format in config DB
+                        parsed = ast.literal_eval(raw)
                     except Exception:
-                        pass
-                if isinstance(parsed, list):
-                    defaults.update(str(n).lower() for n in parsed)
+                        parsed = None
+            if isinstance(parsed, list) and parsed:
+                return {str(n).lower() for n in parsed}
+            return {s.lower() for s in fallback}   # value was empty list → factory
 
-        # Session State Initialisierung für jede Option, falls sie noch nicht existiert.
-        # Keys that already exist (e.g. user toggled them) are left untouched.
+        defaults_overlay   = _resolve_list('overlay',   _FALLBACK_OVERLAY)
+        defaults_oszilator = _resolve_list('oszilator',  _FALLBACK_OSZILATOR)
+        defaults           = defaults_overlay | defaults_oszilator   # combined for the init loop
+
+        # Persistierte "kein Plot"-Sets aus config.db laden
+        _no_plot_sets = {
+            'overlay_no_plot':   _resolve_list('overlay_no_plot',   []),
+            'oszilator_no_plot': _resolve_list('oszilator_no_plot', []),
+        }
+
+        # Defaults für Interval und Period aus sys_conf lesen.
+        # Use `or fallback` so an empty string stored in the DB never wins.
+        default_interval = (sys_conf.get_value('interval', '1d') or '1d') if sys_conf else '1d'
+        default_period   = (sys_conf.get_value('period',   '1mo') or '1mo') if sys_conf else '1mo'
+
+        # ------------------------------------------------------------------ #
+        # Session-State initialisation (only for keys that do not exist yet). #
+        # ------------------------------------------------------------------ #
         for list_id, options in self.lists:
             for option in options:
                 key = f"{list_id}_{option}_{self.instance_id}"
                 if key not in st.session_state:
-                    short = option.split(' - ')[0].lower()
-                    st.session_state[key] = (list_id in ('Overlay', 'Oszilator')
-                                             and short in defaults)
+                    if list_id == 'Interval':
+                        st.session_state[key] = (option == default_interval)
+                    elif list_id == 'Period':
+                        st.session_state[key] = (option == default_period)
+                    else:
+                        short = option.split(' - ')[0].lower()
+                        st.session_state[key] = (list_id in ('Overlay', 'Oszilator')
+                                                 and short in defaults)
+
+                # "Plot"-Flag für Overlay/Oszilator: aus config.db lesen, default True
+                if list_id in ('Overlay', 'Oszilator'):
+                    plot_key = f"plot_{list_id}_{option}_{self.instance_id}"
+                    if plot_key not in st.session_state:
+                        short = option.split(' - ')[0].lower()
+                        conf_key = 'overlay_no_plot' if list_id == 'Overlay' else 'oszilator_no_plot'
+                        no_plot_set = _no_plot_sets.get(conf_key, set())
+                        st.session_state[plot_key] = short not in no_plot_set
+
+        # ------------------------------------------------------------------ #
+        # Post-init guarantee: fix stale all-False state from old buggy init.#
+        # Uses the DB-derived sets so the user's own config is honoured.     #
+        # ------------------------------------------------------------------ #
+        _ensure = [
+            ('Interval',  default_interval,    None),
+            ('Period',    default_period,       None),
+            ('Overlay',   None,  defaults_overlay),
+            ('Oszilator', None,  defaults_oszilator),
+        ]
+        for lid, single_fallback, fallback_set in _ensure:
+            opts = next((o for l, o in self.lists if l == lid), [])
+            if not any(st.session_state.get(f"{lid}_{o}_{self.instance_id}", False) for o in opts):
+                if single_fallback is not None:
+                    # Radio-style: exactly one option selected
+                    for o in opts:
+                        st.session_state[f"{lid}_{o}_{self.instance_id}"] = (o == single_fallback)
+                elif fallback_set:
+                    # Multi-select: pre-tick the DB-derived (or factory) items
+                    for o in opts:
+                        short = o.split(' - ')[0].lower()
+                        st.session_state[f"{lid}_{o}_{self.instance_id}"] = (short in fallback_set)
+
+    def _save_to_config(self, list_id: str) -> None:
+        """Persist current selections for list_id to the config DB so other sessions pick them up."""
+        if self.sys_conf is None:
+            return
+        config_key_map = {'Overlay': 'overlay', 'Oszilator': 'oszilator', 'Interval': 'interval', 'Period': 'period'}
+        config_key = config_key_map.get(list_id)
+        if not config_key:
+            return
+        for l_id, options in self.lists:
+            if l_id != list_id:
+                continue
+            selections = [
+                option.split(' - ')[0]
+                for option in options
+                if st.session_state.get(f"{l_id}_{option}_{self.instance_id}", False)
+            ]
+            if list_id in ('Interval', 'Period'):
+                # Never persist an empty value — keep the existing DB entry intact
+                # so OHLCQueryPlanner always receives a valid interval/period string.
+                if selections:
+                    self.sys_conf.set_value(config_key, selections[0])
+            else:
+                # Never overwrite a non-empty DB value with an empty list.
+                if selections:
+                    self.sys_conf.set_value(config_key, selections)
+            break
+
+    def _save_no_plot_to_config(self, list_id: str) -> None:
+        """Persist the current no-plot set for Overlay or Oszilator to config.db."""
+        if self.sys_conf is None:
+            return
+        no_plot_key = 'overlay_no_plot' if list_id == 'Overlay' else 'oszilator_no_plot'
+        for l_id, options in self.lists:
+            if l_id != list_id:
+                continue
+            no_plot = [
+                option.split(' - ')[0]
+                for option in options
+                if st.session_state.get(f"{l_id}_{option}_{self.instance_id}", False)
+                and not st.session_state.get(f"plot_{l_id}_{option}_{self.instance_id}", True)
+            ]
+            self.sys_conf.set_value(no_plot_key, no_plot)  # leere Liste ist ok hier
+            break
 
     def render(self):
-
-
+        """Render all selector columns as checkboxes inside expanders with optional ⚙ config buttons."""
+        st.markdown("""
+        <style>
+        [data-testid="stExpander"] [data-testid="stCheckbox"] {
+            margin-top: -6px !important;
+            margin-bottom: -6px !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        [data-testid="stExpander"] [data-testid="stCheckbox"] > label {
+            padding-top: 1px !important;
+            padding-bottom: 1px !important;
+            min-height: 1.4rem !important;
+            line-height: 1.4rem !important;
+            font-size: 0.85rem !important;
+        }
+        [data-testid="stExpander"] [data-testid="stVerticalBlockBorderWrapper"] {
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+        }
+        [data-testid="stExpanderDetails"] {
+            max-height: 380px;
+            overflow-y: auto;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         # Dynamische Spaltenanzahl: Maximal 3 pro Reihe für bessere Lesbarkeit
         num_columns = min(4, len(self.lists))
         col_row = self.region.empty()
@@ -78,6 +214,26 @@ class MultiCheckboxSelector:
 
             with col:
                 with st.expander(f"{list_id}:"):
+                    # Callback für Radio-Button-Verhalten (Interval / Period) + Config-Persistierung
+                    def _make_single_select_cb(lid, opt, inst_id, opts, selector_self):
+                        def _cb():
+                            if st.session_state.get(f"{lid}_{opt}_{inst_id}"):
+                                for o in opts:
+                                    if o != opt:
+                                        st.session_state[f"{lid}_{o}_{inst_id}"] = False
+                            selector_self._save_to_config(lid)
+                        return _cb
+
+                    def _make_save_cb(lid, selector_self):
+                        def _cb():
+                            selector_self._save_to_config(lid)
+                        return _cb
+
+                    def _make_plot_cb(lid, selector_self):
+                        def _cb():
+                            selector_self._save_no_plot_to_config(lid)
+                        return _cb
+
                     selected_options = []
                     for option in options:
                         # Einzigartige Keys mit Instanz-ID
@@ -89,6 +245,17 @@ class MultiCheckboxSelector:
                         plugin_cls = None
                         if self.sys_conf and list_id in ('Overlay', 'Oszilator'):
                             plugin_cls = MultiCheckboxSelector.indicators.get_class(short_name)
+
+                        single_select = list_id in ('Interval', 'Period')
+                        cb_kwargs = {}
+                        if single_select:
+                            cb_kwargs['on_change'] = _make_single_select_cb(
+                                list_id, option, self.instance_id, options, self)
+                        elif self.sys_conf:
+                            cb_kwargs['on_change'] = _make_save_cb(list_id, self)
+
+                        is_indicator = list_id in ('Overlay', 'Oszilator')
+                        plot_key = f"plot_{list_id}_{option}_{self.instance_id}" if is_indicator else None
 
                         if plugin_cls:
                             from tradinglib.indicator._indicator import _Indicator
@@ -108,12 +275,21 @@ class MultiCheckboxSelector:
                                 **base_style,
                                 **plugin_params,
                             }
-                            c1, c2 = st.columns([0.82, 0.18])
-                            checked = c1.checkbox(option, key=unique_key)
+                            c1, c2, c3 = st.columns([0.60, 0.15, 0.25])
+                            checked = c1.checkbox(option, key=unique_key, **cb_kwargs)
                             if c2.button("⚙", key=f"cfg_{unique_key}", help=f"Configure {short_name}"):
                                 self.sys_conf.render_plugin_params(short_name, merged_params)
+                            if checked:
+                                c3.checkbox("Plot", key=plot_key,
+                                            on_change=_make_plot_cb(list_id, self))
+                        elif is_indicator:
+                            c1, c2 = st.columns([0.70, 0.30])
+                            checked = c1.checkbox(option, key=unique_key, **cb_kwargs)
+                            if checked:
+                                c2.checkbox("Plot", key=plot_key,
+                                            on_change=_make_plot_cb(list_id, self))
                         else:
-                            checked = st.checkbox(option, key=unique_key)
+                            checked = st.checkbox(option, key=unique_key, **cb_kwargs)
 
                         # Speichern der Auswahl nur bei Änderung
                         if checked and not st.session_state[unique_key]:
@@ -144,14 +320,35 @@ class MultiCheckboxSelector:
 
         return selected if list_id is None else selected.get(list_id, [])
 
+    def get_plot_options(self, list_id=None):
+        """
+        Returns selected indicators that have the "Plot" checkbox enabled.
+        Only meaningful for Overlay and Oszilator lists.
+        """
+        result = {}
+        for l_id, options in self.lists:
+            if l_id not in ('Overlay', 'Oszilator'):
+                continue
+            plot_list = []
+            for option in options:
+                sel_key = f"{l_id}_{option}_{self.instance_id}"
+                plot_key = f"plot_{l_id}_{option}_{self.instance_id}"
+                if st.session_state.get(sel_key, False) and st.session_state.get(plot_key, True):
+                    plot_list.append(option.split(' - ')[0])
+            if list_id is None or l_id == list_id:
+                result[l_id] = plot_list
+        return result if list_id is None else result.get(list_id, [])
+
     def render_pine_export(self, region=None) -> None:
         """Renders Pine Script export buttons for the currently selected indicators."""
-        from tradinglib.pine_exporter import render_export_buttons
-        r          = region if region is not None else st
-        overlays   = self.get_selected_options('Overlay')
-        oscillators = self.get_selected_options('Oszilator')
-        if not overlays and not oscillators:
-            return
-        r.divider()
-        r.caption("Pine Script Export für TradingView")
-        render_export_buttons(overlays, oscillators, self.sys_conf, r)
+        _p_expander = (region or st).expander("Pine Script Export")
+        with _p_expander:
+            from tradinglib.pine_exporter import render_export_buttons
+            r          = region if region is not None else st
+            overlays   = self.get_selected_options('Overlay')
+            oscillators = self.get_selected_options('Oszilator')
+            if not overlays and not oscillators:
+                return
+            r.divider()
+            r.caption("Pine Script Export für TradingView")
+            render_export_buttons(overlays, oscillators, self.sys_conf, r)

@@ -46,6 +46,7 @@ _CMF_LABEL_COLOR = {
 
 
 def _cmf_label(v: float) -> str:
+    """Map a CMF value to a human-readable label (Strong Inflow → Strong Outflow)."""
     if np.isnan(v):
         return "Neutral"
     if v >  0.15: return "Strong Inflow"
@@ -100,6 +101,7 @@ def _bench_options(universe_name: str, default: str) -> list[str]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_data(benchmark: str, period: str, etfs_json: str, weights_json: str, include_pe: bool):
+    """Load and compute all sector rotation data; cached for 1 hour."""
     etfs    = json.loads(etfs_json)
     weights = json.loads(weights_json)
     rot = SectorRotation(
@@ -118,9 +120,11 @@ class SectorRotationPage:
     """Streamlit page: 3-level sector rotation dashboard."""
 
     def __init__(self, username: str = "") -> None:
+        """Initialize the page with the current user's username."""
         self.username = username
 
     def render(self) -> None:
+        """Render the full sector rotation dashboard with all six tabs."""
         st.header(_t('sr.header'))
         st.caption(_t('sr.caption'))
 
@@ -207,6 +211,7 @@ class SectorRotationPage:
     # ── Level 1: Relative Rotation Graph ──────────────────────────────────────
 
     def _render_rrg(self, rrg_data: dict, summary: pd.DataFrame, universe_name: str = "", height: int = 620, tail_label: str = "") -> None:
+        """Render the Relative Rotation Graph (RRG) scatter chart with sector tails."""
         if not tail_label:
             tail_label = _t('sr.tail_weekly')
         label = _t('sr.rrg_label_sector') if "EM" not in universe_name else _t('sr.rrg_label_country')
@@ -214,14 +219,32 @@ class SectorRotationPage:
         st.caption(_t('sr.rrg_caption', label=label, tail=tail_label))
 
         status_map = summary.set_index("Sector")["Status"].to_dict()
+
+        # Collect all data points first to determine auto-zoom range
+        all_xs, all_ys = [], []
+        for data in rrg_data.values():
+            all_xs.extend(data["rs_ratio"])
+            all_ys.extend(data["rs_momentum"])
+
+        if all_xs and all_ys:
+            pad = 1.5
+            x_min = min(min(all_xs) - pad, 99)
+            x_max = max(max(all_xs) + pad, 101)
+            y_min = min(min(all_ys) - pad, 99)
+            y_max = max(max(all_ys) + pad, 101)
+        else:
+            x_min, x_max, y_min, y_max = 85, 115, 85, 115
+
         fig = go.Figure()
 
-        # Quadrant shading and labels
+        # Quadrant shading and labels — use a large fixed extent so shapes
+        # always cover the full visible area regardless of zoom level
+        _Q = 200
         quadrants = [
-            (100, 115, 100, 115, "rgba(46,204,113,0.08)",  "Leading",   "right", "top"),
-            (100, 115, 85,  100, "rgba(243,156,18,0.08)",  "Weakening", "right", "bottom"),
-            (85,  100, 85,  100, "rgba(231,76,60,0.08)",   "Lagging",   "left",  "bottom"),
-            (85,  100, 100, 115, "rgba(52,152,219,0.08)",  "Improving", "left",  "top"),
+            (100, _Q,  100, _Q,  "rgba(46,204,113,0.08)",  "Leading",   "right", "top"),
+            (100, _Q,  -_Q, 100, "rgba(243,156,18,0.08)",  "Weakening", "right", "bottom"),
+            (-_Q, 100, -_Q, 100, "rgba(231,76,60,0.08)",   "Lagging",   "left",  "bottom"),
+            (-_Q, 100, 100, _Q,  "rgba(52,152,219,0.08)",  "Improving", "left",  "top"),
         ]
         for x0, x1, y0, y1, fill, label, xanch, yanch in quadrants:
             fig.add_shape(
@@ -229,8 +252,8 @@ class SectorRotationPage:
                 fillcolor=fill, line_width=0, layer="below",
             )
             fig.add_annotation(
-                x=x1 if xanch == "right" else x0,
-                y=y1 if yanch == "top" else y0,
+                x=x_max if xanch == "right" else x_min,
+                y=y_max if yanch == "top" else y_min,
                 text=f"<b>{label}</b>",
                 font=dict(size=12, color="gray"),
                 showarrow=False, xanchor=xanch, yanchor=yanch,
@@ -283,12 +306,12 @@ class SectorRotationPage:
             height=height,
             xaxis=dict(
                 title="RS-Ratio  →  (>100 = outperforming)",
-                range=[85, 115],
+                range=[x_min, x_max],
                 showgrid=True, gridcolor="rgba(128,128,128,0.15)",
             ),
             yaxis=dict(
                 title="RS-Momentum  →  (>100 = accelerating)",
-                range=[85, 115],
+                range=[y_min, y_max],
                 showgrid=True, gridcolor="rgba(128,128,128,0.15)",
             ),
             showlegend=True,
@@ -315,6 +338,7 @@ class SectorRotationPage:
     # ── Level 2: CMF Treemap ──────────────────────────────────────────────────
 
     def _render_treemap(self, summary: pd.DataFrame, universe_name: str = "") -> None:
+        """Render a CMF-colored treemap of sector weights."""
         weight_label = {
             "US Sectors":   _t('sr.treemap_weight_us'),
             "EU Sectors":   _t('sr.treemap_weight_eu'),
@@ -364,6 +388,7 @@ class SectorRotationPage:
     # ── Level 4: Industry Drill-down ──────────────────────────────────────────
 
     def _render_industry_drilldown(self, universe_name: str, period: str) -> None:
+        """Render the industry drill-down tab for a selected sector (US only)."""
         if universe_name != "US Sectors":
             st.info(_t('sr.drill_us_only'), icon="ℹ️")
             return
@@ -441,6 +466,7 @@ class SectorRotationPage:
     # ── Level 3: Sector Matrix ────────────────────────────────────────────────
 
     def _render_matrix(self, summary: pd.DataFrame, key: str = "sector") -> None:
+        """Render the color-coded sector metrics table as a Plotly table."""
         st.subheader(_t('sr.matrix_subheader'))
         st.caption(_t('sr.matrix_caption'))
 
@@ -474,6 +500,7 @@ class SectorRotationPage:
         _RSC_COLS = ("RSC 4W %", "RSC 12W %", "RSC 30W %")
 
         def fmt_col(series: pd.Series, col: str) -> list[str]:
+            """Format a DataFrame column as a list of display strings."""
             if col in _RSC_COLS:
                 return [f"{v:+.2f}%" if pd.notna(v) else "N/A" for v in series]
             if col == "CMF 14D":
@@ -497,6 +524,7 @@ class SectorRotationPage:
         }
 
         def col_colors(col: str) -> list[str]:
+            """Return a list of rgba color strings for each cell in the given column."""
             if col == "Status":
                 return [_STATUS_RGBA.get(v, _NEUTRAL) for v in df[col]]
             if col == "RSC Trend":
@@ -663,8 +691,14 @@ class SectorRotationPage:
         if show_rsc and "RSC_vs_ETF" in df.columns:
             _METRIC_COLS.append("RSC_vs_ETF")
 
-        wanted     = _BASE_COLS + _METRIC_COLS
+        wanted     = ["ticker"] + _BASE_COLS + _METRIC_COLS
+        wanted     = list(dict.fromkeys(wanted))  # deduplicate, preserve order
         display_df = df[[c for c in wanted if c in df.columns]].copy()
+
+        # ── Details link column ────────────────────────────────────────────────
+        display_df.insert(0, "details", display_df["ticker"].apply(
+            lambda t: f"/?symbol={t}&details=True"
+        ))
         display_df = display_df.rename(columns=_RENAME)
 
         # ── ProgressColumn configs for numeric metrics ─────────────────────────
@@ -682,7 +716,12 @@ class SectorRotationPage:
         }
         _PROG_RANGES[_rsc_label] = (-20, 20)
 
-        col_cfg: dict = {}
+        col_cfg: dict = {
+            "details": st.column_config.LinkColumn(
+                _t('sr.stocks_col_details'),
+                display_text=_t('sr.stocks_col_view'),
+            ),
+        }
         for col_name, (lo, hi) in _PROG_RANGES.items():
             if col_name in display_df.columns:
                 col_cfg[col_name] = st.column_config.ProgressColumn(
@@ -742,6 +781,7 @@ class SectorRotationPage:
 
     @staticmethod
     def _to_excel(df: pd.DataFrame) -> bytes:
+        """Serialize a DataFrame to an in-memory Excel file and return the raw bytes."""
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Sector Rotation")
