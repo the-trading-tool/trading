@@ -17,10 +17,12 @@ _current_lang: str = _DEFAULT_LANG
 
 
 def _locales_dir() -> Path:
+    """Return the path to the locales/ directory (sibling of tradinglib/)."""
     return Path(__file__).parent.parent / "locales"
 
 
 def _load(lang: str) -> dict[str, str]:
+    """Read and return the JSON translation dict for lang; returns {} on any error."""
     path = _locales_dir() / f"{lang}.json"
     try:
         with open(path, encoding="utf-8") as f:
@@ -67,6 +69,7 @@ def init_from_session(sys_config=None) -> None:
 
 
 def current_language() -> str:
+    """Return the language code that is currently active (e.g. 'en' or 'de')."""
     return _current_lang
 
 
@@ -76,9 +79,17 @@ def t(key: str, **kwargs) -> str:
     Lazy-initialises English on the first call if no language has been loaded yet,
     so translations work even without an explicit init_from_session() call.
     Falls back to the key itself when a key is missing.
+
+    When a key is not found in the in-memory dict, the JSON file is re-read once
+    so that keys added after the process started are picked up without a restart.
     """
     if not _translations:
         load_language(_DEFAULT_LANG)
+    if key not in _translations:
+        # Key missing — could be a newly added translation; reload once from disk.
+        fresh = _load(_current_lang)
+        if key in fresh:
+            _translations.update(fresh)
     text = _translations.get(key, key)
     if kwargs:
         try:
