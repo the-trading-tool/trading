@@ -4,6 +4,7 @@ from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as p
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
 from tradinglib.utils import DataUtils
 from tradinglib.i18n import t
+from tradinglib.tools import open_db
 
 from tradinglib.indicator import ewo
 import datetime as dt
@@ -15,11 +16,139 @@ import streamlit as st
 import plotly.express as px
 import re
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    import duckdb as _duckdb
+    _DUCKDB_OK = True
+except ImportError:
+    _DUCKDB_OK = False
+
+
+@st.cache_resource
+def _cached_ticker_conn(ticker_path: str, perf_path: str, info_path: str):
+    """Return a cached SQLite connection to yf_tickers.db with perf and info DBs attached."""
+    conn = open_db(ticker_path, check_same_thread=False)
+    conn.execute(f"ATTACH DATABASE '{perf_path}' AS performance_db")
+    conn.execute(f"ATTACH DATABASE '{info_path}' AS info_db")
+    return conn
+
+
+@st.cache_resource
+def _cached_info_conn(info_path: str):
+    """Return a cached read-only SQLite connection to asset_info.db."""
+    return open_db(info_path, readonly=True, check_same_thread=False)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _duckdb_fetch_years(
+    sim_db_paths: tuple,   # tuple for st.cache_data hashability
+    ticker_db_path: str,
+    info_db_path: str,
+    index_column: str,
+    index_filter,
+    qry_ext: str,
+    reference_date: str = "",   # ISO date — empty = no cutoff
+    latest_only: bool = True,   # True = performance view (1 row/ticker)
+                                # False = simulation (all rows = time series)
+) -> pd.DataFrame:
+    """Load performance data from multiple annual simulation DBs via DuckDB.
+
+    latest_only=True  → performance page: most-recent row per ticker (MAX Date).
+    latest_only=False → strategy finder: full time series for all tickers.
+    Results are cached for 300 seconds via st.cache_data.
+    """
+    if not _DUCKDB_OK:
+        raise ImportError("duckdb nicht installiert — pip install duckdb")
+
+    con = _duckdb.connect()
+    con.execute("INSTALL sqlite; LOAD sqlite;")
+
+    # --- Jedes Jahres-Sim-DB attachieren ---
+    union_parts = []
+    for i, path in enumerate(sim_db_paths):
+        alias = f"sim_{i}"
+        con.execute(f"ATTACH '{path}' AS {alias} (TYPE SQLITE, READ_ONLY TRUE)")
+        union_parts.append(f"SELECT *, '{path}' AS _source FROM {alias}.asset_simulation")
+
+    union_sql = " UNION ALL ".join(union_parts)
+
+    # --- yf_tickers + asset_info attachieren ---
+    con.execute(f"ATTACH '{ticker_db_path}' AS tkr (TYPE SQLITE, READ_ONLY TRUE)")
+    con.execute(f"ATTACH '{info_db_path}' AS inf (TYPE SQLITE, READ_ONLY TRUE)")
+
+    date_filter = f"WHERE Date <= '{reference_date}'" if reference_date else ""
+
+    if qry_ext.strip().upper().startswith("ORDER BY"):
+        order_clause = qry_ext
+        filter_clause = ""
+    else:
+        filter_clause = qry_ext
+        order_clause = ""
+
+    sim_cols = """
+        ap.*,
+        yt.ISIN,
+        ai.sector, ai.shortName, ai.longName, ai.exchange,
+        ai.industry, ai.beta, ai.lastDividendValue,
+        ai.recommendationKey, ai.targetHighPrice, ai.targetMeanPrice,
+        ai.targetLowPrice, ai.ebitdaMargins, ai.revenueGrowth,
+        ai.marketCap, ai.totalDebt, ai.totalRevenue, ai.enterpriseValue
+    """
+
+    if latest_only:
+        # Performance-Ansicht: 1 Zeile pro Ticker (neuester Stand)
+        query = f"""
+            WITH sim_all AS ({union_sql}),
+            latest AS (
+                SELECT ticker, MAX(Date) AS max_date
+                FROM sim_all {date_filter}
+                GROUP BY ticker
+            )
+            SELECT {sim_cols}, '{index_column}' AS index_name
+            FROM sim_all ap
+            INNER JOIN latest
+                ON ap.ticker = latest.ticker AND ap.Date = latest.max_date
+            LEFT JOIN tkr.stocks yt ON ap.ticker = yt.Ticker
+            LEFT JOIN inf.asset_info ai ON ap.ticker = ai.ticker
+            {filter_clause} {order_clause}
+        """
+    else:
+        # Simulation: alle Zeilen (Zeitreihe), doppelte (Date,ticker) entfernen.
+        # INNER JOIN auf stocks+indices → nur Ticker im gewählten Index (wie q=3).
+        date_cutoff = f"AND ap.Date <= '{reference_date}'" if reference_date else ""
+        index_where = f"AND idx.name LIKE '{index_column}'" if index_column else ""
+        query = f"""
+            WITH sim_all AS ({union_sql}),
+            deduped AS (
+                SELECT *, ROW_NUMBER() OVER (
+                    PARTITION BY ticker, Date ORDER BY _source DESC
+                ) AS _rn
+                FROM sim_all
+            )
+            SELECT {sim_cols}, COALESCE(idx.name, '{index_column}') AS index_name
+            FROM deduped ap
+            INNER JOIN tkr.stocks yt ON ap.ticker = yt.Ticker
+            INNER JOIN tkr.stock_indices si ON yt.id = si.stock_id
+            INNER JOIN tkr.indices idx ON si.index_id = idx.id
+            LEFT JOIN inf.asset_info ai ON ap.ticker = ai.ticker
+            WHERE ap._rn = 1 {index_where} {date_cutoff}
+            {filter_clause} {order_clause}
+        """
+
+    try:
+        df = con.execute(query).df()
+    finally:
+        con.close()
+    return df
 
 
 class Performance(tt.TickerTools):
 
-    def export_to_excel(self, data, button_label = 'Export', file_name = 'data.xlsx', region = st ): 
+    def export_to_excel(self, data, button_label='Export', file_name='data.xlsx', region=st):
+        """Render a Streamlit download button that exports data as an Excel file."""
         df_xlsx = self.get_bin_excel_data(data) # portfolio.get_transaction_dataframe())
         region.download_button(label=button_label,
             data=df_xlsx,
@@ -28,7 +157,7 @@ class Performance(tt.TickerTools):
         )
     
     def find_files_with_pattern(self, directory, pattern):
-        # Liste, um die extrahierten Teile zu speichern
+        """Return a list of the captured groups from filenames in directory that match pattern."""
         extracted_parts = []
     
         # Durchsucht das Verzeichnis
@@ -43,35 +172,63 @@ class Performance(tt.TickerTools):
     
         return extracted_parts
 
-    def select_chart(self, data, limit = 100, region = st):
-        
+    @st.dialog('Chart', width='large')
+    def tiny_chart_overlay(self, selection):
+        """Show a tiny_chart overlay for the selected row; keep full-viewer link."""
+        try:
+            ticker = selection['ticker'].iloc[0]
+            longname = selection['longName'].iloc[0] if 'longName' in selection.columns else ticker
+        except Exception:
+            st.error("No asset selected.")
+            return
+        st.markdown(f"[View (Full details) →](/?details=true&symbol={ticker})")
+        (interval, period, overlays, oszilators) = self.sys_config.get_selectors()
+        with st.spinner(t('assets.spinner')):
+            t_chart = tc.tiny_chart(
+                symbol=ticker,
+                longname=longname,
+                interval=interval,
+                period=period,
+                add_overlays=overlays,
+                add_sub_plots=oszilators,
+                username=self.username,
+                url="/?details=true&symbol=",
+            )
+        if t_chart.fig:
+            st.plotly_chart(t_chart.fig, use_container_width=True)
+        else:
+            st.warning(f"No chart data available for {ticker}.")
+
+    def select_chart(self, data, limit=100, region=st):
+        """Render a selectable data table; opens a tiny-chart overlay when a row is clicked."""
         df = data.copy()
         if limit > 0:
             df = df[:limit]
-        column_config = {
-            "details": st.column_config.LinkColumn(
-                "Details", display_text="View"
-            )
-        }
-        cols = list(df)
-        cols.insert(0, cols.pop(cols.index('details')))
-        df = df.loc[:, cols]
+        df = df.drop(columns=['details'], errors='ignore')
 
-        selection = self.dataframe_with_selections(df, region = region, column_config=column_config)    
-        try:
-            t = selection['ticker'].iloc[-1]
-            if not selection.empty:
-#                self.chart(selection)
-                self.overlay_chart(selection)
-        except Exception:
-            pass
+        event = region.dataframe(
+            df,
+            hide_index=True,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="pd_asset_table",
+        )
+        if event.selection.rows:
+            selected_ticker = df.iloc[event.selection.rows[0]]['ticker']
+            if st.session_state.get("pd_last_shown") != selected_ticker:
+                st.session_state["pd_last_shown"] = selected_ticker
+                self.tiny_chart_overlay(df.iloc[[event.selection.rows[0]]])
+        else:
+            st.session_state.pop("pd_last_shown", None)
 
     def attach_dbs(self):
-
-        self.ticker_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=self.ticker_db))
-        # Attach die anderen Datenbanken
-        self.ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name=self.performance_db)}' AS performance_db")
-        self.ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name=self.info_db)}' AS info_db")
+        """Resolve DB paths and populate self.ticker_conn via the cached connection helper."""
+        t = tools.Tools()
+        ticker_path = t.get_path(path=self.db_path, file_name=self.ticker_db)
+        perf_path   = t.get_path(path=self.db_path, file_name=self.performance_db)
+        info_path   = t.get_path(path=self.db_path, file_name=self.info_db)
+        self.ticker_conn = _cached_ticker_conn(ticker_path, perf_path, info_path)
 
     def __init__(self, ticker_db="yf_tickers.db", performance_db="asset_simulation_.db", info_db="asset_info.db", index_column = '', db_path = 'database', username='', is_admin = False):
         """
@@ -93,15 +250,17 @@ class Performance(tt.TickerTools):
         self.sys_config = sysconf.SystemConfig(username=username)
         self.system_currency = self.sys_config.get_value(f'system_currency')
 
-        self.attach_dbs()     
-        self.info_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=info_db))
+        self.attach_dbs()
+        info_path = tools.Tools().get_path(path=self.db_path, file_name=info_db)
+        self.info_conn = _cached_info_conn(info_path)
         self.index_column = index_column
 
-    def get_bin_excel_data(self, data = pd.DataFrame(), tbl='results'):
+    def get_bin_excel_data(self, data=pd.DataFrame(), tbl='results'):
+        """Serialize data to an in-memory Excel BytesIO (delegates to DataUtils)."""
         return DataUtils.get_bin_excel_data(data, tbl=tbl)
 
-    def dataframe_with_selections(self, df, preselect=False, preselect_count = 0, region = st, column_config={}, filter = []) -> pd.DataFrame: #, sort_by = 'ticker'):
-
+    def dataframe_with_selections(self, df, preselect=False, preselect_count=0, region=st, column_config={}, filter=[]) -> pd.DataFrame:
+        """Render an editable DataFrame with a Select checkbox column; returns only selected rows."""
         session_key = "df_selections"
         st.session_state[session_key] = []
         if not filter == []:
@@ -156,7 +315,8 @@ class Performance(tt.TickerTools):
         return edited_df[edited_df["Select"]].drop(columns=["Select"])    
     
 #    @st.cache_data
-    def fetch_combined_data_with_attach(_self, index_filter, c_size = '', m_price = '', o_by = '', lim = 0, sector = 'ANY', exchange = 'ANY', index_column = '', curr_column='ANY'):
+    def fetch_combined_data_with_attach(_self, index_filter, c_size='', m_price='', o_by='', lim=0, sector='ANY', exchange='ANY', index_column='', curr_column='ANY'):
+        """Run the main simulation query with optional sector/exchange/price filters and return a DataFrame."""
 
         def add_url(search):
             return f'/?symbol="{search}"'
@@ -186,10 +346,7 @@ class Performance(tt.TickerTools):
         query = mq.make_query('asset_simulation', _self.index_column, index_filter, q=1, q_ext=f"{qry_ext}",
                                conn=_self.ticker_conn)
         
-#        st.write(query)
         combined_df = pd.read_sql_query(query, _self.ticker_conn)
-#        st.write(combined_df)
-#        combined_df.to_excel("seclection.xlsx","Default")
         combined_df['stockIndex'] = _self.index_column 
         combined_df['details'] = combined_df['longName'].apply(add_url)
 
@@ -199,9 +356,6 @@ class Performance(tt.TickerTools):
             combined_df['ewo_ema'] = 0.0
 
 #        # just for compatibility to older version
-#        if not 'ovtEma9' in combined_df.columns: 
-#            combined_df['ovtEma9'] = 0.0
-#            combined_df['ovtEma21'] = 0.0
 
         combined_df = combined_df.drop_duplicates(subset=['Date', 'ticker'], keep='last')
         if 'isin' in combined_df:
@@ -210,23 +364,17 @@ class Performance(tt.TickerTools):
         return combined_df
 
     def fetch_data(self, ticker=''):
-
-        ticker_conn = sqlite3.connect(tools.Tools().get_path(path = self.db_path, file_name=self.ticker_db))
-        # Attach die anderen Datenbanken
-        ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name='asset_simulation_.db')}' AS performance_db")
-        ticker_conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = self.db_path, file_name=self.info_db)}' AS info_db")
-
+        """Fetch the latest simulation row for a single ticker."""
         query = f"""
             {mq.make_query('asset_simulation', q=2)}
             WHERE yt.ticker = '{ticker}'
             LIMIT 1
         """
-
-        df = pd.read_sql_query(query, ticker_conn)
+        df = pd.read_sql_query(query, self.ticker_conn)
         return df
 
-    def chart_details(self, df, region = st):
-
+    def chart_details(self, df, region=st):
+            """Render the main asset detail page for the ticker in df."""
             def normalize(name, dig=1):
                 value = self.check_value(df[name].iloc[-1])
                 try:
@@ -240,16 +388,17 @@ class Performance(tt.TickerTools):
             mp.render_mainpage(symbol=ticker, search_ticker_only=True, hide_details=False, hide_search=True, username=self.username, is_admin=self.is_admin)
             
 
-    @st.dialog('Asset details',width='large')
-    def overlay_chart(self, selection, col = 'ticker'):
+    @st.dialog('Asset details', width='large')
+    def overlay_chart(self, selection, col='ticker'):
+        """Open a full-screen Streamlit dialog showing the asset detail page for the selected row."""
                         
         ticker = selection['ticker'][selection[col].index[0]]
         df = self.fetch_data(ticker=ticker)
         self.chart_details(df, region = st)
 
 
-    def chart(self, selection, col = 'ticker'):
-
+    def chart(self, selection, col='ticker'):
+        """Render the asset detail page inline (non-dialog version of overlay_chart)."""
         ticker = selection['ticker'][selection[col].index[0]]
         df = self.fetch_data(ticker=ticker)
             
@@ -263,23 +412,9 @@ class Performance(tt.TickerTools):
             index_filter (int): Filter for the index column (e.g., GDAXI = 1).
         """
 
-        years = [f'{dt.datetime.now().year}']
-        #st.write(self.get_path(self.db_path,''))
-        years.extend(list(self.find_files_with_pattern(self.db_path, r'asset_simulation_(\d+)\.db')))
-        self.use_year = int(st.selectbox(
-            t('perf.data_as_of'),
-            options=sorted(years, reverse=True),
-            index=0,
-        ))
-
-        if not self.use_year == dt.datetime.now().year:
-            self.performance_db = f'asset_simulation_{self.use_year}.db'
-            self.attach_dbs()
-
-        # Fetch combined data
+        # Immer aktuelle DB laden — kein Jahr-Picker auf dieser Seite
         combined_df = self.fetch_combined_data_with_attach("")
-#        st.data_editor(combined_df)
-        combined_df.fillna(value={'sector':'Other'}, inplace=True)
+        combined_df = combined_df.fillna(value={'sector': 'Other'})
 
         if combined_df.empty:
             st.error(t('perf.no_data'))
@@ -294,9 +429,9 @@ class Performance(tt.TickerTools):
             pass
             
         """
-        combined_df.sort_values(['overallValueTrend','sortino','ticker'],ascending=[False,False,True], inplace=True)
+        combined_df = combined_df.sort_values(['overallValueTrend','sortino','ticker'], ascending=[False,False,True])
         self.select_chart(combined_df, limit=1000, region = st)
-        self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name=f'simulation_{self.use_year}_dataset.xlsx', region=st)
+        self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name='simulation_dataset.xlsx', region=st)
 
         col_chk, col_sel = st.columns([1, 2])
         show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key='perf_show_grid')
@@ -323,5 +458,3 @@ class Performance(tt.TickerTools):
                     log_exceptions=True,
                 )
 
-
-                
