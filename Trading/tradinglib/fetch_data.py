@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import yfinance as yf
 from tradinglib import market_data as md
@@ -198,7 +199,7 @@ class FetchData(tt.TickerTools):
             pass
 
         df = pd.DataFrame()
-        if price_tbl:
+        if price_tbl and os.path.exists(price_db):
             conn = open_db(price_db, readonly=True)
             df = load_data_into_dataframe(conn, price_tbl, limit=limit)
             conn.close()
