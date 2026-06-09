@@ -128,7 +128,9 @@ class DataVisualizer(tt.TickerTools):
         query = mq.make_query('asset_simulation', self.index_column, index_filter,
                                q_ext=qry_ext, conn=self.ticker_conn)
         combined_df = pd.read_sql_query(query, self.ticker_conn)
-        combined_df = combined_df.drop_duplicates(subset=['Date', 'ticker'], keep='last')
+        dup_cols = [c for c in ['Date', 'ticker'] if c in combined_df.columns]
+        if dup_cols:
+            combined_df = combined_df.drop_duplicates(subset=dup_cols, keep='last')
         return combined_df
     
     def day_change(self, tickers):

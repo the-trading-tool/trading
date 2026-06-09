@@ -357,7 +357,9 @@ class Performance(tt.TickerTools):
 
 #        # just for compatibility to older version
 
-        combined_df = combined_df.drop_duplicates(subset=['Date', 'ticker'], keep='last')
+        dup_cols = [c for c in ['Date', 'ticker'] if c in combined_df.columns]
+        if dup_cols:
+            combined_df = combined_df.drop_duplicates(subset=dup_cols, keep='last')
         if 'isin' in combined_df:
             combined_df['isin'] = combined_df['isin'].astype(str)
 
