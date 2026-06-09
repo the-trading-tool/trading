@@ -6,8 +6,18 @@ from typing import Iterable
 import json
 from datetime import datetime
 import logging
+from tradinglib.tools import open_db
 
 logger = logging.getLogger(__name__)
+
+_XRATE_CACHE_MAX = 256
+
+
+def _xrate_put(cache: dict, key, value) -> None:
+    """Bounded insert for _xrate_cache — evicts oldest entry when full."""
+    if len(cache) >= _XRATE_CACHE_MAX:
+        del cache[next(iter(cache))]
+    cache[key] = value
 
 
 class DataUtils():
@@ -22,6 +32,7 @@ class DataUtils():
 
     @staticmethod
     def get_table_name(interval: str) -> str:
+        """Map a yfinance interval string to the corresponding SQLite table name (e.g. '1d' → 'day_data')."""
         mapping = {
             "1m": "min",
             "60m": "h60",
@@ -67,7 +78,7 @@ class DataUtils():
             df = md.ticker_history(f"{system_currency}{symbol}=X", period=period, interval=interval)
             if not df.empty:
                 val = float(df['Close'].iloc[-1])
-                cls._xrate_cache[key] = val
+                _xrate_put(cls._xrate_cache, key, val)
                 return val
         except Exception:
             pass
@@ -98,7 +109,7 @@ class DataUtils():
             # check persistent sqlite cache
             try:
                 db_path = cls._get_xrate_db_path()
-                conn = sqlite3.connect(db_path)
+                conn = open_db(db_path)
                 cur = conn.cursor()
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS exchange_rates (
@@ -114,7 +125,7 @@ class DataUtils():
                             (currency, local_currency, d.isoformat()))
                 row = cur.fetchone()
                 if row:
-                    cls._xrate_cache[key] = float(row[0])
+                    _xrate_put(cls._xrate_cache, key, float(row[0]))
                     conn.close()
                     return cls._xrate_cache[key]
                 conn.close()
@@ -144,10 +155,10 @@ class DataUtils():
                     return 1.0
 
             # store in-memory and persistent cache
-            cls._xrate_cache[key] = val
+            _xrate_put(cls._xrate_cache, key, val)
             try:
                 db_path = cls._get_xrate_db_path()
-                conn = sqlite3.connect(db_path)
+                conn = open_db(db_path)
                 cur = conn.cursor()
                 cur.execute("INSERT OR REPLACE INTO exchange_rates (currency, local_currency, date, rate, ts) VALUES (?, ?, ?, ?, datetime('now'))",
                             (currency, local_currency, d.isoformat(), val))
@@ -163,7 +174,6 @@ class DataUtils():
     @classmethod
     def _get_xrate_db_path(cls) -> str:
         """Return path to sqlite file used for persistent xrate caching, create dir if needed."""
-#        base = os.path.join(os.getcwd(), 'database')
         from tradinglib import tools
         base = tools.Db_tools().get_path()
         try:
@@ -174,6 +184,7 @@ class DataUtils():
 
     @staticmethod
     def get_num_rows(df) -> int:
+        """Return the number of rows in df, or 0 on any error (e.g. None input)."""
         try:
             return len(df.index)
         except Exception:
@@ -181,7 +192,7 @@ class DataUtils():
 
     @staticmethod
     def normalize_index_to_utc_naive(obj):
-        # Backwards-compatible wrapper: default tz is UTC
+        """Backwards-compatible wrapper for normalize_index_to_tz_naive with tz='UTC'."""
         return DataUtils.normalize_index_to_tz_naive(obj, tz='UTC')
 
     @staticmethod
@@ -254,10 +265,11 @@ class DataUtils():
 
     @staticmethod
     def get_bin_excel_data(data: pd.DataFrame, tbl: str = 'results') -> BytesIO:
+        """Serialize a DataFrame to an in-memory Excel file and return a BytesIO object."""
         output = BytesIO()
         df = data.copy()
         try:
-            df.reset_index(inplace=True, drop=True)
+            df = df.reset_index(drop=True)
         except Exception:
             pass
 
@@ -344,6 +356,7 @@ class DataUtils():
 
     @staticmethod
     def get_last_index_str(df, fmt: str = '%Y-%m-%d %H:%M:%S', default='') -> str:
+        """Return the last index value of df formatted as a string, or default on any failure."""
         try:
             if df is None or getattr(df, 'empty', True):
                 return default
@@ -370,7 +383,7 @@ class DataUtils():
             # rename first column if it's unnamed or if yfinance used 'Datetime' (intraday)
             for _alias in ('index', 'Datetime'):
                 if _alias in working.columns and 'Date' not in working.columns:
-                    working.rename(columns={_alias: 'Date'}, inplace=True)
+                    working = working.rename(columns={_alias: 'Date'})
                     break
 
         # normalize column names
@@ -395,7 +408,6 @@ class DataUtils():
         for _, r in working.iterrows():
             date_val = r.get('Date')
             try:
-                # if Timestamp-like, format
                 if hasattr(date_val, 'strftime'):
                     date_val = date_val.strftime(date_format)
             except Exception:
@@ -471,4 +483,22 @@ class DataUtils():
         conn.commit()
 
 
-__all__ = ["DataUtils"]
+def get_display_name(row, name_col: str = 'longName', fallback_col: str = 'shortName') -> str:
+    """Return the best available display name for a ticker row (dict or DataFrame row).
+
+    Futures and some ETFs have no longName in Yahoo Finance — falls back to
+    shortName so chart titles never show 'None'.
+
+    Works with both dict-like objects (row.get) and pandas Series / namedtuples.
+    """
+    try:
+        name = row.get(name_col) if hasattr(row, 'get') else row[name_col]
+        if not name and fallback_col:
+            name = (row.get(fallback_col) if hasattr(row, 'get') else row.get(fallback_col, '')) or ''
+        return name or ''
+    except Exception:
+        return ''
+
+
+__all__ = ["DataUtils", "get_display_name"]
+

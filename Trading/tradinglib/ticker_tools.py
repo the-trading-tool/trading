@@ -1,5 +1,7 @@
+import logging
 import os
 import sqlite3
+import inspect
 from datetime import datetime, timedelta
 import time
 from io import BytesIO
@@ -11,7 +13,10 @@ from math import floor
 from urllib.parse import quote
 
 from tradinglib import tools
+from tradinglib.tools import open_db
 import tradinglib.indicator as indicator_pkg
+
+logger = logging.getLogger(__name__)
 import pkgutil
 import importlib
 import re
@@ -21,7 +26,12 @@ from tradinglib.utils import DataUtils
 from tradinglib import market_data as md
 
 
-def calculate_investment(asset_log_vola=0.20, target_avg=2000, ref_vola=0.1 ):
+def calculate_investment(asset_log_vola=0.20, target_avg=2000, ref_vola=0.1):
+    """Compute a volatility-scaled investment amount.
+
+    Invests proportionally more when asset volatility is low, less when high.
+    Capped at 3× target_avg to avoid concentration risk.
+    """
     # Skalierungsfaktor: Weniger investieren bei hoher Vola, mehr bei niedriger
     factor = ref_vola / asset_log_vola
     
@@ -70,6 +80,7 @@ class OHLCQueryPlanner:
         self.required_rows = self._calculate_required_rows()
 
     def _parse_freq(self, s: str) -> Tuple[int, str]:
+        """Parse a frequency string like '5m' or '1wk' into (value, unit)."""
         if s == "max":
             return 1, s
         match = re.match(r"(\d+)([a-z]+)", s)
@@ -78,6 +89,7 @@ class OHLCQueryPlanner:
         return int(match[1]), match[2]
 
     def _resolve_source_table(self) -> str:
+        """Map the requested interval to the correct SQLite source table prefix."""
         (_, unit) = self._parse_freq(self.interval) 
         for base_table, intervals in self.INTERVAL_TO_SOURCE:
             if unit in intervals:
@@ -85,6 +97,7 @@ class OHLCQueryPlanner:
         raise ValueError(f"unknown intervall: {self.interval}")
 
     def _calculate_required_rows(self) -> int:
+        """Calculate the number of rows needed to cover the requested period at the given interval."""
         interval_val, _ = self._parse_freq(self.interval)
         period_val, period_unit = self._parse_freq(self.period)
 
@@ -100,6 +113,7 @@ class OHLCQueryPlanner:
         return int(total_trading_days * rows_per_day)
 
     def get_plan(self) -> Tuple[str, int]:
+        """Return (table_name, required_rows) for the configured interval/period combination."""
         return f"{self.source_table}_data", self.required_rows
 
 
@@ -110,7 +124,8 @@ class TickerTools(tools.Tools):
     intervals=["1m","60m","1d", "1mo"]
     periods=['7d','60d','max','max']
 
-    def add_url(self, search, interval:str = '30m', period:str ='1mo' ):
+    def add_url(self, search, interval: str = '30m', period: str = '1mo'):
+        """Build an app-internal URL for a ticker detail page."""
         try:
             search = search[:20]
             for r in [',','-',"'",'\"',".",";","/","#","+","&","(",")","[","]","=","@"]:
@@ -121,7 +136,7 @@ class TickerTools(tools.Tools):
         return f'/?symbol={search}&details=True'#&interval=1mo&period=10y&details=False'
 
     def load_tradinglib_indicator_instances(self):
-
+        """Dynamically import all indicator modules from the tradinglib.indicator package."""
         # Dynamisch alle Module im indicator-Paket importieren, außer die mit "_"
         for loader, module_name, is_pkg in pkgutil.iter_modules(indicator_pkg.__path__):
             if not module_name.startswith("_"):
@@ -129,11 +144,15 @@ class TickerTools(tools.Tools):
                 try:
                     self.imported_modules[module_name] = importlib.import_module(full_module_name)
                 except Exception as e:
-                    print(f"⚠️ Indicator '{module_name}' konnte nicht geladen werden: {e}")
+                    logger.warning("Indicator '%s' konnte nicht geladen werden: %s", module_name, e)
 
 
-    def init_instance(self, instance_name = None, replace_values_in_df = False, df=pd.DataFrame(), symbol=None):
+    def init_instance(self, instance_name=None, replace_values_in_df=False, df=pd.DataFrame(), symbol=None):
+        """Instantiate indicator plugin(s) and attach them as attributes on self.
 
+        Pass instance_name to load a single indicator; omit to load all discovered ones.
+        When replace_values_in_df=True, self.df is updated with the indicator's output.
+        """
         # Load instances — reload if the requested module is missing (picks up
         # newly added indicator files without requiring a server restart)
         if len(self.imported_modules) == 0 or (
@@ -154,6 +173,14 @@ class TickerTools(tools.Tools):
                 if sys_conf and hasattr(cls, 'params') and cls.params:
                     extra = sys_conf.get_plugin_params(name)
 
+                # Filter to params accepted by __init__ to avoid TypeError
+                # when the DB contains stale or style_params keys.
+                try:
+                    valid = set(inspect.signature(cls.__init__).parameters) - {'self'}
+                    extra = {k: v for k, v in extra.items() if k in valid}
+                except Exception:
+                    pass
+
                 if df.empty:
                     instance = cls(df=self.df, **extra)
                 else:
@@ -165,9 +192,9 @@ class TickerTools(tools.Tools):
                     self.df = instance.df
 
             except AttributeError:
-                print(f"⚠️ Not found '{class_name}' in '{name}'")
+                logger.warning("Not found '%s' in '%s'", class_name, name)
             except Exception as e:
-                print(f"❌ Error in '{class_name}': {e}")
+                logger.error("Error in '%s': %s", class_name, e)
 
         if instance_name is None:
             for name, module in self.imported_modules.items():
@@ -175,12 +202,11 @@ class TickerTools(tools.Tools):
         elif instance_name in self.imported_modules:
             instanciate(instance_name, self.imported_modules[instance_name])
         else:
-            print(f"⚠️ Indicator module '{instance_name}' not found in imported_modules")
+            logger.warning("Indicator module '%s' not found in imported_modules", instance_name)
 
 
     def get_sheet_as_df(self, ticker, item, name):
-
-#        if 1:
+        """Extract a financial sheet (e.g. balance sheet) from a ticker dict as a DataFrame."""
         try:
             sht = self.get_ticker_value(ticker,item, True)                
             columns = []
@@ -203,8 +229,12 @@ class TickerTools(tools.Tools):
         return pd.DataFrame()
     
 
-    def get_ticker_value(self, ticker, key, from_json=False, digits = 2):
+    def get_ticker_value(self, ticker, key, from_json=False, digits=2):
+        """Safely extract a scalar value from a ticker metadata DataFrame.
 
+        from_json=True: deserializes the raw string as JSON first.
+        Returns 0 for missing or NaN values.
+        """
         def _get_value(id, key):
             return ticker[key].iloc[id]
 
@@ -239,7 +269,7 @@ class TickerTools(tools.Tools):
 
 
     def transform_df(self, df):
-        
+        """Transpose a DataFrame and promote the first row to column headers."""
         df = df.reset_index()
         df = df[df.columns[1:]]
         df = df.transpose()
@@ -251,12 +281,13 @@ class TickerTools(tools.Tools):
 
 
     def get_income_statement(self, t, symbol):
-
+        """Return the income statement for ticker t as a transposed DataFrame."""
         df = t.income_statement()
         return self.transform_df(df)
 
 
-    def get_exchange_rate(self, symbol = 'EUR', system_currency = 'EUR', period='1d', interval='1m'):
+    def get_exchange_rate(self, symbol='EUR', system_currency='EUR', period='1d', interval='1m'):
+        """Return the exchange rate symbol→system_currency (delegates to DataUtils for caching)."""
         # Delegate to the centralized helper in DataUtils which provides caching
         try:
             return DataUtils.get_exchange_rate(symbol=symbol, system_currency=system_currency, period=period, interval=interval)
@@ -265,15 +296,20 @@ class TickerTools(tools.Tools):
 
 
     def get_table_name(self, interval):
-        # Delegiere an zentrale Utility-Funktion
+        """Return the SQLite table name for the given interval (delegates to DataUtils)."""
         return DataUtils.get_table_name(interval)
         
     def get_num_rows(self, df):
+        """Return the number of rows in df (delegates to DataUtils)."""
         return DataUtils.get_num_rows(df)
 
 
     def fetch_yahoo_ticker_data(self, symbol, period, interval):
-        
+        """Download price history and metadata from Yahoo Finance via market_data wrappers.
+
+        Enriches the info dict with income statement and balance sheet JSON.
+        Returns (price_df, info_dict).
+        """
         df = pd.DataFrame()
         info = {}
         try:
@@ -316,19 +352,19 @@ class TickerTools(tools.Tools):
         return df, info
 
 
-    def read_stock_list(self, 
-                        excel_file='All_Stocks.xlsx', 
-                        db_path = 'database', 
-                        db_name = "yf_tickers.db", 
-                        tbl_columns = ['id','Ticker','Date', 'Invested','ISIN']
-                        ):
+    def read_stock_list(self, excel_file='All_Stocks.xlsx', db_path='database', db_name='yf_tickers.db', tbl_columns=['id', 'Ticker', 'Date', 'Invested', 'ISIN']):
+        """Import the stock list from an Excel file into yf_tickers.db.
+
+        Creates stocks, indices, and stock_indices tables if needed, then upserts
+        each row. Returns a DataFrame from the file, or empty if the file doesn't exist.
+        """
         
         db_name =  self.get_path(path = db_path, file_name=db_name)
     
         if os.path.isfile(excel_file):
 
             date = datetime.now().strftime(self.ftime_str)
-            conn = sqlite3.connect(db_name)
+            conn = open_db(db_name)
             cursor = conn.cursor()
             table_name = 'stocks'
 
@@ -358,7 +394,6 @@ CREATE TABLE IF NOT EXISTS stock_indices (
 """)
             
             df = pd.read_excel(excel_file, index_col=0, comment='#')
-#            print(df)
             for _, row in df.iterrows():
                 ticker = row["symbol"]
                 invested = row["invested"]
@@ -412,19 +447,19 @@ CREATE TABLE IF NOT EXISTS stock_indices (
                 # In ein pandas DataFrame umwandeln
                 df = pd.DataFrame(rows, columns=tbl_columns)
             else:
-                df.rename(columns={'symbol': 'Ticker'}, inplace=True)
+                df = df.rename(columns={'symbol': 'Ticker'})
 
             return df
         else:
             return pd.DataFrame()
 
 
-    def read_asset_data(self, ticker, db_path = 'database'):
-        
-        db_assets =  self.get_path(path = db_path, file_name='asset_info.db')
+    def read_asset_data(self, ticker, db_path='database'):
+        """Placeholder — joins asset_info with yf_tickers via ATTACH DATABASE (not yet implemented)."""
+        db_assets = self.get_path(path=db_path, file_name='asset_info.db')
         db_info =  self.get_path(path = db_path, file_name='yf_tickers.db')
         
-        conn = sqlite3.connect(db_assets)
+        conn = open_db(db_assets)
 
         # Zweite Datenbank anhängen
         conn.execute("ATTACH DATABASE 'db_info' AS db2;")
@@ -440,12 +475,13 @@ CREATE TABLE IF NOT EXISTS stock_indices (
         # Ergebnisse abrufen und anzeigen
         rows = cursor.fetchall()
         for row in rows:
-            print(row)
+            logger.debug("%s", row)
 
         # Verbindung schließen
         conn.close()            
         
-    def export_to_excel(self, data, button_label = 'Export', file_name = 'data.xlsx', region = st ): 
+    def export_to_excel(self, data, button_label='Export', file_name='data.xlsx', region=st):
+        """Render a Streamlit download button that exports data as an Excel file."""
         df_xlsx = self.get_bin_excel_data(data) # portfolio.get_transaction_dataframe())
         region.download_button(label=button_label,
             data=df_xlsx,
@@ -453,13 +489,19 @@ CREATE TABLE IF NOT EXISTS stock_indices (
             mime='application/octet-stream'
         )
 
-    def get_bin_excel_data(self, data = pd.DataFrame(), tbl='results'):
+    def get_bin_excel_data(self, data=pd.DataFrame(), tbl='results'):
+        """Serialize data to an in-memory Excel BytesIO (delegates to DataUtils)."""
         return DataUtils.get_bin_excel_data(data, tbl=tbl)
 
 
 class StockDataSaver(TickerTools):
 
-    def __init__(self, ticker, db_path = 'database', tz_ready = ""): # Europe/Berlin
+    def __init__(self, ticker, db_path='database', tz_ready=""):
+        """Open/create the per-ticker SQLite database yf_<ticker>.db for OHLCV storage.
+
+        tz_ready: optional IANA timezone name (e.g. 'Europe/Berlin') to convert
+        downloaded timestamps into. Leave empty to keep UTC.
+        """
         self.ticker = ticker        
         self.tz_ready = tz_ready
         self.db_path = db_path
@@ -477,13 +519,18 @@ class StockDataSaver(TickerTools):
         raise ValueError("Date not in supported format.")
 
 
-    def fetch_data(self, interval:str="1m", period:str ='max'):
+    def fetch_data(self, interval: str = "1m", period: str = 'max'):
+        """Download ticker history via the market_data wrapper (thin alias)."""
         # Use centralized wrapper instead of calling Ticker.history directly
         data = md.ticker_history(self.ticker, period=period, interval=interval)
         return data
 
     def fetch_data_dl(self, interval, period="max", force_remote=False):
-        
+        """Download OHLCV data from Yahoo Finance, clamped to yfinance's max lookback limits.
+
+        Normalizes some interval aliases (30m→1h) and derives start_date from the
+        maximum history Yahoo supports for each interval.
+        """
         interval = interval.lower()
         interval_length = {
             '30m': '1h',
@@ -523,18 +570,18 @@ class StockDataSaver(TickerTools):
         date = datetime.now() #.strptime(date_str, self.ftime_str).date()
         start_date = (date + timedelta(days=days)).strftime("%Y-%m-%d")
         data = md.download(tickers=self.ticker, start=start_date, interval=interval, actions=False, progress=False, auto_adjust=False, prepost=True, force_remote=force_remote)
-#        data.to_csv("data.csv",sep=";",decimal=",")
         if not self.tz_ready == "":
             try:
                 data.index = data.index.tz_convert(self.tz_ready)
             except Exception:
                 pass
         data = data.xs(self.ticker, axis=1, level='Ticker')
-        data.drop(columns=['Adj Close'], axis=1, inplace=True)
+        data = data.drop(columns=['Adj Close'], axis=1)
 
         return data
 
     def create_table(self, interval):
+        """Create the OHLCV table for the given interval if it doesn't exist."""
         table_name = self.get_table_name(interval)
         self.cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {table_name} (
@@ -548,6 +595,7 @@ class StockDataSaver(TickerTools):
         """)
 
     def save_to_db(self, data, interval):
+        """Persist a price DataFrame to the local SQLite database for this ticker."""
         table_name = self.get_table_name(interval)
         # Use utility bulk saver for better performance
         DataUtils.save_ohlc_to_sql(self.conn, table_name, data, date_format=self.ftime_str)
@@ -562,11 +610,15 @@ class StockDataSaver(TickerTools):
         failed_intervals = []
 
         for interval in intervals:
-            print(f"Fetching data for interval: {interval}")
+            _log.debug("Fetching data for interval: %s", interval)
             period = periods[intervals.index(interval)]
             try:
                 data = self.fetch_data_dl(interval, period=period, force_remote=force_remote)
-                self.save_to_db(data, interval)
+                if data is None or (hasattr(data, 'empty') and data.empty):
+                    _log.warning("No data for %s interval=%s (ticker unknown or delisted)", self.ticker, interval)
+                    failed_intervals.append(interval)
+                else:
+                    self.save_to_db(data, interval)
             except Exception:
                 _log.warning("Download failed for %s interval=%s", self.ticker, interval)
                 failed_intervals.append(interval)
@@ -575,6 +627,7 @@ class StockDataSaver(TickerTools):
         return failed_intervals
 
     def get_data(self, interval):
+        """Read all stored OHLCV rows for the given interval from SQLite."""
         table_name = self.get_table_name(interval)
         self.cursor.execute(f"SELECT * FROM {table_name}")
         rows = self.cursor.fetchall()
@@ -584,5 +637,6 @@ class StockDataSaver(TickerTools):
         return df
 
     def close_connection(self):
+        """Close the SQLite connection for this ticker's database."""
         self.conn.close()
 

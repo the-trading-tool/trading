@@ -7,18 +7,16 @@ from cryptography.fernet import Fernet
 try:
 	sys.path.insert(0, "../tradinglib")
 except ImportError:
-	print('No Import')
+	pass
  
 from tradinglib import tools
 
 class Ksp(tools.Tools):
 
-    def __init__(self, storage_path="database", secrets_path = "database"):
-        """Initialisiert den Speicherort und lädt den Verschlüsselungsschlüssel."""
+    def __init__(self, storage_path="database", secrets_path="database"):
+        """Load or generate the Fernet encryption key and decrypt the credentials file."""
         self.storage_path = self.get_path( path=storage_path, file_name='') 
         self.secrets_path = self.get_path( path=secrets_path, file_name='') 
-#        print(self.secrets_path)
-#        self.secrets_path = './' 
         self.key_file = os.path.join(self.secrets_path, "secret.key") 
         self.data_file = os.path.join(self.storage_path, "credentials.json") 
 
@@ -30,7 +28,7 @@ class Ksp(tools.Tools):
         self.credentials = self._load_credentials()
 
     def _load_or_create_key(self):
-        """Lädt den Verschlüsselungsschlüssel oder erstellt ihn neu."""
+        """Load the Fernet key from secret.key, or generate and save a new one."""
         if os.path.exists(self.key_file):
             with open(self.key_file, "rb") as keyfile:
                 return keyfile.read()
@@ -41,7 +39,7 @@ class Ksp(tools.Tools):
             return key
 
     def _load_credentials(self):
-        """Lädt verschlüsselte Zugangsdaten aus einer Datei."""
+        """Decrypt and return the credentials dict from credentials.json, or {} when absent."""
         if os.path.exists(self.data_file):
             with open(self.data_file, "rb") as file:
                 encrypted_data = file.read()
@@ -50,25 +48,26 @@ class Ksp(tools.Tools):
         return {}
 
     def _get_all_credentials(self):
+        """Return the full credentials dict (all stored API entries)."""
         return self.credentials
 
     def _save_credentials(self):
-        """Speichert die verschlüsselten Zugangsdaten in einer Datei."""
+        """Encrypt the current credentials dict and write it to credentials.json."""
         encrypted_data = self.fernet.encrypt(json.dumps(self.credentials).encode())
         with open(self.data_file, "wb") as file:
             file.write(encrypted_data)
 
     def add_ksp(self, api, user, password, url):
-        """Fügt neue Zugangsdaten hinzu."""
+        """Add or overwrite an API credential entry and persist the change."""
         self.credentials[api] = {"user": user, "password": password, "url": url}
         self._save_credentials()
 
     def get_ksp(self, api):
-        """Gibt die Zugangsdaten für eine API zurück."""
+        """Return the stored credential dict for api, or (None, None, None) when not found."""
         return self.credentials.get(api, (None, None, None))
 
     def delete_ksp(self, api):
-        """Entfernt einen Eintrag und speichert."""
+        """Remove the credential entry for api and persist the change."""
         if api in self.credentials:
             del self.credentials[api]
             self._save_credentials()
@@ -77,3 +76,4 @@ class Ksp(tools.Tools):
 if __name__ == "__main__":
 
     pass
+

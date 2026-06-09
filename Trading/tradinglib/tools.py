@@ -18,11 +18,34 @@ import numpy as np
 ftime_str = '%Y-%m-%d %H:%M:%S'
 BASE_URL = "https://trading.cloogidoo.com"
 
+
+def open_db(path: str, readonly: bool = False, timeout: float = 5.0,
+            check_same_thread: bool = True) -> sqlite3.Connection:
+    """Open a SQLite connection with standard PRAGMAs applied.
+
+    Use readonly=True for pure read paths — avoids write locks and is slightly
+    faster because WAL/synchronous settings are skipped.
+    Pass check_same_thread=False for connections shared across threads.
+    """
+    if readonly:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=timeout,
+                               check_same_thread=check_same_thread)
+    else:
+        conn = sqlite3.connect(path, timeout=timeout, check_same_thread=check_same_thread)
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute("PRAGMA cache_size = -64000")
+    conn.execute("PRAGMA temp_store = MEMORY")
+    conn.execute("PRAGMA mmap_size = 268435456")
+    return conn
+
 class Tools:
 
     ftime_str = ftime_str
     
     def split_interval(self, interval):
+        """Parse an interval string like '5m' or '1wk' into a (value, unit) tuple."""
         s_str = r"(\d{1,3})(\D+)"
         mi = re.search(s_str,interval)
         if mi:
@@ -31,14 +54,18 @@ class Tools:
         return(1,"")
     
     def get_ms_timestamp(self):
-        
+        """Return the current datetime as a string including microseconds."""
         return dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
 
     def get_d_timestamp(self):
-        
+        """Return today's date as a datetime string with time set to midnight."""
         return dt.datetime.now().strftime("%Y-%m-%d 00:00:00")
                 
-    def get_position(self,l, v):
+    def get_position(self, l, v):
+        """Return the zero-based index of the first occurrence of v in list l.
+
+        Returns len(l) when v is not found.
+        """
         index = 0
         for item in l:
             if not item == v:
@@ -49,6 +76,7 @@ class Tools:
         return len(l)
 
     def check_value(self, v):
+        """Safely return v; returns an empty string if access raises any error."""
         value = ''
         try:
             value = v
@@ -56,7 +84,8 @@ class Tools:
             pass
         return value
 
-    def to_int(self, s, d = 0):
+    def to_int(self, s, d=0):
+        """Convert s to int, returning default d on ValueError or TypeError."""
         i = d
         try:
             i = int(s)
@@ -64,8 +93,13 @@ class Tools:
             pass
         return i
 
-    def get_path(self, path = 'database', file_name ='', ignore_env=False):
+    def get_path(self, path='database', file_name='', ignore_env=False):
+        """Resolve the full filesystem path for a database file.
 
+        Respects the TradingDB environment variable to redirect all DB access to
+        a custom directory (e.g. production databases). Falls back to
+        <project_root>/database/ when the variable is not set.
+        """
         # Pfad für die SQLite-Datenbank-Datei
         try:
             if file_name  == '':
@@ -91,8 +125,9 @@ class Tools:
         
         else:
             
-            # Der Pfad des aufrufenden Skripts
-            caller_directory = Path(sys.argv[0]).resolve().parent
+            # Immer relativ zu tools.py selbst (tradinglib/ → parent = Projektroot)
+            # sys.argv[0] würde unter Streamlit auf den Launcher zeigen, nicht auf das Projekt
+            caller_directory = Path(__file__).resolve().parent.parent
 
             # Der Pfad zum 'database' Verzeichnis im Verzeichnis des aufrufenden Skripts
             sub_directory = caller_directory / path
@@ -313,7 +348,6 @@ class Db_tools(Tools):
     def _get_file_path(self) -> str:
         """Constructs full file path for the database."""
         path =  self.get_path(path = self.db_path, file_name=self.database_name)
-#        print(f"using {path}")
         return path
     
     def _connect(self):
@@ -326,20 +360,13 @@ class Db_tools(Tools):
             # Load data from file if exists
             file_path = self._get_file_path()
             if os.path.exists(file_path):
-                disk_conn = sqlite3.connect(file_path)
-                disk_conn.execute("PRAGMA busy_timeout = 5000")
+                disk_conn = open_db(file_path, readonly=True)
                 with self.memory_conn:
-                    #print("Saving in memory database to disk.")
                     disk_conn.backup(self.memory_conn)
                 disk_conn.close()
 
         elif self.db_type == ":file:":
-            self.conn = sqlite3.connect(self._get_file_path())
-            self.conn.execute("PRAGMA busy_timeout = 5000")
-            self.conn.execute("PRAGMA journal_mode = WAL")
-            self.conn.execute("PRAGMA cache_size = -64000")
-            self.conn.execute("PRAGMA temp_store = MEMORY")
-            self.conn.execute("PRAGMA mmap_size = 268435456")
+            self.conn = open_db(self._get_file_path())
             self.cursor = self.conn.cursor()
 
         else:
@@ -354,8 +381,7 @@ class Db_tools(Tools):
         """Closes the database connection and writes to disk if in-memory DB is used."""
         if self.memory_conn:
             file_path = self._get_file_path()
-            disk_conn = sqlite3.connect(file_path)
-            disk_conn.execute("PRAGMA busy_timeout = 5000")
+            disk_conn = open_db(file_path)
             with disk_conn:
                 self.memory_conn.backup(disk_conn)
             disk_conn.close()
@@ -402,8 +428,13 @@ class Db_tools(Tools):
         except Exception:
             pass
 
-    # Funktion zur Erstellung der Tabelle, falls sie nicht existiert
-    def create_table(self, keys=[], row_dict = {}, database_name='asset_performance', primary_key=True):
+    def create_table(self, keys=[], row_dict={}, database_name='asset_performance', primary_key=True):
+        """Create the table with columns inferred from keys/row_dict value types.
+
+        Column types are inferred from the values in row_dict (str→TEXT,
+        int/float→REAL, list→TEXT as JSON). The first column becomes the
+        PRIMARY KEY when primary_key=True.
+        """
 
     
         columns = [] 
@@ -447,8 +478,12 @@ class Db_tools(Tools):
         )
         """)
 
-    # Funktion zur Erstellung oder Ergänzung der Tabelle, falls sie nicht existiert oder neue Spalten hinzugefügt werden müssen
-    def ensure_table_and_columns(self, keys=[], row_dict={}, database_name = 'asset_performance', primary_key=True):
+    def ensure_table_and_columns(self, keys=[], row_dict={}, database_name='asset_performance', primary_key=True):
+        """Create the table if it doesn't exist, or add any missing columns.
+
+        Uses case-insensitive column comparison to avoid duplicates. Safe to
+        call on every insert — no-ops when the schema is already up to date.
+        """
 
         if keys == []:
             keys = row_dict.keys()
@@ -485,8 +520,12 @@ class Db_tools(Tools):
                     self.cursor.execute(f"ALTER TABLE {database_name} ADD COLUMN {column_name} {column_type}")
 
 
-    # Funktion, um die Tabelle mit den Daten zu befüllen
-    def insert_data(self, keys = [], row_dict = {}, database_name = 'asset_performance', replace=True):
+    def insert_data(self, keys=[], row_dict={}, database_name='asset_performance', replace=True):
+        """Insert a single row from row_dict into database_name.
+
+        Lists are serialized as JSON strings. replace=True uses INSERT OR REPLACE
+        so the row is upserted on the PRIMARY KEY.
+        """
 
         values = []
         column_names = []
@@ -508,12 +547,11 @@ class Db_tools(Tools):
                 if isinstance(value, list):
                     value = json.dumps(value)  # Listen in JSON-Strings umwandeln
             except Exception as e:
-                print(f"Fehler beim Abrufen des Werts für {key}: {e}")
+                logger.warning("Fehler beim Abrufen des Werts fuer %s: %s", key, e)
                 value = None  # Setze den Wert auf None, falls ein Fehler auftritt
         
             values.append(value)
     
-#       print(f'Ticker: {ticker}')
         placeholders = ', '.join(['?'] * (len(values)))  # +1 für den timestamp
 
         or_rep = ''
@@ -526,33 +564,47 @@ class Db_tools(Tools):
         """, values)
 
     def read_data(self, query):
-        
+        """Execute a SELECT query and return the result as a DataFrame."""
         result = pd.DataFrame()
 #        try:
         result = pd.read_sql_query(query, self.conn)
 #        except Exception:
-#            pass
         return result
 
     def get_indices_names(self, delete_columns=[], table_name=''):
+        """Return a sorted list of index names from table_name, excluding delete_columns.
+
+        Deduplicates Yahoo-prefixed tickers: keeps '^GDAXI' when both 'GDAXI'
+        and '^GDAXI' are present.
+        """
         if not table_name == '':
             query = f"""
                 SELECT name FROM {table_name};
                 """
             data = self.read_data(query)
             filtered = data[~data["name"].isin(delete_columns)]
-        
-            return list(filtered['name'].sort_values())
+            names = list(filtered['name'].sort_values())
+            # Deduplicate: if both 'GDAXI' and '^GDAXI' exist keep only '^GDAXI'
+            with_hat = {n for n in names if n.startswith('^')}
+            names = [n for n in names if n.startswith('^') or f'^{n}' not in with_hat]
+            return sorted(names)
         return []
 
 
 class St_tools(Tools):
     
-    def __init__(self, screen_region = st):
+    def __init__(self, screen_region=st):
+        """Initialise with an optional Streamlit region (e.g. st.sidebar or a column)."""
         self.screen_region = screen_region
         pass
 
-    def dataframe_with_selections(self, df = pd.DataFrame(), preselect=False, preselect_count = 0): #, sort_by = 'ticker'):
+    def dataframe_with_selections(self, df=pd.DataFrame(), preselect=False, preselect_count=0):
+        """Render a data_editor with a leading Select checkbox column.
+
+        preselect=True selects all rows by default; preselect_count limits
+        selection to the first N rows (0 = select rows with non-zero buyVolume).
+        Returns only the selected rows without the Select column.
+        """
 
 
         df_with_selections = df.copy()
@@ -591,11 +643,12 @@ class St_tools(Tools):
 
     pass
 
-class ExpressionEvaluatorNew():
+class ExpressionEvaluator():
     valid_operators = ['>', '<', '>=', '*', '<=', '~', '/', '==', '!=', '&', '|', '(', ')', '+', '-']
     valid_methods = ['rolling', 'mean', 'shift']
 
     def __init__(self, dataframe: pd.DataFrame, dataframe_name='df'):
+        """Bind the evaluator to a DataFrame so column names can be resolved in expressions."""
         self.df = dataframe
         self.dataframe_name = dataframe_name
         self.column_names = dataframe.columns.tolist()
@@ -650,6 +703,10 @@ class ExpressionEvaluatorNew():
         return ' '.join(transformed)
 
     def evaluate_expression(self, transformed_expression: str) -> pd.Series:
+        """Evaluate a pre-transformed expression string against the bound DataFrame.
+
+        Raises ValueError when the result is not a Series or bool.
+        """
         try:
             result = eval(transformed_expression)
             if not isinstance(result, (pd.Series, bool)):
@@ -657,58 +714,6 @@ class ExpressionEvaluatorNew():
             return result
         except Exception as e:
             raise ValueError(f"Fehler bei Auswertung: {e}")
-
-
-class ExpressionEvaluator:
-
-    valid_operators = ['>', '<', '>=', '*', '<=', '~', '/', '==', '!=', '&', '|', '(', ')']
-    
-    def __init__(self, dataframe: pd.DataFrame, dataframe_name = 'df'):
-        self.df = dataframe
-        self.dataframe_name = dataframe_name
-        self.column_names = dataframe.columns.tolist()
-        
-
-    def validate_and_transform(self, expression: str) -> str:
-        """
-        Validates the expression and transforms it into the correct syntax for eval().
-        """
-        # Split the expression into tokens
-        tokens = re.split(r'(\>\=|\<\=|\=\=|\!\=|>|<|\/|\s+|[~*&|!()])', expression)
-        transformed_expression = []
-
-        for token in tokens:
-            token = token.strip()
-            if not token:
-                continue
-
-            if token in self.valid_operators:
-                # Valid operator, add as is
-                transformed_expression.append(token)
-            elif token in self.column_names:
-                # Valid column name, transform to DataFrame syntax
-                transformed_expression.append(f"{self.dataframe_name}['{token}']")
-            elif re.match(r'^-?\d+(\.\d+)?$', token):
-                # Numeric constant
-                transformed_expression.append(token)
-            else:
-                # Invalid token
-#                st.write(f"Invalid token in expression: {token}")
-                pass
-            
-        return ' '.join(transformed_expression)
-
-    def evaluate_expression(self, transformed_expression: str) -> pd.Series:
-        """
-        Evaluates the transformed expression using eval() and returns a boolean Series.
-        """
-        try:
-            result = eval(transformed_expression)
-            if not isinstance(result, pd.Series):
-                raise ValueError("The evaluated expression must return a Pandas Series.")
-            return result
-        except Exception as e:
-            raise ValueError(f"Error while evaluating the expression: {e}")
 
 
 class BuySellSignalGenerator:
@@ -720,6 +725,12 @@ class BuySellSignalGenerator:
                     ('High', 'high'),   ('Low', 'low'), ('Volume', 'volume')]
 
     def __init__(self, df: pd.DataFrame, buy_condition: str, sell_condition: str, buy_delay_days: int = 0):
+        """Set up the signal generator with buy/sell expressions and an optional entry delay.
+
+        OHLCV columns are aliased bidirectionally (Close↔close etc.) so
+        expressions work regardless of the capitalisation convention in the
+        underlying DataFrame. Alias columns are removed again in apply_signals().
+        """
         self.df = df.copy()
         # Add bidirectional OHLCV aliases (only if the alias is absent).
         # Track which ones we added so apply_signals() can drop them again
@@ -738,12 +749,17 @@ class BuySellSignalGenerator:
         self.df['buySell'] = 0
 
     def apply_signals(self):
+        """Apply buy and sell logic to self.df and return the annotated DataFrame.
+
+        Sets buySell column: 1=buy, -1=sell, 0=hold. Handles optional
+        buy_delay_days and stop-loss/take-profit from the tp/sl row columns.
+        """
         try:
-            self.df.sort_values(by=["ticker", "Date"], inplace=True)
+            self.df = self.df.sort_values(by=["ticker", "Date"])
         except Exception:
             pass
         try:
-            self.df.reset_index(drop=True, inplace=True)
+            self.df = self.df.reset_index(drop=True)
         except Exception:
             pass
         delayed_signals = []
@@ -756,7 +772,7 @@ class BuySellSignalGenerator:
             try:
                 # Prefer the newer evaluator which can transform expressions like ewo[-1] or ewo.rolling(5).mean()
                 try:
-                    evaluator = ExpressionEvaluatorNew(context_df, dataframe_name='context_df')
+                    evaluator = ExpressionEvaluator(context_df, dataframe_name='context_df')
                     transformed = evaluator.validate_and_transform(self.buy_condition)
                     buy_mask = eval(transformed, {}, {'context_df': context_df})
                     # ensure boolean Series
@@ -797,7 +813,7 @@ class BuySellSignalGenerator:
                 try:
                     # Try to evaluate sell_condition using a safe transformed expression
                     try:
-                        evaluator = ExpressionEvaluatorNew(pd.DataFrame([row]), dataframe_name='r')
+                        evaluator = ExpressionEvaluator(pd.DataFrame([row]), dataframe_name='r')
                         transformed_sell = evaluator.validate_and_transform(self.sell_condition)
                         # r is a single-row df, so evaluate transformed expression
                         sell_res = eval(transformed_sell, {}, {'r': pd.DataFrame([row])})
@@ -826,10 +842,11 @@ class BuySellSignalGenerator:
         # Remove alias columns added in __init__ so they don't appear in
         # the display DataFrame or get persisted anywhere.
         if self._added_aliases:
-            self.df.drop(columns=self._added_aliases, inplace=True, errors='ignore')
+            self.df = self.df.drop(columns=self._added_aliases, errors='ignore')
         return self.df
 
 
 if __name__ == "__main__":
 
     pass
+
