@@ -223,6 +223,26 @@ foreach ($dir in @('database', 'logs')) {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 1E: Fernet-Schluessel fuer ksplib generieren
+# ---------------------------------------------------------------------------
+
+Write-Step "Phase 1E: Fernet-Schluessel generieren (database/secret.key)"
+
+if (Test-Path 'database\secret.key') {
+    Write-Info "secret.key bereits vorhanden -- ueberspringe"
+} else {
+    Write-Info "Generiere neuen Fernet-Schluessel ..."
+    & $PY -c "from tradinglib.ksplib import Ksp; Ksp()"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "secret.key konnte nicht erstellt werden."
+        Write-Warn "API-Zugangsdaten (Groq, Gemini, Pushover) koennen noch nicht gespeichert werden."
+        Write-Warn "Der Schluessel wird automatisch beim ersten App-Start nachgeneriert."
+    } else {
+        Write-Ok "secret.key erstellt"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Phase 2: config.yaml anlegen
 # ---------------------------------------------------------------------------
 
