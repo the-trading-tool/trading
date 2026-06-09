@@ -260,17 +260,37 @@ class render_mainpage(fetch_data.FetchData):
     def _render_quick_trade_buttons(self, buy_slot, sell_slot, ticker, headlines):
         """Render compact buy/sell buttons in the top row's reserved slots.
 
-        They open an order dialog pre-filled with the close price and the
-        suggested investment amount (the same `d_txt` shown as help text on the
-        Close metric, derived from `tt.calculate_investment(log_vola)`).
+        Always shown — in Free mode (PAPER_TRADING_AVAILABLE=False) the buttons
+        are greyed out visually via the help tooltip and open a "premium required"
+        info dialog instead of the order dialog.  This avoids the ugly gap that
+        would appear if the slots stayed empty.
         """
         close_price = getattr(headlines, 'close_price', None)
         suggested_investment = getattr(headlines, 'suggested_investment', None)
 
-        if buy_slot.button("🟢", help=t('main.order_buy_help', ticker=ticker), key=f'btn_quick_buy_{ticker}', use_container_width=True):
-            self._render_order_dialog(ticker, 'buy', close_price, suggested_investment)
-        if sell_slot.button("🔴", help=t('main.order_sell_help', ticker=ticker), key=f'btn_quick_sell_{ticker}', use_container_width=True):
-            self._render_order_dialog(ticker, 'sell', close_price, suggested_investment)
+        if PAPER_TRADING_AVAILABLE:
+            buy_help  = t('main.order_buy_help',  ticker=ticker)
+            sell_help = t('main.order_sell_help', ticker=ticker)
+        else:
+            buy_help  = t('main.order_premium_hint')
+            sell_help = t('main.order_premium_hint')
+
+        if buy_slot.button("🟢", help=buy_help, key=f'btn_quick_buy_{ticker}', use_container_width=True):
+            if PAPER_TRADING_AVAILABLE:
+                self._render_order_dialog(ticker, 'buy', close_price, suggested_investment)
+            else:
+                self._render_premium_required_dialog()
+        if sell_slot.button("🔴", help=sell_help, key=f'btn_quick_sell_{ticker}', use_container_width=True):
+            if PAPER_TRADING_AVAILABLE:
+                self._render_order_dialog(ticker, 'sell', close_price, suggested_investment)
+            else:
+                self._render_premium_required_dialog()
+
+    @st.dialog('🔒')
+    def _render_premium_required_dialog(self):
+        """Shown in Free mode when the user clicks a quick buy/sell button."""
+        st.markdown(f"### {t('main.order_premium_title')}")
+        st.info(t('main.order_premium_body'))
 
     @st.dialog('Order')
     def _render_order_dialog(self, ticker, side, price, suggested_investment):
@@ -564,7 +584,7 @@ class render_mainpage(fetch_data.FetchData):
             # Quick buy/sell — placed in the top row (next to config/help) so they
             # don't cost an extra line. Uses the same close price / suggested
             # investment (d_txt → calculate_investment) shown in the headlines.
-            if PAPER_TRADING_AVAILABLE and not self.hide_search and ticker_selected:
+            if not self.hide_search and ticker_selected:
                 self._render_quick_trade_buttons(buy_slot, sell_slot, ticker_selected, headlines)
 
             # Tabs
