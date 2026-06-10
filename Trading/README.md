@@ -71,7 +71,7 @@ Diese Anleitung erklärt Schritt für Schritt, wie du die Trading-App auf einem 
 ## Schritt 2 — Code herunterladen
 
 1. Öffne deinen Browser und gehe auf:
-   **https://github.com/online-junkie/trading**
+   **https://github.com/the-trading-tool/trading**
 
 2. Klicke auf den grünen Button **„Code"**
 
@@ -254,8 +254,8 @@ Es sollte `Python 3.11.x` erscheinen. Python 3.10, 3.12 und 3.13 funktionieren e
 ### Schritt 2 — Code herunterladen
 
 ```bash
-git clone https://github.com/online-junkie/trading-tools
-cd trading-tools/Trading
+git clone https://github.com/the-trading-tool/trading
+cd trading/Trading
 ```
 
 Alternativ: ZIP von GitHub herunterladen und entpacken, dann in den `Trading`-Unterordner wechseln (dort liegt `asset_analyzer.py`).
@@ -399,7 +399,7 @@ Oder einen anderen Port verwenden:
 ### Ab dem nächsten Mal (Linux)
 
 ```bash
-cd trading-tools/Trading
+cd trading/Trading
 .venv/bin/streamlit run asset_analyzer.py
 ```
 
