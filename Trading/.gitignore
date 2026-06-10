@@ -53,3 +53,4 @@ out.txt.*
 tmp_slice.txt
 test_*.pine
 *.tmp.*
+_read_sched.py

@@ -324,7 +324,7 @@ gh pr create --title "feat: ..." --body "..."
 git checkout -b fix/mein-fix
 ```
 
-GitHub-Repo: https://github.com/online-junkie/trading-tools
+GitHub-Repo: https://github.com/the-trading-tool/trading
 
 ---
 
