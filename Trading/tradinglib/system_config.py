@@ -458,7 +458,7 @@ class SystemConfig(tools.Db_tools):
         """Render the tabbed help dialog with HTML content from the HELP/ directory."""
         if not self.bare_mode:
 
-            tabs = st.tabs(["OVT-Indikator", "Hauptansichten", "Werkzeuge", "Administration", "CLI-Skripte"])
+            tabs = st.tabs(["OVT-Indikator", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte"])
 
             with tabs[0]:
                 lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
@@ -473,6 +473,7 @@ class SystemConfig(tools.Db_tools):
                     ("Dashboard", "banner_page"),
                     ("Market Map", "market_map"),
                     ("Sektorrotation", "sector_rotation_page"),
+                    ("Performance", "performance_details"),
                     ("Asset-Übersicht", "all_assets"),
                     ("Eigene Transaktionen", "own_trades_analysis"),
                 ]:
@@ -486,14 +487,24 @@ class SystemConfig(tools.Db_tools):
                     ("Pine Script Export", "pine_exporter"),
                     ("KI-Integration", "ai_client"),
                     ("Signal-Benachrichtigung", "signal_notifier"),
+                    ("Datenquellen (Yahoo / FMP)", "providers"),
                 ]:
                     with st.expander(label):
                         st.html(help_text.load_help(module))
 
             with tabs[3]:
-                st.html(help_text.load_help("admin"))
+                for label, module in [
+                    ("Strategie-Suche", "asset_simulator"),
+                    ("Multi-Strategien", "multi_transaction"),
+                    ("Paper / Live Trading", "trading_page"),
+                ]:
+                    with st.expander(label):
+                        st.html(help_text.load_help(module))
 
             with tabs[4]:
+                st.html(help_text.load_help("admin"))
+
+            with tabs[5]:
                 for label, module in [
                     ("Performance-Simulation (asset_perf2.py)", "asset_perf2"),
                     ("Trading-Agent (run_agent.py)", "run_agent"),
@@ -504,6 +515,7 @@ class SystemConfig(tools.Db_tools):
                     ("ISIN-Befüllung (backfill_isin.py)", "backfill_isin"),
                     ("Scheduler-Daemon (schedserver.py)", "schedserver"),
                     ("Anwendung starten (launcher.py)", "launcher"),
+                    ("Setup & Scheduler (Empfehlungen)", "setup_scheduler"),
                 ]:
                     with st.expander(label):
                         st.html(help_text.load_help(module))

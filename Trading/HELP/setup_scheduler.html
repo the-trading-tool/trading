@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Setup &amp; Scheduler – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Setup &amp; Scheduler</h1>
+
+<p>Diese Seite fasst zusammen, in welcher Reihenfolge die App initial eingerichtet wird und welche CLI-Skripte danach <b>regelmäßig im Hintergrund</b> laufen sollten, damit Kursdaten, Indikatoren und Signale immer aktuell sind.</p>
+
+<h2>1. Erstinstallation (einmalig)</h2>
+<ol>
+  <li><code>python seed_db.py</code> – Ticker-Datenbank mit Index-Mitgliedern anlegen</li>
+  <li><code>python get_asset_info.py</code> – Fundamentaldaten laden</li>
+  <li><code>python get_asset_data.py 1d:2y</code> – historische Tageskurse laden</li>
+  <li><code>python asset_perf2.py</code> – Indikatoren &amp; OVT-Scores berechnen</li>
+  <li><code>streamlit run asset_analyzer.py</code> – App starten</li>
+</ol>
+<div class="info">Details zu jedem Schritt siehe Hilfe „Datenbank initialisieren (seed_db.py)".</div>
+
+<h2>2. Empfohlene Hintergrund-Jobs</h2>
+<table>
+<tr><th>Zeitpunkt</th><th>Befehl</th><th>Zweck</th></tr>
+<tr><td>Mo–Fr, 18:00 Uhr</td><td><code>python get_asset_data.py 1d:5d</code></td><td>Tageskurse aller Ticker inkrementell aktualisieren (nach Xetra-Schluss, vor NYSE-Schluss)</td></tr>
+<tr><td>Mo–Fr, 22:15 Uhr</td><td><code>python get_asset_data.py 1d:5d /index_member:SPX</code></td><td>US-Werte nach NYSE-Schluss (22:00 MEZ / 16:00 ET) erneut aktualisieren</td></tr>
+<tr><td>Mo–Fr, 22:30 Uhr</td><td><code>python asset_perf2.py</code></td><td>Indikatoren &amp; OVT-Scores neu berechnen</td></tr>
+<tr><td>Mo–Fr, 22:45 Uhr</td><td><code>python -m tradinglib.signal_notifier</code></td><td>Neue Kauf-/Verkaufssignale per Pushover melden</td></tr>
+<tr><td>Mo–Fr, alle 15 Min, 09:00–22:00 Uhr</td><td><code>python run_agent.py --notify</code></td><td>Trading-Agent: Signale ausführen / Hinweise senden (während der Handelszeiten)</td></tr>
+<tr><td>Mo–Fr, alle 15 Min, 09:00–22:00 Uhr</td><td><code>python check_stoploss.py --notify</code></td><td>ATR-Trailing-Stop für offene Positionen prüfen</td></tr>
+<tr><td>So, 06:00 Uhr</td><td><code>python get_asset_info.py</code></td><td>Fundamentaldaten wöchentlich auffrischen (ändern sich selten täglich)</td></tr>
+<tr><td>1× pro Monat</td><td><code>python backfill_isin.py /limit:200</code></td><td>Fehlende ISINs schrittweise nachtragen</td></tr>
+</table>
+
+<div class="warn"><b>Handelszeiten beachten:</b> Xetra schließt um 17:30 Uhr MEZ, die NYSE um 22:00 Uhr MEZ (16:00 Uhr ET, ohne Sommerzeit-Anpassung ggf. ±1 Stunde). Trading-Agent und Stop-Loss-Prüfung sollten nur innerhalb dieses Fensters laufen, der tägliche Datenabruf danach.</div>
+
+<h2>3. Zwei Wege, Jobs zu planen</h2>
+<table>
+<tr><th>Variante</th><th>Vorteile</th><th>Nachteile</th></tr>
+<tr><td><b>schedserver.py</b> (App-intern)</td><td>Jobs bequem im Admin-Panel einrichten, läuft plattformunabhängig, Status in <code>scheduler.db</code></td><td>muss als Dauerprozess laufen – nach Neustart manuell oder per Autostart wieder anstoßen</td></tr>
+<tr><td><b>Betriebssystem-Scheduler</b> (Task Scheduler / cron)</td><td>läuft zuverlässig auch ohne offene App, übersteht Neustarts automatisch, Standard-Tooling</td><td>Jobs werden außerhalb der App konfiguriert (Textdateien / GUI)</td></tr>
+</table>
+<div class="warn">Nur <b>einen</b> der beiden Wege für denselben Job verwenden – sonst werden z.&nbsp;B. Trading-Orders doppelt ausgelöst.</div>
+
+<h2>4. Windows – Aufgabenplanung (Task Scheduler)</h2>
+<p>Beispiele mit <code>schtasks</code> (PowerShell/CMD als Administrator). <code>&lt;APP&gt;</code> = Installationsverzeichnis, z.&nbsp;B. <code>C:\Users\kurt\Claude\Trading</code>:</p>
+<pre># Tageskurse aktualisieren (Mo-Fr, 18:00 Uhr)
+schtasks /create /tn "Trading-DailyData" /tr "\"&lt;APP&gt;\.venv\Scripts\python.exe\" \"&lt;APP&gt;\get_asset_data.py\" 1d:5d" /sc weekly /d MON,TUE,WED,THU,FRI /st 18:00
+
+# Indikatoren neu berechnen (Mo-Fr, 22:30 Uhr)
+schtasks /create /tn "Trading-Perf" /tr "\"&lt;APP&gt;\.venv\Scripts\python.exe\" \"&lt;APP&gt;\asset_perf2.py\"" /sc weekly /d MON,TUE,WED,THU,FRI /st 22:30
+
+# Signal-Benachrichtigung (Mo-Fr, 22:45 Uhr)
+schtasks /create /tn "Trading-Notify" /tr "\"&lt;APP&gt;\.venv\Scripts\python.exe\" -m tradinglib.signal_notifier" /sc weekly /d MON,TUE,WED,THU,FRI /st 22:45
+
+# Trading-Agent alle 15 Minuten (Basis-Trigger; Zeitfenster 09:00-22:00 im
+# Trigger-Editor der Aufgabenplanung über "Wiederholen alle: 15 Min" /
+# "Dauer: 13 Std" einstellen)
+schtasks /create /tn "Trading-Agent" /tr "\"&lt;APP&gt;\.venv\Scripts\python.exe\" \"&lt;APP&gt;\run_agent.py\" --notify" /sc daily /st 09:00
+
+# Stop-Loss-Prüfung alle 15 Minuten (gleiches Prinzip wie oben)
+schtasks /create /tn "Trading-StopLoss" /tr "\"&lt;APP&gt;\.venv\Scripts\python.exe\" \"&lt;APP&gt;\check_stoploss.py\" --notify" /sc daily /st 09:00</pre>
+<div class="info">Für die beiden „alle 15 Minuten"-Jobs lässt sich das Wiederholungsintervall und die Endzeit am einfachsten nachträglich in der grafischen Aufgabenplanung (<code>taskschd.msc</code>) im Reiter <i>Trigger → Bearbeiten → Aufgabe wiederholen alle: 15 Minuten, für die Dauer von: 13 Stunden</i> setzen. Alternativ existieren <code>run_agent.bat</code> / <code>check_stoploss.bat</code> als fertige Wrapper für solche Aufgaben.</div>
+
+<h2>5. Linux – Cron</h2>
+<p><code>crontab -e</code>, <code>&lt;APP&gt;</code> = Installationsverzeichnis:</p>
+<pre># Tageskurse aktualisieren (Mo-Fr 18:00)
+0 18 * * 1-5 cd &lt;APP&gt; && .venv/bin/python get_asset_data.py 1d:5d
+
+# US-Werte nach NYSE-Schluss (Mo-Fr 22:15)
+15 22 * * 1-5 cd &lt;APP&gt; && .venv/bin/python get_asset_data.py 1d:5d /index_member:SPX
+
+# Indikatoren neu berechnen (Mo-Fr 22:30)
+30 22 * * 1-5 cd &lt;APP&gt; && .venv/bin/python asset_perf2.py
+
+# Signal-Benachrichtigung (Mo-Fr 22:45)
+45 22 * * 1-5 cd &lt;APP&gt; && .venv/bin/python -m tradinglib.signal_notifier
+
+# Trading-Agent alle 15 Min, 09-22 Uhr (Mo-Fr)
+*/15 9-22 * * 1-5 cd &lt;APP&gt; && .venv/bin/python run_agent.py --notify
+
+# Stop-Loss-Prüfung alle 15 Min, 09-22 Uhr (Mo-Fr)
+*/15 9-22 * * 1-5 cd &lt;APP&gt; && .venv/bin/python check_stoploss.py --notify
+
+# Fundamentaldaten wöchentlich (So 06:00)
+0 6 * * 0 cd &lt;APP&gt; && .venv/bin/python get_asset_info.py
+
+# ISIN-Lücken monatlich (1. des Monats, 03:00)
+0 3 1 * * cd &lt;APP&gt; && .venv/bin/python backfill_isin.py /limit:200</pre>
+
+<h2>6. Externe Dienste: Registrierung &amp; Empfehlungen</h2>
+
+<h3>Datenquelle (Marktdaten)</h3>
+<ul>
+  <li><b>Yahoo Finance (Standard):</b> keine Registrierung nötig, sofort einsatzbereit. Es handelt sich aber um eine <b>inoffizielle Schnittstelle</b> (<code>yfinance</code> scrapt öffentliche Endpunkte) – ohne SLA, mit gelegentlichen Sperren oder Rate-Limits, besonders bei vielen automatisierten Hintergrund-Läufen.</li>
+  <li><b>Financial Modeling Prep (FMP), empfohlen für Hintergrund-Jobs:</b> kostenlosen API-Key auf <code>financialmodelingprep.com</code> registrieren, als KSP-Eintrag <code>fmp</code> hinterlegen und im Konfigurationsdialog (🏵) als aktiven Datenprovider auswählen. Details siehe Hilfe „Datenquellen (Yahoo / FMP)".</li>
+</ul>
+<div class="warn"><b>Empfehlung:</b> Für regelmäßige, automatisierte Abrufe (siehe Tabelle oben) FMP als primäre Quelle nutzen und Yahoo Finance nur als <b>Fallback</b> betrachten – z.&nbsp;B. wenn FMP-Limits (250 Anfragen/Tag im Free-Tier) erreicht sind oder kein API-Key hinterlegt ist. So bleibt die App auch bei einer Yahoo-Sperre funktionsfähig.</div>
+
+<h3>Broker (Paper / Live Trading)</h3>
+<table>
+<tr><th>Broker</th><th>Registrierung</th><th>Zugangsdaten</th></tr>
+<tr><td><b>Alpaca</b></td><td>Kostenloses Konto auf <code>alpaca.markets</code> anlegen (Paper-Trading ist sofort ohne Verifizierung nutzbar)</td><td>Im Alpaca-Dashboard unter „API Keys" einen <b>Paper</b>-Schlüssel (Key ID + Secret) erzeugen und als KSP-Eintrag hinterlegen (Benutzername = Key ID, Passwort = Secret). Name des Eintrags unter „Paper / Live Trading" → ⚙ Einstellungen → <code>alpaca_ksp_name</code> eintragen (Standard: <code>av-paper</code>)</td></tr>
+<tr><td><b>IBKR</b> (Interactive Brokers)</td><td>Reguläres Wertpapierkonto bei IBKR eröffnen (inkl. Verifizierung); für Live-Trading zusätzlich ein Echtgeldkonto</td><td>Kein API-Key nötig – stattdessen <b>TWS</b> oder <b>IB Gateway</b> lokal installieren, starten und „API"-Zugriff aktivieren (Port 7497 = Paper, 7496 = Live). Host/Port unter „Paper / Live Trading" → ⚙ Einstellungen eintragen</td></tr>
+</table>
+<div class="info">Details zur Bedienung beider Broker siehe Hilfe „Paper / Live Trading".</div>
+</body>
+</html>

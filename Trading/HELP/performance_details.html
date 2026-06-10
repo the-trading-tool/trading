@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Performance – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Performance <small style="font-size:.6em;color:#888">performance_details.py</small></h1>
+
+<p>Zeigt die aktuell berechneten Bewertungs- und Performance-Kennzahlen <b>aller Ticker</b> aus <code>asset_simulation_.db</code>, sortiert nach <code>overallValueTrend</code> und <code>sortino</code> – die schnellste Übersicht, welche Titel das Modell aktuell am besten bewertet.</p>
+
+<h2>Bedienung</h2>
+<ul>
+  <li>Tabelle aller Titel mit den wichtigsten Indikator-Spalten (OVT, RSI, Trendrichtung, Analystenkurszielen, Sektor, Sortino/Sharpe …)</li>
+  <li>Klick auf eine Zeile öffnet ein Mini-Chart des gewählten Titels</li>
+  <li><b>📥 Datensatz herunterladen:</b> Excel-Export der vollständigen Tabelle</li>
+  <li><b>Chart-Grid anzeigen:</b> blendet zusätzlich ein Raster aus Mini-Charts der bestbewerteten Titel ein (Anzahl wählbar: 5/10/20)</li>
+</ul>
+
+<div class="info">Die Datengrundlage stammt aus der zentralen DuckDB-Engine, die mehrere <code>asset_simulation_*.db</code>-Dateien zusammenführen kann. Ergebnisse werden 5 Minuten zwischengespeichert (<code>@st.cache_data(ttl=300)</code>) – ein neuer Lauf von <code>asset_perf2.py</code> wird also mit leichter Verzögerung sichtbar.</div>
+
+<h2>Asset-Übersicht (Admin)</h2>
+<p>Admin-Konten sehen zusätzlich den Unterpunkt <b>→ Alle Assets</b> (Sidebar unter Assets &amp; Performance). Diese Ansicht entspricht <code>all_assets.py</code> und erlaubt eine freie Filterung über eigene Kauf-/Verkauf-Queries – siehe Hilfe „Asset-Übersicht".</p>
+
+<h2>Verwandte Seiten</h2>
+<table>
+<tr><th>Seite</th><th>Unterschied</th></tr>
+<tr><td>Performance (diese Seite)</td><td>alle Ticker, aktuelle Bewertung, kein Filter auf eigene Kauf-/Verkauf-Queries</td></tr>
+<tr><td>Asset-Übersicht (<code>all_assets.py</code>)</td><td>alle Ticker, mit eigener Kauf-Query filterbar, optionales Mini-Chart-Grid mit Signalmarkierung</td></tr>
+<tr><td>Strategie-Suche</td><td>Backtest mit eigenen Kauf-/Verkaufsbedingungen über mehrere Jahre</td></tr>
+</table>
+</body>
+</html>

@@ -7,7 +7,7 @@ h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:
 h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
 table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
-.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
 </style>
@@ -15,31 +15,28 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <body>
 <h1>Asset-Übersicht <small style="font-size:.6em;color:#888">all_assets.py</small></h1>
 
-<p>Zeigt alle Ticker aus der lokalen Datenbank als kompaktes Mini-Chartgitter mit eingebetteten Kauf-/Verkaufssignalen. Ideal für einen schnellen Marktüberblick.</p>
+<p>Screener für <b>alle Ticker</b> der lokalen Datenbank: filterbare Tabelle mit den aktuellen Indikatorwerten, optional ergänzt um ein Mini-Chart-Grid der Top-Titel. Erreichbar für Admin-Konten unter Assets &amp; Performance → <b>→ Alle Assets</b>.</p>
 
 <h2>Bedienung</h2>
 <table>
-<tr><th>Aktion</th><th>Ergebnis</th></tr>
-<tr><td>Klick auf ein Mini-Chart</td><td>Öffnet die <b>Asset Details</b>-Seite für dieses Wertpapier</td></tr>
-<tr><td>Index-Filter</td><td>Zeigt nur Titel eines bestimmten Index (SPX, GDAXI, MDAXI …)</td></tr>
-<tr><td>Kauf-Query anpassen</td><td>Freitext-Formel, z.&nbsp;B. <code>overallValueTrend &gt; 60</code> – filtert sichtbare Kaufsignale</td></tr>
-<tr><td>Verkauf-Query anpassen</td><td>Analog für Verkaufssignale</td></tr>
+<tr><th>Element</th><th>Wirkung</th></tr>
+<tr><td>Filter-Eingabefeld (oben)</td><td>Freitext-Query, mit der die Ergebnistabelle gefiltert wird – Standardwert ist die globale Kauf-Query aus den Systemeinstellungen</td></tr>
+<tr><td>Klick auf eine Tabellenzeile</td><td>Öffnet ein Mini-Chart des gewählten Titels mit Link zur vollen <b>Asset Details</b>-Seite</td></tr>
+<tr><td>📥 Datensatz herunterladen</td><td>Excel-Export der gefilterten Tabelle</td></tr>
+<tr><td>Chart-Grid anzeigen</td><td>Blendet zusätzlich ein Raster aus Mini-Charts ein (Anzahl wählbar: 5/10/20), sortiert nach Sortino-Ratio</td></tr>
 </table>
 
-<h2>Signale im Mini-Chart</h2>
-<ul>
-  <li><b>▲ grüner Pfeil</b> – Kaufsignal gemäß der aktiven Kauf-Query</li>
-  <li><b>▼ roter Pfeil</b> – Verkaufssignal gemäß der aktiven Verkauf-Query</li>
-</ul>
+<h2>Sortierung &amp; Inhalt</h2>
+<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus <code>asset_simulation_all.db</code>, sortiert nach Währung, Sortino-Ratio und <code>overallValueTrend</code>. Alle berechneten Indikator-Spalten sind enthalten.</p>
 
-<h2>Query-Syntax</h2>
-<p>Die Buy/Sell-Queries sind pandas-kompatible Ausdrücke auf den berechneten Indikator-Spalten:</p>
+<h2>Filter-Syntax</h2>
+<p>Das Filterfeld akzeptiert pandas-/SQL-kompatible Bedingungen auf den Indikator-Spalten, z.&nbsp;B.:</p>
 <ul>
   <li><code>overallValueTrend &gt; 65</code></li>
-  <li><code>(rsi &gt; 20) &amp; (rsi &lt; 80) &amp; (ewo &gt; ewo_ema)</code></li>
+  <li><code>(rsi &gt; 20) AND (rsi &lt; 80) AND (ewo &gt; ewo_ema)</code></li>
   <li><code>macd_diff &gt; 0</code></li>
 </ul>
 
-<div class="info">Verfügbare Spaltennamen sind alle berechneten Indikatoren aus <code>asset_simulation_.db</code>. Die Standard-Queries werden im Admin-Panel unter <i>Systemeinstellungen</i> gesetzt.</div>
+<div class="info">Verfügbare Spaltennamen sind alle berechneten Indikatoren aus <code>asset_simulation_all.db</code>. Die Standard-Kauf-/Verkauf-Queries werden im Konfigurationsdialog (🏵) unter <i>Systemeinstellungen</i> festgelegt.</div>
 </body>
 </html>
