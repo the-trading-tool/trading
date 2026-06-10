@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Market Map – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Market Map <small style="font-size:.6em;color:#888">market_map.py</small></h1>
+
+<p>Visuelle Heatmap aller überwachten Wertpapiere. Farbe und Größe der Kacheln kodieren Performance und Handelsvolumen auf einen Blick.</p>
+
+<h2>Farbcodierung</h2>
+<table>
+<tr><th>Farbe</th><th>Bedeutung</th></tr>
+<tr><td style="color:green"><b>Grün</b></td><td>Positive Kursentwicklung im gewählten Zeitraum</td></tr>
+<tr><td style="color:red"><b>Rot</b></td><td>Negative Kursentwicklung</td></tr>
+<tr><td style="color:gray"><b>Grau</b></td><td>Keine oder neutrale Veränderung / fehlende Daten</td></tr>
+</table>
+
+<h2>Kachelgröße</h2>
+<p>Die Größe jeder Kachel spiegelt den <b>overallValueTrend (OVT)</b>-Score des Assets wider: Je höher der Score, desto größer die Kachel.</p>
+
+<h2>Interaktion</h2>
+<ul>
+  <li>Klick auf eine Kachel → öffnet die <b>Asset Details</b>-Seite für dieses Wertpapier</li>
+  <li>Hover → zeigt Ticker, Name und aktuellen OVT-Wert als Tooltip</li>
+</ul>
+
+<h2>Steuerung</h2>
+<table>
+<tr><th>Einstellung</th><th>Wirkung</th></tr>
+<tr><td><b>Index-Filter</b></td><td>Beschränkt die Anzeige auf einen bestimmten Börsenindex (SPX, GDAXI …)</td></tr>
+<tr><td><b>Zeitraum</b></td><td>Kursveränderung über 1 Tag, 1 Woche oder 1 Monat</td></tr>
+<tr><td><b>Sortierung</b></td><td>Nach OVT-Score, Kursveränderung oder alphabetisch</td></tr>
+</table>
+
+<div class="info">Die Daten stammen aus der lokalen Datenbank (<code>asset_simulation_.db</code>). Für aktuelle Werte zunächst <code>asset_perf2.py</code> ausführen.</div>
+</body>
+</html>

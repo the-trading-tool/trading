@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 try:
     sys.path.insert(0, "../../tradinglib.indicators")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 from tradinglib.indicator import indicator
@@ -26,21 +26,21 @@ class Dema(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", fast_length=8, slow_length=21, show_cross=True, window=14):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         self.fast_length = fast_length
         self.slow_length = slow_length
         self.show_cross = show_cross
         self.window = window
         super().__init__(df=df, symbol=symbol)
         self.data()
-        # self.add_fig()  # Optional
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         df = self.df.copy()
 
         # ---------- HaClose optional ----------
         # Wenn du die HA-Close (wie im Pine) willst, kannst du stattdessen:
         # df['ha_close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
-        # price = df['ha_close']
         price = df['Close']
 
         # ---------- RSI Berechnung (mit Index-Aligment) ----------
@@ -87,17 +87,16 @@ class Dema(_indicator._Indicator):
         df['dema_sell'] = np.where(((df['dema_ema_fast'] < df['dema_ema_slow']) & (df['dema_ema_fast'].shift(1) >= df['dema_ema_slow'].shift(1))),df['dema_ema_fast'],np.nan)
 
         self.df = df
-        self.df.drop(['dema_ema_fast_1','dema_ema_slow_1','v2'], axis=1, inplace=True)
+        self.df = self.df.drop(['dema_ema_fast_1','dema_ema_slow_1','v2'], axis=1)
 
-#        self.df['dema_buy_signal'] = df['dema_buy_signal']
-#        self.df['dema_sell_signal'] = df['dema_sell_signal']
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         df = self.df.copy()
         self.fig = go.Figure()
 
         if not 'Date' in df.columns:
-            df.reset_index(inplace=True)
+            df = df.reset_index()
 
         # ---------- Plot Slow & Fast ----------
         self.fig.add_trace(go.Scatter(
@@ -177,8 +176,5 @@ class Dema(_indicator._Indicator):
                         )
 
 
-#        self.fig.update_layout(
-#            title="DEMARSI Indicator",
-#            yaxis_title="RSI Value",
-#            template="plotly_dark"
 #        )
+

@@ -1,8 +1,11 @@
+import ast
 import sqlite3
 import json
 import sys
 import streamlit as st
 import logging
+from tradinglib import license_manager as lm
+from tradinglib.tools import open_db
 
 for name, l in logging.root.manager.loggerDict.items():
     if "streamlit" in name:
@@ -11,17 +14,17 @@ for name, l in logging.root.manager.loggerDict.items():
 try:
 	sys.path.insert(0, "../../tradinglib")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib import tools
 from tradinglib import help_text
 from tradinglib import multi_select
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
 from tradinglib import logging_config as lgc
+from tradinglib import i18n
 
 class SystemConfig(tools.Db_tools):
     
-#    transactions = {
 #        'SPX': {'buy': '(momentum > rsi_ema) & (overallValueTrend > 53)', 'sell': '(overallValueTrend < 58)', 'num_assets': 7, 'invest': 17000, 'order_by': 'sortino'}, 
 #        'GDAXI': {'buy': '(momentum > rsi_ema)', 'sell': '(overallValueTrend < 58)', 'num_assets': 7, 'invest': 15000, 'order_by': 'sortino'}, 
 #        'MDAXI': {'buy': '(momentum > rsi_ema)', 'sell': '(overallValueTrend < 55)', 'num_assets': 7, 'invest': 10000, 'order_by': 'sortino'}, 
@@ -35,8 +38,14 @@ class SystemConfig(tools.Db_tools):
         'SDAXI': {'buy': '(overallValueTrend >= 56)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 46)', 'num_assets': 3, 'invest': 10000, 'order_by': 'sortino'}, 
         }                 
     
-    def __init__(self, db_path="database", db_name = "config.db", username = 'admin', region = st, is_admin = False, bare_mode = False):
-        self._db_path = self.get_path( path=db_path, file_name=db_name)
+    def __init__(self, db_path="database", db_name="config.db", username='admin', region=st, is_admin=False, bare_mode=False):
+        """Open config.db and ensure the config table exists.
+
+        username: all keys are namespaced per user (stored as '<username>:<key>').
+        is_admin: enables admin-only UI sections (logging, provider, scaling controls).
+        bare_mode: suppresses the help dialog content (used in CLI/headless contexts).
+        """
+        self._db_path = self.get_path(path=db_path, file_name=db_name)
         self.username = username        
         self.is_admin = is_admin
         self.region = region
@@ -46,7 +55,7 @@ class SystemConfig(tools.Db_tools):
 
     def _initialize_db(self):
         """creates config db."""
-        with sqlite3.connect(self._db_path) as conn:
+        with open_db(self._db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS config (
@@ -60,7 +69,7 @@ class SystemConfig(tools.Db_tools):
     def set_value(self, key: str, value: str):
         """saves a config value."""
         value_str = json.dumps(value)  # Serialisieren
-        with sqlite3.connect(self._db_path) as conn:
+        with open_db(self._db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO config (key, value) VALUES (?, ?)
@@ -69,8 +78,8 @@ class SystemConfig(tools.Db_tools):
             conn.commit()
     
     def get_value(self, key: str, default=None) -> str:
-        """creates a config value."""
-        with sqlite3.connect(self._db_path) as conn:
+        """Read a config value for the current user; returns default when the key is absent."""
+        with open_db(self._db_path, readonly=True) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM config WHERE key = ?", (f"{self.username}:{key}",))
             result = cursor.fetchone()
@@ -83,12 +92,13 @@ class SystemConfig(tools.Db_tools):
     
     def delete_value(self, key: str):
         """Deletes a config value."""
-        with sqlite3.connect(self._db_path) as conn:
+        with open_db(self._db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM config WHERE key = ?", (f"{self.username}:{key}",))
             conn.commit()
 
     def render_cfg_row(self):
+        """Render a compact inline row with a settings button and a help button."""
         cfg_line = self.region.empty()
         (_, cfg_btn_c, cfg_btn_h) = cfg_line.columns([.95,.05,.05], gap='small')
         #(cfg_btn_c, cfg_btn_h) = cfg_line.columns(2, gap='small')
@@ -98,56 +108,74 @@ class SystemConfig(tools.Db_tools):
             self.render_help()
 
     def get_selectors(self, interval=None, period=None, overlays=None, oszilators=None):
-        
-        if interval == None or interval == []:
-            interval = self.get_value('interval','60m')
-        if isinstance(interval, list):
-            interval = interval[0]
+        """Return (interval, period, overlays, oscillators) resolved from config with sensible defaults.
 
-        if period == None or period == []:
-            period = self.get_value('period','1mo')
+        None or [] inputs fall back to the stored config value; missing config falls back
+        to hard-coded defaults ('60m', '1mo', ['heikin','bar','sup'], ['macd']).
+        """
+        if not interval:  # None, [], or ''
+            interval = self.get_value('interval', '60m') or '60m'
+        if isinstance(interval, list):
+            interval = interval[0] or '60m'
+
+        if not period:  # None, [], or ''
+            period = self.get_value('period', '1mo') or '1mo'
         if isinstance(period, list):
-            period = period[0]
+            period = period[0] or '1mo'
+
+        def _parse_list(raw):
+            """Return raw as a Python list regardless of whether it arrived as a
+            list (get_value already decoded JSON) or as a legacy string literal."""
+            if isinstance(raw, list):
+                return raw
+            if not raw:
+                return None
+            import json as _json
+            try:
+                result = _json.loads(raw)
+                if isinstance(result, list):
+                    return result
+            except Exception:
+                pass
+            try:
+                result = ast.literal_eval(raw)
+                if isinstance(result, list):
+                    return result
+            except Exception:
+                pass
+            return None
 
         ol = ""
         for t in multi_select.MultiCheckboxSelector.lists[2][1]:
             ol += "'"+t.split(" - ")[0]+"', "
-        error_text = "Select a combination of either/and: "        
-        if overlays == None or overlays == []:
-            try:
-                overlays = [self.get_value('overlay','')]
-                overlays = eval(overlays[0])
-            except Exception:
-                overlays = ['pre']
-                if not self.bare_mode:
-                    st.error(f"{error_text} [{ol}]")
-                pass
+        if overlays is None or overlays == []:
+            raw = self.get_value('overlay', None)
+            parsed = _parse_list(raw) if raw is not None else None
+            # Use factory default when nothing is stored OR stored value is empty
+            overlays = parsed if parsed else ['heikin', 'bar', 'sup']
 
         oz = ""
         for t in multi_select.MultiCheckboxSelector.lists[3][1]:
             oz += "'"+t.split(" - ")[0]+"', "
-        if oszilators == None or oszilators == []:
-            try:
-                oszilators = [self.get_value('oszilator','')]
-                oszilators = eval(oszilators[0])
-            except Exception:
-                oszilators = ['macd']
-                if not self.bare_mode:
-                    st.error(f"{error_text} [{oz}]")
-                pass
+        if oszilators is None or oszilators == []:
+            raw = self.get_value('oszilator', None)
+            parsed = _parse_list(raw) if raw is not None else None
+            # Use factory default when nothing is stored OR stored value is empty
+            oszilators = parsed if parsed else ['macd']
 
         return(interval, period, overlays, oszilators)
 
     def get_idx_selected(self, v_list, v_key, default=0):
-        
+        """Return the index of the stored config value in v_list, or default when not found."""
         try:
             default = v_list.index(self.get_value(v_key))
         except Exception:
             pass    
         return default
 
-    @st.dialog('Configuration',width='large')
-    def render(self):
+    @st.dialog('Configuration', width='large')
+    def render(self):  # noqa: C901
+        """Render the full configuration dialog (interval, period, overlays, queries, etc.)."""
 
         def check_list(lst = None, overlay = ''):
             error_text = "Select a combination of either/and: "        
@@ -155,7 +183,9 @@ class SystemConfig(tools.Db_tools):
             for t in lst:
                 ol += "'"+t.split(" - ")[0]+"', "
             ms_str = " ".join(lst)
-            for itm in eval(self.get_value(overlay)):
+            _ov_val = self.get_value(overlay)
+            _ov_list = _ov_val if isinstance(_ov_val, list) else ast.literal_eval(_ov_val) if isinstance(_ov_val, str) else []
+            for itm in _ov_list:
                 try:
                     pos = ms_str.index(itm)
                 except Exception:
@@ -178,20 +208,144 @@ class SystemConfig(tools.Db_tools):
         idx_mp_details = self.get_idx_selected(b_select, 'mp_details',1)
         idx_pine_export = self.get_idx_selected(b_select, 'pine_export', 1)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
-        self.region.write(f"user: {self.username}")
+        self.region.write(i18n.t("cfg.user", username=self.username))
+
+        # --- Language switcher ---
+        lang_keys = list(i18n.SUPPORTED_LANGUAGES.keys())
+        current_lang = i18n.current_language()
+        try:
+            lang_idx = lang_keys.index(current_lang)
+        except ValueError:
+            lang_idx = 0
+        selected_lang = st.selectbox(
+            i18n.t("cfg.language"),
+            options=lang_keys,
+            format_func=lambda x: i18n.SUPPORTED_LANGUAGES[x],
+            index=lang_idx,
+        )
+        if selected_lang != current_lang:
+            self.set_value("language", selected_lang)
+            i18n.load_language(selected_lang)
+            st.rerun()
+
         if self.is_admin:
-            logging_choice = st.selectbox("Logging: ", b_select, idx_b_select)
+            with st.expander("License", expanded=False):
+                info = lm.get_license_info()
+                st.write(i18n.t("cfg.license_tier", tier=info['tier']))
+                if info.get("user"):
+                    st.write(i18n.t("cfg.license_licensee", user=info['user']))
+                if info.get("expires"):
+                    st.write(i18n.t("cfg.license_expires", expires=info['expires']))
+                active = [f for f in lm.ALL_FEATURES if lm.has_feature(f)]
+                st.write(i18n.t("cfg.license_features", features=', '.join(active)))
+                if info.get("error"):
+                    st.error(info["error"])
+                if not info["path_exists"]:
+                    st.info(i18n.t("cfg.license_no_file"))
+                if st.button(i18n.t("cfg.reload_license")):
+                    lm.reset_cache()
+                    st.rerun()
+
+        if self.is_admin:
+            with st.expander(i18n.t("cfg.data_provider_header"), expanded=False):
+                import json as _json
+
+                def _read_app(key, default=None):
+                    try:
+                        with open_db(self._db_path, readonly=True) as _c:
+                            row = _c.execute("SELECT value FROM config WHERE key=?", (f"_app:{key}",)).fetchone()
+                            if row and row[0]:
+                                try:
+                                    return _json.loads(row[0])
+                                except Exception:
+                                    return row[0]
+                    except Exception:
+                        pass
+                    return default
+
+                def _write_app(key, value):
+                    v = _json.dumps(value)
+                    with open_db(self._db_path) as _c:
+                        _c.execute(
+                            "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                            (f"_app:{key}", v),
+                        )
+                        _c.commit()
+
+                providers = ["yahoo", "fmp"]
+                cur_provider = _read_app("data_provider", "yahoo")
+                try:
+                    p_idx = providers.index(cur_provider)
+                except ValueError:
+                    p_idx = 0
+                new_provider = st.selectbox(i18n.t("cfg.data_provider"), providers, p_idx,
+                                            format_func=lambda x: {"yahoo": "Yahoo Finance (default)", "fmp": "Financial Modeling Prep (FMP)"}.get(x, x))
+                _write_app("data_provider", new_provider)
+
+                if new_provider == "fmp":
+                    # API-Key wird über KSP verwaltet — Status anzeigen
+                    try:
+                        from tradinglib.ksplib import Ksp as _Ksp
+                        _ksp_creds = _Ksp(storage_path=self._db_path.replace('config.db', ''),
+                                          secrets_path=self._db_path.replace('config.db', '')).get_ksp("fmp")
+                        _ksp_key = (_ksp_creds.get("password", "") if isinstance(_ksp_creds, dict) else "") or ""
+                    except Exception:
+                        _ksp_key = ""
+                    if _ksp_key:
+                        st.success(i18n.t("cfg.fmp_ksp_found"))
+                    else:
+                        st.warning(i18n.t("cfg.fmp_ksp_missing"))
+
+                    cur_overrides_raw = _read_app("fmp_ticker_overrides", {})
+                    cur_overrides = cur_overrides_raw if isinstance(cur_overrides_raw, dict) else {}
+                    st.caption(i18n.t("cfg.fmp_overrides_caption"))
+                    col_y, col_f, col_del = st.columns([2, 2, 1])
+                    new_yf = col_y.text_input(i18n.t("cfg.fmp_override_yahoo"), key="_fmp_ov_yf")
+                    new_fmp = col_f.text_input(i18n.t("cfg.fmp_override_fmp"), key="_fmp_ov_fmp")
+                    col_del.write("")
+                    col_del.write("")
+                    if col_del.button(i18n.t("cfg.fmp_override_add"), key="_fmp_ov_add"):
+                        if new_yf.strip() and new_fmp.strip():
+                            cur_overrides[new_yf.strip()] = new_fmp.strip()
+                            _write_app("fmp_ticker_overrides", cur_overrides)
+                            st.rerun()
+                    if cur_overrides:
+                        for yf_tk, fmp_tk in list(cur_overrides.items()):
+                            c1, c2, c3 = st.columns([2, 2, 1])
+                            c1.code(yf_tk)
+                            c2.code(fmp_tk)
+                            if c3.button("✕", key=f"_fmp_del_{yf_tk}"):
+                                del cur_overrides[yf_tk]
+                                _write_app("fmp_ticker_overrides", cur_overrides)
+                                st.rerun()
+
+                    if st.button(i18n.t("cfg.fmp_test_btn"), key="_fmp_test"):
+                        if not _ksp_key:
+                            st.error(i18n.t("cfg.fmp_test_no_key"))
+                        else:
+                            try:
+                                from tradinglib.providers.fmp_provider import FMPProvider
+                                ok = FMPProvider(api_key=_ksp_key).test_connection()
+                                if ok:
+                                    st.success(i18n.t("cfg.fmp_test_ok"))
+                                else:
+                                    st.error(i18n.t("cfg.fmp_test_fail"))
+                            except Exception as _e:
+                                st.error(str(_e))
+
+        if self.is_admin:
+            logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
             self.set_value('logging', logging_choice)
             # logfile and level controls
             current_logfile = self.get_value('logfile', 'out.txt')
             current_loglevel = self.get_value('loglevel', 'INFO')
-            logfile = st.text_input('Log file name:', value=current_logfile)
+            logfile = st.text_input(i18n.t("cfg.logfile"), value=current_logfile)
             loglevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
             try:
                 idx_level = loglevels.index(current_loglevel)
             except Exception:
                 idx_level = 1
-            loglevel = st.selectbox('Log level:', loglevels, idx_level)
+            loglevel = st.selectbox(i18n.t("cfg.loglevel"), loglevels, idx_level)
             self.set_value('logfile', logfile)
             self.set_value('loglevel', loglevel)
             # Apply logging setting immediately
@@ -202,26 +356,30 @@ class SystemConfig(tools.Db_tools):
                     lgc.disable_logging()
             except Exception:
                 pass
-            self.set_value('sr_scaling',st.selectbox("S/R scaling: ", sr_select, idx_sr_select))
-            self.set_value('rt_prices',st.selectbox("Realtime prices: ", b_select, idx_rt_select))
-            self.set_value('ovt_smoothing', st.selectbox("ovt Smoothing: ", s_select,idx_s_select))
-        self.set_value('system_currency',st.text_input("Currency: ",self.get_value('system_currency', 'EUR')))
-        self.set_value('multi_transactions',st.text_area("Transactions: ",self.get_value('multi_transactions', self.transactions)))
-        self.set_value('trading_cost_pct',st.text_input("Trading cost percentage: ",self.get_value('trading_cost_pct', '0.6')))
-        self.set_value('interval',st.selectbox("Default chart interval: ",intervals,idx_interval)) #60m
-        self.set_value('period',st.selectbox("Default chart period: ",periods,idx_period)) #1mo        
-        self.set_value('overlay',st.text_input("Default chart overlay: ",self.get_value('overlay',"['bos','pre']"))) #predict
-        self.set_value('monitored_assets',st.text_input("Monitored assets: ",self.get_value('monitored_assets',"")))
+            self.set_value('sr_scaling', st.selectbox(i18n.t("cfg.sr_scaling"), sr_select, idx_sr_select))
+            self.set_value('rt_prices', st.selectbox(i18n.t("cfg.rt_prices"), b_select, idx_rt_select))
+            self.set_value('ovt_smoothing', st.selectbox(i18n.t("cfg.ovt_smoothing"), s_select, idx_s_select))
+        self.set_value('system_currency', st.text_input(i18n.t("cfg.currency"), self.get_value('system_currency', 'EUR')))
+        self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
+        self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
+        self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
+        self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
+        _ov_raw = self.get_value('overlay', "['bos','pre']")
+        _ov_str = str(_ov_raw) if isinstance(_ov_raw, list) else (_ov_raw or "['bos','pre']")
+        self.set_value('overlay', st.text_input(i18n.t("cfg.default_overlay"), _ov_str))
+        self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
         check_list(overlays, 'overlay')
-        self.set_value('oszilator',st.text_input("Default chart oszilator: ",self.get_value('oszilator',"['adx','cci','ewo']"))) #rsi       
+        _oz_raw = self.get_value('oszilator', "['adx','cci','ewo']")
+        _oz_str = str(_oz_raw) if isinstance(_oz_raw, list) else (_oz_raw or "['adx','cci','ewo']")
+        self.set_value('oszilator', st.text_input(i18n.t("cfg.default_oscillator"), _oz_str))
         check_list(oszilators, 'oszilator')
-        self.set_value('tz_info',st.text_input("Default timezone: ",self.get_value('tz_info',"Europe/Berlin"))) #predict
-        self.set_value('mp_details', st.selectbox("Show Main page Details-Tab: ", b_select,idx_mp_details))
-        self.set_value('pine_export', st.selectbox("Pine Script Export anzeigen: ", b_select, idx_pine_export))
-        self.set_value('buy_query', st.text_input("Buy query: ", self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
-        self.set_value('sell_query', st.text_input("Sell query: ", self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
+        self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
+        self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))
+        self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
+        self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
+        self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
 
-        if st.button("Save"):
+        if st.button(i18n.t("cfg.save")):
             st.rerun()        
 
     def get_plugin_params(self, plugin_name: str) -> dict:
@@ -235,6 +393,7 @@ class SystemConfig(tools.Db_tools):
 
     @st.dialog('Indicator Settings', width='large')
     def render_plugin_params(self, plugin_name: str, params_schema: dict):
+        """Render a dialog for editing and persisting per-indicator parameter overrides."""
         st.write(f"**{plugin_name}**")
         current = self.get_plugin_params(plugin_name)
         new_params = {}
@@ -254,7 +413,6 @@ class SystemConfig(tools.Db_tools):
                 elif spec['type'] == 'bool':
                     st.session_state[wk] = bool(raw)
                 elif spec['type'] == 'color':
-                    # st.color_picker needs a valid #RRGGBB string
                     st.session_state[wk] = (raw if isinstance(raw, str) and raw.startswith('#') and len(raw) == 7 else '#1E90FF')
                 else:  # select
                     opts = spec.get('options', [])
@@ -263,7 +421,6 @@ class SystemConfig(tools.Db_tools):
             if spec['type'] == 'color':
                 raw = current.get(key, spec['default'])
                 if wk not in st.session_state:
-                    # st.color_picker requires a non-empty #RRGGBB string
                     st.session_state[wk] = raw if (isinstance(raw, str) and raw.startswith('#') and len(raw) == 7) else '#1E90FF'
                 new_params[key] = st.color_picker(spec['label'], key=wk)
             elif spec['type'] == 'bool':
@@ -296,12 +453,69 @@ class SystemConfig(tools.Db_tools):
                 st.session_state.pop(f"_plgparam_{plugin_name}_{k}", None)
             st.rerun()
 
-    @st.dialog('Help',width='large')
+    @st.dialog('Help', width='large')
     def render_help(self):
-        
+        """Render the tabbed help dialog with HTML content from the HELP/ directory."""
         if not self.bare_mode:
 
-            help = help_text.helptext_general
-            st.html(help) 
-        
-        pass
+            tabs = st.tabs(["OVT-Indikator", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte"])
+
+            with tabs[0]:
+                lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
+                with lang_tabs[0]:
+                    st.html(help_text.load_help("ovt_de"))
+                with lang_tabs[1]:
+                    st.html(help_text.load_help("ovt_en"))
+
+            with tabs[1]:
+                for label, module in [
+                    ("Asset Details", "main_page"),
+                    ("Dashboard", "banner_page"),
+                    ("Market Map", "market_map"),
+                    ("Sektorrotation", "sector_rotation_page"),
+                    ("Performance", "performance_details"),
+                    ("Asset-Übersicht", "all_assets"),
+                    ("Eigene Transaktionen", "own_trades_analysis"),
+                ]:
+                    with st.expander(label):
+                        st.html(help_text.load_help(module))
+
+            with tabs[2]:
+                for label, module in [
+                    ("Zinseszins-Simulation", "compound_simulation"),
+                    ("Earnings-Kalender", "earnings_calendar"),
+                    ("Pine Script Export", "pine_exporter"),
+                    ("KI-Integration", "ai_client"),
+                    ("Signal-Benachrichtigung", "signal_notifier"),
+                    ("Datenquellen (Yahoo / FMP)", "providers"),
+                ]:
+                    with st.expander(label):
+                        st.html(help_text.load_help(module))
+
+            with tabs[3]:
+                for label, module in [
+                    ("Strategie-Suche", "asset_simulator"),
+                    ("Multi-Strategien", "multi_transaction"),
+                    ("Paper / Live Trading", "trading_page"),
+                ]:
+                    with st.expander(label):
+                        st.html(help_text.load_help(module))
+
+            with tabs[4]:
+                st.html(help_text.load_help("admin"))
+
+            with tabs[5]:
+                for label, module in [
+                    ("Performance-Simulation (asset_perf2.py)", "asset_perf2"),
+                    ("Trading-Agent (run_agent.py)", "run_agent"),
+                    ("Stop-Loss-Prüfung (check_stoploss.py)", "check_stoploss"),
+                    ("Datenabruf (get_asset_data.py)", "get_asset_data"),
+                    ("Asset-Info laden (get_asset_info.py)", "get_asset_info"),
+                    ("Datenbank initialisieren (seed_db.py)", "seed_db"),
+                    ("ISIN-Befüllung (backfill_isin.py)", "backfill_isin"),
+                    ("Scheduler-Daemon (schedserver.py)", "schedserver"),
+                    ("Anwendung starten (launcher.py)", "launcher"),
+                    ("Setup & Scheduler (Empfehlungen)", "setup_scheduler"),
+                ]:
+                    with st.expander(label):
+                        st.html(help_text.load_help(module))

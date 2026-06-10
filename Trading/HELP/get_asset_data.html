@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>get_asset_data.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Datenabruf <small style="font-size:.6em;color:#888">get_asset_data.py</small></h1>
+
+<p>Lädt historische OHLCV-Kursdaten (Open, High, Low, Close, Volume) von Yahoo Finance herunter und speichert sie lokal in SQLite-Datenbanken je Ticker (<code>yf_{TICKER}.db</code>).</p>
+
+<h2>Aufruf</h2>
+<pre>python get_asset_data.py [interval:period] [Filter]</pre>
+
+<h2>Intervall / Zeitraum</h2>
+<table>
+<tr><th>Beispiel</th><th>Bedeutung</th></tr>
+<tr><td><code>1d:1y</code></td><td>Tages-Kerzen, letztes Jahr</td></tr>
+<tr><td><code>1h:6mo</code></td><td>Stunden-Kerzen, letzte 6 Monate</td></tr>
+<tr><td><code>5m:2d</code></td><td>5-Minuten-Kerzen, letzte 2 Tage</td></tr>
+<tr><td><code>1wk:5y</code></td><td>Wochen-Kerzen, letzte 5 Jahre</td></tr>
+</table>
+<p>Mehrere Kombinationen gleichzeitig möglich: <code>python get_asset_data.py 1d:1y 1h:6mo</code></p>
+
+<h2>Filter-Parameter</h2>
+<table>
+<tr><th>Parameter</th><th>Wirkung</th></tr>
+<tr><td><code>/select:AAPL,MSFT</code></td><td>Nur diese Ticker herunterladen</td></tr>
+<tr><td><code>/index_member:SPX</code></td><td>Nur Ticker eines bestimmten Index</td></tr>
+<tr><td><code>/index_only</code></td><td>Nur Index-Instrumente (kein Einzeltitel)</td></tr>
+<tr><td><code>/all</code></td><td>Alle bekannten Ticker</td></tr>
+<tr><td><code>/inverse</code></td><td>Bearbeitungsreihenfolge umkehren</td></tr>
+</table>
+
+<h2>Gespeicherte Tabellen je Datenbank</h2>
+<ul>
+  <li><code>min_data</code> – Minuten-/Intraday-Kerzen</li>
+  <li><code>h60_data</code> – Stunden-Kerzen</li>
+  <li><code>day_data</code> – Tages-Kerzen</li>
+  <li><code>week_data</code> – Wochen-Kerzen</li>
+  <li><code>month_data</code> – Monats-Kerzen</li>
+</ul>
+
+<div class="info">Bereits vorhandene Daten werden inkrementell aktualisiert – nur neue Kerzen werden heruntergeladen. Bestehende Einträge bleiben erhalten.</div>
+</body>
+</html>

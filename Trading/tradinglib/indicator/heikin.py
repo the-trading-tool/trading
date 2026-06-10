@@ -6,7 +6,7 @@ import sys
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import (_indicator, indicator)
 
@@ -29,6 +29,7 @@ class Heikin(_indicator._Indicator):
         'ema_low_length':       {'type': 'int',    'default': 21,    'label': 'EMA Low length',         'min': 1, 'max': 200},
         'ema_type':             {'type': 'select', 'default': 'EMA', 'label': 'EMA type',               'options': ['SMA','EMA','WMA','RMA','HMA']},
         'show_emas':            {'type': 'bool',   'default': True,  'label': 'Show EMAs'},
+        'fill_ema_band':        {'type': 'bool',   'default': False, 'label': 'Fill EMA band'},
         'color_bull':           {'type': 'color',  'default': '',    'label': 'Bull candle color'},
         'color_bear':           {'type': 'color',  'default': '',    'label': 'Bear candle color'},
         'color_ema_high':       {'type': 'color',  'default': '',    'label': 'EMA High color'},
@@ -48,8 +49,15 @@ class Heikin(_indicator._Indicator):
         ema_high_length=21,
         ema_low_length=21,
         ema_type='EMA',
-        show_emas=True
+        show_emas=True,
+        fill_ema_band=False,
+        color_bull='',
+        color_bear='',
+        color_ema_high='',
+        color_ema_low='',
+        **kwargs
     ):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
 
         self.df = df.copy()
@@ -64,6 +72,11 @@ class Heikin(_indicator._Indicator):
         self.ema_low_length = ema_low_length
         self.ema_type = ema_type
         self.show_emas = show_emas
+        self.fill_ema_band = fill_ema_band
+        self.color_bull = color_bull
+        self.color_bear = color_bear
+        self.color_ema_high = color_ema_high
+        self.color_ema_low = color_ema_low
 
         # Pass a copy so _calculate_heikin_ashi's reset_index() does not mutate
         # self.df's index — the Date-string index must stay intact for the merge
@@ -81,6 +94,7 @@ class Heikin(_indicator._Indicator):
 
     # === Moving Average Utility ===
     def _ma(self, series: pd.Series, length: int, ma_type: str = 'EMA') -> pd.Series:
+        """Compute an exponential moving average for the given column."""
         if ma_type.upper() == 'SMA':
             return series.rolling(length).mean()
         elif ma_type.upper() == 'EMA':
@@ -101,8 +115,9 @@ class Heikin(_indicator._Indicator):
 
     # === Core Calculation ===
     def _calculate_heikin_ashi(self, df):
+        """Compute Heikin-Ashi OHLC values from standard OHLC."""
         try:
-            df.reset_index(inplace=True)
+            df = df.reset_index()
         except Exception:
             pass
 
@@ -171,12 +186,16 @@ class Heikin(_indicator._Indicator):
 
     # === Plot ===
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
 
         df = self.df_ha.copy()
-        df.reset_index(drop=True, inplace=True)
+        df = df.reset_index(drop=True)
 
         title = "Smoothed Heiken Ashi" if self.smooth else "Heiken Ashi"
+
+        bull_color = self.color_bull if self.color_bull else 'limegreen'
+        bear_color = self.color_bear if self.color_bear else 'indianred'
 
         # === HA Candles ===
         self.fig.add_trace(
@@ -189,13 +208,16 @@ class Heikin(_indicator._Indicator):
                 name=title,
                 showlegend=False,
                 opacity=0.7,
-                decreasing_line_color='indianred',
-                increasing_line_color='limegreen',
+                decreasing_line_color=bear_color,
+                increasing_line_color=bull_color,
             )
         )
 
         # === EMA Lines ===
         if self.show_emas:
+            ema_high_color = self.color_ema_high if self.color_ema_high else 'orange'
+            ema_low_color  = self.color_ema_low  if self.color_ema_low  else 'deepskyblue'
+
             self.fig.add_trace(
                 go.Scatter(
                     x=df['Date'],
@@ -203,7 +225,7 @@ class Heikin(_indicator._Indicator):
                     showlegend=False,
                     mode='lines',
                     name=f'EMA HA High ({self.ema_high_length})',
-                    line=dict(color='orange', width=1.5),
+                    line=dict(color=ema_high_color, width=1.5),
                 )
             )
 
@@ -214,8 +236,8 @@ class Heikin(_indicator._Indicator):
                     showlegend=False,
                     mode='lines',
                     name=f'EMA HA Low ({self.ema_low_length})',
-                    line=dict(color='deepskyblue', width=1.5),
-#                    fill='tonexty',              # Füllt den Bereich bis zur vorherigen Linie
-#                    fillcolor='rgba(128, 128, 128, 0.2)'  # Farbe der Füllung (mit Transparenz)
+                    line=dict(color=ema_low_color, width=1.5),
+                    fill='tonexty' if self.fill_ema_band else 'none',
+                    fillcolor='rgba(128, 128, 128, 0.15)' if self.fill_ema_band else None,
                 )
             )

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Eigene Transaktionen – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Eigene Transaktionen <small style="font-size:.6em;color:#888">own_trades_analysis.py</small></h1>
+
+<p>Vollständige Portfolio-Analyse aller offenen und geschlossenen Positionen aus der lokalen Trades-Datenbank (<code>trades{Jahr}.db</code>).</p>
+
+<h2>Bereichsübersicht</h2>
+<table>
+<tr><th>Bereich</th><th>Inhalt</th></tr>
+<tr><td><b>Offene Positionen</b></td><td>Aktuell gehaltene Titel mit Kaufpreis, aktuellem Kurs und unrealisiertem Gewinn/Verlust</td></tr>
+<tr><td><b>Geschlossene Positionen</b></td><td>Abgeschlossene Trades mit Kauf-/Verkaufsdatum, Rendite in % und absolut</td></tr>
+<tr><td><b>Kumulierter Gewinn-Chart</b></td><td>Zeitlicher Verlauf des realisierten Gesamtgewinns als Linienchart</td></tr>
+<tr><td><b>Strategie-Kennzahlen</b></td><td>Profit-Faktor, Trefferquote, beste/schlechteste Trades je Strategie</td></tr>
+<tr><td><b>Monatliche Heatmap</b></td><td>Farbkodierter Monat × Jahr – Gewinne (grün) und Verluste (rot)</td></tr>
+<tr><td><b>Portfolio-Overlap</b></td><td>Warnung bei Doppelpositionen über mehrere Strategien hinweg</td></tr>
+</table>
+
+<h2>Kennzahlen</h2>
+<table>
+<tr><th>Kennzahl</th><th>Formel / Bedeutung</th></tr>
+<tr><td>Profit-Faktor</td><td>Summe Gewinne ÷ Summe Verluste (Ziel: &gt; 1,5)</td></tr>
+<tr><td>Trefferquote</td><td>Anzahl Gewinn-Trades ÷ Gesamtzahl Trades × 100</td></tr>
+<tr><td>Ø Gewinn/Trade</td><td>Realisierter Gewinn ÷ Anzahl abgeschlossener Trades</td></tr>
+<tr><td>Max. Drawdown</td><td>Größter kumulierter Rückgang vom Hoch (Risikokennzahl)</td></tr>
+</table>
+
+<h2>Zeitraum-Filter</h2>
+<p>Über das Jahres-Dropdown oben rechts lässt sich die Analyse auf ein bestimmtes Kalenderjahr einschränken. Standardmäßig wird das aktuelle Jahr gezeigt.</p>
+
+<div class="info">Die Daten liegen in <code>database/trades{Jahr}.db</code>. Für Paper-Trading werden dieselben Tabellen genutzt wie für Live-Trading, jedoch mit dem Modus-Flag <code>paper</code>.</div>
+</body>
+</html>

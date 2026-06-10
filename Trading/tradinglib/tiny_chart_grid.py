@@ -1,7 +1,11 @@
+import logging
 import streamlit as st
 from typing import Optional
 from tradinglib.indicator import indicator
 from tradinglib import multi_select as ms
+from tradinglib.utils import get_display_name
+
+logger = logging.getLogger(__name__)
 
 
 class ChartsGridRenderer:
@@ -24,6 +28,7 @@ class ChartsGridRenderer:
     """
 
     def __init__(self, columns: int = 2):
+        """Set the number of chart columns in the grid."""
         self.columns = columns
 
     def get_selectors(self, sys_config, list_data=None):
@@ -103,7 +108,7 @@ class ChartsGridRenderer:
                     if df_source is not None:
                         sel = df_source.loc[df_source[name_lookup_col] == symbol]
                         if not sel.empty:
-                            name = sel[name_field].iloc[0]
+                            name = get_display_name(sel.iloc[0], name_col=name_field)
                 except Exception:
                     name = ""
 
@@ -125,7 +130,7 @@ class ChartsGridRenderer:
                 # Keep rendering despite individual chart errors; optionally log like original callers
                 if log_exceptions:
                     try:
-                        print(f"Error occurred while plotting chart for {symbol}: {e}")
+                        logger.warning("Error occurred while plotting chart for %s: %s", symbol, e)
                     except Exception:
-                        print(f"Error occurred while plotting chart: {e}")
+                        logger.warning("Error occurred while plotting chart: %s", e)
                 continue

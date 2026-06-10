@@ -1,47 +1,33 @@
-from google import genai
-import sys
-import json
-import yaml
+"""
+gemini_api.py — Backward-compatible wrapper um ai_client.AiClient.
 
-#try:
-#    sys.path.insert(0, "../tradinglib/")
-#except ImportError:
-#    print('No Import')
+Bestehender Code, der GeminiApi oder GeminiRateLimitError importiert,
+funktioniert ohne Änderung weiter.  Neue Funktionalität bitte direkt
+über ai_client.AiClient nutzen.
+"""
+from tradinglib.ai_client import (
+    AiClient        as _AiClient,
+    AiRateLimitError as GeminiRateLimitError,   # noqa: F401  (re-export)
+    AiProviderError,                            # noqa: F401  (re-export)
+)
+import logging
 
-from tradinglib import ksplib
+logger = logging.getLogger(__name__)
 
-class GeminiApi():
-    
-    api_key = ""
-    
-    def __init__(self, question = ''):
-        ksp = ksplib.Ksp()
-        (api_key, _,_ ) = ksp.get_ksp('gapi').values()
-        self.client = genai.Client(api_key=api_key)
-        if not question == '':
+
+class GeminiApi(_AiClient):
+    """Alias für AiClient — benutzt Gemini-Provider wenn kein anderer konfiguriert."""
+
+    def __init__(self, question: str = '', username: str = 'admin'):
+        """Initialize the AI client and optionally run an immediate question."""
+        super().__init__(provider='auto', username=username)
+        if question:
             self.run_question(question)
-        pass
-    
-    def run_question(self, question):
-    
-        response = self.client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=question
-        )
-        
-        self.answer = response.text
-    
-if __name__ == "__main__":
-    
+
+    # _build_asset_prompt ist bereits in AiClient über ai_client._build_asset_prompt
+    # eingebunden — kein Override nötig.
+
+
+if __name__ == '__main__':
     answer = GeminiApi(question="O'Reilly Automotive, Inc.").answer
     print(answer)
-
-#print(json_string)
-#message_dict = json.loads(json.dumps(json_string))
-#print(type(message_dict))
-#json_string = json_string.replace("'", "\"")
-##json_object = eval(json.dumps(json_text))
-#json_object = json.loads(json_string)
-#print(json_object)
-#print(json_object['candidates']['content'])
-    pass

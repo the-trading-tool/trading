@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Datenquellen – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Datenquellen <small style="font-size:.6em;color:#888">tradinglib/providers/</small></h1>
+
+<p>Alle Kurs- und OHLC-Daten laufen über eine austauschbare <b>Provider-Schicht</b>. Standardmäßig wird <b>Yahoo Finance</b> (über <code>yfinance</code>) verwendet. Alternativ kann <b>Financial Modeling Prep (FMP)</b> als Datenquelle aktiviert werden – z.&nbsp;B. wenn Yahoo zeitweise blockiert oder rate-limitiert ist.</p>
+
+<h2>Provider umschalten</h2>
+<p>Über den 🏵-Button (Konfiguration, nur für Admins sichtbar) → Abschnitt <b>Datenprovider</b>:</p>
+<ul>
+  <li><b>Aktiver Datenprovider:</b> <code>yahoo</code> (Standard) oder <code>fmp</code></li>
+  <li>Die Auswahl gilt global für alle Module, die Kursdaten abrufen (<code>fetch_data.py</code>, <code>market_data.py</code>, <code>get_asset_data.py</code> …)</li>
+</ul>
+
+<div class="warn"><b>Empfehlung – Yahoo nur als Fallback verwenden:</b> Yahoo Finance ist über <code>yfinance</code> angebunden, eine <b>inoffizielle</b> Schnittstelle ohne SLA. Bei häufigen automatisierten Hintergrund-Abrufen (siehe Hilfe „Setup &amp; Scheduler") drohen Sperren oder Rate-Limits. Für regelmäßige Jobs daher <b>FMP als primären Provider</b> einrichten und Yahoo nur als Rückfalloption belassen, falls FMP-Limits erreicht sind oder kein API-Key hinterlegt wurde.</div>
+
+<h2>Financial Modeling Prep (FMP)</h2>
+<h3>Voraussetzung: API-Schlüssel</h3>
+<ul>
+  <li>Kostenlosen API-Key auf <code>financialmodelingprep.com</code> erstellen</li>
+  <li>Im Admin-Panel unter <b>API-Zugänge</b> einen KSP-Eintrag <code>fmp</code> anlegen, Passwort = API-Key</li>
+  <li>Im Konfigurationsdialog zeigt ein grüner Hinweis <i>„API-Schlüssel gefunden"</i> an, sobald der Eintrag erkannt wurde</li>
+  <li>Mit <b>🔌 Verbindung testen</b> lässt sich der Zugang sofort prüfen</li>
+</ul>
+
+<h3>Ticker-Kompatibilität</h3>
+<p>FMP verwendet teilweise andere Ticker-Symbole als Yahoo Finance. Die Umrechnung erfolgt automatisch:</p>
+<table>
+<tr><th>Wertpapierart</th><th>Yahoo-Symbol</th><th>FMP-Symbol</th></tr>
+<tr><td>US-Aktien</td><td><code>AAPL</code></td><td><code>AAPL</code> (identisch)</td></tr>
+<tr><td>Deutsche Aktien (Xetra)</td><td><code>SAP.DE</code></td><td><code>SAP.F</code></td></tr>
+<tr><td>Kryptowährungen</td><td><code>BTC-USD</code></td><td><code>BTCUSD</code></td></tr>
+<tr><td>Indizes</td><td><code>^GDAXI</code>, <code>^SPX</code>, <code>^TNX</code></td><td>identisch</td></tr>
+<tr><td>Sonstige Börsenplätze</td><td>—</td><td>meist identisch, sonst manuell überschreibbar</td></tr>
+</table>
+
+<h3>Manuelle Ticker-Überschreibungen</h3>
+<p>Passt die automatische Umrechnung für einen Ticker nicht, kann im Konfigurationsdialog eine individuelle Zuordnung <i>Yahoo-Ticker → FMP-Ticker</i> hinzugefügt werden. Die Liste wird unter <code>_app:fmp_ticker_overrides</code> in <code>config.db</code> gespeichert und ist über das ✕-Symbol wieder entfernbar.</p>
+
+<div class="warn"><b>Rate-Limits (kostenloser FMP-Tarif):</b> 250 Anfragen/Tag, 10 Anfragen/Minute. Bei intensiver Nutzung (z.&nbsp;B. <code>get_asset_data.py /all</code>) können diese Limits schnell erreicht werden.</div>
+
+<div class="info">Beide Provider liefern Daten im selben Format (Open/High/Low/Close/Volume, wie <code>yfinance</code>). Ein Wechsel des Providers erfordert keine Änderung an bestehenden Datenbanken oder Auswertungen – nur künftige Abrufe nutzen die neue Quelle.</div>
+</body>
+</html>

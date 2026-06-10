@@ -8,18 +8,22 @@ import hashlib
 import json
 import time
 from tqdm import tqdm
+from tradinglib.tools import open_db
 
 # -----------------------------
 # 🔹 Simple SQLite Cache Layer
 # -----------------------------
 class AlphaVantageCache:
-    """SQLite Cache zum Speichern von API-Antworten."""
+    """SQLite-backed cache for Alpha Vantage API responses."""
+
     def __init__(self, db_path="av_cache.db"):
+        """Open or create the cache database at db_path."""
         self.db_path = db_path
         self._init_db()
 
     def _init_db(self):
-        with sqlite3.connect(self.db_path) as conn:
+        """Create the cache table if it doesn't exist."""
+        with open_db(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cache (
                     key TEXT PRIMARY KEY,
@@ -29,7 +33,8 @@ class AlphaVantageCache:
             """)
 
     def get(self, key: str, max_age_hours: int = 24) -> Optional[dict]:
-        with sqlite3.connect(self.db_path) as conn:
+        """Return the cached response for key if it is younger than max_age_hours, else None."""
+        with open_db(self.db_path, readonly=True) as conn:
             cur = conn.cursor()
             cur.execute("SELECT response, timestamp FROM cache WHERE key=?", (key,))
             row = cur.fetchone()
@@ -41,7 +46,8 @@ class AlphaVantageCache:
             return json.loads(response)
 
     def set(self, key: str, response: dict):
-        with sqlite3.connect(self.db_path) as conn:
+        """Store or replace the API response for key in the cache database."""
+        with open_db(self.db_path) as conn:
             conn.execute("REPLACE INTO cache (key, response, timestamp) VALUES (?, ?, ?)",
                          (key, json.dumps(response), time.time()))
 
@@ -52,6 +58,7 @@ class AlphaVantageData:
     BASE_URL = "https://www.alphavantage.co/query"
 
     def __init__(self, symbol: str, api_key: Optional[str] = None, cache: bool = True):
+        """Initialize the Alpha Vantage client for a single symbol with optional SQLite caching."""
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv("ALPHAVANTAGE_API_KEY")
         if not self.api_key:
@@ -59,12 +66,13 @@ class AlphaVantageData:
         self.cache = AlphaVantageCache() if cache else None
 
     def _cache_key(self, function: str, params: dict) -> str:
+        """Return a SHA-256 cache key derived from the function name, symbol, and params."""
         m = hashlib.sha256()
         m.update((function + self.symbol + json.dumps(params, sort_keys=True)).encode())
         return m.hexdigest()
 
     def _fetch(self, function: str, params: dict) -> dict:
-        """API-Request mit optionalem Cache"""
+        """Execute an Alpha Vantage API request with optional cache lookup."""
         params.update({
             "function": function,
             "symbol": self.symbol,
@@ -89,6 +97,7 @@ class AlphaVantageData:
     # 🔸 Helper: Zeitraum aus period ableiten
     # -----------------------------
     def _resolve_period(self, period: str):
+        """Convert a period string like '6mo' to a (start_date, end_date) tuple."""
         period_map = {
             "1d": timedelta(days=1),
             "5d": timedelta(days=5),
@@ -114,17 +123,18 @@ class AlphaVantageData:
     # 🔸 Helper: JSON → DataFrame
     # -----------------------------
     def _to_dataframe(self, data: dict) -> pd.DataFrame:
+        """Convert an Alpha Vantage time-series JSON response to a clean OHLCV DataFrame."""
         key = [k for k in data.keys() if "Time Series" in k][0]
         ts_data = data[key]
         df = pd.DataFrame.from_dict(ts_data, orient="index", dtype=float)
         df.index = pd.to_datetime(df.index)
-        df.sort_index(inplace=True)
+        df = df.sort_index()
         df.columns = [c.split(". ")[1].capitalize() for c in df.columns]
-        df.rename(columns={
+        df = df.rename(columns={
             "Adjusted close": "Adj Close",
             "Dividend amount": "Dividends",
             "Split coefficient": "Splits"
-        }, inplace=True)
+        })
         return df
 
     # -----------------------------
@@ -133,7 +143,7 @@ class AlphaVantageData:
     def download(self, start=None, end=None, period=None, interval="1d",
                  outputsize="full", actions=False, auto_adjust=False,
                  progress=False, prepost=False) -> pd.DataFrame:
-        """Lädt historische Kursdaten wie yfinance.download()"""
+        """Download historical price data from Alpha Vantage with a yfinance-compatible signature."""
 
         # Period-Handling
         if period and not start:
@@ -184,7 +194,7 @@ class AlphaVantageData:
             df["Close"] = df["Adj Close"]
 
         if not actions:
-            df.drop(columns=[c for c in ["Dividends", "Splits"] if c in df.columns], inplace=True, errors="ignore")
+            df = df.drop(columns=[c for c in ["Dividends", "Splits"] if c in df.columns], errors="ignore")
 
         return df
 
@@ -192,26 +202,26 @@ class AlphaVantageData:
     # 🔸 Fundamental / Economic Data
     # -----------------------------
     def fundamentals(self, datatype="json"):
-        """Beispiel: Unternehmensfundamentaldaten"""
+        """Return company overview fundamentals from Alpha Vantage as a pandas Series."""
         params = {"datatype": datatype}
         data = self._fetch("OVERVIEW", params)
         return pd.Series(data)
 
     def gdp(self):
-        """Globales GDP via AlphaVantage Macro API"""
+        """Return annual global GDP data from the Alpha Vantage Macro API as a DataFrame."""
         data = self._fetch("REAL_GDP", {"interval": "annual"})
         df = pd.DataFrame(data["data"])
         df["date"] = pd.to_datetime(df["date"])
-        df.set_index("date", inplace=True)
+        df = df.set_index("date")
         df["value"] = df["value"].astype(float)
         return df
 
     def inflation(self):
-        """US-Inflationsdaten"""
+        """Return US CPI inflation data from Alpha Vantage as a DataFrame."""
         data = self._fetch("INFLATION", {})
         df = pd.DataFrame(data["data"])
         df["date"] = pd.to_datetime(df["date"])
-        df.set_index("date", inplace=True)
+        df = df.set_index("date")
         df["value"] = df["value"].astype(float)
         return df
 
@@ -221,12 +231,13 @@ class AlphaVantageData:
 # -----------------------------
 class AlphaVantageTickers:
     def __init__(self, tickers: List[str], api_key: Optional[str] = None, cache=True):
+        """Initialize the multi-ticker Alpha Vantage client with a list of symbols."""
         self.tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key or os.getenv("ALPHAVANTAGE_API_KEY")
         self.cache = cache
 
     def download(self, show_progress=True, **kwargs) -> pd.DataFrame:
-        """Lädt mehrere Symbole gleichzeitig und kombiniert sie zu MultiIndex-DF."""
+        """Download all tickers sequentially and combine into a MultiIndex DataFrame."""
         all_dfs = {}
         iterator = tqdm(self.tickers, desc="Downloading tickers", disable=not show_progress)
         for t in iterator:

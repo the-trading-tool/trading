@@ -22,6 +22,7 @@ from tradinglib.sector_rotation import (
     US_SECTOR_ETFS,
     SectorRotation,
 )
+from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ _CMF_LABEL_COLOR = {
 
 
 def _cmf_label(v: float) -> str:
+    """Map a CMF value to a human-readable label (Strong Inflow → Strong Outflow)."""
     if np.isnan(v):
         return "Neutral"
     if v >  0.15: return "Strong Inflow"
@@ -99,6 +101,7 @@ def _bench_options(universe_name: str, default: str) -> list[str]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_data(benchmark: str, period: str, etfs_json: str, weights_json: str, include_pe: bool):
+    """Load and compute all sector rotation data; cached for 1 hour."""
     etfs    = json.loads(etfs_json)
     weights = json.loads(weights_json)
     rot = SectorRotation(
@@ -117,52 +120,49 @@ class SectorRotationPage:
     """Streamlit page: 3-level sector rotation dashboard."""
 
     def __init__(self, username: str = "") -> None:
+        """Initialize the page with the current user's username."""
         self.username = username
 
     def render(self) -> None:
-        st.header("Sector Rotation Analysis")
-        st.caption(
-            "Tracks institutional capital flows using RSC, Chaikin Money Flow, OBV "
-            "and the Relative Rotation Graph (RRG) — for US sectors, European sectors, "
-            "or Emerging Market countries."
-        )
+        """Render the full sector rotation dashboard with all six tabs."""
+        st.header(_t('sr.header'))
+        st.caption(_t('sr.caption'))
 
         # ── Top controls ──────────────────────────────────────────────────────
         c_univ, c_bench, c_period, c_pe, c_refresh = st.columns([0.22, 0.20, 0.14, 0.12, 0.32])
 
         universe_name = c_univ.selectbox(
-            "Universe",
+            _t('sr.universe'),
             list(UNIVERSES.keys()),
             index=0,
             help="US Sectors = SPDR S&P ETFs | EU Sectors = iShares STOXX 600 (XETRA, EUR) | EM Countries = MSCI country ETFs (USD)",
         )
         universe = UNIVERSES[universe_name]
 
-        # Benchmark options: universe default first, then alternatives
         bench_options = _bench_options(universe_name, universe["benchmark"])
         benchmark = c_bench.selectbox(
-            "Benchmark",
+            _t('sr.benchmark'),
             bench_options,
             index=0,
             help="Reference index for all relative-strength calculations.",
         )
 
         period = c_period.selectbox(
-            "History", ["1y", "2y", "3y"], index=1,
+            _t('sr.history'), ["1y", "2y", "3y"], index=1,
             help="Longer history = more stable EWM baselines.",
         )
         include_pe = c_pe.toggle(
-            "Fwd P/E", value=False,
+            _t('sr.fwd_pe'), value=False,
             help="Fetches forwardPE from Yahoo Finance — adds ~10 s.",
         )
-        if c_refresh.button("Refresh data", use_container_width=True):
+        if c_refresh.button(_t('sr.refresh'), use_container_width=True):
             st.cache_data.clear()
 
         # Universe-specific note (FX warning for EM, etc.)
         if universe["note"]:
             st.info(universe["note"], icon="ℹ️")
 
-        with st.spinner(f"Fetching {universe_name} data and computing indicators…"):
+        with st.spinner(_t('sr.loading', universe=universe_name)):
             summary, rrg_weekly, rrg_daily = _load_data(
                 benchmark,
                 period,
@@ -172,17 +172,17 @@ class SectorRotationPage:
             )
 
         if summary.empty:
-            st.error("No data returned. Check your internet connection.")
+            st.error(_t('sr.no_data'))
             return
 
         # ── 6-level tabs ──────────────────────────────────────────────────────
         tab_rrg, tab_rrg_d, tab_treemap, tab_matrix, tab_drill, tab_stocks = st.tabs([
-            "RRG Weekly",
-            "RRG Daily",
-            "Capital Flow Treemap",
-            "Sector Matrix",
-            "Industry Drill-down",
-            "Best of Sector",
+            _t('sr.tab_rrg_weekly'),
+            _t('sr.tab_rrg_daily'),
+            _t('sr.tab_treemap'),
+            _t('sr.tab_matrix'),
+            _t('sr.tab_drill'),
+            _t('sr.tab_stocks'),
         ])
 
         with tab_rrg:
@@ -193,7 +193,7 @@ class SectorRotationPage:
                 rrg_daily, summary,
                 universe_name=universe_name,
                 height=500,
-                tail_label="15 trading days",
+                tail_label=_t('sr.tail_daily'),
             )
 
         with tab_treemap:
@@ -210,23 +210,41 @@ class SectorRotationPage:
 
     # ── Level 1: Relative Rotation Graph ──────────────────────────────────────
 
-    def _render_rrg(self, rrg_data: dict, summary: pd.DataFrame, universe_name: str = "", height: int = 620, tail_label: str = "5 weeks") -> None:
-        label = "sector" if "EM" not in universe_name else "country"
-        st.subheader("Relative Rotation Graph (RRG)")
-        st.caption(
-            f"Each {label} is shown as a snake over the last **{tail_label}**. "
-            "Rotation runs clockwise: **Leading → Weakening → Lagging → Improving → Leading**."
-        )
+    def _render_rrg(self, rrg_data: dict, summary: pd.DataFrame, universe_name: str = "", height: int = 620, tail_label: str = "") -> None:
+        """Render the Relative Rotation Graph (RRG) scatter chart with sector tails."""
+        if not tail_label:
+            tail_label = _t('sr.tail_weekly')
+        label = _t('sr.rrg_label_sector') if "EM" not in universe_name else _t('sr.rrg_label_country')
+        st.subheader(_t('sr.rrg_subheader'))
+        st.caption(_t('sr.rrg_caption', label=label, tail=tail_label))
 
         status_map = summary.set_index("Sector")["Status"].to_dict()
+
+        # Collect all data points first to determine auto-zoom range
+        all_xs, all_ys = [], []
+        for data in rrg_data.values():
+            all_xs.extend(data["rs_ratio"])
+            all_ys.extend(data["rs_momentum"])
+
+        if all_xs and all_ys:
+            pad = 1.5
+            x_min = min(min(all_xs) - pad, 99)
+            x_max = max(max(all_xs) + pad, 101)
+            y_min = min(min(all_ys) - pad, 99)
+            y_max = max(max(all_ys) + pad, 101)
+        else:
+            x_min, x_max, y_min, y_max = 85, 115, 85, 115
+
         fig = go.Figure()
 
-        # Quadrant shading and labels
+        # Quadrant shading and labels — use a large fixed extent so shapes
+        # always cover the full visible area regardless of zoom level
+        _Q = 200
         quadrants = [
-            (100, 115, 100, 115, "rgba(46,204,113,0.08)",  "Leading",   "right", "top"),
-            (100, 115, 85,  100, "rgba(243,156,18,0.08)",  "Weakening", "right", "bottom"),
-            (85,  100, 85,  100, "rgba(231,76,60,0.08)",   "Lagging",   "left",  "bottom"),
-            (85,  100, 100, 115, "rgba(52,152,219,0.08)",  "Improving", "left",  "top"),
+            (100, _Q,  100, _Q,  "rgba(46,204,113,0.08)",  "Leading",   "right", "top"),
+            (100, _Q,  -_Q, 100, "rgba(243,156,18,0.08)",  "Weakening", "right", "bottom"),
+            (-_Q, 100, -_Q, 100, "rgba(231,76,60,0.08)",   "Lagging",   "left",  "bottom"),
+            (-_Q, 100, 100, _Q,  "rgba(52,152,219,0.08)",  "Improving", "left",  "top"),
         ]
         for x0, x1, y0, y1, fill, label, xanch, yanch in quadrants:
             fig.add_shape(
@@ -234,8 +252,8 @@ class SectorRotationPage:
                 fillcolor=fill, line_width=0, layer="below",
             )
             fig.add_annotation(
-                x=x1 if xanch == "right" else x0,
-                y=y1 if yanch == "top" else y0,
+                x=x_max if xanch == "right" else x_min,
+                y=y_max if yanch == "top" else y_min,
                 text=f"<b>{label}</b>",
                 font=dict(size=12, color="gray"),
                 showarrow=False, xanchor=xanch, yanchor=yanch,
@@ -288,12 +306,12 @@ class SectorRotationPage:
             height=height,
             xaxis=dict(
                 title="RS-Ratio  →  (>100 = outperforming)",
-                range=[85, 115],
+                range=[x_min, x_max],
                 showgrid=True, gridcolor="rgba(128,128,128,0.15)",
             ),
             yaxis=dict(
                 title="RS-Momentum  →  (>100 = accelerating)",
-                range=[85, 115],
+                range=[y_min, y_max],
                 showgrid=True, gridcolor="rgba(128,128,128,0.15)",
             ),
             showlegend=True,
@@ -308,22 +326,26 @@ class SectorRotationPage:
         # Status summary metrics
         sc = summary["Status"].value_counts()
         m1, m2, m3, m4 = st.columns(4)
+        _status_labels = {
+            "Leading":   _t('sr.status_leading'),
+            "Weakening": _t('sr.status_weakening'),
+            "Lagging":   _t('sr.status_lagging'),
+            "Improving": _t('sr.status_improving'),
+        }
         for col, status in zip([m1, m2, m3, m4], ["Leading", "Weakening", "Lagging", "Improving"]):
-            col.metric(status, sc.get(status, 0))
+            col.metric(_status_labels[status], sc.get(status, 0))
 
     # ── Level 2: CMF Treemap ──────────────────────────────────────────────────
 
     def _render_treemap(self, summary: pd.DataFrame, universe_name: str = "") -> None:
+        """Render a CMF-colored treemap of sector weights."""
         weight_label = {
-            "US Sectors":   "S&P 500 sector weight",
-            "EU Sectors":   "STOXX 600 sector weight",
-            "EM Countries": "MSCI EM country weight",
-        }.get(universe_name, "index weight")
-        st.subheader("Capital Flow Treemap")
-        st.caption(
-            f"**Tile size** = approximate {weight_label}. "
-            "**Colour** = Chaikin Money Flow (14D): dark green = strong inflow, dark red = strong outflow."
-        )
+            "US Sectors":   _t('sr.treemap_weight_us'),
+            "EU Sectors":   _t('sr.treemap_weight_eu'),
+            "EM Countries": _t('sr.treemap_weight_em'),
+        }.get(universe_name, _t('sr.treemap_weight_default'))
+        st.subheader(_t('sr.treemap_subheader'))
+        st.caption(_t('sr.treemap_caption', weight_label=weight_label))
 
         df = summary.copy()
         df["CMF_label"] = df["CMF_14D"].apply(_cmf_label)
@@ -361,36 +383,22 @@ class SectorRotationPage:
 
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-        st.caption(
-            "**CMF thresholds:**  "
-            ">0.15 = strong buying pressure &nbsp;|&nbsp; "
-            "0.05–0.15 = accumulation &nbsp;|&nbsp; "
-            "±0.05 = neutral &nbsp;|&nbsp; "
-            "-0.15 to -0.05 = distribution &nbsp;|&nbsp; "
-            "<-0.15 = strong selling pressure"
-        )
+        st.caption(_t('sr.treemap_cmf_caption'))
 
     # ── Level 4: Industry Drill-down ──────────────────────────────────────────
 
     def _render_industry_drilldown(self, universe_name: str, period: str) -> None:
+        """Render the industry drill-down tab for a selected sector (US only)."""
         if universe_name != "US Sectors":
-            st.info(
-                "Industry drill-down is currently available for **US Sectors** only. "
-                "Switch the Universe selector to 'US Sectors' to use this feature.",
-                icon="ℹ️",
-            )
+            st.info(_t('sr.drill_us_only'), icon="ℹ️")
             return
 
-        st.subheader("Industry Drill-down")
-        st.caption(
-            "Select a sector to see how its industries rotate against each other. "
-            "**Benchmark = the parent sector ETF** — RS-Ratio > 100 means the industry "
-            "outperforms its own sector, not the overall market."
-        )
+        st.subheader(_t('sr.drill_subheader'))
+        st.caption(_t('sr.drill_caption'))
 
         available_sectors = list(US_INDUSTRY_ETFS.keys())
         sector = st.selectbox(
-            "Drill into sector:",
+            _t('sr.drill_select'),
             available_sectors,
             index=0,
             key="drill_sector",
@@ -406,7 +414,7 @@ class SectorRotationPage:
             f"Tickers: {', '.join(industries.values())}"
         )
 
-        with st.spinner(f"Loading {sector} industry data…"):
+        with st.spinner(_t('sr.drill_loading', sector=sector)):
             try:
                 summary, rrg_weekly, rrg_daily = _load_data(
                     sector_etf,
@@ -416,15 +424,14 @@ class SectorRotationPage:
                     False,
                 )
             except Exception as exc:
-                st.error(f"Failed to load industry data: {exc}")
+                st.error(_t('sr.drill_error', error=exc))
                 return
 
         if summary.empty:
-            st.warning("No industry data returned — some ETFs may have insufficient history.")
+            st.warning(_t('sr.drill_no_data'))
             return
 
-        # Weekly and daily mini-RRG side by side via sub-tabs
-        sub_weekly, sub_daily = st.tabs(["Weekly RRG", "Daily RRG (15D)"])
+        sub_weekly, sub_daily = st.tabs([_t('sr.drill_tab_weekly'), _t('sr.drill_tab_daily')])
         with sub_weekly:
             self._render_rrg(
                 rrg_weekly, summary,
@@ -436,14 +443,20 @@ class SectorRotationPage:
                 rrg_daily, summary,
                 universe_name=f"{sector} industries",
                 height=460,
-                tail_label="15 trading days",
+                tail_label=_t('sr.tail_daily'),
             )
 
         # Compact status strip
         sc = summary["Status"].value_counts()
         cols = st.columns(4)
+        _status_labels = {
+            "Leading":   _t('sr.status_leading'),
+            "Weakening": _t('sr.status_weakening'),
+            "Lagging":   _t('sr.status_lagging'),
+            "Improving": _t('sr.status_improving'),
+        }
         for col, status in zip(cols, ["Leading", "Weakening", "Lagging", "Improving"]):
-            col.metric(status, sc.get(status, 0))
+            col.metric(_status_labels[status], sc.get(status, 0))
 
         st.markdown("---")
 
@@ -453,12 +466,9 @@ class SectorRotationPage:
     # ── Level 3: Sector Matrix ────────────────────────────────────────────────
 
     def _render_matrix(self, summary: pd.DataFrame, key: str = "sector") -> None:
-        st.subheader("Sector Comparison Matrix")
-        st.caption(
-            "Green = bullish, red = bearish. "
-            "RSC centred on 0, RS-Ratio / RS-Momentum centred on 100. "
-            "Sorted strongest → weakest by RSC."
-        )
+        """Render the color-coded sector metrics table as a Plotly table."""
+        st.subheader(_t('sr.matrix_subheader'))
+        st.caption(_t('sr.matrix_caption'))
 
         display_order = [
             "Sector", "ETF",
@@ -490,6 +500,7 @@ class SectorRotationPage:
         _RSC_COLS = ("RSC 4W %", "RSC 12W %", "RSC 30W %")
 
         def fmt_col(series: pd.Series, col: str) -> list[str]:
+            """Format a DataFrame column as a list of display strings."""
             if col in _RSC_COLS:
                 return [f"{v:+.2f}%" if pd.notna(v) else "N/A" for v in series]
             if col == "CMF 14D":
@@ -513,6 +524,7 @@ class SectorRotationPage:
         }
 
         def col_colors(col: str) -> list[str]:
+            """Return a list of rgba color strings for each cell in the given column."""
             if col == "Status":
                 return [_STATUS_RGBA.get(v, _NEUTRAL) for v in df[col]]
             if col == "RSC Trend":
@@ -553,10 +565,9 @@ class SectorRotationPage:
 
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-        # Download button
         xlsx = self._to_excel(df)
         st.download_button(
-            label="Download as Excel",
+            label=_t('sr.download_excel'),
             data=xlsx,
             file_name=f"sector_rotation_{key}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -566,20 +577,9 @@ class SectorRotationPage:
     # ── Level 6: Best of Sector ───────────────────────────────────────────────
 
     def _render_sector_stocks(self, universe_name: str) -> None:
-        """Show ranked stocks within a selected sector from the local simulation DB.
-
-        Works for all universes — sector names come from the GICS taxonomy stored
-        in asset_info.db (same for US, EU and EM stocks).
-        RSC is always computed vs the SPDR US sector ETF; for EU/EM stocks this
-        gives a USD-denominated global-sector benchmark, which is intentional.
-        """
-        st.subheader("Best of Sector")
-        st.caption(
-            "Rank the stocks in your local simulation database by performance metrics "
-            "within a chosen GICS sector.  "
-            "Optionally compute **4-week RSC vs the sector ETF** "
-            "(downloads ~3 months of price data — takes a few seconds)."
-        )
+        """Show ranked stocks within a selected sector from the local simulation DB."""
+        st.subheader(_t('sr.stocks_subheader'))
+        st.caption(_t('sr.stocks_caption'))
 
         try:
             from tradinglib.sector_stocks import (
@@ -598,17 +598,17 @@ class SectorRotationPage:
 
         available_sectors = get_available_sectors()
         if not available_sectors:
-            st.warning("No sector data found in the local database.")
+            st.warning(_t('sr.stocks_no_sectors'))
             return
 
         sector = c_sec.selectbox(
-            "Sector", available_sectors, key="stocks_sector",
+            _t('sr.stocks_sector'), available_sectors, key="stocks_sector",
         )
         rank_label = c_rank.selectbox(
-            "Rank by", list(RANK_OPTIONS.keys()), key="stocks_rank",
+            _t('sr.stocks_rank_by'), list(RANK_OPTIONS.keys()), key="stocks_rank",
         )
         top_n = c_top.selectbox(
-            "Top N", [10, 20, 30, 50], index=1, key="stocks_topn",
+            _t('sr.stocks_top_n'), [10, 20, 30, 50], index=1, key="stocks_topn",
         )
         sector_etf = SECTOR_ETF_MAP.get(sector, "")
         etf_help = (
@@ -629,24 +629,20 @@ class SectorRotationPage:
         rank_col = RANK_OPTIONS[rank_label]
 
         # ── Load DB data ───────────────────────────────────────────────────────
-        with st.spinner(f"Loading top {top_n} stocks in {sector}…"):
+        with st.spinner(_t('sr.stocks_loading', n=top_n, sector=sector)):
             df, debug_info = query_sector_stocks(
                 sector=sector, rank_col=rank_col, limit=top_n,
             )
 
         if df.empty:
-            st.warning(
-                f"No simulation data found for sector **{sector}**. "
-                "Check that the daily simulation has been run "
-                "(`get_asset_data.py` + scheduler)."
-            )
-            with st.expander("🔍 Diagnostic info", expanded=True):
+            st.warning(_t('sr.stocks_no_data', sector=sector))
+            with st.expander(_t('sr.stocks_diagnostic'), expanded=True):
                 st.markdown(debug_info)
             return
 
         # ── Optional RSC enrichment ────────────────────────────────────────────
         if show_rsc and sector_etf:
-            with st.spinner(f"Computing 4-week RSC vs {sector_etf}…"):
+            with st.spinner(_t('sr.stocks_rsc_loading', etf=sector_etf)):
                 df = enrich_with_rsc(df, sector_etf=sector_etf, weeks=4)
 
         # ── Metadata strip ─────────────────────────────────────────────────────
@@ -695,8 +691,14 @@ class SectorRotationPage:
         if show_rsc and "RSC_vs_ETF" in df.columns:
             _METRIC_COLS.append("RSC_vs_ETF")
 
-        wanted     = _BASE_COLS + _METRIC_COLS
+        wanted     = ["ticker"] + _BASE_COLS + _METRIC_COLS
+        wanted     = list(dict.fromkeys(wanted))  # deduplicate, preserve order
         display_df = df[[c for c in wanted if c in df.columns]].copy()
+
+        # ── Details link column ────────────────────────────────────────────────
+        display_df.insert(0, "details", display_df["ticker"].apply(
+            lambda t: f"/?symbol={t}&details=True"
+        ))
         display_df = display_df.rename(columns=_RENAME)
 
         # ── ProgressColumn configs for numeric metrics ─────────────────────────
@@ -714,7 +716,12 @@ class SectorRotationPage:
         }
         _PROG_RANGES[_rsc_label] = (-20, 20)
 
-        col_cfg: dict = {}
+        col_cfg: dict = {
+            "details": st.column_config.LinkColumn(
+                _t('sr.stocks_col_details'),
+                display_text=_t('sr.stocks_col_view'),
+            ),
+        }
         for col_name, (lo, hi) in _PROG_RANGES.items():
             if col_name in display_df.columns:
                 col_cfg[col_name] = st.column_config.ProgressColumn(
@@ -731,24 +738,18 @@ class SectorRotationPage:
             column_config=col_cfg,
         )
 
-        # Download button
         st.download_button(
-            label="Download as Excel",
+            label=_t('sr.download_excel'),
             data=self._to_excel(df.rename(columns=_RENAME)),
             file_name=f"sector_stocks_{sector.lower().replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="dl_stocks",
         )
 
-        # ── Charts expander ────────────────────────────────────────────────────
         tickers_for_charts = df["ticker"] if "ticker" in df.columns else pd.Series(dtype=str)
         if not tickers_for_charts.empty:
-            with st.expander(
-                f"Charts — Top {len(df)} {sector} stocks", expanded=False
-            ):
-                st.caption(
-                    "Charts use the same interval/indicator settings as the All Assets view."
-                )
+            with st.expander(_t('sr.stocks_chart_expander', n=len(df), sector=sector), expanded=False):
+                st.caption(_t('sr.stocks_chart_caption'))
                 try:
                     from tradinglib import tiny_chart as tc
                     from tradinglib import graph_tools as gt
@@ -759,7 +760,7 @@ class SectorRotationPage:
                     renderer   = ChartsGridRenderer(columns=2)
                     interval, period_sel, overlays, oszilators = renderer.get_selectors(sys_config)
 
-                    with st.spinner("Loading charts…"):
+                    with st.spinner(_t('sr.stocks_chart_loading')):
                         renderer.render(
                             tickers=tickers_for_charts,
                             tc=tc,
@@ -776,10 +777,11 @@ class SectorRotationPage:
                             log_exceptions=True,
                         )
                 except Exception as exc:
-                    st.warning(f"Charts not available: {exc}")
+                    st.warning(_t('sr.stocks_chart_error', error=exc))
 
     @staticmethod
     def _to_excel(df: pd.DataFrame) -> bytes:
+        """Serialize a DataFrame to an in-memory Excel file and return the raw bytes."""
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Sector Rotation")

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Multi-Strategien – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+.badge{display:inline-block;background:#fce8e6;color:#c5221f;border-radius:3px;padding:1px 7px;font-size:.78em;font-weight:600;vertical-align:middle;margin-left:6px}
+</style>
+</head>
+<body>
+<h1>Multi-Strategien <small style="font-size:.6em;color:#888">premium/multi_transaction.py</small><span class="badge">Premium</span></h1>
+
+<p>Verwaltet und simuliert <b>mehrere Handelsstrategien parallel</b>, jede mit eigenem Index-Universum, Kauf-/Verkaufsbedingungen und Budget. Bildet die Grundlage für die KPIs auf der Dashboard-Seite und für das automatische Trading.</p>
+
+<div class="info">Premium-Funktion (Sidebar → Portfolio → <b>Multi-Strategien</b>), nur sichtbar für Admin-Konten mit Lizenz-Feature <code>strategy_engine</code>.</div>
+
+<h2>Aufbau einer Strategie</h2>
+<p>Strategien werden in <code>config.db</code> unter dem Schlüssel <code>multi_transactions</code> als verschachtelte Struktur gespeichert:</p>
+<ul>
+  <li><b>Äußere Ebene:</b> Strategie-Name (z.&nbsp;B. „Value Trend Strategy", „Support/Resistance Strategy")</li>
+  <li><b>Innere Ebene:</b> Index-Name (z.&nbsp;B. <code>SPX</code>, <code>GDAXI</code>, <code>MDAXI</code>) mit jeweils:</li>
+</ul>
+<table>
+<tr><th>Feld</th><th>Bedeutung</th></tr>
+<tr><td><code>buy</code></td><td>Kaufbedingung als Ausdruck auf Indikator-Spalten, z.&nbsp;B. <code>overallValueTrend &gt; 65</code></td></tr>
+<tr><td><code>sell</code></td><td>Verkaufsbedingung, z.&nbsp;B. <code>ewo &lt; ewo_ema</code></td></tr>
+<tr><td><code>num_assets</code></td><td>maximale Anzahl gleichzeitig gehaltener Titel für diesen Index</td></tr>
+<tr><td><code>invest</code></td><td>Startkapital für diesen Index (in <code>currency</code> bzw. Systemwährung)</td></tr>
+<tr><td><code>currency</code></td><td>Abrechnungswährung; <code>ANY</code> = keine Umrechnung</td></tr>
+<tr><td><code>order_by</code></td><td>Sortierspalte zur Auswahl der Top-Titel (z.&nbsp;B. <code>sortino</code>, <code>overallValueTrend</code>)</td></tr>
+</table>
+
+<h2>Bedienung</h2>
+<ul>
+  <li><b>Daten vom:</b> Auswahl des Simulationsjahres (aktuelles Jahr oder Archiv-DBs <code>asset_simulation_{jahr}.db</code>)</li>
+  <li><b>Filter „Kauf/Verkauf-Berechnung ab Datum":</b> begrenzt die simulierten Trades auf einen Zeitraum (Standard: letzter Freitag)</li>
+  <li><b>Transaktionen berechnen:</b> startet die Simulation für alle Strategien × Indizes – kann je nach Datenmenge etwas dauern (Fortschrittsbalken)</li>
+  <li><b>Zurücksetzen:</b> verwirft die berechneten Ergebnisse wieder</li>
+  <li><b>Transaktionsdetails Trend &amp; Daten anzeigen:</b> blendet pro Index eine Detailansicht mit Kennzahlen, Trade-Tabelle und Kursverlauf-Chart ein</li>
+</ul>
+
+<div class="warn">Ein Titel wird <b>nur einmal global</b> gekauft: Hat eine frühere Strategie einen Ticker bereits ins Portfolio aufgenommen, wird ein erneutes Kaufsignal für denselben Ticker in einer späteren Strategie ignoriert (verhindert Doppelpositionen über Strategien hinweg).</div>
+
+<h2>Auswertung</h2>
+<ul>
+  <li><b>Cumulative-Gain-Chart</b> je Index: Verlauf des kumulierten Gewinns über alle simulierten Trades</li>
+  <li><b>Trade-Tabelle</b> mit Excel-Export (📥 Trades/Käufe/Verkäufe herunterladen)</li>
+  <li><b>Monatliche Performance-Heatmap</b> (Monat × Jahr, RdYlGn-Farbskala)</li>
+  <li><b>Strategie-Kennzahlen:</b> offene Positionen, Profit-Faktor, Trefferquote, Ø Gewinn/Trade, realisierter Gewinn, längste Gewinn-/Verlustserie, beste/schlechteste Trades (3 Monate &amp; 1 Jahr)</li>
+  <li><b>Portfolio-Overlap-Warnung:</b> meldet, falls derselbe Ticker in mehreren Strategien gleichzeitig gehalten wird</li>
+</ul>
+
+<div class="info">Bei Strategien, deren Name „value trend" enthält, wird zusätzlich automatisch ein ⚠️-Geopolitik-Hinweis eingeblendet.</div>
+
+<h2>Beziehung zu anderen Seiten</h2>
+<ul>
+  <li><b>Dashboard:</b> zeigt eine Zusammenfassung aller Strategien (Startkapital, Portfoliowert, Performance, Max. Positionen)</li>
+  <li><b>Paper / Live Trading:</b> Strategien, die hier konfiguriert sind, können dort unter „Strategien aktivieren" für die automatische Orderausführung ausgewählt werden</li>
+  <li><b>asset_perf2.py</b> ruft nach jedem Lauf <code>run_notifier()</code> auf, der neue Buy/Sell-Signale dieser Strategien per Pushover meldet (siehe Hilfe „Signal-Benachrichtigung")</li>
+</ul>
+</body>
+</html>

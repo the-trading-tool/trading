@@ -78,8 +78,8 @@ class Relvol(_indicator._Indicator):
             df['relvol_past'] = df['relvol_adj_vol'].rolling(length).mean().shift(1)
 
         df['relvol_ratio'] = df['relvol_current'] / df['relvol_past']
-        df['relvol_ratio'].replace([np.inf, -np.inf], np.nan, inplace=True)
-        df['relvol_ratio'].fillna(1, inplace=True)
+        df['relvol_ratio'] = df['relvol_ratio'].replace([np.inf, -np.inf], np.nan)
+        df['relvol_ratio'] = df['relvol_ratio'].fillna(1)
         return df
 
     # ----------------------------------------------------------------------
@@ -87,6 +87,7 @@ class Relvol(_indicator._Indicator):
     # ----------------------------------------------------------------------
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
 
         """
@@ -104,7 +105,7 @@ class Relvol(_indicator._Indicator):
         df['base'] = self.relvol_ratio
 
         if not "Date" in df.columns:
-            df.reset_index(inplace=True)
+            df = df.reset_index()
 
         self.fig.add_trace(go.Bar(
             x=df["Date"],

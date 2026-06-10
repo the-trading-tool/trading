@@ -25,9 +25,11 @@ allowed_operators = {
 
 class SafeEval(ast.NodeVisitor):
     def __init__(self, variables):
+        """Bind the evaluator to a dict of named numeric variables."""
         self.variables = variables
 
     def visit(self, node):
+        """Recursively evaluate an AST node and return its numeric result."""
         if isinstance(node, ast.Expression):
             return self.visit(node.body)
         elif isinstance(node, ast.BinOp):
@@ -67,12 +69,14 @@ class SafeEval(ast.NodeVisitor):
             raise ValueError(f"Nicht unterstützter Ausdruck: {ast.dump(node)}")
 
     def eval(self, expression):
+        """Parse and safely evaluate an arithmetic expression string against the variable dict."""
         tree = ast.parse(expression, mode='eval')
         return self.visit(tree)
 
 
 class MetaIndicator:
     def __init__(self, ticker: str, expression: str, period: str = "6mo", interval: str = "1d"):
+        """Configure the meta-indicator with a ticker, a formula string, and OHLC period/interval."""
         self.ticker = ticker
         self.expression = expression
         self.period = period
@@ -83,23 +87,27 @@ class MetaIndicator:
         self.indicators = {}
 
     def load_data(self):
+        """Download OHLCV history and ticker info via market_data wrappers."""
         # Prefer centralized ticker history wrapper (handles errors consistently)
         self.df = md.ticker_history(self.ticker, period=self.period, interval=self.interval)
-        self.df.dropna(inplace=True)
+        self.df = self.df.dropna()
         # Use centralized metadata wrapper
         self.info = md.ticker_info(self.ticker)
 
     def compute_indicators(self):
+        """Compute RSI, MACD diff, RoA, and dividend rate into self.indicators."""
         self.indicators['rsi'] = ta.momentum.RSIIndicator(self.df['Close']).rsi().iloc[-1]
         self.indicators['macd'] = ta.trend.MACD(self.df['Close']).macd_diff().iloc[-1]
         self.indicators['roa'] = self.info.get('returnOnAssets', 0) * 100
         self.indicators['dividendRate'] = self.info.get('dividendRate', 0)
 
     def evaluate_expression(self):
+        """Safely evaluate self.expression using the computed indicator values."""
         evaluator = SafeEval(self.indicators)
         return evaluator.eval(self.expression)
 
     def run(self):
+        """Load data, compute indicators, and evaluate the expression; returns the numeric score."""
         self.load_data()
         self.compute_indicators()
         return self.evaluate_expression()

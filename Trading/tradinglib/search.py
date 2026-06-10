@@ -1,10 +1,11 @@
 import sqlite3
 import streamlit as st
 import pandas as pd
-#from tradinglib import market_map
 from tradinglib import tools
 from tradinglib import make_query as mq
-
+from tradinglib.i18n import t
+from tradinglib.tools import open_db
+from tradinglib.utils import get_display_name
 
 
 class FullTextSearch(tools.Db_tools):
@@ -16,8 +17,9 @@ class FullTextSearch(tools.Db_tools):
 
     df = pd.DataFrame()
     
-    def __init__(self, db_path = 'database', file_name = 'asset_info.db', table_name = 'asset_info', region = st, symbol = '', search_ticker_only = False, is_admin = False):
-        self.db_path = self.get_path(path = db_path, file_name=file_name)
+    def __init__(self, db_path='database', file_name='asset_info.db', table_name='asset_info', region=st, symbol='', search_ticker_only=False, is_admin=False):
+        """Open asset_info.db and create the FTS5 virtual table if it doesn't exist yet."""
+        self.db_path = self.get_path(path=db_path, file_name=file_name)
         self.table_name = table_name
         self.is_admin = is_admin
         self.fts_table_name = f"{table_name}_fts"
@@ -27,13 +29,13 @@ class FullTextSearch(tools.Db_tools):
         self.create_fts_table()
 
     def get_connection(self):
-        """Erstellt eine Verbindung zur SQLite-Datenbank."""
-        conn = sqlite3.connect(self.db_path)
+        """Open and return a SQLite connection with row_factory set to sqlite3.Row."""
+        conn = open_db(self.db_path)
         conn.row_factory = sqlite3.Row  # Zugriff auf Spalten per Namen
         return conn
 
     def update_fts_table(self):
-        """Löscht die FTS5-Tabelle und füllt sie mit aktuellen Daten neu."""
+        """Drop and rebuild the FTS5 table from the current source table data."""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -56,7 +58,7 @@ class FullTextSearch(tools.Db_tools):
         conn.close()
 
     def create_fts_table(self):
-        """Erstellt eine FTS5-Tabelle für ticker und longName, falls sie nicht existiert."""
+        """Create the FTS5 virtual table for ticker/longName search if it doesn't exist yet."""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -69,33 +71,54 @@ class FullTextSearch(tools.Db_tools):
         # Überprüfen, ob bereits Daten vorhanden sind
         cursor.execute(f"SELECT COUNT(*) FROM {self.fts_table_name};")
         if cursor.fetchone()[0] == 0:
-            # Daten aus Originaltabelle kopieren
-            cursor.execute(f"""
-            INSERT INTO {self.fts_table_name} (ticker, longName)
-            SELECT ticker, longName FROM {self.table_name};
-            """)
+            # Pruefen ob Quell-Tabelle die benoetigten Spalten hat
+            cursor.execute(f"PRAGMA table_info({self.table_name})")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            if 'ticker' in existing_cols and 'longName' in existing_cols:
+                cursor.execute(f"""
+                INSERT INTO {self.fts_table_name} (ticker, longName)
+                SELECT DISTINCT ticker, longName FROM {self.table_name};
+                """)
+            # Wenn Spalten fehlen (noch kein get_asset_info.py gelaufen),
+            # bleibt die FTS-Tabelle leer -- Suche liefert dann keine Treffer.
 
         conn.commit()
         conn.close()
 
+    # Characters that cause FTS5 syntax errors when unquoted
+    _FTS5_SPECIAL = frozenset('=+-*^():"\\')
+
     def search(self, query, limit=10):
-        """Durchsucht die FTS-Tabelle nach Übereinstimmungen."""
+        """Search for prefix matches and return up to limit results.
+
+        Uses FTS5 for normal queries; falls back to LIKE on the base table
+        when the query contains characters that would cause an FTS5 syntax
+        error (e.g. tickers like DX=F, ES=F).
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute(f"""
-            SELECT ticker, longName FROM {self.fts_table_name}
-            WHERE {self.fts_table_name} MATCH ?
-            ORDER BY ticker
-            LIMIT ?;
-            """, (query + '*', limit))
+        if any(c in self._FTS5_SPECIAL for c in query):
+            cursor.execute(f"""
+                SELECT ticker, longName FROM {self.table_name}
+                WHERE ticker LIKE ? OR longName LIKE ?
+                ORDER BY ticker
+                LIMIT ?;
+                """, (query + '%', '%' + query + '%', limit))
+        else:
+            cursor.execute(f"""
+                SELECT ticker, longName FROM {self.fts_table_name}
+                WHERE {self.fts_table_name} MATCH ?
+                ORDER BY ticker
+                LIMIT ?;
+                """, (query + '*', limit))
 
         results = cursor.fetchall()
         conn.close()
         return results
 
     def get_full_record(self, ticker):
-        """Gibt die vollständige Datenzeile eines bestimmten Tickers zurück."""
+        """Return the full asset_info row for the given ticker, or None when not found."""
         conn = self.get_connection()
         cursor = conn.cursor()
 
@@ -109,7 +132,7 @@ class FullTextSearch(tools.Db_tools):
         return record
 
     def get_df(self, index="", q=2):
-        
+        """Load the simulation + ticker + asset_info joined DataFrame into self.df."""
         perf_table = 'asset_simulation'
         db_path = 'database'
         db = tools.Db_tools(db_path=db_path, database_name='yf_tickers.db')
@@ -120,27 +143,57 @@ class FullTextSearch(tools.Db_tools):
         self.df = pd.read_sql_query(query, db.conn)
     
     def symbol_search(self):
-        
-        self.get_df()    
+        """Load self.df filtered to self.symbol and set ticker_selected / ticker_selected_longname."""
+        self.get_df()
         self.df = self.df.loc[self.df['ticker'] == self.symbol]
         self.ticker_selected = self.symbol
         try:
             self.ticker_selected_longname = self.df['longName'].iloc[0]
         except Exception:
             pass
+
+    def auto_resolve(self):
+        """Resolve self.symbol to a ticker automatically.
+
+        1. Exact ticker match (fast path — symbol is already a valid ticker).
+        2. FTS lookup — useful when a longName or partial name is passed via URL
+           (e.g. /?symbol=Holcim%20AG).
+
+        Sets self.ticker_selected and self.ticker_selected_longname if a match
+        is found.  Does nothing when self.symbol is empty.
+        """
+        if not self.symbol:
+            return
+        # 1. Exact ticker match
+        try:
+            record = self.get_full_record(self.symbol)
+            if record:
+                self.ticker_selected = record['ticker']
+                self.ticker_selected_longname = record['longName'] or ''
+                return
+        except Exception:
+            pass
+        # 2. FTS lookup (handles long names, partial matches)
+        try:
+            # Sanitise query — FTS5 special chars must not break the query
+            safe_query = self.symbol
+            for ch in ('.', '&', '"', "'", '(', ')'):
+                safe_query = safe_query.replace(ch, ' ')
+            results = self.search(safe_query.strip())
+            if results:
+                best = results[0]
+                self.ticker_selected = best['ticker']
+                self.ticker_selected_longname = best['longName'] or ''
+        except Exception:
+            pass
         
     
     def render(self):
-        # Initialisiere die Klasse mit der Datenbank
-        #db_path = "C:\\Users\\Kurt\\Development\\database\\asset_info.db"  # Pfad zur SQLite-Datenbank
-        #table_name = "asset_info"  # Dein Tabellenname
-
-        # Eingabefeld für die Suche
-            
-        expander = self.region.expander('Select asset by full text search')
+        """Render the full-text search expander with query input and ticker select box."""
+        expander = self.region.expander(t('search.fts_expander'))
 
         with expander:
-            search_query = st.text_input("Search ticker name:",self.symbol)
+            search_query = st.text_input(t('search.ticker_name'), '', placeholder=self.symbol, key='_fts_search_query')
             if search_query:
                 ctr = ['.','&','"']
                 for c in ctr:
@@ -159,12 +212,11 @@ class FullTextSearch(tools.Db_tools):
                         longname = row['longName']
                         if longname == None:
                             self.get_df(index=row['ticker'],q=5)
-#                            st.write(self.df['shortName'])
                             longname = self.df['shortName'][0]
                         ticker_list.append(f"{row['ticker']} - {longname}")
 
                     selected_ticker = st.selectbox(
-                        "Select:", 
+                        t('search.select'),
                         ticker_list
                     )
                  
@@ -183,13 +235,13 @@ class FullTextSearch(tools.Db_tools):
                         except Exception:
                             self.index_name = "unknown"
                             pass
-                    if self.is_admin:                        
-                        if st.button("Update search"):
+                    if self.is_admin:
+                        if st.button(t('search.update_index')):
                             self.update_fts_table()
-                            st.success("Search index updated!")
-                        
+                            st.success(t('search.index_updated'))
+
                 else:
-                    st.write("No results.")
+                    st.write(t('search.no_results'))
 
 
 class MarketSearch(tools.Db_tools):
@@ -199,21 +251,23 @@ class MarketSearch(tools.Db_tools):
     ticker_exchange = ""
     df = pd.DataFrame()
     
-    def __init__(self, db_path = 'database', file_name = 'yf_tickers.db', table_name = 'yf_tickers', region = st, load_full_df = True, show_market_only = False, hide_render=False):
-        self.db_path = self.get_path(path = db_path, file_name=file_name)
+    def __init__(self, db_path='database', file_name='yf_tickers.db', table_name='yf_tickers', region=st, load_full_df=True, show_market_only=False, hide_render=False, default_ticker=''):
+        """Open yf_tickers.db for market/index-based ticker search."""
+        self.db_path = self.get_path(path=db_path, file_name=file_name)
         self.table_name = table_name
         self.region = region
         self.hide_render = hide_render
         self.show_market_only = show_market_only
         self.load_full_df = load_full_df
+        self.default_ticker = default_ticker
         
     def get_connection(self):
         """Connect to db."""
-        conn = sqlite3.connect(self.db_path)
+        conn = open_db(self.db_path)
         return conn
 
-    def search(self,query):
-
+    def search(self, query):
+        """Execute query against the database and return results as a DataFrame."""
         conn = self.get_connection()
 
         results = pd.read_sql_query(query, conn)
@@ -221,7 +275,7 @@ class MarketSearch(tools.Db_tools):
         return results
 
     def get_df(self, index, q=2):
-        
+        """Load the simulation + ticker + info joined DataFrame for the given index into self.df."""
         # Reads directly from asset_simulation_.db — WAL mode allows concurrent
         # reads during daily writes without lock contention.
         perf_table = "asset_simulation"
@@ -231,22 +285,29 @@ class MarketSearch(tools.Db_tools):
         db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name=perf_db_file)}' AS performance_db")
         db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name='asset_info.db')}' AS info_db")
         query = mq.make_query(perf_table, index=index, q=q, q_ext="", conn=db.conn)
-        self.df = pd.read_sql_query(query, db.conn)
+        try:
+            self.df = pd.read_sql_query(query, db.conn)
+        except Exception:
+            # asset_info.db hat noch keine ticker-Spalte (get_asset_info.py
+            # noch nicht gelaufen) -- leeren DataFrame zurueckgeben
+            self.df = pd.DataFrame()
 
     def get_index_list(self):
+        """Return a deduplicated, sorted list of index names from the indices table."""
         table_name = "indices"
         query = f"""
                 SELECT name FROM {table_name};
                 """
 
         results = self.search(query)['name'].tolist()
-        # as INDEX is a special SQL token we need to map and remap this term
-#        results = list(map(lambda x: 'INDEX' if x == 'OTHER' else x, results))
-        results.sort()
+        # Deduplicate: if both 'GDAXI' and '^GDAXI' exist keep only '^GDAXI'
+        with_hat = {n for n in results if n.startswith('^')}
+        results = [n for n in results if n.startswith('^') or f'^{n}' not in with_hat]
+        results = sorted(set(results))
         return results
     
     def render(self):
-
+        """Render the market/index selector expander with index and ticker dropdown menus."""
         self.markets_selected = []
         selected_ticker = 'INDEX'
 
@@ -258,12 +319,12 @@ class MarketSearch(tools.Db_tools):
         except Exception:
             pass
         if results:
-            expander = self.region.expander('Select asset by market')
+            expander = self.region.expander(t('search.market_expander'))
             with expander:
 
                 if not self.hide_render:
                     selected_ticker = st.selectbox(
-                        "Select market:", 
+                        t('search.select_market'),
                         results,
                         index=pos
                     )
@@ -273,36 +334,35 @@ class MarketSearch(tools.Db_tools):
                 if selected_ticker:
                     # Extract selection but first correct the token/column name issue
 #                    if selected_ticker == 'INDEX':
-#                        selected_ticker = 'OTHER'
                     q=7
 #                    if selected_ticker == "INDEX":
-#                        q=7
                     self.get_df(selected_ticker, q=q) 
                     if not self.show_market_only:
                         ticker_list = []
                         for index, row in self.df.iterrows():
-                            longname = ""
-                            try:
-                                longname = row['longName']
-                            except Exception:
-                                pass
-                            if longname == None:
-                                longname = ""
-                            ticker_list.append(f"{row['ticker']} - {longname}")
+                            ticker_list.append(f"{row['ticker']} - {get_display_name(row)}")
 
-                        ticker_list.sort()
-                        try:
-#                            pos = ticker_list.index("^GDAXI - ")
-                            pos = ticker_list.index("^GDAXI - DAX P")
-                        except Exception:
-                            pos = 0
-                            pass
+                        ticker_list = sorted(set(ticker_list))
+                        pos = 0
+                        _key = '_mkt_ticker_select'
+                        if _key not in st.session_state:
+                            if self.default_ticker:
+                                try:
+                                    pos = next(i for i, s in enumerate(ticker_list) if s.startswith(f"{self.default_ticker} - "))
+                                except StopIteration:
+                                    pass
+                            else:
+                                try:
+                                    pos = ticker_list.index("^GDAXI - DAX P")
+                                except Exception:
+                                    pass
                         if not self.hide_render:
                             selected = st.selectbox(
-                                    "Select company:", 
-                                    ticker_list,
-                                    pos            
-                                )
+                                t('search.select_company'),
+                                ticker_list,
+                                index=pos,
+                                key=_key
+                            )
                         self.ticker_selected = selected_ticker
                         self.ticker_selected_longname = ""
                         try:

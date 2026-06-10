@@ -4,15 +4,18 @@ import time
 
 class FileExplorer:
     def __init__(self, base_directory="."):
+        """Initialize the file explorer with the given base directory."""
         self.base_directory = base_directory
 
     def set_base_directory(self, directory):
+        """Update the base directory if the given path is a valid directory."""
         if os.path.isdir(directory):
             self.base_directory = directory
         else:
             self.sb.error(f"Invalid directory: {directory}")
 
     def list_directory(self, directory):
+        """Return (dirs, files) sorted alphabetically for the given directory path."""
         try:
             entries = os.listdir(directory)
             dirs = []
@@ -33,6 +36,7 @@ class FileExplorer:
             return [], []
 
     def delete_item(self, path, is_dir):
+        """Delete a file or empty directory and show a success/error message."""
         try:
             if is_dir:
                 os.rmdir(path)
@@ -44,6 +48,7 @@ class FileExplorer:
             self.main.error(f"Error deleting {'directory' if is_dir else 'file'} '{path}': {e}")
 
     def render_tree(self, directory=None, level=0):
+        """Render a recursive directory tree with expand checkboxes and delete buttons."""
         if directory is None:
             directory = self.base_directory
 
@@ -59,7 +64,6 @@ class FileExplorer:
                     self.render_tree(dir_path, level + 1)
 #            with col2:
 #                if st.button("Delete", key=f"delete_dir_{dir_path}"):
-#                    self.delete_item(dir_path, is_dir=True)
 
         for file_entry in files:
             file_path = os.path.join(directory, file_entry)
@@ -76,7 +80,7 @@ class FileExplorer:
 
     @st.fragment(run_every='60s')
     def render(self):
-
+        """Render the full file explorer UI: directory input, sort options, upload, and tree view."""
         def save_uploaded_file(uploaded_file, path='.'):
             try:
                 with open(os.path.join(path,uploaded_file.name),"wb") as f:
@@ -114,6 +118,7 @@ class FileExplorer:
         self.render_tree()
 
     def _list_directory_sorted_by_name(self, directory):
+        """Return (dirs, files) both sorted alphabetically by name."""
         try:
             entries = os.listdir(directory)
             dirs = []
@@ -134,6 +139,7 @@ class FileExplorer:
             return [], []
 
     def _list_directory_sorted_by_date(self, directory):
+        """Return (dirs, files) both sorted by modification time, newest first."""
         try:
             entries = os.listdir(directory)
             dirs = []
@@ -156,3 +162,4 @@ class FileExplorer:
 if __name__ == "__main__":
     explorer = FileExplorer()
     explorer.render()
+

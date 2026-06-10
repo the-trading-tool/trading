@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Earnings-Kalender – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Earnings-Kalender <small style="font-size:.6em;color:#888">earnings_calendar.py</small></h1>
+
+<p>Zeigt anstehende und vergangene Gewinnveröffentlichungen (Earnings) der überwachten Unternehmen mit EPS-Schätzungen und tatsächlichen Werten.</p>
+
+<h2>Spalten</h2>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><b>Ticker</b></td><td>Kürzel des Wertpapiers</td></tr>
+<tr><td><b>Datum</b></td><td>Geplantes oder tatsächliches Earnings-Datum</td></tr>
+<tr><td><b>EPS Estimated</b></td><td>Konsensschätzung der Analysten (Gewinn je Aktie)</td></tr>
+<tr><td><b>EPS Actual</b></td><td>Tatsächlich gemeldeter EPS (nur nach Veröffentlichung)</td></tr>
+<tr><td><b>Surprise %</b></td><td>Abweichung des gemeldeten EPS vom Konsens in Prozent</td></tr>
+</table>
+
+<h2>Filter</h2>
+<ul>
+  <li><b>Zeitraum</b>: Nächste 7 / 14 / 30 Tage oder vergangene Quartale</li>
+  <li><b>Index-Filter</b>: Nur Titel eines bestimmten Index anzeigen</li>
+</ul>
+
+<h2>Nutzungshinweis</h2>
+<p>Earnings-Veröffentlichungen führen oft zu starken Kursbewegungen. Offene Positionen im betreffenden Unternehmen sollten vor dem Earnings-Datum überprüft werden – ggf. Stop-Loss anpassen oder Position schließen.</p>
+
+<div class="warn">Daten stammen von Yahoo Finance und können mit Verzögerung aktualisiert werden. Für zeitkritische Entscheidungen immer Originalquelle (Investor Relations der Gesellschaft) prüfen.</div>
+
+<div class="info">Der Kalender ist auf der <b>Asset Details</b>-Seite als Tab verfügbar und zusätzlich über den Hauptmenüpunkt <b>Earnings Calendar</b> erreichbar.</div>
+</body>
+</html>

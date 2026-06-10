@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 from tradinglib.indicator import indicator
@@ -25,21 +25,23 @@ class Sup(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol = ""):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.data()
-#        self.add_fig()
                 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
     
         (self.df['sup_support'], self.df['sup_resistance']) = indicator.support_resistance(self.df)
 
         pass
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
@@ -53,20 +55,18 @@ class Sup(_indicator._Indicator):
         if self.df['Close'].iloc[-1] > 1000:
             round_by = 0    
         if not pd.isna(self.df['sup_support'].iloc[-1]):
-            self.fig.add_hline(y=self.df['sup_support'].iloc[-1],
-                          line_width=1,
-                          annotation_text = f"Support: {round(self.df['sup_support'].iloc[-1],round_by)}",
-                          annotation_position="bottom left",
-                          line_dash="dash",
-                          line_color="green",
-                          )
+            self._add_hline_outside(
+                y=self.df['sup_support'].iloc[-1],
+                text=f"Support: {round(self.df['sup_support'].iloc[-1], round_by)}",
+                line_color='green',
+                line_dash='dash',
+            )
 
         if not pd.isna(self.df['sup_resistance'].iloc[-1]):
-            self.fig.add_hline(y=self.df['sup_resistance'].iloc[-1],
-                          line_width=1,
-                          annotation_text = f"Resistance: {round(self.df['sup_resistance'].iloc[-1],round_by)}",
-                          annotation_position="bottom left",
-                          line_dash="dash",
-                          line_color="red",
-                          )
+            self._add_hline_outside(
+                y=self.df['sup_resistance'].iloc[-1],
+                text=f"Resistance: {round(self.df['sup_resistance'].iloc[-1], round_by)}",
+                line_color='red',
+                line_dash='dash',
+            )
 

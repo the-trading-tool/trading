@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -24,6 +24,7 @@ class Bol(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol = "", slow_window=21, fast_window=9, slow_dev=2, fast_dev=0.2):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.slow_window = slow_window
         self.fast_window = fast_window
@@ -31,10 +32,10 @@ class Bol(_indicator._Indicator):
         self.fast_dev = fast_dev
 
         self.data()
-#        self.add_fig()
         
         
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
     
         # slow indicator
         indicator_bb = ta.volatility.BollingerBands(close=self.df["Close"], 
@@ -51,10 +52,11 @@ class Bol(_indicator._Indicator):
         self.df[f'bol_lower_{self.fast_window}'] = indicator_bb.bollinger_lband()  # Lower Band
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
@@ -120,3 +122,4 @@ class Bol(_indicator._Indicator):
                          showlegend = False,
                          opacity = 0.2),
               )
+

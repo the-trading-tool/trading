@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -19,15 +19,16 @@ class Cci(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", window=14):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.window = window
 		super().__init__(df=df, symbol=symbol)
 
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): #Cci
+		"""Compute the indicator values and attach them as columns to self.df."""
 
 		TP = (self.df["High"] + self.df["Low"] + self.df["Close"]) / 3
 		SMA = TP.rolling(window=self.window).mean()
@@ -38,17 +39,17 @@ class Cci(_indicator._Indicator):
 
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
   		# Plot cci trace on nth row
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['cci'],
-#					visible = "legendonly",
 					line_color = 'darkblue',
 					name = f'cci',
 					showlegend = False,
@@ -59,3 +60,4 @@ class Cci(_indicator._Indicator):
 		self.fig.add_hline(y=-100, line_width=1, line_dash="dash", line_color="red", opacity = 1 )
 										
 		pass
+

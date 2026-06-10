@@ -4,6 +4,7 @@ from scipy.stats import norm
 
 class OptionCalculator:
     def __init__(self):
+        """Render the Black-Scholes option price calculator with all parameter inputs."""
         st.title("📊 Optionsschein-Rechner (Black-Scholes)")
 
         self.option_type = st.selectbox("Optionstyp wählen", [ "Put", "Call"])
@@ -18,6 +19,7 @@ class OptionCalculator:
             st.success(f"Der {self.option_type}-Preis beträgt: {price:.2f} €")
 
     def calculate_option_price(self):
+        """Return the Black-Scholes price for the configured Call or Put option."""
         S, K, T, r, sigma = self.S, self.K, self.T, self.r, self.sigma
 
         d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
@@ -32,4 +34,4 @@ class OptionCalculator:
 
 ## Ausführung in Streamlit
 #if __name__ == "__main__":
-#    OptionCalculator()
+

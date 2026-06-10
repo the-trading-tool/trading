@@ -8,20 +8,21 @@ from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from selenium.common.exceptions import NoSuchElementException       
 from selenium.common.exceptions import TimeoutException
 from selenium.common.exceptions import WebDriverException
+import logging
 from tradinglib import tools
 import re
+
+logger = logging.getLogger(__name__)
+
 
 class WebTools(tools.Tools):
     
     chromeOptions = webdriver.ChromeOptions()
     chromeOptions.page_load_strategy = 'none'
-#    chromeOptions.add_argument("--headless")
     chromeOptions.add_argument("--enable-javascript")
     chromeOptions.add_argument("--web-security=false")
     chromeOptions.add_argument("--disable-extensions")
-    #chromeOptions.add_argument(f"--user-data-dir={os.environ['TEMP']}")
     chromeOptions.add_argument('--ignore-certificate-errors')
-    #chromeOptions.add_argument('--profile-directory=Profile1')
     chromeOptions.add_argument("--window-size=1280,1024")
     chromeOptions.add_argument("--start-maximized")
     chromeOptions.add_argument("--disable-gpu")  # GPU deaktivieren (optional)
@@ -34,21 +35,17 @@ class WebTools(tools.Tools):
     def_to = 5
     
     def __init__(self, headless=False):
-
+        """Configure Chrome options and store helpers; does not open the browser yet."""
         self.By = By
         self.Keys = Keys
         self.headless = headless
 
         if self.headless:
-            #from pyvirtualdisplay import Display
             # define and start a virtual display
-            #self.display = Display(visible=0, size=(1920, 1080))
-            #self.display.start()
             pass
-        #self.d = self.init_webdriver()
 
-    def init_webdriver(self, def_to = 20):
-        
+    def init_webdriver(self, def_to=20):
+        """Launch a Chrome WebDriver instance with the configured options."""
         self.d = webdriver.Chrome(options=self.chromeOptions)
         self.d.implicitly_wait(def_to)
         self.d.set_page_load_timeout(def_to)
@@ -72,8 +69,6 @@ class WebTools(tools.Tools):
         #try:
             self.d.get(path)
         #except Exception:
-        #    print(f'potential issue connecting to website {path}.')
-        #    pass
 
     # check if a html tag can be found by its xpath
     def check_exists_by_xpath(self, path, duration = 0):
@@ -220,17 +215,17 @@ class WebTools(tools.Tools):
         try:
             wait = WebDriverWait(self.d, timeout)
         except TimeoutException:
-            print(f'get_element: {path} webdriver wait timeout.')
+            logger.warning("get_element: %s webdriver wait timeout.", path)
             pass
 
         if wait:
             try:
                 element = wait.until(EC.element_to_be_clickable((by, path)))
             except TimeoutException:
-                print(f'get_element: {path} timeout EXCEPTION.')
+                logger.warning("get_element: %s timeout EXCEPTION.", path)
                 pass
             except Exception:
-                print(f'get_element: {path} other EXCEPTION.')
+                logger.warning("get_element: %s other EXCEPTION.", path)
                 pass        
 
         return element
@@ -243,21 +238,21 @@ class WebTools(tools.Tools):
         elements by using EC to ensure module waits until the element is visible
         """
 
-        #print(by + ": " + path)
         elements = None
     
         try:
             elements = self.d.find_elements(by, path)
         except TimeoutException:
-            print("get_elements: timeout EXCEPTION")
+            logger.warning("get_elements: timeout EXCEPTION")
             pass
         except Exception:
-            print("get_elements: other EXCEPTION")
+            logger.warning("get_elements: other EXCEPTION")
             pass
 
         return elements
 
     def get_action_chains(self):
+        """Return an ActionChains object bound to the current WebDriver instance."""
         return ActionChains(self.d)
 
     def perform_action_element(self, path, by = By.CSS_SELECTOR):
@@ -288,7 +283,7 @@ class WebTools(tools.Tools):
         returns the item if found (True)
         or False it not found
         """
-        print(f'click item/element/button: {path}')
+        logger.debug("click item/element/button: %s", path)
         button = None
         try:
             button = self.get_element(path, by, timeout)
@@ -364,3 +359,4 @@ class WebTools(tools.Tools):
                 return result
         except Exception:
                 return ''
+

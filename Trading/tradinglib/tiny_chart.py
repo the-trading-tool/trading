@@ -3,12 +3,14 @@ from plotly.subplots import make_subplots
 import logging
 import pandas as pd
 from tradinglib import tools as ts
+
+logger = logging.getLogger(__name__)
 from tradinglib import ticker_tools as tt
 from tradinglib import graph_tools as gt
 from tradinglib.indicator import indicator
 from tradinglib import fetch_data as ft
 from tradinglib import system_config as sysconf
-from tradinglib.utils import DataUtils
+from tradinglib.utils import DataUtils, get_display_name
 import streamlit as st 
 import datetime
 
@@ -45,7 +47,7 @@ class tiny_chart(gt.GraphTools):
     dt_obs = None
     calc_ly_hl = False
 
-    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st):
+    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None):
 
         if symbol:
             self.username = username
@@ -75,13 +77,41 @@ class tiny_chart(gt.GraphTools):
             self.add_sub_plots = add_sub_plots
             self.max_periods = max_periods
             self.show_legend = show_legend
-            self.add_overlays = add_overlays 
+            self.add_overlays = add_overlays
+            self.no_plot_overlays = set(no_plot_overlays or [])
+            self.no_plot_oszilators = set(no_plot_oszilators or [])
             self.calc_ly_hl = calc_ly_hl             
             self.add_current = add_current
             self.region = region
             self.get_data()
             self.graph()
             
+    def _add_hline_outside(self, y, text, line_color='grey', line_dash='dot', line_width=1, row=1):
+        """Add hline with label arrow positioned outside the chart on the right."""
+        self.fig.add_hline(
+            y=y,
+            line_width=line_width,
+            line_dash=line_dash,
+            line_color=line_color,
+            row=row, col=1
+        )
+        yref = 'y' if row == 1 else f'y{row}'
+        self.fig.add_annotation(
+            x=1.0,
+            y=y,
+            xref='paper',
+            yref=yref,
+            text=f' {text} ',
+            showarrow=False,
+            xanchor='left',
+            yanchor='middle',
+            bgcolor=line_color,
+            font=dict(color='white', size=13),
+            bordercolor=line_color,
+            borderpad=3,
+            opacity=0.9,
+        )
+
     def get_num_rows(self):
         return DataUtils.get_num_rows(self.df)
 
@@ -95,10 +125,10 @@ class tiny_chart(gt.GraphTools):
         enddate = datetime.datetime.strptime(f"{last_year}-12-31 00:00:00", "%Y-%m-%d 00:00:00").date().strftime("%Y-%m-%d 00:00:00")
         startdate = datetime.datetime.strptime(f"{last_year}-01-01 00:00:00", "%Y-%m-%d 00:00:00").date().strftime("%Y-%m-%d 00:00:00")
 
-        self.df.set_index('Date', inplace = True)
+        self.df = self.df.set_index('Date')
         self.ly_low = self.df.loc[startdate:enddate]['Close'].min()
         self.ly_high = self.df.loc[startdate:enddate]['Close'].max()
-        self.df.reset_index(inplace = True)
+        self.df = self.df.reset_index()
 
 
     def get_data(self):
@@ -169,24 +199,21 @@ class tiny_chart(gt.GraphTools):
 
         if self.longname == '':
             try:
-                self.longname = self.ticker['longName'].iloc[0]
+                self.longname = get_display_name(self.ticker.iloc[0])
             except Exception:
                 pass
-        # some corrections for missing data
-        if (self.longname == '' or self.longname == None) and self.symbol == 'BZ=F':
-                self.longname = 'BRENT OIL'
-        if (self.longname == '' or self.longname == None) and self.symbol == 'GC=F':
-                self.longname = 'GOLD'
-        if (self.longname == '' or self.longname == None) and self.symbol == 'SI=F':
-                self.longname = 'SILVER'
         self.df = indicator.trend(self.df, trend_length=self.trend_length, trend_end=self.trend_end )
         if self.df['Close'].count() < 200 and self.df['Close'].count() > 2:
             self.long_ma = self.df['Close'].count() - 1 # Let'S calculate at least a long MA 
 
-        self.df[f'MA{self.long_ma}'] = self.df['Close'].rolling(int(self.long_ma)).mean()
+        self.df[f'sma{self.long_ma}'] = self.df['Close'].rolling(int(self.long_ma)).mean()
         
         
     def graph(self):
+
+        if self.df is None or self.df.empty:
+            self.fig = None
+            return
 
         # Prevent pandas from trying to insert a 'Date' column twice: if the index
         # is named 'Date' and a 'Date' column already exists, clear the index name
@@ -196,10 +223,8 @@ class tiny_chart(gt.GraphTools):
                 self.df.index.name = None
         except Exception:
             pass
-        self.df.reset_index(inplace=True)
-        self.df.sort_values(['Date'],inplace=True,ascending=True)
-#        import streamlit as st 
-#        st.write(self.df['Close'])
+        self.df = self.df.reset_index()
+        self.df = self.df.sort_values(['Date'], ascending=True)
         try:
             pct_change = f"<br>Change in period: {round((self.df['Close'].iloc[-1]-self.df['Close'].iloc[0]),2)} ({round((self.df['Close'].iloc[-1]/self.df['Close'].iloc[0]-1)*100,1)}%)"
         except Exception:
@@ -208,10 +233,10 @@ class tiny_chart(gt.GraphTools):
         color = '#555555'
         try:
             if self.long_ma > 0:
-                if (self.df[f'MA{self.long_ma}'].iloc[-1] > self.df['Close'].iloc[-1]) or (self.ly_high > 0 and self.ly_high > self.df['Close'].iloc[-1]) or (self.df[f'MA{self.long_ma}'].iloc[-1] > self.df['MA50'].iloc[-1]):
+                if (self.df[f'sma{self.long_ma}'].iloc[-1] > self.df['Close'].iloc[-1]) or (self.ly_high > 0 and self.ly_high > self.df['Close'].iloc[-1]) or (self.df[f'sma{self.long_ma}'].iloc[-1] > self.df['sma50'].iloc[-1]):
                     # red
                     color = '#b30b0b'
-                elif (self.df[f'MA50'].iloc[-1] < self.df[f'MA{self.long_ma}'].iloc[-1]) or (self.df['Close'].iloc[-1]-self.df['Close'].iloc[0] < 0) or (self.df[f'MA20'].iloc[-1] > self.df['Close'].iloc[-1]):
+                elif (self.df[f'sma50'].iloc[-1] < self.df[f'sma{self.long_ma}'].iloc[-1]) or (self.df['Close'].iloc[-1]-self.df['Close'].iloc[0] < 0) or (self.df[f'sma20'].iloc[-1] > self.df['Close'].iloc[-1]):
                     # blue
                     color = '#0b0bb3'
                 else:
@@ -220,9 +245,6 @@ class tiny_chart(gt.GraphTools):
         except Exception:
             pass
 
-#        import streamlit as st 
-#        st.write(self.period, self.interval)
-#        st.write(self.df)
         gain = ''
         gcolor = '#555555'
         if self.purchase_price > 0:
@@ -236,11 +258,12 @@ class tiny_chart(gt.GraphTools):
 
         titles = [f"""<a href='{self.url}"{self.symbol}"&details=True' target='_blank' rel='noopener'><span style='color:#555555; font-size:14pt;'>{self.symbol}-{self.longname}</span><span style='color:{color};'>{pct_change}</span><span style='color:{gcolor};'>{gain}</span></a>""", '']
 
-#        self.fig = go.Figure()
-        if self.add_sub_plots:
+        visible_sub_plots = [n for n in (self.add_sub_plots or []) if n not in self.no_plot_oszilators]
+
+        if visible_sub_plots:
 
             row_width = []
-            num_subplots = len(self.add_sub_plots)            
+            num_subplots = len(visible_sub_plots)
             for i in range(num_subplots):
                 row_width.append(0.4 / num_subplots)
             row_width.append(0.6)
@@ -252,7 +275,6 @@ class tiny_chart(gt.GraphTools):
                 subplot_titles = titles,
                 horizontal_spacing=0.05,  # Minimaler horizontaler Abstand
                 vertical_spacing=0.05,     # Minimaler vertikaler Abstand
-                #vertical_spacing=0.1,
                 row_width=row_width
             )
         else:
@@ -266,15 +288,17 @@ class tiny_chart(gt.GraphTools):
             
         if self.scale:
             self.fig.update_layout(
-                autosize = False,            
+                autosize = False,
                 height=self.tc_height,
                 width=self.tc_width-50,
-#                margin=dict(l=50,r=50)
+                margin=dict(l=110, r=90),
             )
                 
         if self.add_overlays:
             try:
                 for n in self.add_overlays:
+                    if n in self.no_plot_overlays:
+                        continue
                     try:
                         logger = logging.getLogger(__name__)
                         logger.debug("tiny_chart: processing overlay %s for %s", n, self.symbol)
@@ -394,17 +418,13 @@ class tiny_chart(gt.GraphTools):
                         ),                 
               row = 1, col = 1)
 
-        try:            
-            self.fig.add_hline(y=self.df['Close'].iloc[-1],
-                      line_width=1,
-                      name = '',
-                      line_dash="dot",
-                      line_color="darkgreen",
-                      annotation_text = f'{round(self.df["Close"].iloc[-1],2)}',
-                      annotation_position="top right",
-                      annotation_font=dict(size=16),
-                      row=1, col=1
-                      )
+        try:
+            self._add_hline_outside(
+                y=self.df['Close'].iloc[-1],
+                text=f'{round(self.df["Close"].iloc[-1], 2)}',
+                line_color='darkgreen',
+                line_dash='dot',
+            )
         except Exception:
             pass
 
@@ -447,23 +467,13 @@ class tiny_chart(gt.GraphTools):
                 go.Scatter(x = self.df['Date'], y = self.df[f'ema21'], name = f'EMA 21',
                         line_color = 'blue',
                         line = { 'width':0.8},
-        #                visible = "legendonly"
-                        #text=self.df['EMA21'],
-                        #textposition='top right',
                         #textfont=dict(color='#E58606'),
-                        #mode='lines+markers+text',
-                        #marker=dict(color='#5D69B1', size=8),
                         showlegend = self.show_legend,
                         ),
                 row = 1,
                 col = 1,
             )           
-#            self.fig.add_scatter(x = [self.fig.data[1].x[-1]], y = [self.fig.data[1].y[-1]],
-#                     mode = 'text',
 #                     #marker = {'color':'red', 'size':14},
-#                     showlegend = self.show_legend,
-#                     text = [round(self.fig.data[1].y[-1],1)],
-#                     textposition='middle right')
         except Exception:
             pass
         try:
@@ -471,23 +481,13 @@ class tiny_chart(gt.GraphTools):
                 go.Scatter(x = self.df['Date'], y = self.df[f'ema9'], name = f'EMA 9',
                         line_color = 'darkorange',
                         line = { 'width':0.8},
-        #                visible = "legendonly"
-                        #text=self.df['ema9'],
-                        #textposition='top right',
                         #textfont=dict(color='#E58606'),
-                        #mode='lines+markers+text',
-                        #marker=dict(color='#5D69B1', size=8),
                         showlegend = self.show_legend,
                         ),
                 row = 1,
                 col = 1,
             )           
-#            self.fig.add_scatter(x = [self.fig.data[1].x[-1]], y = [self.fig.data[1].y[-1]],
-#                     mode = 'text',
 #                     #marker = {'color':'red', 'size':14},
-#                     showlegend = self.show_legend,
-#                     text = [round(self.fig.data[1].y[-1],1)],
-#                     textposition='middle right')
         except Exception:
             pass
 
@@ -496,7 +496,6 @@ class tiny_chart(gt.GraphTools):
                 go.Scatter(x = self.df['Date'], y = self.df[f'ema50'], name = f'EMA 50',
                         line_color = 'black',
                         line = { 'width':0.8},
-        #                visible = "legendonly"
                         showlegend = self.show_legend,
                         ),
                 row = 1,
@@ -508,55 +507,39 @@ class tiny_chart(gt.GraphTools):
 
         try:
             self.fig.add_trace(
-                go.Scatter(x = self.df['Date'], y = self.df[f'MA100'], name = f'MA 100',
+                go.Scatter(x = self.df['Date'], y = self.df[f'sma100'], name = f'MA 100',
                         line_color = 'gray',
                         line = { 'width':0.8},
-        #                visible = "legendonly"
                         showlegend = self.show_legend,
                         ),
                 row = 1,
                 col = 1,
             )
-#            self.fig.add_scatter(x = [self.fig.data[3].x[-1]], y = [self.fig.data[3].y[-1]],
-#                     mode = 'text',
 #                     #marker = {'color':'red', 'size':14},
-#                     showlegend = self.show_legend,
-#                     text = [round(self.fig.data[3].y[-1],1)],
-#                     textposition='middle right')
         except Exception:
             pass
 
         try:
             self.fig.add_trace(
-                go.Scatter(x = self.df['Date'], y = self.df[f'MA{self.long_ma}'], name = f'MA{self.long_ma}',
+                go.Scatter(x = self.df['Date'], y = self.df[f'sma{self.long_ma}'], name = f'SMA{self.long_ma}',
                         line_color = 'red',
                         line = { 'width':0.8},
-        #                visible = "legendonly"
                         showlegend = self.show_legend,
                         ),
                 row = 1,
                 col = 1,
             )
-#            self.fig.add_scatter(x = [self.fig.data[5].x[-1]], y = [self.fig.data[5].y[-1]],
-#                     mode = 'text',
 #                     #marker = {'color':'red', 'size':14},
-#                     showlegend = self.show_legend,
-#                     text = [round(self.fig.data[5].y[-1],1)],
-#                     textposition='middle right')
         except Exception:
             pass
 
         try:
-            self.fig.add_hline(y=self.df['Close'].iloc[0],
-                      line_width=1,
-                      name = '',
-                      line_dash="dot",
-                      annotation_text = f'{round(self.df["Close"].iloc[0],2)}',
-                      annotation_position="top right",
-                      annotation_font=dict(size=16),
-                      line_color="darkred",
-                      row=1, col=1
-                      )
+            self._add_hline_outside(
+                y=self.df['Close'].iloc[0],
+                text=f'{round(self.df["Close"].iloc[0], 2)}',
+                line_color='darkred',
+                line_dash='dot',
+            )
         except Exception:
             pass
 
@@ -567,14 +550,12 @@ class tiny_chart(gt.GraphTools):
             if self.ath:
                 (df,_) = self.fd.fetch_data(self.symbol, period='max', interval='1mo', add_current=False, max_periods=self.max_periods, region=st)
                 ath = df['High'].max()
-                self.fig.add_hline(y=ath,
-                          line_width=1,
-                          annotation_text = f'ATH: {round(ath,2)}',
-                          annotation_position="top left",
-                          line_dash="dot",
-                          line_color="darkgreen",
-                          row=1, col=1
-                          )
+                self._add_hline_outside(
+                    y=ath,
+                    text=f'ATH: {round(ath, 2)}',
+                    line_color='darkgreen',
+                    line_dash='dot',
+                )
         except Exception:
             pass
 
@@ -582,25 +563,21 @@ class tiny_chart(gt.GraphTools):
         
             if self.ly_high > 0:
 
-                self.fig.add_hline(y=self.ly_high,
-                          line_width=1,
-                          annotation_text = f'LY High: {round(self.ly_high,2)}',
-                          annotation_position="bottom left",
-                          line_dash="dash",
-                          line_color="green",
-                          row=1, col=1
-                          )
+                self._add_hline_outside(
+                    y=self.ly_high,
+                    text=f'LY High: {round(self.ly_high, 2)}',
+                    line_color='green',
+                    line_dash='dash',
+                )
 
             if self.ly_low > 0:
 
-                self.fig.add_hline(y=self.ly_low,
-                          line_width=1,
-                          annotation_text = f'LY Low: {round(self.ly_low,2)}',
-                          annotation_position="bottom left",
-                          line_dash="dash",
-                          line_color="red",
-                          row=1, col=1
-                          )
+                self._add_hline_outside(
+                    y=self.ly_low,
+                    text=f'LY Low: {round(self.ly_low, 2)}',
+                    line_color='red',
+                    line_dash='dash',
+                )
             
         except Exception:
             pass
@@ -665,28 +642,26 @@ class tiny_chart(gt.GraphTools):
             rangeslider_visible = False
         )
             
-#        if not self.candle_chart:        
-#            self.fig.update_traces(
-#                textfont_size=16
 #                )    
 
-        if self.add_sub_plots:
+        if visible_sub_plots:
 
             row = 2
-            for n in self.add_sub_plots:
+            for n in visible_sub_plots:
                 try:
-                    eval(f"self.fd.{n}.add_fig()")
-                    for trace in eval(f"self.fd.{n}.fig.data") :    
+                    _sub = getattr(self.fd, n)
+                    _sub.add_fig()
+                    for trace in _sub.fig.data:
                         self.fig.add_trace(trace, row=row, col=1)
-                    for shape in eval(f"self.fd.{n}.fig.layout.shapes"):    
+                    for shape in _sub.fig.layout.shapes:
                         self.fig.add_shape(shape, row=row, col=1)
-                    for annotation in eval(f"self.fd.{n}.fig.layout.annotations"):
+                    for annotation in _sub.fig.layout.annotations:
                         self.fig.add_annotation(annotation, row=1, col=1)              
 
                     self.fig['layout'][f'yaxis{row}']['title'] = n
                     row += 1
                 except Exception as e:
-                    print(f"Error in {self.symbol} modul {n}, missing {e}")
+                    logger.warning("Error in %s modul %s, missing %s", self.symbol, n, e)
                     pass
 #            (value_i, unit_i) = ts.Tools().split_interval(self.interval)
 #        if unit_i == "min":
@@ -724,31 +699,22 @@ class tiny_chart(gt.GraphTools):
             spikemode='across',
             spikesnap='cursor',
             type="date",
-#            tickformat='%d.%m.%y\n%H:%M',
             showspikes=True,
             spikethickness=0.5,
-            #showticklabels=False,
             )
 
         self.fig.update_yaxes(
-            #showgrid=False,
-            #zeroline=False,
             showticklabels=True,
             showspikes=True,
             spikethickness=0.5,
             spikemode='across',
             spikesnap='cursor',
-            #showline=False,
             spikedash='solid'
             )
  
-#        self.fig.update_yaxes(
 #            dtick="M1",              # Jeder Monat (M1 = 1 Monat, M3 = jedes 3. Monat etc.)
-#            tickformat="%d.%m.%Y",   # Format: 01.01.2023
 #            ticklabelmode="period"   # sorgt dafür, dass "1." als Startdatum genommen wird
 #        )
-#        self.fig.update_layout(dragmode='drawline',
 #            # style of new shapes
-#            newshape={'line': {'color': 'crimson', 'width': 0.8}},
 #            )
 

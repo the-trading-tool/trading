@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>get_asset_info.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Asset-Info laden <small style="font-size:.6em;color:#888">get_asset_info.py</small></h1>
+
+<p>Ruft Stammdaten und Fundamentaldaten für alle bekannten Ticker von Yahoo Finance ab und speichert sie in <code>asset_info.db</code>. Muss nur gelegentlich ausgeführt werden, da Fundamentaldaten sich selten ändern.</p>
+
+<h2>Aufruf</h2>
+<pre>python get_asset_info.py</pre>
+<p>Liest die Ticker-Liste aus <code>yf_tickers.db</code> und verarbeitet alle Einträge sequenziell.</p>
+
+<h2>Gespeicherte Felder (Auswahl)</h2>
+<table>
+<tr><th>Feld</th><th>Inhalt</th></tr>
+<tr><td><code>longName</code></td><td>Vollständiger Unternehmensname</td></tr>
+<tr><td><code>sector</code> / <code>industry</code></td><td>Sektor und Branche</td></tr>
+<tr><td><code>isin</code></td><td>Internationales Wertpapierkennnummer</td></tr>
+<tr><td><code>marketCap</code></td><td>Marktkapitalisierung</td></tr>
+<tr><td><code>trailingPE</code> / <code>forwardPE</code></td><td>Kurs-Gewinn-Verhältnis (aktuell / Prognose)</td></tr>
+<tr><td><code>dividendRate</code></td><td>Dividende je Aktie</td></tr>
+<tr><td><code>targetHighPrice</code></td><td>Höchstes Analysten-Kursziel</td></tr>
+<tr><td><code>returnOnAssets</code></td><td>Gesamtkapitalrendite (ROA)</td></tr>
+<tr><td><code>earningsGrowth</code></td><td>Gewinnwachstum</td></tr>
+</table>
+
+<h2>Wann ausführen?</h2>
+<ul>
+  <li>Nach dem ersten Setup (nach <code>seed_db.py</code>)</li>
+  <li>Nach Hinzufügen neuer Ticker im Admin-Panel</li>
+  <li>Quartalsweise für aktualisierte Fundamentaldaten</li>
+</ul>
+
+<div class="info">Bereits vorhandene Einträge werden aktualisiert (Upsert). Der Abruf erfolgt mit Pausen zwischen den Anfragen, um Yahoo-Rate-Limits zu respektieren.</div>
+</body>
+</html>

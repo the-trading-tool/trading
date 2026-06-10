@@ -28,6 +28,7 @@ class Renko(_indicator._Indicator):
                  percentage=0.1, num_bricks=252,
                  color_up="#5b9cf6", color_down="#0c3299",
                  unconfirmed_color="gray"):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.mode = mode
         self.atr_period = atr_period
@@ -39,10 +40,10 @@ class Renko(_indicator._Indicator):
         self.unconfirmed_color = unconfirmed_color
 
         self.df_renko = self._calculate_renko(df)
-#        self.add_fig()
 
     # -----------------------------------------------
     def _atr(self, df, period=14):
+        """Compute the Average True Range for the given period."""
         high_low = df["High"] - df["Low"]
         high_close = np.abs(df["High"] - df["Close"].shift())
         low_close = np.abs(df["Low"] - df["Close"].shift())
@@ -52,6 +53,7 @@ class Renko(_indicator._Indicator):
 
     # -----------------------------------------------
     def _get_brick_size(self, df):
+        """Determine the brick/box size for Renko construction."""
         if self.mode == "ATR":
             return self._atr(df, self.atr_period).iloc[-1]
         elif self.mode == "ATR/2":
@@ -65,6 +67,7 @@ class Renko(_indicator._Indicator):
 
     # -----------------------------------------------
     def _calculate_renko(self, df):
+        """Build Renko bars from the OHLCV DataFrame."""
         df = df.copy()
         df["Date"] = df.index if df.index.name else df["Date"] if "Date" in df.columns else df.index
 
@@ -99,18 +102,19 @@ class Renko(_indicator._Indicator):
             "Renko_Trend": trends
         })
         renko_df["Renko_Brick_Open"] = renko_df["Renko_Brick_Close"].shift(1)
-        renko_df["Renko_Brick_Open"].fillna(renko_df["Renko_Brick_Close"], inplace=True)
+        renko_df["Renko_Brick_Open"] = renko_df["Renko_Brick_Open"].fillna(renko_df["Renko_Brick_Close"])
 
         renko_df["Renko_High"] = renko_df[["Renko_Brick_Open", "Renko_Brick_Close"]].max(axis=1)
         renko_df["Renko_Low"] = renko_df[["Renko_Brick_Open", "Renko_Brick_Close"]].min(axis=1)
         renko_df["Renko_Color"] = np.where(renko_df["Renko_Trend"] == 1, self.color_up, self.color_down)
 
         # Date als Index behalten
-        renko_df.set_index("Renko_Date", inplace=True)
+        renko_df = renko_df.set_index("Renko_Date")
         return renko_df #.tail(self.num_bricks)
 
     # -----------------------------------------------
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         df = self.df_renko.copy()
 
@@ -127,13 +131,7 @@ class Renko(_indicator._Indicator):
             opacity=0.7
         ))
 
-#        self.fig.update_layout(
-#            title=f"Renko Overlay ({self.mode})",
-#            xaxis_title="Date",
-#            yaxis_title="Price",
-#            template="plotly_dark",
-#            xaxis_rangeslider_visible=False
 #        )
 
 #    def show(self):
-#        self.fig.show()
+

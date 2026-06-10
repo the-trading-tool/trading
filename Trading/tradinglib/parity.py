@@ -25,8 +25,6 @@ class Parity:
     start = t_date.strftime('%Y-%m-%d')            
     end = t_date_e.strftime('%Y-%m-%d')            
 
-    #start = "2023-02-01"
-    #end = "2025-11-01"
     initial_val = 100000
     interval = '1d'
     rolling_vol_rp = 0
@@ -35,6 +33,7 @@ class Parity:
     rolling_sharpe_sp = 0
     
     def fetch_data(self, tickers):
+        """Download adjusted-close price history for all tickers plus the benchmark index."""
         tickers = list(dict.fromkeys(tickers))
         # Download data via centralized wrapper. The wrapper may return either
         # - a yf.download-style DataFrame where the first column level is e.g. 'Adj Close'
@@ -68,6 +67,7 @@ class Parity:
         return df
 
     def calculate_weights_pct(self, data):
+        """Compute inverse-volatility weights (as percentages) using a rolling window."""
         returns = data.fillna(0).pct_change().dropna()
         vol = returns.rolling(window=self.opt_freq, min_periods=2).std().mean()[:-1]  # Exclude index
         inv_vol = 1 / vol
@@ -78,13 +78,14 @@ class Parity:
 
     # Perf Eval
     def calculate_weights(self, data):
-#        vol = data.rolling(window=self.opt_freq, min_periods=2).std().dropna().iloc[-1][:-1]  # Exclude index
+        """Compute inverse-volatility weights (as fractions summing to 1) from the last rolling window."""
         vol = data.rolling(window=self.opt_freq, min_periods=2).std().fillna(0).iloc[-1][:-1]  # Exclude index
         inv_vol = 1 / vol
         weights = inv_vol / np.sum(inv_vol)
         return weights
 
     def simulate_portfolio(self, returns, n_days=opt_freq):
+        """Simulate a risk-parity portfolio with periodic rebalancing every n_days."""
         port_val = [1]
         idx_val = [1]
         weights = np.ones(len(self.tickers)) / len(self.tickers)  # Start with equal weights
@@ -102,20 +103,18 @@ class Parity:
         
         return port_val, idx_val
 
-    def __init__(self, assets = ['TSLA','NVDA','META','MSFT','GOOGL','AMZN','AAPL'], benchmark = '^GDAXI'):
-
+    def __init__(self, assets=['TSLA', 'NVDA', 'META', 'MSFT', 'GOOGL', 'AMZN', 'AAPL'], benchmark='^GDAXI'):
+        """Download data, compute inverse-vol weights, and simulate the portfolio vs the benchmark."""
         # Main
         self.tickers = assets
         self.idx = benchmark
         self.data = self.fetch_data(self.tickers)
         self.weights = self.calculate_weights_pct(self.data)
-        #print(self.weights.to_string())
         l = len(self.data)-1
         if self.opt_freq > l:
 #            st.warning(f"Rolling window ({self.opt_freq}) is larger than the number of data points ({l}). Adjusting rolling window to {l}.")
             self.opt_freq = l   
 
-#        returns = self.fetch_data(self.tickers).pct_change().dropna()
         returns = self.data.pct_change()#.dropna()
         port_val, idx_val = self.simulate_portfolio(returns, n_days=self.opt_freq)
 
@@ -134,3 +133,4 @@ class Parity:
                 self.weights_df.loc[date] = self.calculate_weights(returns.iloc[i-self.opt_freq:i])
             else:
                 self.weights_df.loc[date] = self.weights_df.iloc[i-1]
+

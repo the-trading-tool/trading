@@ -1,22 +1,25 @@
+import os
 import pandas as pd
 import yfinance as yf
 from tradinglib import market_data as md
 import logging
 import sqlite3
+import json
 import re
 from zoneinfo import ZoneInfo
 from datetime import datetime
 
 from tradinglib.indicator import indicator
 
-#from tradinglib import tools
 from tradinglib import ticker_tools as tt
 from tradinglib import system_config as sysconf
+from tradinglib.tools import open_db
 from datetime import datetime, timedelta
 import streamlit as st
 
 class CurrencyConverter:
     def __init__(self, local_currency="EUR"):
+        """Set up the converter, targeting local_currency as the output currency."""
         self.local_currency = local_currency
         self.cache = pd.DataFrame(columns=["Date", "Currency", "LocalCurrency", "Rate"])
     
@@ -38,7 +41,6 @@ class CurrencyConverter:
         """Fetches the exchange rate from Yahoo Finance if not cached."""
         ticker = f"{currency}{self.local_currency}=X"
 #        if isinstance(date,str):
-#            end_date = datetime.strptime(date, "%Y-%m-%d") 
         start_date = date + timedelta(days=-5)
         end_date = date + timedelta(days=1)
         data = md.download(ticker, start=start_date, end=end_date, actions=False, progress=False, auto_adjust=False, prepost=True)
@@ -76,7 +78,12 @@ class CurrencyConverter:
 
 class FetchData(tt.TickerTools):
 
-    def __init__(self, database_path = 'database', database_name = 'asset_info.db', tz_info = "Europe/Berlin", indicators=[], buy_query="(ewo>ewo_ema)", sell_query="(ewo<ewo_ema)", sys_conf=None):
+    def __init__(self, database_path='database', database_name='asset_info.db', tz_info="Europe/Berlin", indicators=[], buy_query="(ewo>ewo_ema)", sell_query="(ewo<ewo_ema)", sys_conf=None):
+        """Configure FetchData with database paths, timezone, indicator list, and buy/sell queries.
+
+        sys_conf: optional shared SystemConfig instance — pass one to keep username
+        consistent with the calling dialog. A fresh instance is created if omitted.
+        """
         self.logger = logging.getLogger(__name__)
 
         self.database_path = database_path
@@ -96,15 +103,16 @@ class FetchData(tt.TickerTools):
         self.buy_query = buy_query
         self.sell_query = sell_query
 
-    def load_ticker_data(self, symbol, period = 'max', interval = '1d'):
+    def load_ticker_data(self, symbol, period='max', interval='1d'):
+        """Load ticker metadata from asset_info.db for the given symbol.
 
+        Falls back to Yahoo Finance when the symbol is not found locally, and
+        persists the result so subsequent calls hit the local cache.
+        Returns an empty DataFrame when both sources fail.
+        """
         # Verbindung zur SQLite-Datenbank herstellen
         asset_db = self.get_path(path = self.database_path, file_name='asset_info.db')
-        conn = sqlite3.connect(asset_db)
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA cache_size = -32000")
-        conn.execute("PRAGMA temp_store = MEMORY")
-        conn.execute("PRAGMA mmap_size = 67108864")
+        conn = open_db(asset_db, readonly=True)
 
         # Funktion, um die Daten für ein bestimmtes Tickersymbol in einen DataFrame zu laden
         def load_data_into_dataframe(conn, symbol):
@@ -120,20 +128,47 @@ class FetchData(tt.TickerTools):
             for col in df.columns:
                 if df[col].dtype == 'object':  # Nur Textspalten prüfen
                     try:
-                        df[col] = df[col].apply(pd.json.loads)
+                        df[col] = df[col].apply(json.loads)
                     except Exception:
                         pass  # Ignoriere Spalten, die keine JSON-Daten enthalten
 
             return pd.DataFrame(df)
 
         df = load_data_into_dataframe(conn, symbol)
-#        print(type(df))
-        # Verbindung schließen
+
+        # Fallback: Ticker-Info von Yahoo holen und lokal speichern wenn nicht vorhanden
+        if symbol != '' and df.empty:
+            try:
+                self.logger.info("load_ticker_data: %s nicht in asset_info.db -- lade von Yahoo", symbol)
+                info = md.ticker_info(symbol, use_cache=False)
+                if info:
+                    import json as _json
+                    row_map = {'ticker': symbol}
+                    for key, value in info.items():
+                        col = f"_{key}" if key and key[0].isdigit() else key
+                        if isinstance(value, (list, dict)):
+                            value = _json.dumps(value)
+                        row_map[col] = value
+                    from tradinglib.utils import DataUtils
+                    conn2 = open_db(asset_db)
+                    DataUtils.bulk_upsert_dicts(conn2, 'asset_info', [row_map])
+                    conn2.close()
+                    # Neu laden
+                    conn3 = open_db(asset_db, readonly=True)
+                    df = load_data_into_dataframe(conn3, symbol)
+                    conn3.close()
+            except Exception as e:
+                self.logger.warning("load_ticker_data Yahoo-Fallback fuer %s fehlgeschlagen: %s", symbol, e)
+
         conn.close()
         return df
     
     def load_price_data(self, symbol, period, interval, aggregate=False):
+        """Load OHLCV price data from the local yf_<symbol>.db file.
 
+        Uses OHLCQueryPlanner to select the right table and row limit.
+        Returns an empty DataFrame when no local data exists.
+        """
         # (value_i,unit_i) = self.split_interval(interval)
 
         # Funktion, um die Daten für ein bestimmtes Tickersymbol in einen DataFrame zu laden
@@ -143,12 +178,12 @@ class FetchData(tt.TickerTools):
             try:
                 df = pd.read_sql_query(query, conn)
             except Exception as e:
-                print(f"Error: {symbol} - {e} {period} {interval}")
+                self.logger.error("Error: %s - %s %s %s", symbol, e, period, interval)
                 df = pd.DataFrame()
 
             try:
-                df.sort_values(['Date'], ascending=[True], inplace=True)
-                df.reset_index(inplace=True)
+                df = df.sort_values(['Date'], ascending=[True])
+                df = df.reset_index()
             except Exception:
                 pass
 
@@ -164,17 +199,13 @@ class FetchData(tt.TickerTools):
             pass
 
         df = pd.DataFrame()
-        if price_tbl:
-            conn = sqlite3.connect(price_db)
-            conn.execute("PRAGMA journal_mode = WAL")
-            conn.execute("PRAGMA cache_size = -32000")
-            conn.execute("PRAGMA temp_store = MEMORY")
-            conn.execute("PRAGMA mmap_size = 67108864")
+        if price_tbl and os.path.exists(price_db):
+            conn = open_db(price_db, readonly=True)
             df = load_data_into_dataframe(conn, price_tbl, limit=limit)
             conn.close()
 
             if self.get_num_rows(df) > 0:
-                df.set_index('Date', inplace=True)
+                df = df.set_index('Date')
                 df.index = pd.to_datetime(df.index, format='mixed')
 
                 diff = 1
@@ -192,17 +223,16 @@ class FetchData(tt.TickerTools):
         return df
             
     def load_performance_data(self, symbol=''):
+        """Load the latest simulation row for symbol from asset_simulation_.db.
 
+        Returns an empty DataFrame when no simulation data is available.
+        """
         # Datenbankname — liest direkt aus asset_simulation_.db (WAL erlaubt
         # gleichzeitige Schreib- und Lesezugriffe ohne Lock-Konflikt)
         table = "asset_simulation"
         db_name = self.get_path(path = 'database', file_name=f"{table}_.db")
 
-        conn = sqlite3.connect(db_name)
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA cache_size = -64000")
-        conn.execute("PRAGMA temp_store = MEMORY")
-        conn.execute("PRAGMA mmap_size = 268435456")
+        conn = open_db(db_name)
         try:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sim_ticker_date ON asset_simulation (ticker, Date)")
         except Exception:
@@ -222,14 +252,17 @@ class FetchData(tt.TickerTools):
             df = pd.read_sql_query(query, conn, params=(symbol,))
         except Exception:
             df = pd.DataFrame()
-        df.reset_index(inplace=True)
-#        print(type(df))
+        df = df.reset_index()
         conn.close()
         return df
 
-    def calc_max_periods(self, interval, period, max_periods = 512):
+    def calc_max_periods(self, interval, period, max_periods=512):
+        """Compute the maximum number of candles needed for an interval/period combination.
 
-        # periods m, d, wk, mo, y, max        
+        Uses a lookup table of trading-unit ratios. Returns max_periods unchanged
+        when the combination is unrecognised.
+        """
+        # periods m, d, wk, mo, y, max
         # intervals m, d, wk, mo
         m_pe = max_periods 
         (value_i,unit_i) = self.split_interval(interval)
@@ -263,14 +296,16 @@ class FetchData(tt.TickerTools):
         return m_pe
         
 
-    def get_xrate(self, symbol = 'EUR'):
+    def get_xrate(self, symbol='EUR'):
+        """Fetch the current exchange rate of system_currency vs symbol.
 
+        Returns (rate, date) on success, or (1, None) on any failure.
+        """
         if symbol == self.system_currency:
             return 1
     
         symbol = symbol.upper()
     
-#    yf.pdr_override()
         logging.getLogger('yfinance').setLevel(logging.CRITICAL)
     
 #        if 1:
@@ -291,8 +326,11 @@ class FetchData(tt.TickerTools):
         date = df.index[-1]
         return val, date
 
-    def aggregate_ohlc(self, df:pd.DataFrame, interval="5m"):
+    def aggregate_ohlc(self, df: pd.DataFrame, interval="5m"):
+        """Resample df to the target interval using OHLCV aggregation rules.
 
+        Adjusts weekly candle dates so they fall on Mondays instead of Fridays.
+        """
         # conversion
         conversion_map = {
             "m": "min",
@@ -305,7 +343,7 @@ class FetchData(tt.TickerTools):
 
         (days, unit) = self.split_interval(interval)  
         interval = f"{int(days)}{conversion_map[unit]}"
-        df.reset_index(inplace=True)
+        df = df.reset_index()
         df = df.set_index('Date')
         df.index = pd.to_datetime(df.index)
 
@@ -319,18 +357,23 @@ class FetchData(tt.TickerTools):
         if unit == "wk":
             ohlc.index = ohlc.index + pd.DateOffset(days=-4)
 
-        ohlc.reset_index(inplace=True)
+        ohlc = ohlc.reset_index()
         try:
             ohlc['Date'] = pd.to_datetime(ohlc['Date']).dt.strftime(self.ftime_str)
         except Exception as e:
-            #print(e)
             pass
-        ohlc.set_index('Date', inplace=True)
+        ohlc = ohlc.set_index('Date')
         
         return ohlc
 
 
-    def fetch_data(self, symbol, period='1y', interval='1d', max_periods = 360, add_current=False, aggregate=False, pips_select = 0, region = st):
+    def fetch_data(self, symbol, period='1y', interval='1d', max_periods=360, add_current=False, aggregate=False, pips_select=0, region=st):
+        """Load, merge, and optionally decorate price data with technical indicators.
+
+        Data priority: local DB → Yahoo Finance fallback. When indicators is non-empty,
+        computes EMA/SMA, daily returns, trend, log return, and all requested indicator
+        instances, then applies buy/sell signals. Returns (price_df, ticker_df).
+        """
                 
         max_periods = self.calc_max_periods(interval=interval, period=period, max_periods=max_periods)
         # Debug: log computed max_periods which will be used to slice the dataframe
@@ -372,14 +415,14 @@ class FetchData(tt.TickerTools):
         
         if pips_select:
             stop = len(df)
-            (pips_forward, pips_back) = region.slider(
-                f"Select range:",
-                0,
-                stop,
-                (0, stop)
-                )
-
-            df = df[pips_forward:pips_back]
+            if stop > 0:
+                (pips_forward, pips_back) = region.slider(
+                    f"Select range:",
+                    0,
+                    stop,
+                    (0, stop)
+                    )
+                df = df[pips_forward:pips_back]
 
         # Add performance indicators needed for analysis
         # If self.indicators is empty => skip heavy precompute (lazy mode)
@@ -390,6 +433,10 @@ class FetchData(tt.TickerTools):
                     df = indicator.ema(df,tf,'Close')
                 except Exception:
                     pass
+            try:
+                df['ema9_angle'] = indicator.angle(df['ema9'])
+            except Exception:
+                pass
             for tf in [20,50,100,200]:
                 try:
                     df = indicator.sma(df,tf,'Close')
@@ -449,7 +496,7 @@ class FetchData(tt.TickerTools):
                         except Exception:
                             pass
                 except Exception as e:
-                    print(f"Error {symbol} instanciating {itm}: {e}")
+                    self.logger.error("Error %s instanciating %s: %s", symbol, itm, e)
                     pass
 
             try:
@@ -478,13 +525,18 @@ class FetchData(tt.TickerTools):
         return df, df_t
 
 
-    def add_current_price(self, df, symbol = '', from_yahoo = False):
+    def add_current_price(self, df, symbol='', from_yahoo=False):
+        """Append the latest intraday candle as the final row in df.
+
+        If the intraday date already exists in df, replaces the last daily candle
+        instead of appending a duplicate.
+        """
                 
         if not symbol == '' and not df.empty:
             if from_yahoo:
                 df_minute, _ = self.fetch_yahoo_ticker_data(symbol=symbol, period='1d', interval='1m')
                 if self.get_num_rows(df_minute):
-                    df_minute.drop(['Dividends','Stock Splits'], axis=1, inplace=True)
+                    df_minute = df_minute.drop(['Dividends','Stock Splits'], axis=1)
             else:
                 df_minute = self.load_price_data(symbol, period='1d', interval='1m', aggregate=False)    
 
@@ -511,7 +563,7 @@ class FetchData(tt.TickerTools):
 
                 df = pd.concat([df, df_minute.iloc[-1:]])                
             except Exception as e:
-                print(e)
+                self.logger.warning("%s", e)
                 pass
         return df
 

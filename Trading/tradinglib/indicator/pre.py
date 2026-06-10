@@ -2,7 +2,7 @@ import sys
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 import plotly.graph_objects as go
 from tradinglib.indicator import _indicator
@@ -15,11 +15,12 @@ class Pre(_indicator._Indicator):
     name = 'Predict target range'
 
     def __init__(self, df, symbol = ""):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.data()
-#        self.add_fig()
                 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
 	
         self.pr_low = 0
         self.pr_high = 0
@@ -36,27 +37,27 @@ class Pre(_indicator._Indicator):
             pass
         
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
             
-        self.fig.add_hline(y=self.pr_high, line_width=0.8, line_dash="dash", line_color="blue",
-                      annotation_text=f'{self.pr_high}', 
-                      annotation_position="top left",
-                      label=dict(
-                          font=dict(size=14, color="darkblue"),
-                          ),
-                      row=1, col=1
-                      )    
+        self._add_hline_outside(
+            y=self.pr_high,
+            text=f'Pred H: {self.pr_high}',
+            line_color='blue',
+            line_dash='dash',
+            line_width=1,
+        )
         self.fig.add_hrect(y0=self.pr_low, y1=self.pr_high, line_width=0, fillcolor="blue", opacity=0.2)
-        self.fig.add_hline(y=self.pr_low, line_width=0.8, line_dash="dash", line_color="darkblue",
-                      annotation_text=f'{self.pr_low}', 
-                      annotation_position="bottom left",
-                      label=dict(
-                          font=dict(size=14, color="darkblue"),
-                          ),
-                      row=1, col=1
-                      )    
+        self._add_hline_outside(
+            y=self.pr_low,
+            text=f'Pred L: {self.pr_low}',
+            line_color='darkblue',
+            line_dash='dash',
+            line_width=1,
+        )
+

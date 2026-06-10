@@ -5,7 +5,8 @@ import yfinance as yf
 import time
 
 class EarningsCalendar:
-    def __init__(self, tickers: list, past_quarters:int = 1, future_quarters:int = 1, use_scrape: bool = False):
+    def __init__(self, tickers: list, past_quarters: int = 1, future_quarters: int = 1, use_scrape: bool = False):
+        """Configure the calendar for the given tickers and how many past/future quarters to fetch."""
         self.tickers = tickers
         self.past_quarters = past_quarters
         self.future_quarters = future_quarters
@@ -13,6 +14,7 @@ class EarningsCalendar:
         self.df = pd.DataFrame()
 
     def _get_from_yfinance(self, ticker: str) -> pd.DataFrame:
+        """Fetch earnings dates for one ticker via yfinance; returns empty DataFrame on failure."""
         t = yf.Ticker(ticker)
         try:
             ed = t.get_earnings_dates(limit=self.past_quarters + self.future_quarters)
@@ -20,7 +22,6 @@ class EarningsCalendar:
             st.warning(f"yfinance error in ticker {ticker}: {e}")
             return pd.DataFrame()
         if ed is None or ed.empty:
-#            st.write(f"No earnings for {ticker}")
             return pd.DataFrame()
         ed = ed.reset_index().rename(columns={'index': 'Earnings Date'})
         ed['Ticker'] = ticker
@@ -28,6 +29,7 @@ class EarningsCalendar:
         return ed
 
     def fetch(self):
+        """Download earnings dates for all configured tickers and store them in self.df."""
         rows = []
         for ticker in self.tickers:
             df_t = self._get_from_yfinance(ticker)
@@ -40,6 +42,7 @@ class EarningsCalendar:
             self.df = pd.DataFrame()
 
     def display_filtered(self, start_date: datetime.date, end_date: datetime.date):
+        """Render a filtered earnings table for the given date window."""
         if self.df.empty:
             st.write("No Data.")
             return
@@ -50,10 +53,13 @@ class EarningsCalendar:
         if df_filtered.empty:
             st.info("No upcoming Earnings in time frame.")
         else:
-            st.dataframe(df_filtered.sort_values('Earnings Date'))
+            _ec_disp = df_filtered.sort_values('Earnings Date').copy()
+            if 'Ticker' in _ec_disp.columns:
+                _ec_disp.insert(0, 'details', _ec_disp['Ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
+            st.dataframe(_ec_disp, column_config={'details': st.column_config.LinkColumn('Details', display_text='View')})
 
     def run_app(self):
-#        st.title("📅 Earnings Calendar – Wochenansicht")
+        """Fetch earnings data and render a date-range filter with a filtered results table."""
         self.fetch()
 
         if self.df.empty:
@@ -78,3 +84,4 @@ class EarningsCalendar:
 
         st.markdown(f"**Show Earnings from {start_date} until {end_date}:**")
         self.display_filtered(start_date, end_date)
+

@@ -13,6 +13,7 @@ from tradinglib.utils import DataUtils
 class IndicatorLoader:
 
     def __init__(self, directory: str):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         self.directory = directory
         self.oszilator_indicators = []
         self.overlay_indicators = []
@@ -20,6 +21,7 @@ class IndicatorLoader:
         self.indicator_classes = self._load_indicators()
 
     def _load_indicators(self):
+        """Dynamically import all indicator modules from the indicator package."""
         for file in os.listdir(self.directory):
             if file.endswith(".py") and file != "_indicator.py" and file != "__init__.py" and file != "indicator.py":
                 module_name = file[:-3]  # Dateiendung ".py" entfernen
@@ -41,10 +43,12 @@ class IndicatorLoader:
                                 self.overlay_indicators.append(f"{short_name} - {obj.name}")
 
     def get_oszilator_indicators(self):
+        """Return the list of available oscillator indicator names."""
         self.oszilator_indicators.sort()
         return self.oszilator_indicators
 
     def get_overlay_indicators(self):
+        """Return the list of available overlay indicator names."""
         self.overlay_indicators.sort()
         return self.overlay_indicators
 
@@ -54,9 +58,11 @@ class IndicatorLoader:
 
 
 def get_num_rows(df):
+    """Return the number of rows in the given DataFrame."""
     return DataUtils.get_num_rows(df)
 
 def ema(df, n=9, name='Close'):
+    """Compute an EMA of the specified column with the given period."""
 
     df = df.copy()
     df[f'ema{n}'] = df[name].ewm(span=n, adjust=False, min_periods=n).mean()
@@ -65,14 +71,16 @@ def ema(df, n=9, name='Close'):
 
 
 def sma(df, n=9, name='Close'):
-    
+    """Compute a Simple Moving Average and attach it to the DataFrame."""
+
     df = df.copy()
-    df[f'MA{n}'] = df[name].rolling(int(n)).mean()
+    df[f'sma{n}'] = df[name].rolling(int(n)).mean()
 
     return df
         
 
 def rsi(df, lookback=8, window=14):
+    """Compute the RSI and attach it to the DataFrame."""
 
     df = df.copy()
     close = df['Close']
@@ -100,6 +108,7 @@ def rsi(df, lookback=8, window=14):
 
 
 def momentum(df, window=14, smooth_window=3):
+    """Compute the momentum indicator and attach it to the DataFrame."""
     # stochastic
     df = df.copy()
     stoch = ta.momentum.StochasticOscillator(high=df['High'],
@@ -110,16 +119,19 @@ def momentum(df, window=14, smooth_window=3):
 
     df['stoch'] = stoch.stoch()
     df['stoch_signal'] = stoch.stoch_signal()
-    df['stoch_ema'] = df['stoch'].rolling(window).mean()
-    
+    df['momentum_ema'] = df['stoch'].rolling(window).mean()
+    df['momentum_ema_angle'] = angle(df['momentum_ema'])
+
     return df
 
 def angle(df):
+    """Compute the angle (slope) of a series and attach it to the DataFrame."""
     slope = df.diff()
     angle = np.degrees(np.arctan(slope))
     return angle
 
 def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)', sell_query = '(zcr<0.7)|(ewo<ewo_ema)'):
+    """Evaluate buy/sell query expressions and attach signal columns."""
     
     df = df.copy()
     evaluator = tools.ExpressionEvaluator(df,"df")
@@ -145,6 +157,7 @@ def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)', sell_quer
 
 
 def log_return(df, window=50):
+    """Compute the log return series and attach it to the DataFrame."""
 
     df = df.copy()
     # Compute the logarithmic returns using the Closing price
@@ -157,6 +170,7 @@ def log_return(df, window=50):
 
 
 def trend(df, trend_length=20, trend_start=0, trend_end=0):
+    """Compute a composite trend indicator using MA-based logic."""
 
     df = df.copy()
     def best_fit(y: np.array):
@@ -194,10 +208,8 @@ def trend(df, trend_length=20, trend_start=0, trend_end=0):
     if trend_length < 3:
             trend_length = 3
 
-    #    print('start:',trend_end, 'length:', trend_length)
     start = trend_end-trend_length
     end = trend_end
-    #    print('start:',start, 'end:', end)
     if trend_end == 0:
         end = None
         
@@ -220,15 +232,12 @@ def trend(df, trend_length=20, trend_start=0, trend_end=0):
 
 
 def trend_pct_df(df: pd.DataFrame, column='Close', date = None):
+    """Compute percentage-based trend for a full DataFrame."""
     
     df_n = df.copy()
     if not date == None:
 #        try:
-#            df_n.set_index('Date', inplace=True)
-#           df_n.sort_index(inplace=True)
 #        except Exception as e:
-#            print(f"Error: {e}")
-#            pass
         try:
             df_n.index = pd.to_datetime(df_n.index).normalize()
             cutoff = pd.Timestamp(date[:10])
@@ -253,6 +262,7 @@ def trend_pct_df(df: pd.DataFrame, column='Close', date = None):
     return round(pct,2)
 
 def trend_pct(a, b):
+    """Compute percentage-based trend for a single ticker series."""
     
     pct = 0
     try:
@@ -269,6 +279,7 @@ def trend_pct(a, b):
     return pct
 
 def support_resistance(df, window=21):
+    """Detect and attach support and resistance levels to the DataFrame."""
     
     df = df.copy()
     if get_num_rows(df) == 0:
@@ -279,6 +290,7 @@ def support_resistance(df, window=21):
     return df['Support'].iloc[-1], df['Resistance'].iloc[-1]
 
 def sharpe_ratio(df, N=252, rf=0.01):
+    """Compute and attach the rolling Sharpe ratio column."""
 
     df = df.copy()
     series = df['Close']
@@ -294,6 +306,7 @@ def sharpe_ratio(df, N=252, rf=0.01):
 
 
 def sortino_ratio(df, N=252, rf=0.01):
+    """Compute and attach the rolling Sortino ratio column."""
     
     df = df.copy()
     series = df['Close']
@@ -304,7 +317,7 @@ def sortino_ratio(df, N=252, rf=0.01):
     series = series.replace(0, np.nan)  # Replace zeros with NaN
 
     log_returns= np.log(series.div(series.shift()))# Calculate Log-Returns
-    log_returns.dropna(inplace=True)
+    log_returns = log_returns.dropna()
 
     # Calculate the annualized average log return
     ann_returns = log_returns.mean() * N
@@ -317,7 +330,6 @@ def sortino_ratio(df, N=252, rf=0.01):
     downside_ann_std =  downside.std() * np.sqrt(N)
 
     # Creating Summary DataFrame
-    #summary = pd.DataFrame(data={"A. Returns":ann_returns,"A. Risk":ann_std })
     # Calculating and Adding Sortino Ratio
     #summary["Sortino Ratio"] = (ann_returns -rf) / downside_ann_std
     #summary.sort_values(by ="Sortino Ratio", ascending=False) #Sorting the DataFrame by Sortino Ratio
@@ -362,7 +374,7 @@ def semi_volatility(df, N=252):
 
     # Logarithmische Renditen berechnen
     log_returns = np.log(series / series.shift(1))
-    log_returns.dropna(inplace=True)
+    log_returns = log_returns.dropna()
 
     # Nur negative Renditen (Downside)
     downside = log_returns[log_returns < 0]
@@ -374,8 +386,8 @@ def semi_volatility(df, N=252):
 
 
 def target_prices(price, scaling = 0):
+    """Derive and attach target price columns (predictedHigh/Low)."""
 
-#    factor = round(price/1000,3)
     if price < 1000:
         factor = 1
     if price < 10:
@@ -383,7 +395,6 @@ def target_prices(price, scaling = 0):
     if price < 2:
         factor = 0.001
 #    if price > 100:
-#        factor = 1
     if price > 1000:
         factor = 10
     if price > 50000:
@@ -398,6 +409,7 @@ def target_prices(price, scaling = 0):
     y = num
 
     def checker(x, z):
+        """Validate that required indicator columns are present."""
         if x < y < z:
             return y
         else:
@@ -431,6 +443,7 @@ def target_prices(price, scaling = 0):
         sell_target = ''
 
         def roundup(number, places):
+            """Round a value up to the nearest multiple of significance."""
             factor = 10 ** places
             return round(number * factor) / factor
  
@@ -471,3 +484,4 @@ def target_prices(price, scaling = 0):
     sell_target3 = round(sell_target3 * factor,fix)
 
     return (buy_above, buy_target, sell_below, sell_target, support, resistance, buy_target2, buy_target3, sell_target2, sell_target3 )
+

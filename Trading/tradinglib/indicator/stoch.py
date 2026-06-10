@@ -5,9 +5,10 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
+from tradinglib.indicator import indicator
 
 class Stoch(_indicator._Indicator):
 
@@ -20,15 +21,16 @@ class Stoch(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", window=14, smooth_window=3):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.window = window
 		self.smooth_window = smooth_window
 		super().__init__(df=df, symbol=symbol)
 		
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): # Momentum
+		"""Compute the indicator values and attach them as columns to self.df."""
 	
 		stoch = ta.momentum.StochasticOscillator(high=self.df['High'],
 					close=self.df['Close'],
@@ -38,14 +40,16 @@ class Stoch(_indicator._Indicator):
 	 	
 		self.df['stoch'] = stoch.stoch()
 		self.df['stoch_signal'] = stoch.stoch_signal()
-		self.df['stoch_ema'] = self.df['stoch'].rolling(self.window).mean()
+		self.df['momentum_ema'] = self.df['stoch'].rolling(self.window).mean()
+		self.df['momentum_ema_angle'] = indicator.angle(self.df['momentum_ema'])
 
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -64,3 +68,4 @@ class Stoch(_indicator._Indicator):
 						line=dict(color='blue', width=1),
 						showlegend = False,
 						))
+

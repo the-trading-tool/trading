@@ -44,6 +44,7 @@ def _gann_levels(price: float, step: float, n: int, factor: float = 0.0):
 
 
 def _fmt(value: float) -> str:
+    """Format a numeric price value as a rounded string label."""
     if value >= 10_000:
         return f'{value:,.0f}'
     if value >= 1_000:
@@ -70,6 +71,7 @@ class Gan(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol='', levels=5, step_frac='1/8', anchor='close'):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.levels = max(1, min(8, int(levels)))
         self.step   = _STEP_MAP.get(str(step_frac), 0.125)
@@ -77,6 +79,7 @@ class Gan(_indicator._Indicator):
         self.data()
 
     def _anchor_price(self) -> float:
+        """Determine the anchor price for Gann level calculations."""
         row = self.df.iloc[-1]
         if self.anchor == 'hl2':
             return (float(row['High']) + float(row['Low'])) / 2.0
@@ -85,6 +88,7 @@ class Gan(_indicator._Indicator):
         return float(row['Close'])
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         price = self._anchor_price()
         if price <= 0:
             return
@@ -95,9 +99,10 @@ class Gan(_indicator._Indicator):
             self.df[f'gan_s{i}'] = s
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
@@ -110,22 +115,20 @@ class Gan(_indicator._Indicator):
 
             if col_r in self.df.columns:
                 val = self.df[col_r].iloc[-1]
-                self.fig.add_hline(
+                self._add_hline_outside(
                     y=val,
-                    line_width=width,
-                    line_dash='dash',
+                    text=f'GR{i}: {_fmt(val)}',
                     line_color=rc,
-                    annotation_text=f'R{i}: {_fmt(val)}',
-                    annotation_position='top left',
+                    line_dash='dash',
+                    line_width=width,
                 )
 
             if col_s in self.df.columns:
                 val = self.df[col_s].iloc[-1]
-                self.fig.add_hline(
+                self._add_hline_outside(
                     y=val,
-                    line_width=width,
-                    line_dash='dash',
+                    text=f'GS{i}: {_fmt(val)}',
                     line_color=sc,
-                    annotation_text=f'S{i}: {_fmt(val)}',
-                    annotation_position='top left',
+                    line_dash='dash',
+                    line_width=width,
                 )

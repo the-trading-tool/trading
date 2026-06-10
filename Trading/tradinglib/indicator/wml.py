@@ -18,12 +18,14 @@ class Wml(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol='', show_week=True, show_month=True):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.show_week  = show_week
         self.show_month = show_month
         self.data()
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
         work = self.df.copy()
 
         if 'Date' in work.columns:
@@ -41,9 +43,10 @@ class Wml(_indicator._Indicator):
         self.df['wml_mo_lo'] = float(mo_lo_s.iloc[-2]) if len(mo_lo_s) >= 2 else np.nan
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 

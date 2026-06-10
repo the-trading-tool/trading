@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Paper / Live Trading – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+.badge{display:inline-block;background:#fce8e6;color:#c5221f;border-radius:3px;padding:1px 7px;font-size:.78em;font-weight:600;vertical-align:middle;margin-left:6px}
+</style>
+</head>
+<body>
+<h1>Paper / Live Trading <small style="font-size:.6em;color:#888">premium/trading_page.py</small><span class="badge">Premium</span></h1>
+
+<p>Führt Kauf-/Verkaufssignale der aktivierten Strategien direkt bei einem angebundenen Broker aus – wahlweise als <b>Paper Trading</b> (Simulation mit virtuellem Kapital) oder als <b>Live Trading</b> mit echtem Geld.</p>
+
+<div class="info">Diese Seite ist eine <b>Premium-Funktion</b> und nur für Admin-Konten sichtbar, sofern eine gültige Lizenz mit Feature <code>paper_trading</code> vorliegt (Sidebar → Portfolio → <b>Paper / Live Trading</b>). Ohne Lizenz erscheint die Meldung „Trading nicht verfügbar – bitte Lizenz prüfen."</div>
+
+<h2>Broker-Auswahl</h2>
+<table>
+<tr><th>Broker</th><th>Modus</th><th>Märkte</th><th>Währung</th><th>Voraussetzung</th></tr>
+<tr><td><b>Alpaca</b></td><td>nur Paper Trading</td><td>US-Aktien</td><td>USD</td><td>API-Zugangsdaten als KSP-Eintrag (<code>alpaca_ksp_name</code>)</td></tr>
+<tr><td><b>IBKR</b> (Interactive Brokers)</td><td>Paper &amp; Live</td><td>global, mehrere Börsen</td><td>multi-currency</td><td><code>ib_insync</code>, TWS/IB Gateway lokal aktiv (Port 7497 = Paper, 7496 = Live)</td></tr>
+</table>
+
+<p>Über die Buttons oben auf der Seite wird zwischen <b>● Paper Trading – Alpaca</b> und <b>○ Live Trading – IBKR</b> umgeschaltet. Der aktuell gewählte Broker ist farblich hervorgehoben.</p>
+
+<div class="warn"><b>⚠ Live-Modus:</b> Sobald IBKR ausgewählt und <code>ibkr_port</code> auf <b>7496</b> konfiguriert ist, werden Orders mit <b>echtem Geld</b> ausgeführt. Die Seite zeigt dann oben einen roten Warnhinweis.</div>
+
+<h3>Registrierung</h3>
+<ul>
+  <li><b>Alpaca:</b> kostenloses Konto auf <code>alpaca.markets</code> anlegen, im Dashboard unter „API Keys" einen <b>Paper</b>-Schlüssel (Key ID + Secret) erzeugen und als KSP-Eintrag hinterlegen – Benutzername = Key ID, Passwort = Secret. Name des KSP-Eintrags unter ⚙ Einstellungen → <code>alpaca_ksp_name</code> festlegen (Standard: <code>av-paper</code>)</li>
+  <li><b>IBKR:</b> Wertpapierkonto bei Interactive Brokers eröffnen, lokal <b>TWS</b> oder <b>IB Gateway</b> installieren/starten und API-Zugriff aktivieren (Port 7497 = Paper, 7496 = Live). Host/Port unter ⚙ Einstellungen eintragen – ein zusätzlicher API-Key ist nicht nötig</li>
+</ul>
+<div class="info">Eine ausführliche Schritt-für-Schritt-Anleitung sowie Empfehlungen für regelmäßige Hintergrund-Jobs (Scheduler) finden sich in der Hilfe „Setup &amp; Scheduler".</div>
+
+<h3>Testbetrieb (Dry Run)</h3>
+<p>Der Schalter <b>🧪 Testbetrieb</b> simuliert die Orderausführung, ohne tatsächlich Order an den Broker zu senden – ideal zum Prüfen von Strategie-Signalen vor dem Live-Einsatz. Entspricht der Konfiguration <code>trading_agent_dry_run</code>, die auch vom CLI-Trading-Agent (<code>run_agent.py</code>) verwendet wird.</p>
+
+<h2>Tabs</h2>
+
+<h3>📊 Konto</h3>
+<ul>
+  <li>Verbindungsstatus zum gewählten Broker (🟢 verbunden / 🔴 nicht verbunden)</li>
+  <li>Portfolio-Performance-Chart über einen wählbaren Zeitraum</li>
+  <li>Allokations-Chart der aktuellen Positionen</li>
+  <li><b>Strategien aktivieren:</b> Auswahl, welche Strategien aus <code>multi_transactions</code> für das automatische Trading berücksichtigt werden (gespeichert in <code>trading_enabled_strategies</code>)</li>
+</ul>
+
+<h3>🔔 Signale</h3>
+<ul>
+  <li><b>🔄 Signale neu berechnen:</b> startet die Portfolio-Simulation für alle aktivierten Strategien neu (Zeitstempel der letzten Berechnung wird angezeigt)</li>
+  <li>Anzeige aktueller <span style="color:#1e8e3e">🟢 Kauf-Signale</span> und <span style="color:#c5221f">🔴 Verkauf-Signale</span> je Strategie/Index/Ticker</li>
+  <li>ATR-Multiplikator zur Berechnung des Stop-Loss je Signal</li>
+  <li>Filter: Alle / Nur Käufe / Nur Verkäufe; geschlossene Positionen der letzten N Tage einblendbar</li>
+  <li>Signale per Checkbox auswählen und über <b>„N ausgewählte Order(s) ausführen"</b> an den Broker senden – inkl. Bestätigungsdialog mit Übersicht aller Order-Details</li>
+  <li>Im Testbetrieb wird statt einer echten Order der Hinweis „Order(s) würden gesendet" angezeigt</li>
+  <li>Nicht handelbare Signale (kein Broker-Symbol für den Ticker beim gewählten Broker) werden automatisch übersprungen</li>
+</ul>
+
+<h3>📂 Positionen</h3>
+<ul>
+  <li>Übersicht aller aktuell offenen Positionen beim gewählten Broker (Ticker, Stückzahl, Einstandspreis, aktueller Kurs, Gewinn/Verlust)</li>
+</ul>
+
+<h3>📋 Historie</h3>
+<ul>
+  <li>Bisherige Order- und Ausführungshistorie des Brokers</li>
+</ul>
+
+<h3>📈 Vergleich</h3>
+<ul>
+  <li>Vergleich der Live-/Paper-Performance mit der simulierten Strategie-Performance (Soll/Ist-Abgleich)</li>
+</ul>
+
+<h3>⚙ Einstellungen</h3>
+<ul>
+  <li>Broker-Zugangsdaten verwalten bzw. Verbindung manuell testen</li>
+  <li>Verbindungsparameter wie <code>ibkr_host</code> / <code>ibkr_port</code></li>
+</ul>
+
+<h2>Automatisierung</h2>
+<p>Der CLI-Trading-Agent <code>run_agent.py</code> nutzt dieselbe Broker-Anbindung und kann Signale unbeaufsichtigt (z.&nbsp;B. per Scheduler) ausführen – siehe Hilfe zu <b>Trading-Agent (run_agent.py)</b> im Tab „CLI-Skripte".</p>
+</body>
+</html>

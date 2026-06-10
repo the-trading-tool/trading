@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Asset-Übersicht – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Asset-Übersicht <small style="font-size:.6em;color:#888">all_assets.py</small></h1>
+
+<p>Screener für <b>alle Ticker</b> der lokalen Datenbank: filterbare Tabelle mit den aktuellen Indikatorwerten, optional ergänzt um ein Mini-Chart-Grid der Top-Titel. Erreichbar für Admin-Konten unter Assets &amp; Performance → <b>→ Alle Assets</b>.</p>
+
+<h2>Bedienung</h2>
+<table>
+<tr><th>Element</th><th>Wirkung</th></tr>
+<tr><td>Filter-Eingabefeld (oben)</td><td>Freitext-Query, mit der die Ergebnistabelle gefiltert wird – Standardwert ist die globale Kauf-Query aus den Systemeinstellungen</td></tr>
+<tr><td>Klick auf eine Tabellenzeile</td><td>Öffnet ein Mini-Chart des gewählten Titels mit Link zur vollen <b>Asset Details</b>-Seite</td></tr>
+<tr><td>📥 Datensatz herunterladen</td><td>Excel-Export der gefilterten Tabelle</td></tr>
+<tr><td>Chart-Grid anzeigen</td><td>Blendet zusätzlich ein Raster aus Mini-Charts ein (Anzahl wählbar: 5/10/20), sortiert nach Sortino-Ratio</td></tr>
+</table>
+
+<h2>Sortierung &amp; Inhalt</h2>
+<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus <code>asset_simulation_all.db</code>, sortiert nach Währung, Sortino-Ratio und <code>overallValueTrend</code>. Alle berechneten Indikator-Spalten sind enthalten.</p>
+
+<h2>Filter-Syntax</h2>
+<p>Das Filterfeld akzeptiert pandas-/SQL-kompatible Bedingungen auf den Indikator-Spalten, z.&nbsp;B.:</p>
+<ul>
+  <li><code>overallValueTrend &gt; 65</code></li>
+  <li><code>(rsi &gt; 20) AND (rsi &lt; 80) AND (ewo &gt; ewo_ema)</code></li>
+  <li><code>macd_diff &gt; 0</code></li>
+</ul>
+
+<div class="info">Verfügbare Spaltennamen sind alle berechneten Indikatoren aus <code>asset_simulation_all.db</code>. Die Standard-Kauf-/Verkauf-Queries werden im Konfigurationsdialog (🏵) unter <i>Systemeinstellungen</i> festgelegt.</div>
+</body>
+</html>

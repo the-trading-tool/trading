@@ -2,12 +2,15 @@ import numpy as np
 import pandas as pd
 from ta.volatility import BollingerBands
 import sys
+import logging
 import plotly.graph_objects as go
+
+logger = logging.getLogger(__name__)
 
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -24,6 +27,7 @@ class Hor(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", bb_length=20, lookback=50, adjustment=0):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
         super().__init__(df=df, symbol=symbol)
 
@@ -39,6 +43,7 @@ class Hor(_indicator._Indicator):
     # -------------------------------------------------------------
 
     def compute_signals(self):
+        """Generate buy/sell signal columns from indicator values."""
 
         buy = (
             (self.df["hor_val"] > self.df["hor_threshold"]) &
@@ -58,6 +63,7 @@ class Hor(_indicator._Indicator):
     # -------------------------------------------------------------
 
     def bollinger(self, series, length, std):
+        """Compute Bollinger Band upper/lower values for the signal series."""
 
         bb = BollingerBands(
             close=series,
@@ -75,6 +81,7 @@ class Hor(_indicator._Indicator):
     # -------------------------------------------------------------
 
     def compute_horcrux(self):
+        """Apply the core Horcrux (std-dev channel) algorithm."""
 
         close = self.df["Close"]
         source = self.df["High"]
@@ -91,7 +98,6 @@ class Hor(_indicator._Indicator):
             uppers.append(u)
             lowers.append(l)
 
-        #average_middle = np.mean(mids, axis=0)
         average_middle = pd.concat(mids, axis=1).mean(axis=1)
         
         state = np.zeros(len(self.df))
@@ -134,7 +140,7 @@ class Hor(_indicator._Indicator):
                 else:
                     state[i] = 0
         except Exception as e:
-            print(f"Error computing state: {e}")    
+            logger.error("Error computing state: %s", e)
 
         self.df["state"] = state
 
@@ -160,21 +166,23 @@ class Hor(_indicator._Indicator):
     # -------------------------------------------------------------
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
 
         self.compute_horcrux()
         self.compute_signals()
-        self.df.drop(['state','stateMax','stateMin','hor_buy','hor_sell'], axis=1, inplace=True)
+        self.df = self.df.drop(['state','stateMax','stateMin','hor_buy','hor_sell'], axis=1)
         
     # -------------------------------------------------------------
     # PLOT
     # -------------------------------------------------------------
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
 
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 

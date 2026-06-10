@@ -7,7 +7,7 @@ import streamlit as st
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -43,6 +43,7 @@ class Qtrend(_indicator._Indicator):
         bb_mult=2.0,
         risk_reward=2.0
     ):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
         self.trend_period = trend_period
         self.atr_period = atr_period
@@ -59,16 +60,17 @@ class Qtrend(_indicator._Indicator):
         super().__init__(df=df, symbol=symbol)
 
         self.data()
-        # self.add_fig()
 
     # --------------------------------------------------
     # Helper Functions
     # --------------------------------------------------
 
     def ema(self, series, length):
+        """Compute an EMA of the specified column with the given period."""
         return series.ewm(span=length, adjust=False).mean()
 
     def atr(self, length):
+        """Compute the ATR of the specified period."""
 
         high = self.df['High']
         low = self.df['Low']
@@ -87,6 +89,7 @@ class Qtrend(_indicator._Indicator):
     # --------------------------------------------------
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
 
         import logging
         logger = logging.getLogger(__name__)
@@ -99,8 +102,7 @@ class Qtrend(_indicator._Indicator):
             pass
 
         if self.has_index(self.df):
-            self.df.reset_index(inplace=True)
-#        self.df['timestamp'] = pd.to_datetime(self.df['Date']).astype(int) // 10**9
+            self.df = self.df.reset_index()
         close = self.df['Close']
 
         # --------------------------------------------------
@@ -279,9 +281,8 @@ class Qtrend(_indicator._Indicator):
                 tp_list.append(take_profit)
 
         except Exception as e:
-            print(f"Error in position calculation: {e}")
+            logger.error("Error in position calculation: %s", e)
 
-#        self.df["qtrend_position"] = positions
         self.df["qtrend_entry_price"] = entries
         self.df["qtrend_stop_loss"] = sl_list
         self.df["qtrend_take_profit"] = tp_list
@@ -289,9 +290,9 @@ class Qtrend(_indicator._Indicator):
         self.df['qtrend_stop_loss'] = self.df['qtrend_stop_loss'].replace(0, None)
         self.df['qtrend_entry_price'] = self.df['qtrend_entry_price'].replace(0, None)
 
-        self.df.drop(['kc_mid','bb_upper','bb_lower','qtrend_buy','qtrend_sell','qtrend_state','in_squeeze','rebalance_up','rebalance_down'], axis=1, inplace=True)
+        self.df = self.df.drop(['kc_mid','bb_upper','bb_lower','qtrend_buy','qtrend_sell','qtrend_state','in_squeeze','rebalance_up','rebalance_down'], axis=1)
         try:
-            self.df.set_index('Date', inplace=True)
+            self.df = self.df.set_index('Date')
         except Exception:
             pass
         try:
@@ -305,11 +306,12 @@ class Qtrend(_indicator._Indicator):
     # --------------------------------------------------
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
 
         self.fig = go.Figure()
 
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 

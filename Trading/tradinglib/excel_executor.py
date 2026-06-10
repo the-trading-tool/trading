@@ -4,6 +4,7 @@ import sqlite3
 import os
 import io
 from tradinglib.utils import DataUtils
+from tradinglib.tools import open_db
 
 class ExcelSQLExecutor:
     def __init__(self):
@@ -71,7 +72,7 @@ class ExcelSQLExecutor:
             return None
 
         # Verbindung erstellen
-        return sqlite3.connect(db_path, check_same_thread=False)
+        return open_db(db_path, check_same_thread=False)
 
     def initialize_table_from_tab(self, excel_data, db_name, table_name):
         """
@@ -222,7 +223,6 @@ class ExcelSQLExecutor:
         """
         Startet die Streamlit-Anwendung.
         """
-#        st.title("Excel to SQLite Query Executor")
         frame = st.empty()
         (self.sb, _, self.main) = frame.columns([1,0.1,4])
     
@@ -232,8 +232,6 @@ class ExcelSQLExecutor:
         if uploaded_file:
             try:
                 excel_data = pd.ExcelFile(uploaded_file)
-#                st.write(uploaded_file)
-#                st.dataframe(excel_data)
                 self.parse_parameter_tab(excel_data)
 
                 # Automatische Verarbeitung des Paths-Tabs, um Datenbankverbindungen herzustellen
@@ -253,7 +251,6 @@ class ExcelSQLExecutor:
 #                if self.sb.button("Import data"):
 #                    for db_name in st.session_state["db_paths"].keys():
 #                        if db_name in excel_data.sheet_names:
-#                            self.initialize_table_from_tab(excel_data, db_name, db_name)
 #                        else:
 #                            self.main.text(f'Please name your data sheet correctly. Current sheets available: {excel_data.sheet_names}' )
 
@@ -276,3 +273,4 @@ class ExcelSQLExecutor:
 if __name__ == "__main__":
     app = ExcelSQLExecutor()
     app.run()
+

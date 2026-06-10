@@ -50,8 +50,6 @@ if __name__ == "__main__":
         exit()
 
 #    if intervals == []:
-#        intervals = ['1m','1h','1d','1wk','1mo']
-#        periods = ['max','max','max','max','max']
     # If there is a new List of ticker symbols, we load it into our database
     info_db_table_name = "indices"
     info_db = tt.tools.Db_tools(db_path='database', database_name=f'yf_tickers.db')
@@ -77,7 +75,6 @@ if __name__ == "__main__":
         ticker_list = ticker_list.tolist()    
     elif index_only:
         ticker_query = f'SELECT s.Ticker AS name FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "INDEX"' +' OR s.Ticker LIKE "%=X"'
-#        ticker_query = f"""SELECT name FROM indices"""
 #        ticker_query = 'SELECT Ticker FROM yf_tickers WHERE "OTHER" = 1 OR INVESTED = 1;'
         ticker_list = info_db.read_data(ticker_query)['name']
         ticker_list = ticker_list.tolist()
@@ -86,7 +83,6 @@ if __name__ == "__main__":
         except Exception:
             pass    
 #        for w in ticker_list:
-#            if '^' not in w: 
 #                ticker_list.remove(w)
     elif select:
         # prefer selection from pref-style arg if provided (e.g. /select:WHERE ...),
@@ -178,3 +174,4 @@ if __name__ == "__main__":
             saver.close_connection()  # Schließt die Datenbankverbindung
     except Exception:
         logger.exception("Error closing saver connection")
+

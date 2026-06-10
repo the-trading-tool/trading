@@ -15,6 +15,7 @@ class Ticker():
     corporate_events = None
     
     def get_crumb(self):
+        """Obtain a Yahoo Finance CSRF token and API crumb via the consent flow."""
         response = self.yahoo_session.get('https://guce.yahoo.com/consent', headers=self.user_agent_headers)
         soup = BeautifulSoup(response.content, 'html.parser')
         try:
@@ -41,7 +42,7 @@ class Ticker():
 
 
     def get_data(self, module='defaultKeyStatistic'):
-
+        """Fetch all configured data modules from the Yahoo Finance v10 quoteSummary API."""
         query2 = "https://query2.finance.yahoo.com/v10/finance/quoteSummary/"
 
         for module in self.modul_list:
@@ -68,6 +69,7 @@ class Ticker():
                
 
     def get(self, name):
+        """Return a rounded numeric or raw string value from the info dict; '' when absent."""
         value = ''
         try:
             value = self.info[name]
@@ -83,6 +85,7 @@ class Ticker():
 
 
     def __init__(self, name):
+        """Authenticate with Yahoo Finance and load all configured data modules for name."""
         if name:
             self.info = {}
             self.symbol = name

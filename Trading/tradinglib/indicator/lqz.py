@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -20,13 +20,13 @@ class Lqz(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "",  window=14, threshold=1.5):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.threshold = threshold
 		self.window = window
 		super().__init__(df=df, symbol=symbol)
 
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): #Ici
@@ -36,6 +36,7 @@ class Lqz(_indicator._Indicator):
 		self.df['price_bin'] = (self.df['Close'] / bin_size).round() * bin_size
 		# Sum the volume for each price bin
 		try:
+			"""Compute the indicator values and attach them as columns to self.df."""
 			volume_profile = self.df.groupby('price_bin')['Volume'].sum()
 			volume_profile = volume_profile.sort_values(ascending=False)
 			# Find zones with abnormally high volume
@@ -46,10 +47,11 @@ class Lqz(_indicator._Indicator):
 			pass
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 					  
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -65,14 +67,27 @@ class Lqz(_indicator._Indicator):
 				color = f'rgba({gray_scale}, {gray_scale}, {gray_scale}, 0.7)'  # Gray with transparency
 				try:
 					self.fig.add_hline(
-    	   				y=zone, 
-        	  			opacity = 1,
+						y=zone,
+						opacity=1,
 						line=dict(color=color, width=2, dash="dash"),
-#						name=f'lqz: {zone})'
-						annotation_text = f"{round(zone,1)}",
-    					annotation_position="bottom right",
+					)
+					self.fig.add_annotation(
+						x=0.0,
+						y=zone,
+						xref='paper',
+						yref='y',
+						text=f' {round(zone, 1)} ',
+						showarrow=False,
+						xanchor='left',
+						yanchor='middle',
+						bgcolor=color,
+						font=dict(color='black', size=13),
+						bordercolor=color,
+						borderpad=3,
+						opacity=0.9,
 					)
 				except Exception:
 					pass
 		except Exception:
 			pass
+

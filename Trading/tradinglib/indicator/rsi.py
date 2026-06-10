@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib.indicators")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 from tradinglib.indicator import indicator
@@ -21,24 +21,25 @@ class Rsi(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", lookback=8, window=14):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.window = window
 		self.lookback = lookback
 		super().__init__(df=df, symbol=symbol)
 		
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): # MACD
 	
-		# momentum helper for RSI sub-plot (stored separately to avoid collision with stoch indicator)
-		self.df['rsi_momentum'] = indicator.momentum(self.df)['stoch']
+		# momentum stored in df for use in buy/sell expressions
+		self.df['momentum'] = indicator.momentum(self.df)['stoch']
 		close = self.df['Close']
 		ret = close.diff()	
 		up = []
 		down = []
 		for i in range(len(ret)):
+			"""Compute the indicator values and attach them as columns to self.df."""
 			if ret.iloc[i] < 0:
 				up.append(0)
 				down.append(ret.iloc[i])
@@ -57,10 +58,11 @@ class Rsi(_indicator._Indicator):
 
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 
 		self.fig = go.Figure()
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -80,7 +82,7 @@ class Rsi(_indicator._Indicator):
       					))
 
 		self.fig.add_trace(go.Scatter(x=self.df['Date'],
-						y=self.df['rsi_momentum'],
+						y=self.df['momentum'],
 						name = f'Momentum',
 						line=dict(color='green', width=2),
 						showlegend = False,
@@ -106,5 +108,4 @@ class Rsi(_indicator._Indicator):
 					  line_dash="dash",
 					  line_color="darkgrey",
 					  )
-
 

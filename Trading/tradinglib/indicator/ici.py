@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 try:
 	sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-	print('No Import')
+	pass
 
 from tradinglib.indicator import _indicator
 
@@ -25,15 +25,16 @@ class Ici(_indicator._Indicator):
 	}
 
 	def __init__(self, df, symbol = "", window=14):
+		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		super().__init__(df=df, symbol=symbol)
 		self.window = window
 
 		self.data()
-#		self.add_fig()
 		
 		
 	def data(self): #Ici
+		"""Compute the indicator values and attach them as columns to self.df."""
 
 		# Calculate the Ichimoku indicators
 		self.df['tenkan_sen'] = (self.df['High'] + self.df['Low']) / 2
@@ -50,9 +51,9 @@ class Ici(_indicator._Indicator):
 		).shift(26)
 		self.df['chikou_span'] = self.df['Close'].shift(-26)
 
-		# Calculate the Cloud (Kumo)
-		self.df['cloud_top'] = (self.df['senkou_span_a'] + self.df['senkou_span_b']) / 2
-		self.df['cloud_bottom'] = (self.df['High'].rolling(window=52).max() + self.df['Low'].rolling(window=52).min()) / 2
+		# Oberkante / Unterkante der projizierten Kumo-Cloud
+		self.df['cloud_top']    = self.df[['senkou_span_a', 'senkou_span_b']].max(axis=1)
+		self.df['cloud_bottom'] = self.df[['senkou_span_a', 'senkou_span_b']].min(axis=1)
 
 		# Calculate the 14 EMA
 		self.df[f'ema{self.window}'] = self.df['Close'].ewm(span=self.window, adjust=False, min_periods=self.window).mean()
@@ -72,8 +73,9 @@ class Ici(_indicator._Indicator):
 		)
 		# remove the look ahead bias by creating a signal lag of one period
 		self.df['signal'] = self.df['signal'].shift(1)
-		self.df['ici_buy'] = np.where(self.df['signal'] > 0,self.df['Close'],np.nan)
-		self.df['ici_sell'] = np.where(self.df['signal'] < 0,self.df['Close'],np.nan)
+		prev = self.df['signal'].shift(1).fillna(0)
+		self.df['ici_buy']  = np.where((self.df['signal'] > 0) & (prev <= 0), self.df['Close'], np.nan)
+		self.df['ici_sell'] = np.where((self.df['signal'] < 0) & (prev >= 0), self.df['Close'], np.nan)
        
 		bull_mask = self.df['senkou_span_a'] >= self.df['senkou_span_b']
 		bear_mask = ~bull_mask
@@ -85,11 +87,12 @@ class Ici(_indicator._Indicator):
 		self.df['bearish_b'] = self.df['senkou_span_b'].where(bear_mask)
 
 	def add_fig(self):
+		"""Add the indicator traces to the given Plotly figure."""
 
 		self.fig = go.Figure()
 
 		try:
-			self.df.reset_index(inplace=True)
+			self.df = self.df.reset_index()
 		except Exception:
 			pass
 
@@ -117,7 +120,6 @@ class Ici(_indicator._Indicator):
 		n = len(a_arr)
 
 		def _cross_y(i, j):
-			"""Interpolierter y-Wert wo span_a == span_b zwischen Index i und j."""
 			da, db = a_arr[i] - b_arr[i], a_arr[j] - b_arr[j]
 			denom = da - db
 			if abs(denom) < 1e-10:

@@ -144,12 +144,21 @@ def download(tickers: Union[str, List[str]], start: Optional[str] = None, end: O
             except Exception:
                 logging.getLogger(__name__).debug('local cache fetch failed or disabled, falling back to yfinance')
 
-        # fallback to yfinance
-        # yfinance expects an interval string; default to '1d' when None to avoid
-        # TypeError inside yfinance (it indexes interval[-1]).
-        call_interval = interval or '1d'
-        df = yf.download(tickers=tickers, start=start, end=end, period=period, interval=call_interval,
-                         actions=actions, progress=progress, auto_adjust=auto_adjust, prepost=prepost)
+        # fallback to configured provider (Yahoo or FMP)
+        try:
+            from tradinglib.providers import get_provider
+            _provider = get_provider()
+        except Exception:
+            _provider = None
+
+        if _provider is not None:
+            df = _provider.download(tickers=tickers, start=start, end=end, period=period, interval=interval)
+        elif yf is not None:
+            call_interval = interval or '1d'
+            df = yf.download(tickers=tickers, start=start, end=end, period=period, interval=call_interval,
+                             actions=actions, progress=progress, auto_adjust=auto_adjust, prepost=prepost)
+        else:
+            return pd.DataFrame()
         try:
             # Ensure 'Adj Close' exists when yfinance returned only 'Close'
             if isinstance(df.columns, pd.MultiIndex):
@@ -181,22 +190,23 @@ def download(tickers: Union[str, List[str]], start: Optional[str] = None, end: O
 
 
 def ticker_history(ticker: str, period: Optional[str] = None, interval: Optional[str] = None):
-    """Wrapper around yf.Ticker(...).history() to return a DataFrame (graceful on errors)."""
-    if yf is None:
-        import pandas as pd
-        return pd.DataFrame()
+    """Wrapper around provider.ticker_history() — graceful on errors."""
     try:
-        t = yf.Ticker(ticker)
-        df = t.history(period=period, interval=interval)
-        try:
-            from tradinglib.utils import DataUtils
-            DataUtils.normalize_index_to_tz_naive(df, tz='UTC')
-        except Exception:
-            pass
-        return df
+        from tradinglib.providers import get_provider
+        df = get_provider().ticker_history(ticker, period=period, interval=interval)
     except Exception:
-        import pandas as pd
-        return pd.DataFrame()
+        if yf is None:
+            return pd.DataFrame()
+        try:
+            df = yf.Ticker(ticker).history(period=period, interval=interval)
+        except Exception:
+            return pd.DataFrame()
+    try:
+        from tradinglib.utils import DataUtils
+        DataUtils.normalize_index_to_tz_naive(df, tz='UTC')
+    except Exception:
+        pass
+    return df
 
 
 # Simple metadata wrappers with in-memory caching to centralize info/financials access
@@ -204,6 +214,10 @@ _INFO_CACHE: dict = {}
 _FINANCIALS_CACHE: dict = {}
 
 def ticker_info(ticker: str, use_cache: bool = True) -> dict:
+    """Return the yfinance info dict for ticker, with bounded in-memory caching.
+
+    Returns an empty dict on failure.
+    """
     if use_cache and ticker in _INFO_CACHE:
         return _INFO_CACHE[ticker]
     try:
@@ -216,6 +230,10 @@ def ticker_info(ticker: str, use_cache: bool = True) -> dict:
 
 
 def ticker_financials(ticker: str, use_cache: bool = True):
+    """Return the yfinance financials DataFrame for ticker, with bounded in-memory caching.
+
+    Returns an empty DataFrame on failure.
+    """
     if use_cache and ticker in _FINANCIALS_CACHE:
         return _FINANCIALS_CACHE[ticker]
     try:
@@ -230,6 +248,10 @@ def ticker_financials(ticker: str, use_cache: bool = True):
 _BALANCE_CACHE: dict = {}
 
 def ticker_balance_sheet(ticker: str, use_cache: bool = True):
+    """Return the yfinance balance_sheet DataFrame for ticker, with bounded in-memory caching.
+
+    Returns an empty DataFrame on failure.
+    """
     if use_cache and ticker in _BALANCE_CACHE:
         return _BALANCE_CACHE[ticker]
     try:

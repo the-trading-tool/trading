@@ -32,11 +32,13 @@ _PLUGIN_REGISTRY: Dict[str, Any] = {}
 
 
 def _fingerprint_params(params: Dict[str, Any]) -> str:
+    """Return a short SHA-1 hex string that uniquely identifies a params dict."""
     s = repr(sorted(params.items()))
     return hashlib.sha1(s.encode()).hexdigest()
 
 
 def _source_fingerprint(df: pd.DataFrame) -> str:
+    """Return a cache key string derived from the DataFrame length and last date value."""
     if df is None or df.empty:
         return 'empty'
     last = df['Date'].max() if 'Date' in df else df.index.max()
@@ -44,6 +46,7 @@ def _source_fingerprint(df: pd.DataFrame) -> str:
 
 
 def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure df has a DatetimeIndex; converts a 'Date' column if needed."""
     df = df.copy()
     if 'Date' in df.columns:
         df['Date'] = pd.to_datetime(df['Date'])
@@ -75,12 +78,13 @@ def resample_to_tf(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if other_cols:
         res_other = df[other_cols].resample(rule).last()
         res = res.join(res_other)
-    res.dropna(subset=['close'], how='all', inplace=True)
-    res.reset_index(inplace=True)
+    res = res.dropna(subset=['close'], how='all')
+    res = res.reset_index()
     return res
 
 
 def _compute_builtin_indicator(df_tf: pd.DataFrame, name: str, params: Dict[str, Any]):
+    """Compute a built-in indicator (ma, ema, atr, rsi, macd) and return a DataFrame."""
     df = df_tf.copy()
     s = df['close'].astype('float64')
     name = name.lower()
@@ -156,7 +160,7 @@ def _compute_builtin_indicator(df_tf: pd.DataFrame, name: str, params: Dict[str,
 
 
 def _compute_ema_of_series(series: pd.Series, window: int):
-    # standard EMA using span
+    """Compute a standard EMA using the given span and return a float32 Series."""
     return series.ewm(span=window, adjust=False).mean().astype('float32')
 
 
@@ -251,7 +255,6 @@ def _discover_plugins(package_name: str = 'tradinglib.indicator'):
                                 inst.data()
                         except Exception:
                             logger.exception('Error running data() for plugin %s', mod_name)
-                        # return df attribute if present
                         if hasattr(inst, 'df'):
                             return inst.df
                         # fallback: return empty
@@ -278,6 +281,7 @@ def _discover_plugins(package_name: str = 'tradinglib.indicator'):
 
 
 def _ensure_plugins_loaded():
+    """Lazily populate _PLUGIN_REGISTRY by discovering tradinglib.indicator plugins."""
     global _PLUGIN_REGISTRY
     if not _PLUGIN_REGISTRY:
         _PLUGIN_REGISTRY.update(_discover_plugins())
@@ -413,7 +417,7 @@ def get_indicator(df: pd.DataFrame,
             # try to find a datetime-like column and rename to 'Date'
             for col in out.columns:
                 if np.issubdtype(out[col].dtype, np.datetime64):
-                    out.rename(columns={col: 'Date'}, inplace=True)
+                    out = out.rename(columns={col: 'Date'})
                     break
             else:
                 # fallback: if df_tf has Date column and lengths match, copy it
@@ -427,4 +431,6 @@ def get_indicator(df: pd.DataFrame,
 
 
 def clear_cache():
+    """Clear the in-memory indicator result cache (useful in tests or after schema changes)."""
     _TF_CACHE.clear()
+

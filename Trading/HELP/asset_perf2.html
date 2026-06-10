@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>asset_perf2.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Performance-Simulation <small style="font-size:.6em;color:#888">asset_perf2.py</small></h1>
+
+<p>Das zentrale CLI-Skript der App. Berechnet technische Indikatoren auf historischen OHLC-Daten und schreibt Scores sowie Kauf-/Verkaufssignale in die lokale Simulationsdatenbank.</p>
+
+<h2>Vollständiger Lauf (Standard)</h2>
+<pre>python asset_perf2.py</pre>
+<p>Verarbeitet alle Ticker mit dem Standard-Intervall (<code>1d:1mo</code>) und schreibt Ergebnisse in <code>asset_simulation_.db</code>.</p>
+
+<h2>Intervall und Zeitraum angeben</h2>
+<pre>python asset_perf2.py 1h:6mo
+python asset_perf2.py 1d:1y 1wk:2y</pre>
+
+<h2>Filter-Parameter</h2>
+<table>
+<tr><th>Parameter</th><th>Wirkung</th></tr>
+<tr><td><code>/select:AAPL,MSFT</code></td><td>Nur diese Ticker verarbeiten</td></tr>
+<tr><td><code>/index-member:SPX</code></td><td>Nur Ticker eines bestimmten Index</td></tr>
+<tr><td><code>/index-only</code></td><td>Nur Index-Instrumente selbst (kein Einzeltitel)</td></tr>
+<tr><td><code>/all</code></td><td>Alle Ticker unabhängig vom Index</td></tr>
+<tr><td><code>/year:2024</code></td><td>Berechnung auf ein Kalenderjahr beschränken</td></tr>
+<tr><td><code>/inverse</code></td><td>Bearbeitungsreihenfolge umkehren</td></tr>
+</table>
+
+<h2>Fast-Modes (ohne Neuberechnung)</h2>
+<table>
+<tr><th>Modus</th><th>Beispiel</th><th>Beschreibung</th></tr>
+<tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fehlende Indikator-Spalten aus vorhandenen OHLCV-Daten nachfüllen – kein Internet nötig</td></tr>
+<tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>OVT-Scores neu berechnen ohne OHLCV-Download – verwendet gespeicherte DB-Spalten</td></tr>
+</table>
+
+<h2>Bekannte Backfill-Indikatoren</h2>
+<pre>heikin  → ha_close, ha_open, ha_ema_high, ha_ema_low
+macd    → macd, macd_diff, macd_signal
+rsi     → rsi, rsi_ema, rsi_momentum
+ewo     → ewo, ewo_ema, ewo_diff, ewo_angle
+adx     → adx, adx_plus_di, adx_minus_di
+markov  → markov_regime
+dema    → dema_ema_fast, dema_ema_slow, dema_buy, dema_sell
+relvol  → relvol_ratio</pre>
+
+<div class="info">Täglicher Cron-Empfehlung: nach Börsenschluss automatisch ausführen, damit die App immer aktuelle Signale zeigt.</div>
+<div class="warn">Ein vollständiger Lauf kann je nach Tickeranzahl mehrere Minuten dauern. <code>/rescore</code> ist deutlich schneller.</div>
+</body>
+</html>

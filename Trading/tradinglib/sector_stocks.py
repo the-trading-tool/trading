@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from tradinglib import market_data as md
+from tradinglib.tools import open_db
 from tradinglib.tools import Tools
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ def get_available_sectors(db_path: str = "database") -> list[str]:
         return sorted(SECTOR_ETF_MAP.keys())
 
     try:
-        with sqlite3.connect(info_file) as conn:
+        with open_db(info_file, readonly=True) as conn:
             cur = conn.execute(
                 "SELECT DISTINCT sector FROM asset_info "
                 "WHERE sector IS NOT NULL AND sector != '' "
@@ -174,7 +175,7 @@ def query_sector_stocks(
         try:
             # Use f-string for ATTACH DATABASE — parameterised ATTACH is unreliable
             # in some Python/SQLite builds (matches existing codebase pattern)
-            conn = sqlite3.connect(sim_file)
+            conn = open_db(sim_file)
             conn.execute(f"ATTACH DATABASE '{info_file}' AS info_db")
 
             # Fetch the latest date as a DATE string first.

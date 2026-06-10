@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Zinseszins-Simulation – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Zinseszins-Simulation <small style="font-size:.6em;color:#888">compound_simulation.py</small></h1>
+
+<p>Berechnet die reale (inflationsbereinigte) Wertentwicklung einer Einmalanlage – entweder als Zukunftsprognose oder auf Basis historischer Zinssatz- und Inflationsdaten.</p>
+
+<h2>Modi</h2>
+<table>
+<tr><th>Modus</th><th>Datenquelle</th><th>Verwendung</th></tr>
+<tr><td><b>Prognose</b></td><td>Aktueller TNX-Rendite (10-jährige US-Treasuries) + aktueller CPI-Inflation</td><td>„Was wäre wenn ich heute anlege?"</td></tr>
+<tr><td><b>Historisch</b></td><td>Monatliche TNX- und CPI-Zeitreihen aus Yahoo Finance</td><td>Rückblick: tatsächliche reale Rendite vergangener Jahre</td></tr>
+</table>
+
+<h2>Eingaben</h2>
+<table>
+<tr><th>Parameter</th><th>Bedeutung</th></tr>
+<tr><td>Startkapital</td><td>Einmalig investierter Betrag in Systemwährung</td></tr>
+<tr><td>Laufzeit (Jahre)</td><td>Anlagehorizont für die Prognose</td></tr>
+<tr><td>Zinssatz</td><td>Manuell überschreibbar; Standard = aktueller TNX-Wert</td></tr>
+<tr><td>Inflationsrate</td><td>Manuell überschreibbar; Standard = aktueller CPI-Wert</td></tr>
+</table>
+
+<h2>Ergebnis</h2>
+<ul>
+  <li><b>Nominale Kurve</b> – Wachstum ohne Inflationsabzug</li>
+  <li><b>Reale Kurve</b> – Kaufkraftbereinigtes Wachstum</li>
+  <li>Endwert und Kaufkraft-Verlust in absoluten Zahlen</li>
+</ul>
+
+<div class="info">Erreichbar über den Menüpunkt <b>Lump sum investment</b> in der linken Navigationsleiste.</div>
+</body>
+</html>

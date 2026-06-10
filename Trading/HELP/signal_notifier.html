@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Signal-Benachrichtigung – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Signal-Benachrichtigung <small style="font-size:.6em;color:#888">signal_notifier.py</small></h1>
+
+<p>Sendet sofortige Push-Benachrichtigungen auf das Smartphone (via <b>Pushover</b>), sobald ein neues Kauf- oder Verkaufssignal erkannt wird.</p>
+
+<h2>Voraussetzungen</h2>
+<ol>
+  <li>Pushover-App auf dem Smartphone installieren (<a href="https://pushover.net">pushover.net</a>)</li>
+  <li>Im Admin-Panel → API-Zugänge: <code>pushover_token</code> (App-Token) und <code>pushover_user</code> (User-Key) eintragen</li>
+</ol>
+
+<h2>Nachrichteninhalt</h2>
+<table>
+<tr><th>Signal</th><th>Inhalt der Pushover-Nachricht</th></tr>
+<tr><td><b>Kauf</b></td><td>Ticker · Kaufpreis · Stop-Loss · Take-Profit · KI-Kurzanalyse</td></tr>
+<tr><td><b>Verkauf</b></td><td>Ticker · Verkaufspreis · Gewinn/Verlust in % und absolut</td></tr>
+</table>
+
+<h2>CLI-Aufruf</h2>
+<pre>python -m tradinglib.signal_notifier [/force] [/date:YYYY-MM-DD] [/user:admin]</pre>
+<table>
+<tr><th>Parameter</th><th>Bedeutung</th></tr>
+<tr><td><code>/force</code></td><td>Sendet auch bereits gesendete Signale erneut (ignoriert Deduplizierung)</td></tr>
+<tr><td><code>/date:YYYY-MM-DD</code></td><td>Prüft Signale für ein bestimmtes Datum statt heute</td></tr>
+<tr><td><code>/user:name</code></td><td>Benutzer-Kontext für Multi-User-Setups (Standard: admin)</td></tr>
+</table>
+
+<h2>Deduplizierung</h2>
+<p>Bereits versendete Signale werden in <code>pushover_notifier.json</code> gespeichert. Kein Signal wird doppelt verschickt, auch wenn das Skript mehrfach täglich läuft.</p>
+
+<h2>Automatisierung</h2>
+<p>Am besten per Scheduler nach jedem <code>asset_perf2.py</code>-Lauf automatisch ausführen:</p>
+<pre>python asset_perf2.py && python -m tradinglib.signal_notifier</pre>
+<div class="info">Der Trading-Agent (<code>run_agent.py</code>) ruft den Notifier mit <code>--notify</code>-Flag automatisch auf.</div>
+</body>
+</html>

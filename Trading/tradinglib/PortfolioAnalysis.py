@@ -24,7 +24,7 @@ class PortfolioAnalysis:
         self._process_data()
 
     def _load_data(self):
-        # Load the transaction data from Excel file
+        """Load transactions from Excel, download OHLCV and exchange rates, and convert to base currency."""
         self.transactions_df = pd.read_excel(self.transactions_file)
         
         # Split the transactions into buy and sell events
@@ -69,12 +69,10 @@ class PortfolioAnalysis:
             self.asset_data[asset] = md.download(tickers=asset, start=start_date, end=end_date, auto_adjust=False)
             # ensure consistent index and columns as before
             self.asset_data[asset] = self.asset_data[asset].reset_index().set_index('Date')
-#            self.asset_data[asset] = self.asset_data[asset].reindex(pd.date_range(start=start_date, end=end_date, freq='B')).ffill()
 
         # Download the index data via central wrapper
         self.index_df = md.download(self.index_symbol, start=start_date, end=end_date, auto_adjust=False)
         self.index_df = self.index_df.reset_index().set_index('Date')
-#        self.index_df = self.index_df.reindex(pd.date_range(start=start_date, end=end_date, freq='B')).ffill()
 
         # Download exchange rates for the base currency
         self.exchange_rates = {}
@@ -94,7 +92,7 @@ class PortfolioAnalysis:
         self.index_df[['Close', 'High', 'Low', 'Open']] = self.index_df[['Close', 'High', 'Low', 'Open']].multiply(self.exchange_rates[currency], axis=0)
         
     def _process_data(self):
-        # Process the transaction data to create a portfolio performance DataFrame
+        """Build the portfolio_performance DataFrame by processing all transaction events."""
         self.transactions_df['Date'] = pd.to_datetime(self.transactions_df['Date'])
         
         self.transactions_df = self.transactions_df.sort_values(by='Date')
@@ -112,7 +110,7 @@ class PortfolioAnalysis:
         self._calculate_index_performance(all_dates)
 
     def _calculate_asset_performance(self, asset, asset_data, all_dates):
-        # Calculate the performance of each asset over time
+        """Track daily gain/loss for one asset over all_dates and store in portfolio_performance."""
         holdings = 0
         total_invested = 0
         daily_values = pd.Series(0, index=all_dates)
@@ -139,12 +137,12 @@ class PortfolioAnalysis:
         self.portfolio_performance[asset] = daily_values
 
     def _calculate_index_performance(self, all_dates):
-        # Calculate the performance of the index over time
+        """Compute the normalised index performance series reindexed to all_dates."""
         initial_value = self.index_df['Close'].iloc[0]
         self.index_performance = (self.index_df['Close'] / initial_value).reindex(all_dates).ffill()
         
     def plot_performance(self):
-        # Plot the performance of each asset and the cumulative portfolio performance
+        """Plot individual asset performance and portfolio vs. index in a two-panel Plotly chart."""
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.2, 
                             subplot_titles=("Individual Asset Performance", "Portfolio vs. Index Performance"))
 
@@ -170,13 +168,10 @@ class PortfolioAnalysis:
 
 if __name__ == "__main__":
 #    if len(sys.argv) != 3:
-#        print("Usage: python script.py <transactions_file.xlsx> <index_symbol>")
-#        sys.exit(1)
 
-#    transactions_file = sys.argv[1]
-#    index_symbol = sys.argv[2]
 
     transactions_file = 'Invested_market.xlsx'
     index_symbol = '^GDAXI'
     analysis = PortfolioAnalysis(transactions_file, index_symbol)
     analysis.plot_performance()
+

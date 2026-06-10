@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>schedserver.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Scheduler-Daemon <small style="font-size:.6em;color:#888">schedserver.py</small></h1>
+
+<p>Hintergrundprozess, der wiederkehrende Jobs automatisch ausführt – z.&nbsp;B. täglichen Daten-Download, Indikatorberechnung und Trading-Agent-Läufe.</p>
+
+<h2>Starten</h2>
+<pre>python schedserver.py</pre>
+<p>Der Prozess läuft dauerhaft im Hintergrund und prüft jede Minute, ob ein Job fällig ist.</p>
+
+<h2>Jobs verwalten</h2>
+<p>Jobs werden direkt in der App über das Admin-Panel konfiguriert:</p>
+<ul>
+  <li>Admin → <b>Scheduler</b>-Tab (falls freigeschaltet)</li>
+  <li>Jobs werden in <code>scheduler.db</code> gespeichert</li>
+  <li>Unterstützte Zeitpläne: täglich (HH:MM), stündlich, alle N Minuten</li>
+</ul>
+
+<h2>Typische Job-Konfiguration</h2>
+<table>
+<tr><th>Zeit</th><th>Befehl</th><th>Zweck</th></tr>
+<tr><td>22:00 Uhr</td><td><code>python get_asset_data.py 1d:1y</code></td><td>Tageskurse aktualisieren</td></tr>
+<tr><td>22:30 Uhr</td><td><code>python asset_perf2.py</code></td><td>Indikatoren neu berechnen</td></tr>
+<tr><td>22:45 Uhr</td><td><code>python -m tradinglib.signal_notifier</code></td><td>Kauf-/Verkaufssignale benachrichtigen</td></tr>
+<tr><td>alle 15 min</td><td><code>python run_agent.py --notify</code></td><td>Trading-Agent (Handelszeiten)</td></tr>
+<tr><td>alle 15 min</td><td><code>python check_stoploss.py --notify</code></td><td>Stop-Loss-Überwachung</td></tr>
+</table>
+
+<h2>Parallelausführung</h2>
+<p>Maximal <b>4 Jobs</b> laufen gleichzeitig. Weitere Jobs werden in eine Warteschlange eingereiht.</p>
+
+<div class="warn">Der Scheduler läuft als einfacher Python-Prozess – kein systemd/Windows-Dienst. Bei Neustart des Rechners muss er manuell neu gestartet werden (oder als Autostart einrichten).</div>
+<div class="info">Logs werden in die Konsole und optional in eine Datei geschrieben. Für Produktionseinsatz empfiehlt sich ein Windows-Dienst oder Task-Scheduler-Eintrag.</div>
+</body>
+</html>

@@ -12,8 +12,12 @@ warnings.filterwarnings("ignore")
 
 from tradinglib.indicator import indicator
 from tradinglib import (fetch_data, ticker_tools as tt,
-                        system_config as sysconf,
-                        multi_transaction as mt)
+                        system_config as sysconf)
+from tradinglib.tools import open_db
+try:
+    from tradinglib.premium import multi_transaction as mt
+except ImportError:
+    mt = None
 from tradinglib.tools import Tools as _Tools
 import logging
 from tradinglib.utils import DataUtils
@@ -27,10 +31,10 @@ logger = logging.getLogger(__name__)
 INDICATOR_BACKFILL_MAP: dict = {
     'heikin':  ['ha_close', 'ha_open', 'ha_ema_high', 'ha_ema_low'],
     'markov':  ['markov_regime'],
-    'macd':    ['macd', 'macd_diff', 'macd_signal'],
-    'rsi':     ['rsi', 'rsi_ema', 'rsi_momentum'],
-    'ewo':     ['ewo', 'ewo_ema', 'ewo_diff', 'ewo_angle'],
-    'adx':     ['adx', 'adx_plus_di', 'adx_minus_di'],
+    'macd':    ['macd', 'macd_diff', 'macd_signal', 'macd_trend'],
+    'rsi':     ['rsi', 'rsi_ema', 'momentum'],
+    'ewo':     ['ewo', 'ewo_ema', 'ewo_diff', 'ewo_angle', 'ewo_trend'],
+    'adx':     ['adx', 'adx_plus', 'adx_minus', 'adx_angle'],
     'dema':    ['dema_ema_fast', 'dema_ema_slow', 'dema_buy', 'dema_sell'],
     'hor':     ['hor_val', 'hor_threshold'],
     'sup':     ['sup_support', 'sup_resistance'],
@@ -54,16 +58,17 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
     """Recompute *indicator_names* for *symbol* from local OHLCV and UPDATE sim-DB.
 
     Returns the number of rows updated.
+    Only uses local yf_<symbol>.db — never calls Yahoo Finance.
     """
-    # 1. Load local OHLCV (daily, max available)
+    # 1. Load local OHLCV only — skip Yahoo fallback
     try:
-        (df_raw, _) = ft.fetch_data(symbol, interval='1d', period='10y')
+        df_raw = ft.load_price_data(symbol, '10y', '1d')
     except Exception as e:
-        logger.warning("backfill %s: fetch_data failed: %s", symbol, e)
+        logger.warning("backfill %s: load_price_data failed: %s", symbol, e)
         return 0
 
     if df_raw is None or df_raw.empty:
-        logger.warning("backfill %s: no OHLCV data", symbol)
+        logger.debug("backfill %s: no local OHLCV data, skipping", symbol)
         return 0
 
     df_raw = DataUtils.ensure_datetime_index(df_raw)
@@ -110,19 +115,22 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
                      for c in target_cols)
         batch.append(vals + (symbol, date_str))
     try:
+        before = sim_conn.total_changes
         sim_conn.executemany(sql, batch)
-        rows_updated = sim_conn.execute(
-            f"SELECT changes()").fetchone()[0]
+        rows_updated = sim_conn.total_changes - before
         sim_conn.commit()
     except Exception as e:
         logger.error("backfill %s: DB update failed: %s", symbol, e)
     return rows_updated
 
 
-def backfill_db(sim_db_path: str, ohlcv_dir: str, indicators_list: list[str]) -> None:
+def backfill_db(sim_db_path: str, ohlcv_dir: str, indicators_list: list[str],
+                force: bool = False) -> None:
     """Backfill indicator columns for every ticker in *sim_db_path*.
 
     Uses local yf_<TICKER>.db files — no internet required.
+    force=True skips the already-filled check and re-computes every ticker
+    (useful when all rows contain the ALTER TABLE default of 0).
     """
     from tradinglib import fetch_data as fd
 
@@ -132,16 +140,59 @@ def backfill_db(sim_db_path: str, ohlcv_dir: str, indicators_list: list[str]) ->
                       buy_query='', sell_query='')
 
     table = 'asset_simulation'
-    sim_conn = sqlite3.connect(sim_db_path)
+    sim_conn = open_db(sim_db_path)
+
+    # Ensure a composite index on (ticker, Date) — crucial for UPDATE speed.
+    # Without it every UPDATE does a full table scan (~0.45s per row on 400k rows).
+    sim_conn.execute(
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_ticker_date "
+        f"ON {table} (ticker, Date)"
+    )
+    sim_conn.commit()
+    logger.info("backfill: index on (ticker, Date) ready")
+
     try:
         tickers = [r[0] for r in
                    sim_conn.execute(f"SELECT DISTINCT ticker FROM {table}").fetchall()]
         logger.info("backfill: %d tickers in %s", len(tickers), sim_db_path)
+
+        # Collect all DB columns we will write so we can check for existing data
+        all_target_cols: list[str] = []
+        for ind in indicators_list:
+            all_target_cols.extend(INDICATOR_BACKFILL_MAP.get(ind, []))
+
+        # Determine which tickers already have all target columns filled.
+        # Use IS NOT NULL — 0 is a valid regime value (Sideways), so != 0 would
+        # wrongly re-process fully-filled Sideways tickers on the next run.
+        # force=True bypasses the check entirely (re-computes everything).
+        skip_set: set[str] = set()
+        if all_target_cols and not force:
+            _ensure_sim_columns(sim_conn, table, all_target_cols)
+            check_col = all_target_cols[0]   # representative column
+            try:
+                filled = {r[0] for r in sim_conn.execute(
+                    f"SELECT DISTINCT ticker FROM {table} "
+                    f"WHERE {check_col} IS NOT NULL"
+                ).fetchall()}
+                skip_set = filled
+                logger.info("backfill: %d tickers already have %s — skipping",
+                            len(skip_set), check_col)
+            except Exception as e:
+                logger.warning("backfill: could not determine filled tickers: %s", e)
+        elif force:
+            logger.info("backfill: force mode — skipping already-filled check")
+
+        skipped = 0
         for i, sym in enumerate(tickers):
+            if sym in skip_set:
+                skipped += 1
+                continue
             n = _backfill_symbol(sym, indicators_list, sim_conn, table,
                                  ohlcv_dir, ft)
             logger.info("[%d/%d] backfill %s: %d rows updated",
                         i + 1, len(tickers), sym, n)
+        if skipped:
+            logger.info("backfill: skipped %d already-filled tickers", skipped)
     finally:
         sim_conn.close()
 
@@ -226,9 +277,9 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
     ha_ema_hi  = col('ha_ema_high')
     vola       = col('vola')
     mo_trend_s = col('moTrend')     # price % change (proxy for monthly trend direction)
-    macd_tr    = col('macdTrend')
-    wk_macd_tr = col('wkMacdTrend')
-    mo_macd_tr = col('moMacdTrend')
+    macd_tr    = col('macd_trend')
+    wk_macd_tr = col('macd_trend_wk')
+    mo_macd_tr = col('macd_trend_mo')
     momentum   = col('momentum')
     rsi_ema    = col('rsi_ema')
     adx        = col('adx')
@@ -290,7 +341,7 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
     ov_trend, ov_val, tw, vw = _up(trend_dir >= 1, 3, 3, False, ov_trend, ov_val, tw, vw)
     ov_trend, ov_val, tw, vw = _up(vola / 2 < mo_trend_s, 1, 1, False, ov_trend, ov_val, tw, vw)
     ov_trend, ov_val, tw, vw = _up(mo_trend_s > vola, 1, 1, False, ov_trend, ov_val, tw, vw)
-    # macdTrend / wkMacdTrend / moMacdTrend are always-true sum.up (True, 1, val, False)
+    # macd_trend / macd_trend_wk / macd_trend_mo are always-true sum.up (True, 1, val, False)
     vw += 1; tw += 1; ov_trend += macd_tr; ov_val += macd_tr
     vw += 1; tw += 1; ov_trend += wk_macd_tr; ov_val += wk_macd_tr
     vw += 1; tw += 1; ov_trend += mo_macd_tr; ov_val += mo_macd_tr
@@ -344,8 +395,8 @@ def rescore_db(sim_db_path: str, info_db_path: str) -> None:
     Uses stored indicator columns + asset_info fundamentals. No yfinance needed.
     """
     table = 'asset_simulation'
-    sim_conn = sqlite3.connect(sim_db_path)
-    info_conn = sqlite3.connect(info_db_path)
+    sim_conn = open_db(sim_db_path)
+    info_conn = open_db(info_db_path, readonly=True)
     try:
         df_all = pd.read_sql_query(
             f"SELECT * FROM {table} ORDER BY ticker, Date", sim_conn)
@@ -390,7 +441,8 @@ def rescore_db(sim_db_path: str, info_db_path: str) -> None:
 
 
 class OvtEmaUpdater:
-    def __init__(self, conn, ema: str = 9, table_name:str = "asset_simulation" ):
+    def __init__(self, conn, ema: str = 9, table_name: str = "asset_simulation"):
+        """Bind the updater to an open DB connection and configure the EMA period and table name."""
         self.table_name = table_name
         self.conn = conn
         self.ema = ema
@@ -501,14 +553,14 @@ def get_mo_trend(df, last_year_high, last_year_low):
     long_ma = 200
     if df['Close'].count() < 200 and df['Close'].count() > 2:
         long_ma = df['Close'].count() - 1 # Let'S calculate at least a long MA 
-        df[f'MA{long_ma}'] = df['Close'].rolling(int(long_ma)).mean()
+        df[f'sma{long_ma}'] = df['Close'].rolling(int(long_ma)).mean()
 
     try:
         trend = 1  # Buy
-        ma_long = DataUtils.safe_last(df, f'MA{long_ma}', default=0)
+        ma_long = DataUtils.safe_last(df, f'sma{long_ma}', default=0)
         close_last = DataUtils.safe_last(df, 'Close', default=0)
-        ma50 = DataUtils.safe_last(df, 'MA50', default=0)
-        ma20 = DataUtils.safe_last(df, 'MA20', default=0)
+        ma50 = DataUtils.safe_last(df, 'sma50', default=0)
+        ma20 = DataUtils.safe_last(df, 'sma20', default=0)
         first_close = DataUtils.safe_first(df, 'Close', default=0)
 
         if (ma_long > close_last) or (last_year_high > 0 and last_year_high > close_last) or (ma50 < ma_long):
@@ -523,13 +575,13 @@ def get_mo_trend(df, last_year_high, last_year_low):
 
 def get_trend(df):
 
-    # we compare MA20, 50 and 200 to evaluate if we should invest
+    # we compare sma20, 50 and 200 to evaluate if we should invest
     trend = 0.5 # Hold
     try:
-        ma50 = DataUtils.safe_last(df, 'MA50', default=0)
-        ma20 = DataUtils.safe_last(df, 'MA20', default=0)
+        ma50 = DataUtils.safe_last(df, 'sma50', default=0)
+        ma20 = DataUtils.safe_last(df, 'sma20', default=0)
         close_last = DataUtils.safe_last(df, 'Close', default=0)
-        ma200 = DataUtils.safe_last(df, 'MA200', default=0)
+        ma200 = DataUtils.safe_last(df, 'sma200', default=0)
         if ma50 < close_last or ma20 < close_last:
             trend = 1  # Buy
         if ma50 < ma200:
@@ -598,53 +650,30 @@ def get_ticker_value(ticker, key, from_json=False):
     except Exception:
         pass
 # 1703980800
+    # asset_info.db speichert alle Spalten als TEXT -- numerische Werte
+    # als float zurueckgeben damit Vergleiche wie > 0 funktionieren.
+    if isinstance(value, str):
+        try:
+            value = float(value)
+        except (ValueError, TypeError):
+            pass  # String-Wert bleibt String (z.B. 'USD', 'XETRA')
+
     if value:
         if type(value) == int or type(value) == float:
-            value = round(value,2)
+            value = round(value, 2)
     if value != value:
         value = 0
-    if value == None:
+    if value is None:
         value = 0
-        
+
     return value
 
 
-def macd_trend(df):
-
-    trend = 0
-    try:
-        mdiff_last = DataUtils.safe_nth_last(df['macd_diff'], 1, default=0)
-        mdiff_prev = DataUtils.safe_nth_last(df['macd_diff'], 2, default=0)
-        if float(mdiff_last) > float(mdiff_prev):
-            trend += 0.5
-        else:
-            trend -= 0.5
-
-        macd_signal = DataUtils.safe_last(df, 'macd_signal', default=0)
-        macd_val = DataUtils.safe_last(df, 'macd', default=0)
-        if float(macd_signal) < float(macd_val):
-            trend += 0.5
-        else:
-            trend -= 0.5
-    except Exception:
-        pass
-
-    return trend
-
-def trend(df, id = 'ewo', step=1):
-
-    trend = 0
-    try:
-        prev = DataUtils.safe_nth_last(df[id], 2, default=0)
-        last = DataUtils.safe_nth_last(df[id], 1, default=0)
-        if float(prev) < float(last):
-            trend += step
-        else:
-            trend -= step
-    except Exception:
-        pass
-
-    return trend
+# Hinweis: macd_trend/ewo_trend werden jetzt direkt als DataFrame-Spalten
+# (`macd_trend` in macd.py, `ewo_trend` in ewo.py) berechnet und über
+# DataUtils.safe_last(df[_weekly/_monthly], ...) ins pdict übernommen
+# (siehe fill_pdict) — die früheren lokalen Helper-Funktionen macd_trend()/
+# trend() wurden dadurch obsolet und entfernt.
 
 
 def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=None, ft=None, last_year_high = 0, last_year_low = 0):
@@ -687,19 +716,19 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
         cci = DataUtils.safe_last(df, 'cci', default=0)
         adx = DataUtils.safe_last(df, 'adx', default=0)
-        adx_angle = DataUtils.safe_last(indicator.angle(df['adx']), default=0)
-        adx_plus = DataUtils.safe_last(df, 'adx_plus_di', default=0)
-        adx_minus = DataUtils.safe_last(df, 'adx_minus_di', default=0)
-        momentum = DataUtils.safe_last(df, 'rsi_momentum', default=0)
-        momentum_ema = DataUtils.safe_last(df, 'stoch_ema', default=0)
-        momentum_ema_angle = DataUtils.safe_last(indicator.angle(df['stoch_ema']), default=0)
+        adx_angle = DataUtils.safe_last(df, 'adx_angle', default=0)
+        adx_plus = DataUtils.safe_last(df, 'adx_plus', default=0)
+        adx_minus = DataUtils.safe_last(df, 'adx_minus', default=0)
+        momentum = DataUtils.safe_last(df, 'momentum', default=0)
+        momentum_ema = DataUtils.safe_last(df, 'momentum_ema', default=0)
+        momentum_ema_angle = DataUtils.safe_last(df, 'momentum_ema_angle', default=0)
         rsi_ema = DataUtils.safe_last(df, 'rsi_ema', default=0)
         vola = round(df['daily_returns'].std() * math.sqrt(21), 1) if 'daily_returns' in df.columns else 0
-        ewo_angle = DataUtils.safe_last(indicator.angle(df['ewo']), default=0)
+        ewo_angle = DataUtils.safe_last(df, 'ewo_angle', default=0)
 
-        pdict["relVolRatio"] = relVol
-        pdict["wkRelVolRatio"] = wkRelVol
-        pdict["moRelVolRatio"] = moRelVol
+        pdict["relvol_ratio"] = relVol
+        pdict["relvol_ratio_wk"] = wkRelVol
+        pdict["relvol_ratio_mo"] = moRelVol
         pdict['currency'] = get_ticker_value(ticker, 'currency')
         pdict['ath'] = df_monthly['Close'].max() if (df_monthly is not None and not df_monthly.empty and 'Close' in df_monthly.columns) else 0
         pdict['dTrend'] = indicator.trend_pct_df(df)
@@ -722,9 +751,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['momentum_ema_angle'] = momentum_ema_angle
         pdict['rsi_ema'] = rsi_ema
         pdict['vola'] = vola
-        pdict['ewoDayTrend'] = trend(df)
-        pdict['ewoWeekTrend'] = trend(df_weekly)
-        pdict['ewoMonthTrend'] = trend(df_monthly)
+        pdict['ewo_trend_day'] = DataUtils.safe_last(df, 'ewo_trend', default=0)
+        pdict['ewo_trend_wk'] = DataUtils.safe_last(df_weekly, 'ewo_trend', default=0)
+        pdict['ewo_trend_mo'] = DataUtils.safe_last(df_monthly, 'ewo_trend', default=0)
         pdict['ewo_angle'] = ewo_angle
         try:
             pdict['atr'] = calc_atr_percent(df=df)
@@ -739,9 +768,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         except Exception:
             pdict['buySell'] = 0
         pdict['roa'] = get_roa(ticker)
-        pdict['macdTrend'] = macd_trend(df)
-        pdict['wkMacdTrend'] = macd_trend(df_weekly)
-        pdict['moMacdTrend'] = macd_trend(df_monthly)
+        pdict['macd_trend'] = DataUtils.safe_last(df, 'macd_trend', default=0)
+        pdict['macd_trend_wk'] = DataUtils.safe_last(df_weekly, 'macd_trend', default=0)
+        pdict['macd_trend_mo'] = DataUtils.safe_last(df_monthly, 'macd_trend', default=0)
         pdict['pctTargetHighPrice'] = indicator.trend_pct(get_ticker_value(ticker, 'targetHighPrice'), pdict['close'])
         pdict['logVola'] = float(DataUtils.safe_last(df, 'log_vola', default=0))
 
@@ -767,17 +796,17 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['dema_ema_slow'] = DataUtils.safe_last(df, 'dema_ema_slow', default=0)
         pdict['dema_buy'] = DataUtils.safe_last(df, 'dema_buy', default=0)
         pdict['dema_sell'] = DataUtils.safe_last(df, 'dema_sell', default=0)
-        pdict['resistance'] = DataUtils.safe_last(df, 'sup_resistance', default=0)
-        pdict['wkResistance'] = DataUtils.safe_last(df_weekly, 'sup_resistance', default=0)
-        pdict['moResistance'] = DataUtils.safe_last(df_monthly, 'sup_resistance', default=0)
-        pdict['support'] = DataUtils.safe_last(df, 'sup_support', default=0)
-        pdict['wkSupport'] = DataUtils.safe_last(df_weekly, 'sup_support', default=0)
-        pdict['moSupport'] = DataUtils.safe_last(df_monthly, 'sup_support', default=0)
-        pdict['sma20'] = DataUtils.safe_last(df, 'MA20', default=0)
-        pdict['sma50'] = DataUtils.safe_last(df, 'MA50', default=0)
-        pdict['sma200'] = DataUtils.safe_last(df, 'MA200', default=0)
+        pdict['sup_resistance'] = DataUtils.safe_last(df, 'sup_resistance', default=0)
+        pdict['sup_resistance_wk'] = DataUtils.safe_last(df_weekly, 'sup_resistance', default=0)
+        pdict['sup_resistance_mo'] = DataUtils.safe_last(df_monthly, 'sup_resistance', default=0)
+        pdict['sup_support'] = DataUtils.safe_last(df, 'sup_support', default=0)
+        pdict['sup_support_wk'] = DataUtils.safe_last(df_weekly, 'sup_support', default=0)
+        pdict['sup_support_mo'] = DataUtils.safe_last(df_monthly, 'sup_support', default=0)
+        pdict['sma20'] = DataUtils.safe_last(df, 'sma20', default=0)
+        pdict['sma50'] = DataUtils.safe_last(df, 'sma50', default=0)
+        pdict['sma200'] = DataUtils.safe_last(df, 'sma200', default=0)
         pdict['ema9'] = DataUtils.safe_last(df, 'ema9', default=0)
-        pdict['ema9_angle'] = DataUtils.safe_last(indicator.angle(df['ema9']), default=0)
+        pdict['ema9_angle'] = DataUtils.safe_last(df, 'ema9_angle', default=0)
         pdict['ema21'] = DataUtils.safe_last(df, 'ema21', default=0)
         pdict['ema50'] = DataUtils.safe_last(df, 'ema50', default=0)
         pdict['cci'] = DataUtils.safe_last(df, 'cci', default=0)
@@ -786,8 +815,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['macd'] = DataUtils.safe_last(df, 'macd', default=0)
         pdict['macd_signal'] = DataUtils.safe_last(df, 'macd_signal', default=0)
         pdict['ewo'] = DataUtils.safe_last(df, 'ewo', default=0)
-        pdict['moEwo'] = DataUtils.safe_last(df_monthly, 'ewo', default=0)
-        pdict['wkEwo'] = DataUtils.safe_last(df_weekly, 'ewo', default=0)
+        pdict['ewo_mo'] = DataUtils.safe_last(df_monthly, 'ewo', default=0)
+        pdict['ewo_wk'] = DataUtils.safe_last(df_weekly, 'ewo', default=0)
         pdict['ewo_ema'] = DataUtils.safe_last(df, 'ewo_ema', default=0)
         pdict['zcr'] = DataUtils.safe_last(df, 'zcr', default=0)
         pdict['ha_ema_high'] = DataUtils.safe_last(df, 'ha_ema_high', default=0)
@@ -801,12 +830,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
 
         #up ->  eval, weight=1, points=None, isValue=True
 #            sum.up(
-#                    pdict['ewoDayTrend'] + 
-#                    pdict['ewoWeekTrend'] + 
-#                    pdict['ewoMonthTrend'] ==3, 
 #                    1,
 #                    1,
-#                    isValue=False
 #                )
         # if any of the 3 trends is 1 we count is as 3
         sum.up(
@@ -870,21 +895,21 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         sum.up(
                 True,
                 1,
-                pdict['macdTrend'],
+                pdict['macd_trend'],
                 isValue=False
                 )
 
         sum.up(
                 True,
                 1,
-                pdict['wkMacdTrend'],
+                pdict['macd_trend_wk'],
                 isValue=False
                 )
 
         sum.up(
                 True,
                 1,
-                pdict['moMacdTrend'],
+                pdict['macd_trend_mo'],
                 isValue=False
                 )
 
@@ -1107,7 +1132,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         return pdict
 
     except Exception as e:
-        #print(f"⚠️ Data exception for {symbol}: {e}")
+        import traceback
+        print(f"⚠️ fill_pdict exception for {symbol}: {e}")
+        print(traceback.format_exc())
         return None
 
 
@@ -1170,9 +1197,12 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
             return []
 
         # --- Index sicherstellen ---
-        for dfx in [df, df_m, df_w]:
-            if dfx is not None and "Date" in dfx.columns:
-                dfx.set_index("Date", inplace=True)
+        if df is not None and "Date" in df.columns:
+            df = df.set_index("Date")
+        if df_m is not None and "Date" in df_m.columns:
+            df_m = df_m.set_index("Date")
+        if df_w is not None and "Date" in df_w.columns:
+            df_w = df_w.set_index("Date")
 
         for date in df.index:
             res_df_d = df_r.loc[startdate:date]
@@ -1237,13 +1267,15 @@ if __name__ == "__main__":
 
     if backfill_inds:
         sim_db_path = _Tools().get_path(path='database', file_name=sim_db_name)
+        force_flag  = args.get('force', False)
         unknown = [i for i in backfill_inds if i not in INDICATOR_BACKFILL_MAP]
         if unknown:
             logger.warning("backfill: unknown indicators ignored: %s", unknown)
             backfill_inds = [i for i in backfill_inds if i in INDICATOR_BACKFILL_MAP]
         if backfill_inds:
-            logger.info("backfill mode: %s → indicators=%s", sim_db_path, backfill_inds)
-            backfill_db(sim_db_path, 'database', backfill_inds)
+            logger.info("backfill mode: %s → indicators=%s force=%s",
+                        sim_db_path, backfill_inds, force_flag)
+            backfill_db(sim_db_path, 'database', backfill_inds, force=force_flag)
         exit(0)
     # -----------------------------------------------------------------------
 
@@ -1274,20 +1306,14 @@ if __name__ == "__main__":
     all_results = []
     start = time.time()
 
-    # --- Failed-Ticker-Tracking ---
-    failed_tickers_file = info_db.get_path(path='database', file_name='failed_tickers_perf.json')
-    existing_failed: dict = {}
-    try:
-        if os.path.exists(failed_tickers_file):
-            with open(failed_tickers_file, 'r', encoding='utf-8') as _f:
-                existing_failed = {e['ticker']: e for e in json.load(_f)}
-    except Exception:
-        logger.warning("Konnte failed_tickers_perf.json nicht laden – starte mit leerer Liste.")
-
     # === Parallel: pro Symbol rechnen ===
     max_workers = 1
     if sys.platform == 'win32':
-        max_workers = max(1, (os.cpu_count() // 2) - 1)
+        # Auf Windows begrenzen wir auf max. 2 Worker um OOM zu vermeiden.
+        # Jeder Worker laedt einen vollen DataFrame + Indikatoren in den RAM.
+        # Mit cpu_count/2-1 koennen auf vielkernigen Systemen zu viele
+        # Prozesse entstehen und die Sandbox / den PC zum Absturz bringen.
+        max_workers = min(2, max(1, (os.cpu_count() // 2) - 1))
     if worker > 0:
         max_workers = worker
     logger.info("Using %d threads.", max_workers)
@@ -1301,26 +1327,12 @@ if __name__ == "__main__":
             try:
                 res = future.result()
                 if res is None:
-                    existing_failed[symbol] = {
-                        'ticker': symbol,
-                        'last_seen': datetime.now().isoformat(),
-                        'first_seen': existing_failed.get(symbol, {}).get(
-                            'first_seen', datetime.now().isoformat()),
-                    }
-                    logger.info("%s: failed (no rows)", symbol)
+                    logger.warning("%s: keine Daten (lokale DB leer oder nicht vorhanden)", symbol)
                 else:
                     all_results.extend(res)
-                    if res:
-                        existing_failed.pop(symbol, None)
                     logger.info("%s: %d rows", symbol, len(res))
             except Exception as e:
                 logger.exception("Error processing symbol %s: %s", symbol, e)
-                existing_failed[symbol] = {
-                    'ticker': symbol,
-                    'last_seen': datetime.now().isoformat(),
-                    'first_seen': existing_failed.get(symbol, {}).get(
-                        'first_seen', datetime.now().isoformat()),
-                }
 
     logger.info("Parallel processing done in %.2fs", time.time()-start)
 
@@ -1349,22 +1361,15 @@ if __name__ == "__main__":
         """)
         sim_db.conn.commit()
     except sqlite3.Error as e:
-        logger.exception("Error removing duplicates: %s", e)
-        pass
+        logger.warning("Duplikate konnten nicht entfernt werden (Tabelle evtl. leer): %s", e)
 
     sim_db.close()
-
-    # --- Aktualisierte Failed-Liste speichern ---
-    try:
-        with open(failed_tickers_file, 'w', encoding='utf-8') as _f:
-            json.dump(list(existing_failed.values()), _f, indent=2, ensure_ascii=False)
-        if existing_failed:
-            logger.info("%d fehlgeschlagene Ticker in %s gespeichert.",
-                        len(existing_failed), failed_tickers_file)
-    except Exception:
-        logger.exception("Konnte failed_tickers_perf.json nicht schreiben.")
 
     if year == '' and not all:
         if simulate and not silent:
             logger.info("notifying via pushover...")
-            mt.run_notifier()
+            if mt is not None:
+                mt.run_notifier()
+            else:
+                logger.warning("Pushover-Notifier nicht konfiguriert -- Benachrichtigung uebersprungen.")
+

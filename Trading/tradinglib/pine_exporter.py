@@ -18,6 +18,57 @@ from typing import Callable
 #   pre — loads an external ML model (predictlib); Pine Script has no model-loading
 _UNSUPPORTED: set[str] = {'pre'}
 
+# ── License block prepended to every generated Pine Script ────────────────────
+# Pine Script convention: "// ©" marks the copyright line (shown in TradingView).
+_PINE_LICENSE = (
+    "// © Trading Tools — https://github.com/online-junkie/trading-tools\n"
+    "// For private, non-commercial use only. No financial advice.\n"
+    "// Use at your own risk. Data accuracy depends on third-party providers.\n"
+    "// Technical indicators implement published algorithms; see per-indicator\n"
+    "// '// Attribution:' comments for original authors and sources.\n"
+)
+
+# Per-indicator attribution shown as the second comment line of each template.
+# Markov is excluded here because it already carries its own // Author line.
+_INDICATOR_ATTRIBUTION: dict[str, str] = {
+    # ── Oscillators ──────────────────────────────────────────────────────────
+    'adx':    'J. Welles Wilder Jr. — "New Concepts in Technical Trading Systems" (1978)',
+    'cci':    'Donald Lambert (1980) — "Commodities Channel Index: Tool for Trading Cyclic Trends"',
+    'cumd':   'Cumulative Volume Delta — standard order-flow / footprint-chart concept',
+    'dema':   'Patrick Mulloy (1994) — "Smoothing Data with Faster Moving Averages"; TEMA: same',
+    'ewo':    'Derived from Bill Williams "Awesome Oscillator"; popularised in Pine community',
+    'hor':    'Custom indicator — standard deviation channel concept',
+    'macd':   'Gerald Appel (1970s) — standard technical indicator',
+    'relvol': 'Standard relative-volume concept (currentVol / avgVol[n])',
+    'rsi':    'J. Welles Wilder Jr. — "New Concepts in Technical Trading Systems" (1978)',
+    'stoch':  'George C. Lane (1950s) — Stochastic Oscillator',
+    'vol':    'Volume Delta — standard order-flow concept',
+    'zcr':    'Standard zero-crossing-rate concept (signal processing)',
+    # ── Overlays ─────────────────────────────────────────────────────────────
+    'atc':    'Average True Channel — custom implementation',
+    'atl':    'Auto Trend Lines — custom implementation',
+    'bol':    'John Bollinger (1980s) — Bollinger Bands',
+    'bos':    'ICT / Smart Money Concepts community — Break of Structure',
+    'bsz':    'Buy/Sell Zone — custom implementation',
+    'don':    'Richard Donchian (1960s) — Donchian Channel',
+    'fib':    'Fibonacci retracement — standard technical analysis convention',
+    'fvg':    'ICT / Smart Money Concepts community — Fair Value Gap',
+    'gan':    'W.D. Gann (early 20th century) — Gann Levels / Gann Fan',
+    'pvt':    'Classic Pivot Points — floor trader method (CME, 1980s); Fibonacci / Woodie variants standard TA',
+    'heikin': 'Traditional Japanese candlestick technique — Heikin Ashi',
+    'ici':    'Inner Circle Trader (ICT) concept — custom implementation',
+    'lqz':    'ICT / Smart Money Concepts community — Liquidity Zone',
+    'mam':    'Moving Average Momentum — custom implementation',
+    'mmm':    'Market Mood Meter — custom implementation',
+    'nsdt':   'NSDT (TradingView community) — Hama Candles concept',
+    'oft':    'Order Flow Tools — custom implementation',
+    'qtrend': 'Quantitative Trend — custom implementation',
+    'sup':    'Standard support / resistance detection concept',
+    'vwap':   'Volume Weighted Average Price — standard market-microstructure concept',
+    'wml':    'Weighted Momentum Levels — custom implementation',
+    # markov is intentionally absent — its template already carries // Author
+}
+
 
 # ── Style helpers ──────────────────────────────────────────────────────────────
 
@@ -68,9 +119,253 @@ def _style_inputs(p: dict, prefix: str, default_color: str, group: str) -> str:
     )
 
 
+# ── Visibility-toggle helpers ─────────────────────────────────────────────────
+# Applied by generate_overlay / generate_oscillator to add one input.bool per
+# indicator so TradingView users can show / hide each series individually.
+
+_INDICATOR_LABELS: dict[str, str] = {
+    # Oscillators
+    'adx':    'ADX',
+    'cci':    'CCI',
+    'cumd':   'CVD',
+    'dema':   'DEMA',
+    'ewo':    'EWO',
+    'hor':    'Horcrux',
+    'macd':   'MACD',
+    'relvol': 'Relative Volume',
+    'rsi':    'RSI',
+    'stoch':  'Stochastic',
+    'vol':    'Volume Delta',
+    'zcr':    'Z-Score',
+    # Overlays
+    'atc':    'Auto Trend Channels',
+    'atl':    'Auto Trend Lines',
+    'bol':    'Bollinger Bands',
+    'bos':    'Break of Structure',
+    'bsz':    'Buy/Sell Zones',
+    'don':    'Donchian Channel',
+    'fib':    'Fibonacci',
+    'fvg':    'Fair Value Gap',
+    'gan':    'Gann Levels',
+    'heikin': 'Heikin Ashi',
+    'ici':    'Ichimoku',
+    'lqz':    'Liquidity Zones',
+    'mam':    'MA Multi',
+    'markov': 'Markov Regime',
+    'mmm':    'Market Mood Meter',
+    'nsdt':   'NSDT HAMA',
+    'oft':    'Order Flow',
+    'pvt':    'Pivot Points',
+    'qtrend': 'Quantitative Trend',
+    'sup':    'Support/Resistance',
+    'vwap':   'VWAP',
+    'wml':    'Week/Month Levels',
+}
+
+# Pine Script drawing primitives: when found inside an `if` block body they
+# signal that the block must be gated by the visibility toggle.
+_DRAWING_PRIMITIVES: frozenset[str] = frozenset([
+    'line.new(', 'label.new(', 'line.delete(', 'label.delete(',
+    'plotcandle(', 'plotshape(', 'plot(', 'fill(', 'bgcolor(',
+    'table.cell(', 'table.set_',
+])
+
+
+def _find_first_arg_end(line: str, start: int) -> int:
+    """Return the index of the first ',' at depth 0 after *start*, or of the
+    matching closing ')' / ']' when no comma exists (single-arg call)."""
+    depth = 0
+    for i in range(start, len(line)):
+        c = line[i]
+        if c in '([':
+            depth += 1
+        elif c in ')]':
+            if depth == 0:
+                return i
+            depth -= 1
+        elif c == ',' and depth == 0:
+            return i
+    return len(line)
+
+
+def _append_display_param(
+    lines: list[str], start: int, toggle_var: str
+) -> tuple[list[str], int]:
+    """Collect a (possibly multi-line) drawing function call and append a
+    ``display`` parameter so the output is hidden when the toggle is off.
+
+    Tracks parenthesis depth to find the matching closing ``)`` across
+    continuation lines, then inserts
+    ``, display = toggle_var ? display.all : display.none``
+    before it.
+
+    Returns *(modified_lines, next_line_index)*.
+
+    This is Pine Script v6's native way to conditionally hide plots — it avoids
+    the ``na``-masking approach that can cause runtime errors (RE10140).
+    """
+    collected: list[str] = []
+    depth = 0
+    i = start
+
+    while i < len(lines):
+        ln = lines[i]
+        collected.append(ln)
+        for c in ln:
+            if c in '([':
+                depth += 1
+            elif c in ')]':
+                depth -= 1
+        i += 1
+        if depth <= 0 and collected:
+            break
+
+    if collected:
+        last = collected[-1]
+        rp = last.rfind(')')
+        if rp >= 0:
+            disp = f', display = {toggle_var} ? display.all : display.none'
+            collected[-1] = last[:rp] + disp + last[rp:]
+
+    return collected, i
+
+
+def _hline_to_plot(line: str, toggle_var: str) -> str:
+    """Convert ``hline(level, color=col, linestyle=…)`` to a ``plot()`` with
+    a ``display`` parameter.
+
+    ``hline()`` cannot be used in local scope in Pine Script v6.  The
+    replacement ``plot(level, …, display = show_x ? display.all : display.none)``
+    keeps the line at global scope and hides it via the ``display`` parameter.
+    ``linestyle`` is dropped (``plot()`` has no dashed/dotted style).
+    """
+    m = re.search(r'\bhline\(', line)
+    if not m:
+        return line
+
+    start = m.end()
+    level_end = _find_first_arg_end(line, start)
+    level = line[start:level_end].strip()
+
+    rest = line[level_end:]
+    col_m = re.search(r'\bcolor\s*=\s*(color\.\w+(?:\([^)]*\))?)', rest)
+    color_expr = col_m.group(1) if col_m else 'color.gray'
+
+    disp = f'{toggle_var} ? display.all : display.none'
+    return f'plot({level}, "", {color_expr}, 1, plot.style_linebr, display = {disp})'
+
+
+def _collect_if_block(lines: list[str], start: int) -> tuple[list[str], int]:
+    """Collect an ``if / else-if / else`` block including its indented body.
+
+    Returns *(block_lines, next_index)*.
+    """
+    block = [lines[start]]
+    i = start + 1
+    while i < len(lines):
+        ln = lines[i]
+        stripped = ln.strip()
+        if not stripped:
+            block.append(ln)
+            i += 1
+            continue
+        indent = len(ln) - len(ln.lstrip())
+        if indent > 0 or stripped.startswith('else'):
+            block.append(ln)
+            i += 1
+        else:
+            break
+    return block, i
+
+
+def _block_has_drawing(block: list[str]) -> bool:
+    """Return True when any line in *block* contains a Pine drawing primitive."""
+    return any(
+        any(prim in ln for prim in _DRAWING_PRIMITIVES)
+        for ln in block
+    )
+
+
+def _add_visibility_toggle(name: str, body: str) -> str:
+    """Prepend an ``input.bool`` visibility toggle to a Pine Script indicator block
+    and gate all drawing calls with it.
+
+    Transformations (applied only to top-level, zero-indent statements):
+
+    * ``plot(expr, …)``           → ``plot(show_x ? (expr) : na, …)``
+    * ``plotshape(expr, …)``      → ``plotshape(show_x ? (expr) : na, …)``
+    * ``plot/plotshape/plotcandle/fill/bgcolor``
+                                  → ``display = show_x ? display.all : display.none``
+                                    appended (Pine Script v6 native visibility control,
+                                    avoids ``na``-masking runtime errors like RE10140)
+    * ``hline(level, …)``         → ``plot(level, …, display = show_x ? …)``
+                                    (hline cannot be in local scope in Pine Script v6)
+    * ``if barstate.islast``      → ``if show_x and barstate.islast``
+    * ``if barstate.isconfirmed`` → ``if show_x and barstate.isconfirmed``
+    * Any other top-level ``if`` whose body contains drawing calls
+                                  → ``if show_x and (original_condition)``
+
+    Everything else (variable assignments, ``var`` declarations, ``input.*``,
+    function definitions) is left unchanged so that Pine Script's global-scope
+    constraints are honoured and code order is preserved.
+    """
+    label = _INDICATOR_LABELS.get(name, name.upper())
+    tv = f'show_{name}'
+    decl = f'{tv} = input.bool(true, "Show {label}", group="Visibility")\n'
+
+    result: list[str] = []
+    lines = body.split('\n')
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        is_toplevel = (not stripped) or (len(line) - len(line.lstrip())) == 0
+
+        if is_toplevel and stripped:
+            # ── barstate condition blocks ──────────────────────────────────────
+            if re.match(r'^if barstate\.(islast|isconfirmed)', stripped):
+                result.append(
+                    re.sub(r'\bif barstate\.', f'if {tv} and barstate.', line, count=1)
+                )
+                i += 1
+                continue
+
+            # ── hline → convert to plot() with display parameter ──────────────
+            if re.match(r'^hline\(', stripped):
+                result.append(_hline_to_plot(line, tv))
+                i += 1
+                continue
+
+            # ── plot / plotshape / plotcandle / fill / bgcolor ─────────────────
+            # Collect the full (possibly multi-line) call and append display param.
+            if re.match(
+                r'^(?:\w+\s*=\s*)?(plot|plotshape|plotcandle|fill|bgcolor)\(',
+                stripped,
+            ):
+                call_lines, i = _append_display_param(lines, i, tv)
+                result.extend(call_lines)
+                continue
+
+            # ── other top-level if blocks ──────────────────────────────────────
+            if re.match(r'^if\s+', stripped):
+                block, i = _collect_if_block(lines, i)
+                if _block_has_drawing(block):
+                    old_cond = block[0][3:].strip()  # everything after 'if '
+                    block[0] = f'if {tv} and ({old_cond})'
+                result.extend(block)
+                continue
+
+        result.append(line)
+        i += 1
+
+    return decl + '\n'.join(result)
+
+
 # ── Oscillator templates ───────────────────────────────────────────────────────
 
 def _t_macd(p: dict) -> str:
+    """Return the Pine Script v5 MACD oscillator template with configurable params."""
     fast = int(p.get('window_fast', 12))
     slow = int(p.get('window_slow', 26))
     sign = int(p.get('window_sign', 9))
@@ -101,6 +396,7 @@ plot(macd_hist, "Histogram",
 
 
 def _t_rsi(p: dict) -> str:
+    """Return the Pine Script v5 RSI oscillator template with configurable params."""
     lb  = int(p.get('lookback', 8))
     win = int(p.get('window',   14))
     style = _style_inputs(p, 'rsi', 'color.blue', 'RSI')
@@ -119,6 +415,7 @@ hline(25, color = color.new(color.red,   0), linestyle = hline.style_dotted)
 
 
 def _t_cci(p: dict) -> str:
+    """Return the Pine Script v5 CCI oscillator template with configurable params."""
     win = int(p.get('window', 14))
     style = _style_inputs(p, 'cci', 'color.navy', 'CCI')
     return f"""\
@@ -132,6 +429,7 @@ hline(-100, color = color.new(color.red,   0), linestyle = hline.style_dashed)
 
 
 def _t_adx(p: dict) -> str:
+    """Return the Pine Script v5 ADX oscillator template with configurable params."""
     win   = int(p.get('window',      14))
     fast  = int(p.get('window_fast', 12))
     slow  = int(p.get('window_slow', 26))
@@ -164,6 +462,7 @@ hline(75,       color = color.new(color.gray,  0), linestyle = hline.style_dashe
 
 
 def _t_stoch(p: dict) -> str:
+    """Return the Pine Script v5 Stochastic oscillator template with configurable params."""
     win = int(p.get('window',        14))
     sm  = int(p.get('smooth_window',  3))
     style = _style_inputs(p, 'stoch', 'color.black', 'Stochastic')
@@ -179,6 +478,7 @@ hline(20, color = color.new(color.green, 0), linestyle = hline.style_dotted)
 
 
 def _t_zcr(p: dict) -> str:
+    """Return the Pine Script v5 Zero-Crossing Rate template with configurable params."""
     win = int(p.get('window', 20))
     style = _style_inputs(p, 'zcr', 'color.blue', 'Z-Score')
     return f"""\
@@ -195,6 +495,7 @@ hline(-2, color = color.new(color.gray,  60), linestyle = hline.style_dashed)
 
 
 def _t_ewo(p: dict) -> str:
+    """Return the Pine Script v5 Elliott Wave Oscillator template with configurable params."""
     style = _style_inputs(p, 'ewo', 'color.black', 'EWO')
     return f"""\
 // ── Elliott Wave Oscillator ───────────────────────────────────────────────────
@@ -218,6 +519,7 @@ plotshape(ewo_sell ? ewo_val : na, "EWO Sell", shape.triangledown, location.abso
 
 
 def _t_dema(p: dict) -> str:
+    """Return the Pine Script v5 DEMA oscillator template with configurable params."""
     fast  = int(p.get('fast_length', 8))
     slow  = int(p.get('slow_length', 21))
     win   = int(p.get('window',      14))
@@ -261,6 +563,7 @@ plotshape(dema_sell_sig ? dema_fast : na, "DEMA Sell", shape.triangledown, locat
 
 
 def _t_vol(p: dict) -> str:
+    """Return the Pine Script v5 Volume Delta template with configurable params."""
     cumd = bool(p.get('cumd', False))
     col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.new(color.green, 20)')
     col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.new(color.red,   20)')
@@ -287,6 +590,7 @@ plot(vol_sma, "CumDelta SMA", color.gray, 1)
 
 
 def _t_hor(p: dict) -> str:
+    """Return the Pine Script v5 Horcrux (std-dev channel) template with configurable params."""
     bb_len = int(p.get('bb_length',  20))
     lb     = int(p.get('lookback',   50))
     adj    = float(p.get('adjustment', 0.0))
@@ -304,21 +608,7 @@ hor_mid_bb = ta.sma(close, hor_bb_len)
 [_, hor_u4, hor_l4] = ta.bb(close, hor_bb_len, 2.5)
 [_, hor_u5, hor_l5] = ta.bb(close, hor_bb_len, 3.0)
 [_, hor_u6, hor_l6] = ta.bb(close, hor_bb_len, 3.5)
-hor_state = high < hor_l6 ? 15 :
-            high < hor_l5 ? 14 :
-            high < hor_l4 ? 13 :
-            high < hor_l3 ? 12 :
-            high < hor_l2 ? 11 :
-            high < hor_l1 ? 10 :
-            high < hor_l0 ?  9 :
-            high < hor_mid_bb ? 8 :
-            high < hor_u0 ?  7 :
-            high < hor_u1 ?  6 :
-            high < hor_u2 ?  5 :
-            high < hor_u3 ?  4 :
-            high < hor_u4 ?  3 :
-            high < hor_u5 ?  2 :
-            high < hor_u6 ?  1 : 0
+hor_state = high < hor_l6 ? 15 : high < hor_l5 ? 14 : high < hor_l4 ? 13 : high < hor_l3 ? 12 : high < hor_l2 ? 11 : high < hor_l1 ? 10 : high < hor_l0 ? 9 : high < hor_mid_bb ? 8 : high < hor_u0 ? 7 : high < hor_u1 ? 6 : high < hor_u2 ? 5 : high < hor_u3 ? 4 : high < hor_u4 ? 3 : high < hor_u5 ? 2 : high < hor_u6 ? 1 : 0
 hor_smax = ta.highest(hor_state, hor_lb)
 hor_smin = ta.lowest(hor_state,  hor_lb)
 hor_val  = hor_smax - hor_state
@@ -331,6 +621,7 @@ plot(hor_val, "Horcrux bars", style = plot.style_columns, color = hor_bar_col)
 
 
 def _t_relvol(p: dict) -> str:
+    """Return the Pine Script v5 Relative Volume template with configurable params."""
     length = int(p.get('relvol_length', 21))
     ratio  = float(p.get('relvol_ratio', 1.0))
     mode   = str(p.get('relvol_mode', 'Regular'))
@@ -355,12 +646,13 @@ rv_past    = {rv_past}
 rv_ratio   = rv_past != 0 ? rv_current / rv_past : 1.0
 rv_bar     = rv_ratio - rv_thr
 rv_col     = close >= open ? relvol_col_bull : relvol_col_bear
-plot(rv_bar, "RelVol", style = plot.style_columns, color = rv_col, linewidth = relvol_width, base = rv_thr)
-hline(rv_thr, color = color.new(color.green, 0), linestyle = hline.style_dotted)
+plot(rv_bar, "RelVol", style = plot.style_columns, color = rv_col, linewidth = relvol_width)
+hline(0, color = color.new(color.green, 0), linestyle = hline.style_dotted)
 """
 
 
 def _t_cumd(p: dict) -> str:
+    """Return the Pine Script v5 Cumulative Volume Delta template with configurable params."""
     reset_mode = str(p.get('reset_mode', 'monthly')).lower()
     center     = bool(p.get('center_cumdelta', True))
     _tf_map    = {'auto': 'D', 'daily': 'D', 'monthly': 'M', 'none': ''}
@@ -379,7 +671,7 @@ def _t_cumd(p: dict) -> str:
         'cumd_disp = cumd_val - cumd_c'
     ) if center else 'cumd_disp = cumd_val'
     col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.new(color.teal,    20)')
-    col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.new(color.crimson, 20)')
+    col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.rgb(220, 20, 60, 20)')
     grp = "CVD -- Style"
     return f"""\
 // ── Cumulative Volume Delta  (reset_mode='{reset_mode}' {tf_note}) ─────────────
@@ -409,6 +701,7 @@ hline(0, color = color.new(color.black, 0), linestyle = hline.style_dotted)
 # ── Overlay templates ──────────────────────────────────────────────────────────
 
 def _t_bol(p: dict) -> str:
+    """Return the Pine Script v5 Bollinger Bands overlay template with configurable params."""
     sw = int(p.get('slow_window', 21))
     fw = int(p.get('fast_window',  9))
     sd = float(p.get('slow_dev', 2.0))
@@ -441,6 +734,7 @@ fill(bol_f_up_p, bol_f_lo_p, color.new(bol_col_f, 90))
 
 
 def _t_vwap(p: dict) -> str:
+    """Return the Pine Script v5 VWAP overlay template with configurable params."""
     tf   = {'D': 'D', 'W': 'W', 'M': 'M'}.get(str(p.get('timeframe', 'M')), 'M')
     prev = bool(p.get('show_prevwap', True))
     col_vwap    = _hex_to_pine_color(p.get('color_vwap',    ''), 'color.blue')
@@ -478,6 +772,7 @@ plot(vwap_prev, "Prev VWAP", vwap_prev_col, 1)
 
 
 def _t_don(p: dict) -> str:
+    """Return the Pine Script v5 Donchian Channel overlay template with configurable params."""
     period = int(p.get('period', 10))
     style = _style_inputs(p, 'don', 'color.navy', 'Donchian')
     return f"""\
@@ -493,6 +788,7 @@ fill(don_up_p, don_lo_p, color.new(don_col, 92))
 
 
 def _t_bos(p: dict) -> str:
+    """Return the Pine Script v5 Break of Structure overlay template with configurable params."""
     pips = float(p.get('ignore_pips', 1.0))
     col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.green')
     col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.red')
@@ -535,6 +831,7 @@ else if na(bos_pl) or low < bos_pl
 
 
 def _t_fvg(p: dict) -> str:
+    """Return the Pine Script v5 Fair Value Gap overlay template with configurable params."""
     return """\
 // ── Fair Value Gap ────────────────────────────────────────────────────────────
 fvg_bull = high[2] < low
@@ -547,24 +844,51 @@ plotshape(fvg_bear, "Bearish FVG", shape.cross, location.abovebar,
 
 
 def _t_fib(p: dict) -> str:
+    """Return the Pine Script v5 Fibonacci retracement overlay template with configurable params."""
     period = int(p.get('period', 100))
     return f"""\
 // ── Fibonacci Levels ──────────────────────────────────────────────────────────
 fib_high = ta.highest(close, {period})
 fib_low  = ta.lowest(close,  {period})
 fib_diff = fib_high - fib_low
-plot(fib_high,                   "Fib 1.000", color.purple,               1, plot.style_linebr)
-plot(fib_high - fib_diff * 0.236,"Fib 0.764", color.blue,                 1, plot.style_linebr)
-plot(fib_high - fib_diff * 0.382,"Fib 0.618", color.green,                1, plot.style_linebr)
-plot(fib_high - fib_diff * 0.500,"Fib 0.500", color.red,                  1, plot.style_linebr)
-plot(fib_high - fib_diff * 0.618,"Fib 0.382", color.orange,               1, plot.style_linebr)
-plot(fib_low,                    "Fib 0.000", color.black,                1, plot.style_linebr)
-plot(fib_high + fib_diff * 0.236,"Fib +236",  color.new(color.lime,   50), 1, plot.style_linebr)
-plot(fib_low  - fib_diff * 0.236,"Fib -236",  color.new(color.maroon, 50), 1, plot.style_linebr)
+plot(fib_high,                   "Fib 0%",     color.purple,               1, plot.style_linebr)
+plot(fib_high - fib_diff * 0.236,"Fib 23.6%",  color.blue,                 1, plot.style_linebr)
+plot(fib_high - fib_diff * 0.382,"Fib 38.2%",  color.green,                1, plot.style_linebr)
+plot(fib_high - fib_diff * 0.500,"Fib 50%",    color.red,                  1, plot.style_linebr)
+plot(fib_high - fib_diff * 0.618,"Fib 61.8%",  color.orange,               1, plot.style_linebr)
+plot(fib_low,                    "Fib 100%",   color.black,                1, plot.style_linebr)
+plot(fib_high + fib_diff * 0.236,"Fib +23.6%", color.new(color.lime,   50), 1, plot.style_linebr)
+plot(fib_low  - fib_diff * 0.236,"Fib -23.6%", color.new(color.maroon, 50), 1, plot.style_linebr)
+var label _fbl0 = na
+var label _fbl1 = na
+var label _fbl2 = na
+var label _fbl3 = na
+var label _fbl4 = na
+var label _fbl5 = na
+var label _fbl6 = na
+var label _fbl7 = na
+if barstate.islast
+    label.delete(_fbl0)
+    label.delete(_fbl1)
+    label.delete(_fbl2)
+    label.delete(_fbl3)
+    label.delete(_fbl4)
+    label.delete(_fbl5)
+    label.delete(_fbl6)
+    label.delete(_fbl7)
+    _fbl0 := label.new(bar_index + 1, fib_high + fib_diff * 0.236, "+23.6% " + str.tostring(math.round(fib_high + fib_diff * 0.236, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.lime,   20), textcolor=color.black, style=label.style_label_left, size=size.small)
+    _fbl1 := label.new(bar_index + 1, fib_high,                    "0% "     + str.tostring(math.round(fib_high, 1)),                    xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.purple, 20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _fbl2 := label.new(bar_index + 1, fib_high - fib_diff * 0.236, "23.6% "  + str.tostring(math.round(fib_high - fib_diff * 0.236, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.blue,   20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _fbl3 := label.new(bar_index + 1, fib_high - fib_diff * 0.382, "38.2% "  + str.tostring(math.round(fib_high - fib_diff * 0.382, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.green,  20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _fbl4 := label.new(bar_index + 1, fib_high - fib_diff * 0.500, "50% "    + str.tostring(math.round(fib_high - fib_diff * 0.500, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.red,    20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _fbl5 := label.new(bar_index + 1, fib_high - fib_diff * 0.618, "61.8% "  + str.tostring(math.round(fib_high - fib_diff * 0.618, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.orange, 20), textcolor=color.black, style=label.style_label_left, size=size.small)
+    _fbl6 := label.new(bar_index + 1, fib_low,                     "100% "   + str.tostring(math.round(fib_low, 1)),                     xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.black,  20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _fbl7 := label.new(bar_index + 1, fib_low  - fib_diff * 0.236, "-23.6% " + str.tostring(math.round(fib_low  - fib_diff * 0.236, 1)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.maroon, 20), textcolor=color.white, style=label.style_label_left, size=size.small)
 """
 
 
 def _t_sup(p: dict) -> str:
+    """Return the Pine Script v5 Support/Resistance overlay template with configurable params."""
     win = int(p.get('window', 21))
     col_s = _hex_to_pine_color(p.get('color_support',    ''), 'color.green')
     col_r = _hex_to_pine_color(p.get('color_resistance', ''), 'color.red')
@@ -596,16 +920,19 @@ if barstate.islast
 
 
 def _t_heikin(p: dict) -> str:
+    """Return the Pine Script v5 Heikin-Ashi overlay template with configurable params."""
     smooth = bool(p.get('smooth', False))
     slb    = int(p.get('smooth_length_before', 10))
     sla    = int(p.get('smooth_length_after',  10))
     _pine_ma = {'SMA': 'ta.sma', 'EMA': 'ta.ema', 'WMA': 'ta.wma',
                 'RMA': 'ta.rma', 'HMA': 'ta.hma'}
-    mat_b = _pine_ma.get(str(p.get('smooth_ma_type_before', 'EMA')), 'ta.ema')
-    mat_a = _pine_ma.get(str(p.get('smooth_ma_type_after',  'EMA')), 'ta.ema')
-    ehl   = int(p.get('ema_high_length', 21))
-    ell   = int(p.get('ema_low_length',  21))
-    show_e = bool(p.get('show_emas', True))
+    mat_b  = _pine_ma.get(str(p.get('smooth_ma_type_before', 'EMA')), 'ta.ema')
+    mat_a  = _pine_ma.get(str(p.get('smooth_ma_type_after',  'EMA')), 'ta.ema')
+    mat_e  = _pine_ma.get(str(p.get('ema_type', 'EMA')), 'ta.ema')
+    ehl    = int(p.get('ema_high_length', 21))
+    ell    = int(p.get('ema_low_length',  21))
+    show_e      = bool(p.get('show_emas',     True))
+    fill_band   = bool(p.get('fill_ema_band', False))
 
     col_bull     = _hex_to_pine_color(p.get('color_bull',     ''), 'color.new(color.lime,   20)')
     col_bear     = _hex_to_pine_color(p.get('color_bear',     ''), 'color.new(color.red,    20)')
@@ -623,10 +950,11 @@ def _t_heikin(p: dict) -> str:
 
     code = f"""\
 // ── Heikin Ashi ───────────────────────────────────────────────────────────────
-ha_bull_col = input.color({col_bull},     "Bull candle color", group="{grp}")
-ha_bear_col = input.color({col_bear},     "Bear candle color", group="{grp}")
-ha_ema_h_col= input.color({col_ema_high}, "EMA High color",    group="{grp}")
-ha_ema_l_col= input.color({col_ema_low},  "EMA Low color",     group="{grp}")
+ha_bull_col  = input.color({col_bull},     "Bull candle color", group="{grp}")
+ha_bear_col  = input.color({col_bear},     "Bear candle color", group="{grp}")
+ha_ema_h_col = input.color({col_ema_high}, "EMA High color",    group="{grp}")
+ha_ema_l_col = input.color({col_ema_low},  "EMA Low color",     group="{grp}")
+ha_fill_band = input.bool({str(fill_band).lower()}, "Fill EMA band", group="{grp}")
 ha_o_src = {src_o}
 ha_h_src = {src_h}
 ha_l_src = {src_l}
@@ -651,13 +979,15 @@ plotcandle(ha_open, ha_high, ha_low, ha_close, "Heikin Ashi",
 """
     if show_e:
         code += f"""\
-plot(ta.ema(ha_high, {ehl}), "EMA HA High", ha_ema_h_col, 1)
-plot(ta.ema(ha_low,  {ell}), "EMA HA Low",  ha_ema_l_col, 1)
+ha_p_high = plot({mat_e}(ha_high, {ehl}), "EMA HA High", ha_ema_h_col, 1)
+ha_p_low  = plot({mat_e}(ha_low,  {ell}), "EMA HA Low",  ha_ema_l_col, 1)
+fill(ha_p_high, ha_p_low, color = ha_fill_band ? color.new(color.gray, 85) : color.new(color.gray, 100))
 """
     return code
 
 
 def _t_ici(p: dict) -> str:
+    """Return the Pine Script v5 ICT overlay template."""
     win = int(p.get('window', 14))
     col_tenkan     = _hex_to_pine_color(p.get('color_tenkan',     ''), 'color.aqua')
     col_kijun      = _hex_to_pine_color(p.get('color_kijun',      ''), 'color.orange')
@@ -682,18 +1012,26 @@ ici_span_a = (ici_tenkan + ici_kijun) / 2
 ici_span_b = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2
 ici_chikou = close[26]
 ici_ema    = ta.ema(close, {win})
-ici_sa_p = plot(ici_span_a[26], "Span A", color.new(ici_bull_col, 0), ici_width)
-ici_sb_p = plot(ici_span_b[26], "Span B", color.new(ici_bear_col, 0), ici_width)
-fill(ici_sa_p, ici_sb_p,
-     ici_span_a[26] >= ici_span_b[26] ? ici_bull_col : ici_bear_col)
+ici_sa_p = plot(ici_span_a, "Span A", color.new(ici_bull_col, 0), ici_width, offset=-26)
+ici_sb_p = plot(ici_span_b, "Span B", color.new(ici_bear_col, 0), ici_width, offset=-26)
+fill(ici_sa_p, ici_sb_p, ici_span_a >= ici_span_b ? ici_bull_col : ici_bear_col)
 plot(ici_tenkan, "Tenkan",    ici_tenkan_col, ici_width)
 plot(ici_kijun,  "Kijun",     ici_kijun_col,  ici_width)
-plot(ici_chikou, "Chikou",    ici_chikou_col, 1)
+plot(ici_chikou, "Chikou",    ici_chikou_col, 1, offset=-26)
 plot(ici_ema,    "EMA {win}", ici_ema_col,    1, plot.style_linebr)
+// Signale: Preis über Wolke = Long, unter Wolke = Short
+ici_cloud_top    = math.max(ici_span_a[26], ici_span_b[26])
+ici_cloud_bottom = math.min(ici_span_a[26], ici_span_b[26])
+ici_long  = close > ici_cloud_top
+ici_short = close < ici_cloud_bottom
+// Nur den ersten Marker einer Serie anzeigen
+plotshape(ici_long  and not ici_long[1],  "ICI Buy",  shape.triangleup,   location.belowbar, color.new(color.lime,  0), size=size.small)
+plotshape(ici_short and not ici_short[1], "ICI Sell", shape.triangledown, location.abovebar, color.new(color.red,   0), size=size.small)
 """
 
 
 def _t_lqz(p: dict) -> str:
+    """Return the Pine Script v5 Liquidity Zone overlay template with configurable params."""
     win = int(p.get('window',    14))
     thr = float(p.get('threshold', 1.5))
     return f"""\
@@ -707,6 +1045,7 @@ plotshape(lqz_zone and barstate.isconfirmed, "High Vol",
 
 
 def _t_atc(p: dict) -> str:
+    """Return the Pine Script v5 Average True Channel overlay template with configurable params."""
     dev = float(p.get('dev_multi', 2.0))
     return f"""\
 // ── Auto Trend Channels (line.new on last bar — mirrors Python ATC) ───────────
@@ -782,6 +1121,7 @@ if barstate.islast
 
 
 def _t_atl(p: dict) -> str:
+    """Return the Pine Script v5 Auto Trend Lines overlay template with configurable params."""
     dev = float(p.get('dev_multi', 2.0))
     return f"""\
 // ── Auto Trend Lines (line.new on last bar — mirrors Python ATL) ─────────────
@@ -856,6 +1196,7 @@ if barstate.islast
 
 
 def _t_bsz(p: dict) -> str:
+    """Return the Pine Script v5 Buy/Sell Zone overlay template with configurable params."""
     lb = int(p.get('lookback',  5))
     rr = float(p.get('rr_ratio', 1.5))
     return f"""\
@@ -874,6 +1215,7 @@ plotshape(bsz_sell, "BSZ Sell", shape.triangledown, location.abovebar,
 
 
 def _t_qtrend(p: dict) -> str:
+    """Return the Pine Script v5 Quantitative Trend overlay template with configurable params."""
     tp  = int(p.get('trend_period',   200))
     ap  = int(p.get('atr_period',      14))
     am  = float(p.get('atr_mult',     1.0))
@@ -922,17 +1264,22 @@ plotshape(qt_brk_dn, "Breakout Down", shape.triangledown, location.abovebar,
 
 
 def _t_markov(p: dict) -> str:
+    """Return the Pine Script v5 Markov Regime overlay template with configurable params."""
     lookback   = int(p.get('lookback',   20))
     bull_pct   = float(p.get('bull_pct',  5.0))
     bear_pct   = float(p.get('bear_pct',  5.0))
-    banner_pos = str(p.get('banner_pos', 'top_left'))
-    matrix_pos = str(p.get('matrix_pos', 'middle_left'))
+    banner_pos   = str(p.get('banner_pos', 'top_left'))
+    matrix_pos   = str(p.get('matrix_pos', 'middle_left'))
+    forecast_pos = str(p.get('forecast_pos', 'top_right'))
     return f"""\
 // ── Markov Regime — Bull / Bear / Sideways ────────────────────────────────────
 // Full Pine Script port.  Regime = log(close/close[lookback]):
 //   > bull_pct% → Bull (1)  |  < -bear_pct% → Bear (2)  |  else Sideways (0)
 // Builds a 3x3 transition matrix from visible history, iterates to the
-// stationary distribution, and renders ribbon + banner + two corner tables.
+// stationary distribution, projects the current regime 3 bars forward via
+// v*P / v*P^2 / v*P^3, and renders ribbon + banner + matrix/stationary/forecast
+// tables. The forecast table also shows the long-run/stationary mix as an
+// extra row "∞" so the near-term projection can be compared to the baseline.
 // Author of original Pine Script: Lewis Jackson · Framework: Roan (@RohOnChain)
 
 // ── Inputs ────────────────────────────────────────────────────────────────────
@@ -949,6 +1296,7 @@ show_regime_ribbon     = input.bool(true,  "Show regime ribbon",         group=g
 show_regime_banner     = input.bool(true,  "Show current-regime banner", group=grp_display)
 show_matrix_table      = input.bool(true,  "Show transition matrix",     group=grp_display)
 show_stationary_table  = input.bool(true,  "Show stationary distribution", group=grp_display)
+show_forecast_table    = input.bool(true,  "Show 3-bar forecast table",  group=grp_display)
 show_transition_labels = input.bool(true,  "Label state transitions on chart", group=grp_display)
 table_text_size        = input.string("large", "Table text size", options=["small","normal","large","huge"], group=grp_display)
 min_regime_hold        = input.int(4, "Min bars a regime must hold to be labelled", minval=1, maxval=50, group=grp_display)
@@ -956,6 +1304,7 @@ min_regime_hold        = input.int(4, "Min bars a regime must hold to be labelle
 banner_position_input    = input.string("{banner_pos}", "Banner position",    options=["top_left","top_center","top_right","middle_left","middle_center","middle_right","bottom_left","bottom_center","bottom_right"], group=grp_position)
 matrix_position_input    = input.string("{matrix_pos}", "Matrix position",    options=["top_left","top_center","top_right","middle_left","middle_center","middle_right","bottom_left","bottom_center","bottom_right"], group=grp_position)
 stationary_position_input = input.string("bottom_right","Stationary position",options=["top_left","top_center","top_right","middle_left","middle_center","middle_right","bottom_left","bottom_center","bottom_right"], group=grp_position)
+forecast_position_input  = input.string("{forecast_pos}", "Forecast position",  options=["top_left","top_center","top_right","middle_left","middle_center","middle_right","bottom_left","bottom_center","bottom_right"], group=grp_position)
 
 // ── Position / size helpers ───────────────────────────────────────────────────
 position_from_string(s) =>
@@ -989,6 +1338,7 @@ notch_down(s) =>
 banner_pos_c    = position_from_string(banner_position_input)
 matrix_pos_c    = position_from_string(matrix_position_input)
 stationary_pos_c = position_from_string(stationary_position_input)
+forecast_pos_c  = position_from_string(forecast_position_input)
 val_size = size_from_string(table_text_size)
 hdr_size = size_from_string(notch_down(table_text_size))
 
@@ -1047,9 +1397,14 @@ if barstate.isconfirmed and not na(regime) and mrk_held and regime != mrk_last_l
     mrk_last_lbl := regime
 
 // ── Table objects (created once) ──────────────────────────────────────────────
-var table mrk_tbl_banner     = table.new(banner_pos_c,     1, 1, bgcolor=c_bg, border_width=0)
-var table mrk_tbl_matrix     = table.new(matrix_pos_c,     4, 6, bgcolor=c_card_bg, border_width=2, border_color=c_card_bg, frame_color=c_card_frame, frame_width=1)
-var table mrk_tbl_stationary = table.new(stationary_pos_c, 3, 4, bgcolor=c_card_bg, border_width=2, border_color=c_card_bg, frame_color=c_card_frame, frame_width=1)
+// Tables start as `na` and are created/deleted on demand below — this is
+// what actually makes each one switchable. A `var table` that is always
+// created up front keeps drawing its background/frame even with zero
+// cells populated, so the toggle would visually do nothing.
+var table mrk_tbl_banner     = na
+var table mrk_tbl_matrix     = na
+var table mrk_tbl_stationary = na
+var table mrk_tbl_forecast   = na
 
 // ── Unrolled 3x3 matrix multiplication ───────────────────────────────────────
 matmul_3x3(A, B) =>
@@ -1083,6 +1438,27 @@ matmul_3x3(A, B) =>
     array.set(C,8, a20*b02+a21*b12+a22*b22)
     C
 
+// Row-vector x 3x3-matrix - used to project the current regime forward
+// one bar at a time: v(t+1) = v(t) . P  (v is a one-hot regime vector)
+vecmul_3(v, M) =>
+    v0  = array.get(v, 0)
+    v1  = array.get(v, 1)
+    v2  = array.get(v, 2)
+    m00 = array.get(M, 0)
+    m01 = array.get(M, 1)
+    m02 = array.get(M, 2)
+    m10 = array.get(M, 3)
+    m11 = array.get(M, 4)
+    m12 = array.get(M, 5)
+    m20 = array.get(M, 6)
+    m21 = array.get(M, 7)
+    m22 = array.get(M, 8)
+    out = array.new_float(3, 0.0)
+    array.set(out, 0, v0*m00 + v1*m10 + v2*m20)
+    array.set(out, 1, v0*m01 + v1*m11 + v2*m21)
+    array.set(out, 2, v0*m02 + v1*m12 + v2*m22)
+    out
+
 fmt_pct(p_val) => str.tostring(math.round(p_val * 100)) + "%"
 
 // ── Last-bar: build P, iterate to stationary, populate tables ─────────────────
@@ -1107,14 +1483,31 @@ if barstate.islast
     array.set(mrk_stat, 1, array.get(mrk_M, 1))   // prob of Bull
     array.set(mrk_stat, 2, array.get(mrk_M, 2))   // prob of Bear
 
-    // Banner
+    // ── Forecast: project the current regime forward 3 bars ──────────────────
+    // One-hot vector for "today" (internal order: 0=Side, 1=Bull, 2=Bear),
+    // then iterate v · P to get the distribution at t+1, t+2, t+3.
+    mrk_vec0 = array.new_float(3, 0.0)
+    if not na(regime)
+        array.set(mrk_vec0, regime, 1.0)
+    mrk_fc1 = vecmul_3(mrk_vec0, mrk_P)
+    mrk_fc2 = vecmul_3(mrk_fc1,  mrk_P)
+    mrk_fc3 = vecmul_3(mrk_fc2,  mrk_P)
+
+    // Banner — create on demand, delete the instant the toggle goes off
     if show_regime_banner
+        if na(mrk_tbl_banner)
+            mrk_tbl_banner := table.new(banner_pos_c, 1, 1, bgcolor=c_bg, border_width=0)
         table.cell(mrk_tbl_banner, 0, 0, "Currently: " + regime_name(regime),
                    text_color=color.white, bgcolor=regime_solid(regime),
                    text_size=size.large, text_halign=text.align_center)
+    else if not na(mrk_tbl_banner)
+        table.delete(mrk_tbl_banner)
+        mrk_tbl_banner := na
 
-    // Transition matrix table (4 cols x 6 rows)
+    // Transition matrix table (4 cols x 6 rows) — create on demand, delete on toggle-off
     if show_matrix_table
+        if na(mrk_tbl_matrix)
+            mrk_tbl_matrix := table.new(matrix_pos_c, 4, 6, bgcolor=c_card_bg, border_width=2, border_color=c_card_bg, frame_color=c_card_frame, frame_width=1)
         // Row 0 — card header
         table.cell(mrk_tbl_matrix, 0, 0, "MARKOV REGIME", text_color=c_accent,    bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_left)
         table.cell(mrk_tbl_matrix, 1, 0, "",              bgcolor=c_card_bg)
@@ -1144,9 +1537,14 @@ if barstate.islast
         table.cell(mrk_tbl_matrix, 1, 5, "", bgcolor=c_card_bg)
         table.cell(mrk_tbl_matrix, 2, 5, "", bgcolor=c_card_bg)
         table.cell(mrk_tbl_matrix, 3, 5, "", bgcolor=c_card_bg)
+    else if not na(mrk_tbl_matrix)
+        table.delete(mrk_tbl_matrix)
+        mrk_tbl_matrix := na
 
-    // Stationary distribution table (3 cols x 4 rows)
+    // Stationary distribution table (3 cols x 4 rows) — create on demand, delete on toggle-off
     if show_stationary_table
+        if na(mrk_tbl_stationary)
+            mrk_tbl_stationary := table.new(stationary_pos_c, 3, 4, bgcolor=c_card_bg, border_width=2, border_color=c_card_bg, frame_color=c_card_frame, frame_width=1)
         table.cell(mrk_tbl_stationary, 0, 0, "LONG-RUN MIX", text_color=c_accent, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_left)
         table.cell(mrk_tbl_stationary, 1, 0, "", bgcolor=c_card_bg)
         table.cell(mrk_tbl_stationary, 2, 0, "", bgcolor=c_card_bg)
@@ -1165,10 +1563,70 @@ if barstate.islast
         table.cell(mrk_tbl_stationary, 0, 3, "stat",          text_color=c_foot_txt, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_center)
         table.cell(mrk_tbl_stationary, 1, 3, "sums to 100%",  text_color=c_foot_txt, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_left)
         table.cell(mrk_tbl_stationary, 2, 3, "",               bgcolor=c_card_bg)
+    else if not na(mrk_tbl_stationary)
+        table.delete(mrk_tbl_stationary)
+        mrk_tbl_stationary := na
+
+    // Forecast table (4 cols x 5 rows) — row "∞" shows the long-run/stationary
+    // mix as a baseline reference, rows t+1..t+3 show the regime distribution
+    // projected from today's regime via v·P, v·P², v·P³. Best-guess regime
+    // per row is highlighted like the matrix diagonal.
+    // Created on demand, deleted the instant the toggle goes off.
+    if show_forecast_table
+        if na(mrk_tbl_forecast)
+            mrk_tbl_forecast := table.new(forecast_pos_c, 4, 5, bgcolor=c_card_bg, border_width=2, border_color=c_card_bg, frame_color=c_card_frame, frame_width=1)
+        table.cell(mrk_tbl_forecast, 0, 0, "FORECAST +3", text_color=c_accent, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_left)
+        table.cell(mrk_tbl_forecast, 1, 0, "Bull", text_color=c_bull_solid, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 2, 0, "Bear", text_color=c_bear_solid, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 3, 0, "Side", text_color=c_side_solid, bgcolor=c_card_bg, text_size=hdr_size, text_halign=text.align_center)
+
+        // ∞ — long-run/stationary mix as baseline reference
+        pt_bull = array.get(mrk_stat, 1)
+        pt_bear = array.get(mrk_stat, 2)
+        pt_side = array.get(mrk_stat, 0)
+        bestT   = math.max(pt_bull, math.max(pt_bear, pt_side))
+        table.cell(mrk_tbl_forecast, 0, 1, "∞", text_color=c_hdr_txt, bgcolor=c_card_bg, text_size=hdr_size)
+        table.cell(mrk_tbl_forecast, 1, 1, fmt_pct(pt_bull), text_color = pt_bull == bestT ? c_diag_txt : c_off_txt, bgcolor = pt_bull == bestT ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 2, 1, fmt_pct(pt_bear), text_color = pt_bear == bestT ? c_diag_txt : c_off_txt, bgcolor = pt_bear == bestT ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 3, 1, fmt_pct(pt_side), text_color = pt_side == bestT ? c_diag_txt : c_off_txt, bgcolor = pt_side == bestT ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+
+        // t+1
+        p1_bull = array.get(mrk_fc1, 1)
+        p1_bear = array.get(mrk_fc1, 2)
+        p1_side = array.get(mrk_fc1, 0)
+        best1   = math.max(p1_bull, math.max(p1_bear, p1_side))
+        table.cell(mrk_tbl_forecast, 0, 2, "t+1", text_color=c_hdr_txt, bgcolor=c_card_bg, text_size=hdr_size)
+        table.cell(mrk_tbl_forecast, 1, 2, fmt_pct(p1_bull), text_color = p1_bull == best1 ? c_diag_txt : c_off_txt, bgcolor = p1_bull == best1 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 2, 2, fmt_pct(p1_bear), text_color = p1_bear == best1 ? c_diag_txt : c_off_txt, bgcolor = p1_bear == best1 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 3, 2, fmt_pct(p1_side), text_color = p1_side == best1 ? c_diag_txt : c_off_txt, bgcolor = p1_side == best1 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+
+        // t+2
+        p2_bull = array.get(mrk_fc2, 1)
+        p2_bear = array.get(mrk_fc2, 2)
+        p2_side = array.get(mrk_fc2, 0)
+        best2   = math.max(p2_bull, math.max(p2_bear, p2_side))
+        table.cell(mrk_tbl_forecast, 0, 3, "t+2", text_color=c_hdr_txt, bgcolor=c_card_bg, text_size=hdr_size)
+        table.cell(mrk_tbl_forecast, 1, 3, fmt_pct(p2_bull), text_color = p2_bull == best2 ? c_diag_txt : c_off_txt, bgcolor = p2_bull == best2 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 2, 3, fmt_pct(p2_bear), text_color = p2_bear == best2 ? c_diag_txt : c_off_txt, bgcolor = p2_bear == best2 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 3, 3, fmt_pct(p2_side), text_color = p2_side == best2 ? c_diag_txt : c_off_txt, bgcolor = p2_side == best2 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+
+        // t+3
+        p3_bull = array.get(mrk_fc3, 1)
+        p3_bear = array.get(mrk_fc3, 2)
+        p3_side = array.get(mrk_fc3, 0)
+        best3   = math.max(p3_bull, math.max(p3_bear, p3_side))
+        table.cell(mrk_tbl_forecast, 0, 4, "t+3", text_color=c_hdr_txt, bgcolor=c_card_bg, text_size=hdr_size)
+        table.cell(mrk_tbl_forecast, 1, 4, fmt_pct(p3_bull), text_color = p3_bull == best3 ? c_diag_txt : c_off_txt, bgcolor = p3_bull == best3 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 2, 4, fmt_pct(p3_bear), text_color = p3_bear == best3 ? c_diag_txt : c_off_txt, bgcolor = p3_bear == best3 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+        table.cell(mrk_tbl_forecast, 3, 4, fmt_pct(p3_side), text_color = p3_side == best3 ? c_diag_txt : c_off_txt, bgcolor = p3_side == best3 ? c_diag_bg : c_card_bg, text_size=val_size, text_halign=text.align_center)
+    else if not na(mrk_tbl_forecast)
+        table.delete(mrk_tbl_forecast)
+        mrk_tbl_forecast := na
 """
 
 
 def _t_gan(p: dict) -> str:
+    """Return the Pine Script v5 Gann Levels overlay template with configurable params."""
     n      = max(1, min(8, int(p.get('levels', 5))))
     step   = {'1/8': 0.125, '1/4': 0.25, '1/2': 0.5}.get(str(p.get('step_frac', '1/8')), 0.125)
     anchor = {'close': 'close', 'hl2': 'hl2', 'hlc3': 'hlc3'}.get(
@@ -1197,6 +1655,23 @@ def _t_gan(p: dict) -> str:
             f'plot(gan_S{i}, "Gann S{i}", color.new(color.green, {tr}), {w}, plot.style_linebr)'
         )
 
+    # Label declarations and barstate.islast block
+    lbl_decls = '\n'.join(
+        f'var label _ganR{i}_lbl = na\nvar label _ganS{i}_lbl = na'
+        for i in range(1, n + 1)
+    )
+    lbl_deletes = '\n    '.join(
+        f'label.delete(_ganR{i}_lbl)\n    label.delete(_ganS{i}_lbl)'
+        for i in range(1, n + 1)
+    )
+    lbl_creates = '\n    '.join(
+        (f'_ganR{i}_lbl := label.new(bar_index + 1, gan_R{i}, "GR{i}: " + str.tostring(math.round(gan_R{i}, 2)),'
+         f' xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.red,   {transp[min(i-1,len(transp)-1)]}), textcolor=color.white, style=label.style_label_left, size=size.small)\n    '
+         f'_ganS{i}_lbl := label.new(bar_index + 1, gan_S{i}, "GS{i}: " + str.tostring(math.round(gan_S{i}, 2)),'
+         f' xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.green, {transp[min(i-1,len(transp)-1)]}), textcolor=color.white, style=label.style_label_left, size=size.small)')
+        for i in range(1, n + 1)
+    )
+
     levels_block = '\n'.join(level_vars)
     plots_block  = '\n'.join(plot_calls)
 
@@ -1216,10 +1691,108 @@ float gan_ka  = gan_kb + 1.0
 gan_ka := math.pow(gan_ka * gan_stp, 2.0) * gan_f <= gan_anc ? gan_ka + 1.0 : gan_ka
 {levels_block}
 {plots_block}
+{lbl_decls}
+if barstate.islast
+    {lbl_deletes}
+    {lbl_creates}
+"""
+
+
+def _t_pvt(p: dict) -> str:
+    """Return the Pine Script v5 Pivot Points overlay template with configurable params."""
+    method = str(p.get('method', 'classic')).lower()
+
+    if method == 'fibonacci':
+        pivot_block = (
+            "float pvt_p  = (pvt_h + pvt_l + pvt_c) / 3\n"
+            "float pvt_r1 = pvt_p + 0.382 * pvt_r\n"
+            "float pvt_r2 = pvt_p + 0.618 * pvt_r\n"
+            "float pvt_r3 = pvt_p + 1.000 * pvt_r\n"
+            "float pvt_s1 = pvt_p - 0.382 * pvt_r\n"
+            "float pvt_s2 = pvt_p - 0.618 * pvt_r\n"
+            "float pvt_s3 = pvt_p - 1.000 * pvt_r"
+        )
+        method_label = "Fibonacci"
+    elif method == 'woodie':
+        pivot_block = (
+            "float pvt_p  = (pvt_h + pvt_l + 2 * pvt_c) / 4\n"
+            "float pvt_r1 = 2 * pvt_p - pvt_l\n"
+            "float pvt_r2 = pvt_p + pvt_r\n"
+            "float pvt_r3 = pvt_h + 2 * (pvt_p - pvt_l)\n"
+            "float pvt_s1 = 2 * pvt_p - pvt_h\n"
+            "float pvt_s2 = pvt_p - pvt_r\n"
+            "float pvt_s3 = pvt_l - 2 * (pvt_h - pvt_p)"
+        )
+        method_label = "Woodie"
+    else:  # classic (floor trader)
+        pivot_block = (
+            "float pvt_p  = (pvt_h + pvt_l + pvt_c) / 3\n"
+            "float pvt_r1 = 2 * pvt_p - pvt_l\n"
+            "float pvt_r2 = pvt_p + pvt_r\n"
+            "float pvt_r3 = pvt_h + 2 * (pvt_p - pvt_l)\n"
+            "float pvt_s1 = 2 * pvt_p - pvt_h\n"
+            "float pvt_s2 = pvt_p - pvt_r\n"
+            "float pvt_s3 = pvt_l - 2 * (pvt_h - pvt_p)"
+        )
+        method_label = "Classic"
+
+    return f"""\
+// ── Pivot Points ({method_label}) ─────────────────────────────────────────────────
+// Levels from the previous bar's High / Low / Close — drawn as static hlines on
+// the last bar only (extend.both) so no historical trend is shown.
+float pvt_h = high[1]
+float pvt_l = low[1]
+float pvt_c = close[1]
+float pvt_r = pvt_h - pvt_l
+{pivot_block}
+var line  _pvt_r3_line = na
+var line  _pvt_r2_line = na
+var line  _pvt_r1_line = na
+var line  _pvt_p_line  = na
+var line  _pvt_s1_line = na
+var line  _pvt_s2_line = na
+var line  _pvt_s3_line = na
+var label _pvt_r3_lbl  = na
+var label _pvt_r2_lbl  = na
+var label _pvt_r1_lbl  = na
+var label _pvt_p_lbl   = na
+var label _pvt_s1_lbl  = na
+var label _pvt_s2_lbl  = na
+var label _pvt_s3_lbl  = na
+if barstate.islast
+    line.delete(_pvt_r3_line)
+    line.delete(_pvt_r2_line)
+    line.delete(_pvt_r1_line)
+    line.delete(_pvt_p_line)
+    line.delete(_pvt_s1_line)
+    line.delete(_pvt_s2_line)
+    line.delete(_pvt_s3_line)
+    label.delete(_pvt_r3_lbl)
+    label.delete(_pvt_r2_lbl)
+    label.delete(_pvt_r1_lbl)
+    label.delete(_pvt_p_lbl)
+    label.delete(_pvt_s1_lbl)
+    label.delete(_pvt_s2_lbl)
+    label.delete(_pvt_s3_lbl)
+    _pvt_r3_line := line.new(bar_index, pvt_r3, bar_index + 1, pvt_r3, color=color.new(color.red,   40), width=1, style=line.style_dashed, extend=extend.both)
+    _pvt_r2_line := line.new(bar_index, pvt_r2, bar_index + 1, pvt_r2, color=color.new(color.red,   20), width=1, style=line.style_dashed, extend=extend.both)
+    _pvt_r1_line := line.new(bar_index, pvt_r1, bar_index + 1, pvt_r1, color=color.new(color.red,    0), width=2, style=line.style_dashed, extend=extend.both)
+    _pvt_p_line  := line.new(bar_index, pvt_p,  bar_index + 1, pvt_p,  color=color.new(color.orange, 0), width=2, style=line.style_dotted, extend=extend.both)
+    _pvt_s1_line := line.new(bar_index, pvt_s1, bar_index + 1, pvt_s1, color=color.new(color.green,  0), width=2, style=line.style_dashed, extend=extend.both)
+    _pvt_s2_line := line.new(bar_index, pvt_s2, bar_index + 1, pvt_s2, color=color.new(color.green, 20), width=1, style=line.style_dashed, extend=extend.both)
+    _pvt_s3_line := line.new(bar_index, pvt_s3, bar_index + 1, pvt_s3, color=color.new(color.green, 40), width=1, style=line.style_dashed, extend=extend.both)
+    _pvt_r3_lbl  := label.new(bar_index + 1, pvt_r3, "R3: " + str.tostring(math.round(pvt_r3, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.red,   40), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_r2_lbl  := label.new(bar_index + 1, pvt_r2, "R2: " + str.tostring(math.round(pvt_r2, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.red,   20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_r1_lbl  := label.new(bar_index + 1, pvt_r1, "R1: " + str.tostring(math.round(pvt_r1, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.red,    0), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_p_lbl   := label.new(bar_index + 1, pvt_p,  "P:  " + str.tostring(math.round(pvt_p,  2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.orange, 0), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_s1_lbl  := label.new(bar_index + 1, pvt_s1, "S1: " + str.tostring(math.round(pvt_s1, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.green,  0), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_s2_lbl  := label.new(bar_index + 1, pvt_s2, "S2: " + str.tostring(math.round(pvt_s2, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.green, 20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    _pvt_s3_lbl  := label.new(bar_index + 1, pvt_s3, "S3: " + str.tostring(math.round(pvt_s3, 2)), xloc=xloc.bar_index, yloc=yloc.price, color=color.new(color.green, 40), textcolor=color.white, style=label.style_label_left, size=size.small)
 """
 
 
 def _t_nsdt(p: dict) -> str:
+    """Return the Pine Script v5 NSDT Hama Candles overlay template with configurable params."""
     open_len  = int(p.get('open_len',  21))
     close_len = int(p.get('close_len', 14))
     ma_len    = int(p.get('ma_len',   100))
@@ -1278,6 +1851,7 @@ plot(nsdt_ma, "NSDT MA", nsdt_col, 2)
 
 
 def _t_oft(p: dict) -> str:
+    """Return the Pine Script v5 Order Flow Tools overlay template with configurable params."""
     period     = int(p.get('period',        21))
     ob_periods = int(p.get('ob_periods',     3))
     ob_thr     = float(p.get('ob_threshold', 0.0))
@@ -1331,6 +1905,7 @@ plotshape(oft_bear_ob, "OFT Bearish OB", shape.xcross, location.abovebar, color.
 
 
 def _t_mmm(p: dict) -> str:
+    """Return the Pine Script v5 Market Mood Meter overlay template with configurable params."""
     show_trend  = bool(p.get('show_trend', False))
     trend_block = """\
 // Trend overlay (show_trend = true)
@@ -1384,49 +1959,75 @@ plotshape(ta.crossunder(mmm_cumd, mmm_cumd_sma), "MMM CD Bear", shape.triangledo
 
 
 def _t_mam(p: dict) -> str:
-    defaults      = [('EMA', 20), ('EMA', 50), ('SMA', 200)]
-    default_cols  = ['color.orange', 'color.blue', 'color.red']
-    cfgs = [
-        (str(p.get(f'ma{i}_type',   defaults[i - 1][0])).upper(),
-         int(p.get(f'ma{i}_period', defaults[i - 1][1])),
-         _hex_to_pine_color(p.get(f'ma{i}_color', ''), default_cols[i - 1]))
-        for i in range(1, 4)
-    ]
-    pine_ma = {'SMA': 'ta.sma', 'EMA': 'ta.ema', 'WMA': 'ta.wma'}
-    wid = max(1, min(5, int(p.get('line_width', 2))))
-    sty = p.get('line_style', 'solid')
-    if sty not in ('solid', 'dashed', 'dotted'):
-        sty = 'solid'
-    grp = "MA Multi -- Style"
+    """Return the Pine Script v5 Moving Average Momentum overlay template with configurable params."""
+    _N            = 5
+    _defaults     = [('EMA', 20), ('EMA', 50), ('SMA', 200), ('EMA', 100), ('WMA', 300)]
+    _default_en   = [True, True, True, False, False]
+    _default_cols = ['color.orange', 'color.blue', 'color.red', 'color.lime', 'color.purple']
+    _pine_ma      = {'SMA': 'ta.sma', 'EMA': 'ta.ema', 'WMA': 'ta.wma'}
 
+    # float width → Pine plot() integer linewidth (plot() only accepts int 1-4)
+    _width_to_pine_int = {'0.5': 1, '1': 1, '1.5': 2, '2': 2}
+
+    cfgs = [
+        (
+            bool(p.get(f'ma{i}_enabled', _default_en[i - 1])),
+            str(p.get(f'ma{i}_type',    _defaults[i - 1][0])).upper(),
+            int(p.get(f'ma{i}_period',  _defaults[i - 1][1])),
+            _hex_to_pine_color(p.get(f'ma{i}_color', ''), _default_cols[i - 1]),
+            str(p.get(f'ma{i}_width',   '1.5')),
+            str(p.get(f'ma{i}_style',   'solid')),
+        )
+        for i in range(1, _N + 1)
+    ]
+
+    grp = "MA Multi -- Style"
     lines = ["// ── MA Multi ──────────────────────────────────────────────────────────────────\n"]
 
-    # Per-MA color inputs
-    for idx, (_, _, col) in enumerate(cfgs, 1):
-        lines.append(f'mam{idx}_col = input.color({col}, "MA {idx} color", group="{grp}")\n')
-    lines.append(f'mam_width   = input.int({wid}, "Width", minval=1, maxval=5, group="{grp}")\n')
-    lines.append(
-        f'mam_style   = input.string("{sty}", "Line style",'
-        f' options=["solid","dashed","dotted"], group="{grp}")\n'
-    )
+    for idx, (enabled, ma_type, period, col, width, style) in enumerate(cfgs, 1):
+        pine_en  = 'true' if enabled else 'false'
+        pine_wid = _width_to_pine_int.get(width, 2)
+        sty      = style if style in ('solid', 'dashed', 'dotted') else 'solid'
+        lbl      = f'{ma_type} {period}'
+        lines.append(f'mam{idx}_show  = input.bool({pine_en},   "Show {lbl}",  group="{grp}")\n')
+        lines.append(f'mam{idx}_col   = input.color({col},      "{lbl} color", group="{grp}")\n')
+        lines.append(f'mam{idx}_width = input.int({pine_wid},   "{lbl} width", minval=1, maxval=4, group="{grp}")\n')
+        # Pine Script plot() does not support dashed/dotted; the style input is kept for
+        # completeness (e.g. custom line.new() usage) but has no effect on plot() lines.
+        lines.append(f'mam{idx}_sty   = input.string("{sty}", "{lbl} style", options=["solid","dashed","dotted"], group="{grp}")\n')
     lines.append('\n')
 
-    if any(ma_type == 'DEMA' for ma_type, _, _ in cfgs):
+    if any(ma_type == 'DEMA' for _, ma_type, *_ in cfgs):
         lines.append("""\
 dema(src, len) =>
     _e1 = ta.ema(src, len)
     2 * _e1 - ta.ema(_e1, len)
 """)
 
-    for idx, (ma_type, period, _) in enumerate(cfgs, 1):
+    for idx, (_, ma_type, period, _, _, _) in enumerate(cfgs, 1):
         var   = f'mam{idx}'
         label = f'{ma_type} {period}'
         if ma_type == 'DEMA':
-            lines.append(f'{var} = dema(close, {period})\n')
+            lines.append(f'{var} = mam{idx}_show ? dema(close, {period}) : na\n')
         else:
-            fn = pine_ma.get(ma_type, 'ta.ema')
-            lines.append(f'{var} = {fn}(close, {period})\n')
-        lines.append(f'plot({var}, "{label}", mam{idx}_col, mam_width)\n')
+            fn = _pine_ma.get(ma_type, 'ta.ema')
+            lines.append(f'{var} = mam{idx}_show ? {fn}(close, {period}) : na\n')
+        lines.append(f'plot({var}, "{label}", mam{idx}_col, mam{idx}_width)\n')
+
+    # Right-side labels at the last bar (one per MA, deleted+recreated on update)
+    lines.append('\n')
+    for idx, (_, ma_type, period, _, _, _) in enumerate(cfgs, 1):
+        var   = f'mam{idx}'
+        lbl   = f'{ma_type} {period}'
+        lines.append(f'var label _mam{idx}_lbl = na\n')
+        lines.append(
+            f'if barstate.islast and mam{idx}_show and not na({var})\n'
+            f'    label.delete(_mam{idx}_lbl)\n'
+            f'    _mam{idx}_lbl := label.new(bar_index + 1, {var}, "{lbl}",\n'
+            f'         xloc=xloc.bar_index, yloc=yloc.price,\n'
+            f'         color=color.new(mam{idx}_col, 20), textcolor=color.white,\n'
+            f'         style=label.style_label_left, size=size.small)\n'
+        )
 
     return ''.join(lines)
 
@@ -1443,6 +2044,7 @@ dema(src, len) =>
 # ZCR: ±4); dynamic oscillators use ta.lowest/ta.highest over a rolling window.
 
 def _n_macd(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized MACD block for strategy scripts."""
     fast = int(p.get('window_fast', 12))
     slow = int(p.get('window_slow', 26))
     sign = int(p.get('window_sign', 9))
@@ -1472,6 +2074,7 @@ plot(_osc_px(_macd_s, _macd_lo, _macd_hi, {slot}), "Signal", n_macd_sig_col, 1)
 
 
 def _n_rsi(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized RSI block for strategy scripts."""
     lb  = int(p.get('lookback', 8))
     win = int(p.get('window',  14))
     style = _style_inputs(p, 'n_rsi', 'color.blue', 'RSI (combined)')
@@ -1488,6 +2091,7 @@ plot(_osc_px(25.0, 0.0, 100.0, {slot}), "RSI 25", color.new(color.red,   60), 1,
 
 
 def _n_cci(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized CCI block for strategy scripts."""
     win = int(p.get('window', 14))
     style = _style_inputs(p, 'n_cci', 'color.navy', 'CCI (combined)')
     return f"""\
@@ -1502,6 +2106,7 @@ plot(_osc_px(-100.0, _cci_lo, _cci_hi, {slot}), "CCI -100", color.new(color.red,
 
 
 def _n_adx(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized ADX block for strategy scripts."""
     win   = int(p.get('window',      14))
     level = int(p.get('down_level',  25))
     col_adx      = _hex_to_pine_color(p.get('color_adx',      ''), 'color.blue')
@@ -1529,6 +2134,7 @@ plot(_osc_px(75.0,       0.0, 100.0, {slot}), "ADX 75",  color.new(color.gray,  
 
 
 def _n_stoch(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized Stochastic block for strategy scripts."""
     win = int(p.get('window',       14))
     sm  = int(p.get('smooth_window', 3))
     style = _style_inputs(p, 'n_stoch', 'color.black', 'Stochastic (combined)')
@@ -1544,6 +2150,7 @@ plot(_osc_px(20.0, 0.0, 100.0, {slot}), "Stoch 20", color.new(color.green, 60), 
 
 
 def _n_zcr(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized ZCR block for strategy scripts."""
     win = int(p.get('window', 20))
     style = _style_inputs(p, 'n_zcr', 'color.blue', 'Z-Score (combined)')
     return f"""\
@@ -1560,6 +2167,7 @@ plot(_osc_px(-2.0, -4.0, 4.0, {slot}), "Z -2", color.new(color.gray,  60), 1, pl
 
 
 def _n_ewo(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized EWO block for strategy scripts."""
     style = _style_inputs(p, 'n_ewo', 'color.black', 'EWO (combined)')
     return f"""\
 // ── EWO  (slot {slot}) ────────────────────────────────────────────────────────
@@ -1587,6 +2195,7 @@ plotshape(_ewo_sell ? _osc_px(_ewo_v, _ewo_lo, _ewo_hi, {slot}) : na,
 
 
 def _n_dema(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized DEMA block for strategy scripts."""
     fast  = int(p.get('fast_length', 8))
     slow  = int(p.get('slow_length', 21))
     win   = int(p.get('window',      14))
@@ -1631,6 +2240,7 @@ plotshape(_dema_sell ? _osc_px(_dema_fast, 0.0, 100.0, {slot}) : na,
 
 
 def _n_vol(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized Volume Delta block for strategy scripts."""
     col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.new(color.green, 20)')
     col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.new(color.red,   20)')
     wid  = max(1, min(5, int(p.get('line_width', 1))))
@@ -1650,6 +2260,7 @@ fill(_vol_z, _vol_b, close >= open ? color.new(n_vol_col_bull, 50) : color.new(n
 
 
 def _n_hor(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized Horcrux block for strategy scripts."""
     bb_len = int(p.get('bb_length', 20))
     lb     = int(p.get('lookback',  50))
     adj    = float(p.get('adjustment', 0.0))
@@ -1676,6 +2287,7 @@ plot(_osc_px(_hor_t, 0.0, 15.0, {slot}), "Hor Thr", n_hor_col, n_hor_width)
 
 
 def _n_relvol(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized Relative Volume block for strategy scripts."""
     length = int(p.get('relvol_length', 21))
     ratio  = float(p.get('relvol_ratio', 1.0))
     mode   = str(p.get('relvol_mode', 'Regular'))
@@ -1708,6 +2320,7 @@ fill(_rv_z, _rv_b, close >= open ? color.new(n_rv_col_bull, 50) : color.new(n_rv
 
 
 def _n_cumd(p: dict, slot: int) -> str:
+    """Return the Pine Script v5 normalized Cumulative Delta block for strategy scripts."""
     reset_mode = str(p.get('reset_mode', 'monthly')).lower()
     _tf_map    = {'auto': 'D', 'daily': 'D', 'monthly': 'M', 'none': ''}
     pine_tf    = _tf_map.get(reset_mode, 'M')
@@ -1719,7 +2332,7 @@ def _n_cumd(p: dict, slot: int) -> str:
     else:
         accum_line = '_cumd_v += _cumd_d'
     col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.new(color.teal,    20)')
-    col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.new(color.crimson, 20)')
+    col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.rgb(220, 20, 60, 20)')
     grp  = "CVD (combined) -- Style"
     return f"""\
 // ── CumDelta  (slot {slot}) ───────────────────────────────────────────────────
@@ -1748,6 +2361,7 @@ plot(_osc_px(0.0, _cumd_lo, _cumd_hi, {slot}), "CVD zero",
 
 
 def _t_wml(p: dict) -> str:
+    """Return the Pine Script v5 Weighted Momentum Levels overlay template with configurable params."""
     show_week  = bool(p.get('show_week',  True))
     show_month = bool(p.get('show_month', True))
     col_week  = _hex_to_pine_color(p.get('color_week',  ''), 'color.orange')
@@ -1874,6 +2488,7 @@ _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'mmm':    _t_mmm,
     'nsdt':   _t_nsdt,
     'oft':    _t_oft,
+    'pvt':    _t_pvt,
     'qtrend': _t_qtrend,
     'sup':    _t_sup,
     'vwap':   _t_vwap,
@@ -1946,6 +2561,7 @@ _STRAT_COL_INDICATOR: dict[str, str] = {
 # ── Per-indicator computation snippets (no plot / plotshape calls) ─────────────
 
 def _strat_heikin(p: dict) -> str:
+    """Return the Pine Script v5 Heikin-Ashi sell-condition expression."""
     _pine_ma = {'SMA': 'ta.sma', 'EMA': 'ta.ema', 'WMA': 'ta.wma',
                 'RMA': 'ta.rma', 'HMA': 'ta.hma'}
     smooth   = bool(p.get('smooth', False))
@@ -1986,6 +2602,7 @@ ha_ema_lo = {ma_fn}(ha_low,  {ell})
 
 
 def _strat_macd(p: dict) -> str:
+    """Return the Pine Script v5 MACD sell-condition expression."""
     fast = int(p.get('window_fast', 12))
     slow = int(p.get('window_slow', 26))
     sign = int(p.get('window_sign', 9))
@@ -1996,6 +2613,7 @@ def _strat_macd(p: dict) -> str:
 
 
 def _strat_rsi(p: dict) -> str:
+    """Return the Pine Script v5 RSI sell-condition expression."""
     lb  = int(p.get('lookback', 8))
     win = int(p.get('window',  14))
     return f"""\
@@ -2006,6 +2624,7 @@ str_rsi_ema = ta.sma(str_rsi, {win})
 
 
 def _strat_markov(p: dict) -> str:
+    """Return the Pine Script v5 Markov regime sell-condition expression."""
     lb       = int(p.get('lookback',  20))
     bull_pct = float(p.get('bull_pct', 5.0))
     bear_pct = float(p.get('bear_pct', 5.0))
@@ -2019,6 +2638,7 @@ str_regime  = na(str_log_ret) ? int(na) :
 
 
 def _strat_ewo(p: dict) -> str:
+    """Return the Pine Script v5 EWO sell-condition expression."""
     return """\
 // ── EWO ───────────────────────────────────────────────────────────────────────
 str_ewo     = ta.sma(close, 5) - ta.sma(close, 21)
@@ -2028,6 +2648,7 @@ str_ewo_ang = str_ewo - str_ewo[1]
 
 
 def _strat_stoch(p: dict) -> str:
+    """Return the Pine Script v5 Stochastic sell-condition expression."""
     win = int(p.get('window',        14))
     sm  = int(p.get('smooth_window',  3))
     return f"""\
@@ -2038,6 +2659,7 @@ str_stoch_d = ta.sma(str_stoch, {sm})
 
 
 def _strat_zcr(p: dict) -> str:
+    """Return the Pine Script v5 ZCR sell-condition expression."""
     win = int(p.get('window', 20))
     return f"""\
 // ── Z-Score ───────────────────────────────────────────────────────────────────
@@ -2094,6 +2716,7 @@ class PineExporter:
         oscillators: list[str],
         sys_conf=None,
     ):
+        """Initialize the exporter with indicator selections and optional sys_conf parameter overrides."""
         self.overlays    = overlays
         self.oscillators = oscillators
         self.sys_conf    = sys_conf
@@ -2101,6 +2724,7 @@ class PineExporter:
     # ── helpers ────────────────────────────────────────────────────────────────
 
     def _params(self, name: str) -> dict:
+        """Return stored parameter overrides for indicator_name from sys_conf."""
         if self.sys_conf is None:
             return {}
         try:
@@ -2108,24 +2732,47 @@ class PineExporter:
         except Exception:
             return {}
 
-    def _render_block(self, name: str, templates: dict) -> str:
+    def _render_block(self, name: str, templates: dict, with_toggle: bool = False) -> str:
+        """Emit one indicator Pine Script block into the appropriate overlay or oscillator buffer.
+
+        When *with_toggle* is True an ``input.bool`` visibility toggle is prepended
+        and all drawing calls are gated by it so the user can show/hide the indicator
+        independently in TradingView's Settings panel.
+        """
         if name in _UNSUPPORTED:
             return f"// ── {name.upper()} — not translatable to Pine Script ──────────────────\n\n"
         fn = templates.get(name)
         if fn is None:
             return f"// ── {name.upper()} — Pine template not yet implemented ─────────────────\n\n"
         try:
-            return fn(self._params(name)) + "\n"
+            body = fn(self._params(name))
+            # Inject attribution as the second line of the block, unless the
+            # template already carries its own authorship comment.
+            attr = _INDICATOR_ATTRIBUTION.get(name)
+            if attr and "// Author" not in body and "// Attribution" not in body:
+                first_newline = body.find("\n")
+                if first_newline != -1:
+                    body = (
+                        body[:first_newline + 1]
+                        + f"// Attribution: {attr}\n"
+                        + body[first_newline + 1:]
+                    )
+            body = body + "\n"
+            if with_toggle:
+                body = _add_visibility_toggle(name, body)
+            return body
         except Exception as exc:
             return f"// ── {name.upper()} — render error: {exc} ────────────────────────────────\n\n"
 
     @staticmethod
     def _header(title: str, overlay: bool) -> str:
+        """Return the Pine Script v5 script header with license, version, and title."""
         ol    = "true" if overlay else "false"
         extra = ", max_lines_count=500, max_labels_count=500" if overlay else ""
         ts    = datetime.now().strftime("%Y-%m-%d %H:%M")
         return (
-            f"//@version=5\n"
+            f"//@version=6\n"
+            f"{_PINE_LICENSE}"
             f"// Generated by Trading App — {ts}\n"
             f'indicator("{title}", overlay={ol}, max_bars_back=500{extra})\n\n'
         )
@@ -2133,14 +2780,26 @@ class PineExporter:
     # ── public API ─────────────────────────────────────────────────────────────
 
     def generate_overlay(self) -> str:
+        """Generate a self-contained Pine Script v5 overlay file for the selected overlays.
+
+        Each overlay gets an individual ``input.bool`` toggle in TradingView so users
+        can show or hide it without removing the whole indicator.
+        """
         if not self.overlays:
             return self._header("Overlays", True) + "// No overlays selected.\n"
-        body = "".join(self._render_block(n, _OVL_TEMPLATES) for n in self.overlays)
+        body = "".join(
+            self._render_block(n, _OVL_TEMPLATES, with_toggle=True)
+            for n in self.overlays
+        )
         return self._header("Overlays", True) + body
 
     def generate_oscillator_single(self, name: str) -> str:
-        """Generate a standalone Pine Script for ONE oscillator (its own pane)."""
-        body = self._render_block(name, _OSC_TEMPLATES)
+        """Generate a standalone Pine Script for ONE oscillator (its own pane).
+
+        A ``input.bool`` visibility toggle is included so the user can hide the
+        indicator without removing the script from the chart.
+        """
+        body = self._render_block(name, _OSC_TEMPLATES, with_toggle=True)
         return self._header(name.upper(), False) + body
 
     def generate_oscillator_zip(self, names: list[str]) -> bytes:
@@ -2155,10 +2814,13 @@ class PineExporter:
         return buf.getvalue()
 
     def generate_oscillator(self) -> str:
-        """Legacy: all oscillators combined in one file (kept for backwards compat)."""
+        """All oscillators combined in one file, each with its own visibility toggle."""
         if not self.oscillators:
             return self._header("Oscillators", False) + "// No oscillators selected.\n"
-        body = "".join(self._render_block(n, _OSC_TEMPLATES) for n in self.oscillators)
+        body = "".join(
+            self._render_block(n, _OSC_TEMPLATES, with_toggle=True)
+            for n in self.oscillators
+        )
         return self._header("Oscillators", False) + body
 
     def generate_combined(
@@ -2183,7 +2845,8 @@ class PineExporter:
         osc_names = ", ".join(self.oscillators) or "–"
 
         header = (
-            f"//@version=5\n"
+            f"//@version=6\n"
+            f"{_PINE_LICENSE}"
             f"// Generated by Trading App — {ts}\n"
             f"// Combined chart -- overlays on price + oscillators in bottom "
             f"{osc_pct:.0f}% of chart\n"
@@ -2335,7 +2998,8 @@ class PineExporter:
 
         # ── 4. Assemble the script ─────────────────────────────────────────────
         header = (
-            f"//@version=5\n"
+            f"//@version=6\n"
+            f"{_PINE_LICENSE}"
             f"// Generated by Trading App — {ts}\n"
             f"// Buy  : {buy_query}\n"
             f"// Sell : {sell_query}\n"

@@ -6,7 +6,7 @@
 # Falls es fehlschlägt: https://github.com/ta-lib/ta-lib-python
 
 # --- Web-Framework ---
-streamlit>=1.55.0,<2.0
+streamlit>=1.40.0,<1.56.0
 streamlit-nested-layout>=0.1.4
 extra-streamlit-components>=0.1.81
 
@@ -18,9 +18,10 @@ cryptography>=40.0
 
 # --- Daten ---
 yfinance>=1.2.0
-pandas>=2.3.0
-numpy>=2.0.0
+pandas>=2.0.0
+numpy>=1.26.0
 openpyxl>=3.1.0
+duckdb>=1.0.0
 
 # --- Visualisierung ---
 plotly>=6.0.0
@@ -29,10 +30,11 @@ plotly>=6.0.0
 ta>=0.11.0
 TA-Lib>=0.6.0
 finta>=1.3
+scipy>=1.11.0
 
 # --- Machine Learning ---
-scikit-learn>=1.8.0
-xgboost>=3.0.0
+scikit-learn>=1.3.0
+xgboost>=2.0.0
 
 # --- Scheduling ---
 schedule>=1.2.0
@@ -45,10 +47,17 @@ pandas_market_calendars>=5.0.0
 beautifulsoup4>=4.14.0
 feedparser>=6.0.0
 nltk>=3.9.0
+selenium>=4.0.0
 
 # --- Broker APIs ---
 alpaca-py>=0.38.0
+ib_insync>=0.9.86
+
+# --- KI-APIs ---
+google-genai>=1.0.0
+groq>=0.11.0
 
 # --- System ---
 psutil>=5.0.0
 requests>=2.31.0
+tqdm>=4.0.0

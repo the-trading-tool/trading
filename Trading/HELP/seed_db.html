@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>seed_db.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Datenbank initialisieren <small style="font-size:.6em;color:#888">seed_db.py</small></h1>
+
+<p>Erstellt die initiale Ticker-Datenbank (<code>yf_tickers.db</code>) mit vordefinierten Indexmitgliedern. Einmaliger Setup-Schritt bei der ersten Installation.</p>
+
+<h2>Aufruf</h2>
+<pre>python seed_db.py
+python seed_db.py --dry-run   # Nur anzeigen, was geschrieben würde</pre>
+
+<h2>Enthaltene Indizes</h2>
+<table>
+<tr><th>Index</th><th>Inhalt</th></tr>
+<tr><td><b>DAX 40</b></td><td>40 größte deutsche Unternehmen (XETRA)</td></tr>
+<tr><td><b>MDAX</b></td><td>60 mittelgroße deutsche Unternehmen</td></tr>
+<tr><td><b>SDAX</b></td><td>70 kleinere deutsche Unternehmen</td></tr>
+<tr><td><b>S&amp;P 500</b></td><td>500 größte US-amerikanische Unternehmen</td></tr>
+<tr><td><b>Index-Instrumente</b></td><td>Die Indizes selbst (^GDAXI, ^MDAXI, ^SPX …)</td></tr>
+</table>
+
+<h2>Setup-Reihenfolge (Erstinstallation)</h2>
+<ol>
+  <li><code>python seed_db.py</code> – Ticker-DB anlegen</li>
+  <li><code>python get_asset_info.py</code> – Fundamentaldaten laden</li>
+  <li><code>python get_asset_data.py 1d:2y</code> – Historische Kurse laden</li>
+  <li><code>python asset_perf2.py</code> – Indikatoren berechnen</li>
+  <li><code>streamlit run asset_analyzer.py</code> – App starten</li>
+</ol>
+
+<div class="warn">Bereits vorhandene Einträge in <code>yf_tickers.db</code> werden nicht überschrieben. Für einen kompletten Reset die Datei vorher löschen.</div>
+<div class="info">Eigene Ticker können nach dem Seeding jederzeit über das Admin-Panel hinzugefügt werden.</div>
+</body>
+</html>

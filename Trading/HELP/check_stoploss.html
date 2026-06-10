@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>check_stoploss.py – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Stop-Loss-Prüfung <small style="font-size:.6em;color:#888">check_stoploss.py</small></h1>
+
+<p>Überwacht alle offenen Positionen und prüft, ob der Kurs den ATR-Trailing-Stop unterschritten hat. Kann bei Unterschreitung automatisch eine Verkaufsorder auslösen.</p>
+
+<h2>ATR-Trailing-Stop Konzept</h2>
+<p>Stop-Loss-Level = Höchstkurs seit Kauf (<b>HWM</b>) minus N × ATR</p>
+<ul>
+  <li><b>HWM</b> – Highest Water Mark (höchster erreichter Kurs seit Einstieg)</li>
+  <li><b>ATR</b> – Average True Range (Maß für die durchschnittliche Tagesvolatilität)</li>
+  <li><b>N</b> – konfigurierbarer Multiplikator (Standard: 2,0)</li>
+</ul>
+<p>Der Stop-Level wird täglich nach oben angepasst, wenn der Kurs steigt – nie nach unten.</p>
+
+<h2>Aufruf</h2>
+<pre>python check_stoploss.py [Optionen]</pre>
+
+<h2>Parameter</h2>
+<table>
+<tr><th>Parameter</th><th>Standard</th><th>Bedeutung</th></tr>
+<tr><td><code>--atr-mult</code></td><td>2.0</td><td>ATR-Multiplikator für Stop-Level-Berechnung</td></tr>
+<tr><td><code>--user</code></td><td>admin</td><td>Benutzer-Kontext</td></tr>
+<tr><td><code>--broker</code></td><td>alpaca</td><td>Broker-Backend für Verkaufsorders</td></tr>
+<tr><td><code>--mode</code></td><td>paper</td><td><code>paper</code> oder <code>live</code></td></tr>
+<tr><td><code>--execute</code></td><td>Nein</td><td>Order tatsächlich absenden (sonst nur Prüfung)</td></tr>
+<tr><td><code>--live</code></td><td>Nein</td><td>Aktuellen Live-Kurs von Broker abrufen statt Yahoo</td></tr>
+<tr><td><code>--notify</code></td><td>Nein</td><td>Pushover-Alert bei Stop-Unterschreitung senden</td></tr>
+</table>
+
+<h2>Exit-Codes</h2>
+<table>
+<tr><th>Code</th><th>Bedeutung</th></tr>
+<tr><td><code>0</code></td><td>Keine Stop-Level-Unterschreitung</td></tr>
+<tr><td><code>1</code></td><td>Mindestens ein Stop-Level wurde unterschritten</td></tr>
+<tr><td><code>2</code></td><td>Fehler (Broker, Datenbank …)</td></tr>
+</table>
+
+<div class="info">Die Batch-Datei <code>check_stoploss.bat</code> ist ein Windows-Wrapper. Für intraday-Überwachung alle 15–30&nbsp;Minuten per Scheduler ausführen.</div>
+<div class="warn">Mit <code>--execute --mode live</code> werden echte Verkaufsorders aufgegeben. Zuerst ohne <code>--execute</code> testen.</div>
+</body>
+</html>

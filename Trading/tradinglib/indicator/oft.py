@@ -7,7 +7,7 @@ import streamlit as st
 try:
     sys.path.insert(0, "../../tradinglib/indicator")
 except ImportError:
-    print('No Import')
+    pass
 
 from tradinglib.indicator import _indicator
 
@@ -25,6 +25,7 @@ class Oft(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", period=21, ob_periods=3, ob_threshold=0.0, use_wicks=False, ob_extend="right"):
+        """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.period = period
         self.ob_periods = ob_periods
@@ -32,11 +33,11 @@ class Oft(_indicator._Indicator):
         self.ob_extend = ob_extend
         self.use_wicks = use_wicks
         self.data()
-#        self.add_fig()
 
     def data(self):
+        """Compute the indicator values and attach them as columns to self.df."""
 
-        self.df.ffill(inplace=True)
+        self.df = self.df.ffill()
 
         # 1. Order Flow Volumen
         self.df['oft_price_change'] = self.df['Close'].diff()
@@ -51,10 +52,12 @@ class Oft(_indicator._Indicator):
 
         # 3. Support/Resistance
         def find_levels(window=21, min_distance=0.5):
+            """Detect significant price levels from the OHLCV data."""
             support = self.df['Close'].rolling(window).min().dropna().drop_duplicates()
             resistance = self.df['Close'].rolling(window).max().dropna().drop_duplicates()
 
             def filter_levels(levels, min_distance):
+                """Filter overlapping or redundant price levels by proximity."""
                 filtered = []
                 for level in sorted(levels):
                     if not filtered or abs(level - filtered[-1]) >= min_distance:
@@ -129,9 +132,10 @@ class Oft(_indicator._Indicator):
             pass
 
     def add_fig(self):
+        """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
-            self.df.reset_index(inplace=True)
+            self.df = self.df.reset_index()
         except Exception:
             pass
 
@@ -172,7 +176,6 @@ class Oft(_indicator._Indicator):
                     y=self.df['oft_ob_bull'],
                     mode="markers",
                     marker=dict(color='green', size=10, symbol="x"),
-#                    line=dict(color='green', width=10),
                     showlegend=False,
                     name='oft_ob_bull'
                 )
@@ -185,7 +188,6 @@ class Oft(_indicator._Indicator):
                     y=self.df['oft_ob_bear'],
                     mode="markers",
                     marker=dict(color='red', size=10, symbol="x"),
-#                    line=dict(color='green', width=10),
                     showlegend=False,
                     name='oft_ob_bear'
                 )
@@ -244,5 +246,4 @@ class Oft(_indicator._Indicator):
         except Exception as e:
             st.write(e)
             pass
-        
-    
+
