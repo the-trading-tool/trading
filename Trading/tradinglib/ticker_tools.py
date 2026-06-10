@@ -321,6 +321,8 @@ class TickerTools(tools.Tools):
             except Exception:
                 pass
             if self.get_num_rows(df) > 0:
+                tz_info = getattr(self, 'tz_info', 'Europe/Berlin')
+                df.index = DataUtils.convert_utc_naive_to_tz(df.index, tz=tz_info)
                 df.index = df.index.strftime(self.ftime_str)
                 df.index = pd.to_datetime(df.index).strftime(self.ftime_str)
                 df.index.name = 'Date'

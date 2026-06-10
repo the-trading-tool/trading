@@ -264,6 +264,25 @@ class DataUtils():
             return obj
 
     @staticmethod
+    def convert_utc_naive_to_tz(idx, tz: str = 'Europe/Berlin'):
+        """Convert a tz-naive datetime Index assumed to be UTC into tz-naive local time in `tz`.
+
+        Used to display timestamps (which are stored/normalized as UTC-naive) in the
+        exchange's local timezone, e.g. Xetra daily candles dated 00:00 Europe/Berlin.
+        Returns the index unchanged if it is not datetime-like or conversion fails.
+        """
+        try:
+            idx_dt = pd.to_datetime(idx, errors='coerce')
+            if not isinstance(idx_dt, pd.DatetimeIndex):
+                return idx
+            if idx_dt.tz is None:
+                idx_dt = idx_dt.tz_localize('UTC')
+            return idx_dt.tz_convert(tz).tz_localize(None)
+        except Exception:
+            logger.exception('convert_utc_naive_to_tz failed')
+            return idx
+
+    @staticmethod
     def get_bin_excel_data(data: pd.DataFrame, tbl: str = 'results') -> BytesIO:
         """Serialize a DataFrame to an in-memory Excel file and return a BytesIO object."""
         output = BytesIO()

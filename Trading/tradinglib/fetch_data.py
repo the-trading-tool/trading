@@ -14,6 +14,7 @@ from tradinglib.indicator import indicator
 from tradinglib import ticker_tools as tt
 from tradinglib import system_config as sysconf
 from tradinglib.tools import open_db
+from tradinglib.utils import DataUtils
 from datetime import datetime, timedelta
 import streamlit as st
 
@@ -88,7 +89,6 @@ class FetchData(tt.TickerTools):
 
         self.database_path = database_path
         self.indicators = indicators
-        self.tz_info = tz_info
         self.database_name = database_name
         self.database = self.get_path(path = database_path, file_name=database_name)
         # sys_conf von außen übernehmen (z.B. von tiny_chart) damit Username-konsistenz
@@ -99,6 +99,8 @@ class FetchData(tt.TickerTools):
         else:
             self.config = sysconf.SystemConfig()
             self.sys_conf = self.config
+        # tz_info immer aus der Config lesen (Default = übergebener/Konstruktor-Wert)
+        self.tz_info = self.sys_conf.get_value("tz_info", default=tz_info)
         self.system_currency = self.sys_conf.get_value("system_currency", "EUR")
         self.buy_query = buy_query
         self.sell_query = sell_query
@@ -208,8 +210,9 @@ class FetchData(tt.TickerTools):
                 df = df.set_index('Date')
                 df.index = pd.to_datetime(df.index, format='mixed')
 
-                diff = 1
-                df.index = df.index + pd.Timedelta(hours=diff)
+                # Gespeicherte Zeitstempel sind tz-naive UTC -> auf konfigurierte
+                # Anzeige-Zeitzone (z.B. Europe/Berlin) umrechnen
+                df.index = DataUtils.convert_utc_naive_to_tz(df.index, tz=self.tz_info)
 
                 df.index = df.index.strftime(self.ftime_str)
                 df.index.name = 'Date'
