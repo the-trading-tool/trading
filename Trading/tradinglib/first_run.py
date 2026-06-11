@@ -399,7 +399,7 @@ credentials:
 
 cookie:
   expiry_days: 30
-  key: trading_app_secret_key_change_me
+  key: {cookie_key}
   name: trading_app_auth
 
 preauthorized:
@@ -434,7 +434,13 @@ def ensure_config_yaml() -> bool:
         # streamlit-authenticator nur wenn es intern bcrypt aufruft)
         pw_hash = "$2b$12$BpqOS0p/5FOARlHbxZ3rWuyciiZYtqSWmzXwD/yLcpfzGMn3YzQeG"
 
-    content = _DEFAULT_CONFIG_YAML.format(pw_hash=pw_hash)
+    # Pro-Installation einen zufälligen Cookie-Signing-Key erzeugen. Der Key
+    # signiert das Auth-JWT (HS256) — ein fester Default-Wert im öffentlichen
+    # Repo würde es jedem erlauben, gültige Admin-Cookies selbst zu fälschen.
+    import secrets
+    cookie_key = secrets.token_hex(32)
+
+    content = _DEFAULT_CONFIG_YAML.format(pw_hash=pw_hash, cookie_key=cookie_key)
 
     try:
         config_path.write_text(content, encoding="utf-8")

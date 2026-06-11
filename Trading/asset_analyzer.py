@@ -286,7 +286,29 @@ class TradingApp:
     def load_config(self):
         """Parse config.yaml and return the configuration dict."""
         with open(ts.Tools().get_path('', self.config_file)) as file:
-            return yaml.load(file, Loader=SafeLoader)    
+            config = yaml.load(file, Loader=SafeLoader)
+        self._warn_insecure_defaults(config)
+        return config
+
+    def _warn_insecure_defaults(self, config):
+        """Log a loud warning if config.yaml still uses the placeholder cookie key.
+
+        Older installs were created with a fixed cookie signing key
+        (`trading_app_secret_key_change_me`) baked into the public repo. Anyone
+        who knows it can forge valid auth JWTs, so an unchanged key is a full
+        auth bypass on a network-reachable deployment.
+        """
+        try:
+            cookie_key = config.get('cookie', {}).get('key', '')
+        except AttributeError:
+            return
+        if cookie_key == 'trading_app_secret_key_change_me':
+            logging.getLogger(__name__).warning(
+                "SECURITY: config.yaml uses the default cookie signing key — "
+                "anyone with the public repo can forge admin sessions. "
+                "Replace cookie.key with a random value, e.g. "
+                "python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
 
     def local_css(self, file_name):
         """Inject a local CSS file into the Streamlit app via st.markdown."""
