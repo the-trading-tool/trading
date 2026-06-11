@@ -71,38 +71,54 @@ class GraphTools:
         freq = dt_counts.index[0]
         freq_h = freq.total_seconds() / 3600
 
-        # 2. Krypto-Erkennung: nur echte 24/7-Assets haben Daten an BEIDEN
-        #    Samstagen UND Sonntagen. Forex (CCY) und Futures öffnen Sonntag-Nacht,
-        #    haben aber KEINEN Samstag → werden korrekt als nicht-24/7 erkannt.
-        has_saturday = df['Date'].dt.dayofweek.eq(5).any()
-        has_sunday   = df['Date'].dt.dayofweek.eq(6).any()
-        is_24_7 = (exchange in ['CCX', 'CCC']) or (has_saturday and has_sunday)
+        dow = df['Date'].dt.dayofweek
+
+        # 2. Krypto-/24/7-Erkennung. Seit der tz_info-Anzeigekonvertierung können
+        #    US-Postmarket- (Sa 0-2 Uhr Berlin) und Forex-Kerzen auf dem Samstag
+        #    landen — bloßes Vorhandensein von Sa+So reicht daher bei Intraday
+        #    nicht mehr: dort braucht es substanzielle Abdeckung beider Tage.
+        if freq < pd.Timedelta(days=1):
+            sat_cov = df.loc[dow == 5, 'Date'].dt.hour.nunique()
+            sun_cov = df.loc[dow == 6, 'Date'].dt.hour.nunique()
+            is_24_7 = (exchange in ['CCX', 'CCC']) or (sat_cov >= 6 and sun_cov >= 6)
+        else:
+            is_24_7 = (exchange in ['CCX', 'CCC']) or (dow.eq(5).any() and dow.eq(6).any())
         if is_24_7:
             return []
 
         breaks = []
 
         if freq < pd.Timedelta(days=1):
-            # --- INTRADAY: Handelszeiten direkt aus den UTC-Zeitstempeln ableiten ---
-            weekday_df = df[df['Date'].dt.dayofweek < 5].copy()
+            # --- INTRADAY: Nacht-Break = größte zirkuläre Lücke im Stunden-Histogramm.
+            # Robust gegen Sessions, die über Mitternacht laufen (US-Assets in
+            # Berlin-Zeit handeln inkl. Pre/Post-Market 10:00 → 02:00 Folgetag):
+            # ein Tages-min/max sähe dort 0..23 Uhr und fände keinen Break.
+            weekday_df = df[dow < 5].copy()
             if weekday_df.empty:
                 return []
 
-            weekday_df['dec_hour'] = (
+            dec_hour = (
                 weekday_df['Date'].dt.hour + weekday_df['Date'].dt.minute / 60.0
-            )
+            ).round(2)
 
-            # Pro Tag früheste und späteste Kerze — Median über alle Tage
-            daily = weekday_df.groupby(weekday_df['Date'].dt.date)['dec_hour']
-            h_start = daily.min().median()
-            h_end   = daily.max().median()
+            # Nur regelmäßig besetzte Stunden-Slots werten — einzelne Ausreißer
+            # (z.B. die laufende, angebrochene Kerze) dürfen die Lücke nicht teilen.
+            counts = dec_hour.value_counts()
+            n_days = weekday_df['Date'].dt.date.nunique()
+            slots = sorted(counts[counts >= max(2, 0.05 * n_days)].index)
 
-            # Kein Nacht-Break für Near-24h-Assets (Forex, Futures ≥ 20h Handelszeit)
-            trading_duration = h_end - h_start + freq_h
-            if trading_duration < 20:
-                b_start = (h_end + freq_h) % 24
-                b_end   = h_start
-                breaks.append(dict(bounds=[b_start, b_end], pattern="hour"))
+            gaps = []
+            for i, h in enumerate(slots):
+                nxt = slots[(i + 1) % len(slots)]
+                raw = (nxt - h) % 24
+                width = raw - freq_h  # Slots können enger als freq_h liegen (DST-Mischfenster)
+                if width > 0:
+                    gaps.append((width, (h + freq_h) % 24, nxt))
+            if gaps:
+                width, b_start, b_end = max(gaps)
+                # Nur echte Nachtlücken — Near-24h-Assets (Forex) haben keine
+                if width >= max(2 * freq_h, 1.0):
+                    breaks.append(dict(bounds=[float(b_start), float(b_end)], pattern="hour"))
 
             breaks.append(dict(bounds=["sat", "mon"]))
 

@@ -191,6 +191,7 @@ class Performance(tt.TickerTools):
                 period=period,
                 add_overlays=overlays,
                 add_sub_plots=oszilators,
+                range_breaks=True,
                 username=self.username,
                 url="/?details=true&symbol=",
             )
