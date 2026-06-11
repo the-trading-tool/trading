@@ -1,6 +1,7 @@
 import sqlite3
 import os
 from io import BytesIO
+import numpy as np
 import pandas as pd
 from typing import Iterable
 import json
@@ -327,6 +328,11 @@ class DataUtils():
 
         - If obj is a DataFrame and `col` is provided, returns the last value for that column or default.
         - If obj is a Series and `col` is None, returns the last value or default.
+
+        numpy scalars are converted to native Python types via .item(): numpy.int64
+        does not subclass int, so sqlite3 stores it as an 8-byte BLOB instead of an
+        INTEGER, which later crashes st.dataframe's astype("string"). Returning a
+        native int/float keeps persisted values typed correctly.
         """
         try:
             if col is not None:
@@ -334,12 +340,13 @@ class DataUtils():
                     return default
                 if col not in obj.columns:
                     return default
-                return obj[col].iat[-1]
+                val = obj[col].iat[-1]
             else:
                 # assume Series-like
                 if obj is None or len(obj) == 0:
                     return default
-                return obj.iat[-1]
+                val = obj.iat[-1]
+            return val.item() if isinstance(val, np.generic) else val
         except Exception:
             return default
 
