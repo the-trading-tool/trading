@@ -1,5 +1,4 @@
 import logging
-from turtle import st
 import pandas as pd
 import pandas_market_calendars as mcal
 import time
