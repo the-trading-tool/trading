@@ -65,12 +65,13 @@ class ChartsGridRenderer:
 
     def render(self, *, tickers, tc, period, interval, overlays, oszilators, username, url, chart_config,
                name_df=None, mkt=None, name_lookup_col: str = 'ticker', name_field: str = 'longName',
-               region: Optional[object] = None, log_exceptions: bool = False):
+               region: Optional[object] = None, log_exceptions: bool = False, progress_callback=None):
         """Render the grid.
 
         region: optional streamlit-like region object (defaults to global st). The region must provide
                 .empty() and .columns(n) methods.
         log_exceptions: if True, print exceptions with the symbol name to aid debugging (matches prior behavior).
+        progress_callback: optional callable(done, total) invoked after each ticker has been processed.
         """
         if region is None:
             region = st
@@ -134,3 +135,9 @@ class ChartsGridRenderer:
                     except Exception:
                         logger.warning("Error occurred while plotting chart: %s", e)
                 continue
+            finally:
+                if progress_callback is not None:
+                    try:
+                        progress_callback(p + 1, items)
+                    except Exception:
+                        pass

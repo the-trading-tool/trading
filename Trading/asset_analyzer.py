@@ -47,6 +47,34 @@ from tradinglib.i18n import t
 # are visible when running Streamlit. Adjust level if too verbose.
 lgc.enable_logging(to_console=False, level='DEBUG')
 
+
+def _tab_overlay(label: str) -> str:
+    """Full-viewport loading overlay for use with st.empty() outside tab context.
+    Must be placed in a placeholder that lives OUTSIDE any `with tab_X:` block so
+    that `position:fixed` is resolved against the real viewport, not the tab-panel's
+    transform stacking context (which would make the overlay small and mis-positioned).
+    """
+    return (
+        '<style>@keyframes _tt_spin{to{transform:rotate(360deg)}}</style>'
+        '<div style="position:fixed;top:0;left:0;right:0;bottom:0;'
+        'width:100vw;height:100vh;background:rgba(10,12,20,0.55);'
+        'z-index:99999;display:flex;align-items:center;justify-content:center;">'
+        '<div style="display:flex;flex-direction:column;align-items:center;'
+        'gap:2rem;padding:3rem 4rem;border-radius:1.5rem;'
+        'background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);'
+        '-webkit-backdrop-filter:blur(12px);">'
+        '<div style="width:80px;height:80px;border-radius:50%;flex-shrink:0;'
+        'border:6px solid rgba(255,255,255,0.15);border-top-color:#5b9cf6;'
+        'animation:_tt_spin 0.85s linear infinite;"></div>'
+        f'<p style="color:#dce4ef;font-size:1.4rem;font-weight:500;margin:0;'
+        f'letter-spacing:0.04em;">'
+        f'<span style="opacity:0.5;font-size:0.8em;font-weight:400;'
+        f'letter-spacing:0.1em;text-transform:uppercase;">Loading: </span>'
+        f'{label} …</p>'
+        '</div></div>'
+    )
+
+
 class PortfolioOptimizer:
     def __init__(self, tickers, investment_per_asset=2000):
         """Set up the optimizer with a ticker list and a per-asset investment budget."""
@@ -485,22 +513,33 @@ class TradingApp:
             except Exception as e:
                 pass
 
-            with st.spinner(t('summary.wait_graphs'), show_time=True):
-                renderer = ChartsGridRenderer(columns=2)
-                renderer.render(
-                    tickers=tickers,
-                    mkt=mkt,
-                    tc=tc,
-                    period=period,
-                    interval=interval,
-                    overlays=overlays,
-                    oszilators=oszilators,
-                    username=self.username,
-                    url=self.url,
-                    chart_config=gt.chart_config,
+            _spin = st.empty()
+            _total = len(tickers)
+
+            def _graphs_progress(done, total):
+                _spin.markdown(
+                    _tab_overlay(f"{t('summary.wait_graphs')} ({done}/{total})"),
+                    unsafe_allow_html=True,
                 )
 
-                st.write(t('summary.last_chart_update', ts=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            _graphs_progress(0, _total)
+            renderer = ChartsGridRenderer(columns=2)
+            renderer.render(
+                tickers=tickers,
+                mkt=mkt,
+                tc=tc,
+                period=period,
+                interval=interval,
+                overlays=overlays,
+                oszilators=oszilators,
+                username=self.username,
+                url=self.url,
+                chart_config=gt.chart_config,
+                progress_callback=_graphs_progress,
+            )
+            _spin.empty()
+
+            st.write(t('summary.last_chart_update', ts=dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     
     def show_navigation_links(self):
         """Build the sidebar navigation with grouped expanders and same-tab button navigation."""
