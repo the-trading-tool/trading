@@ -221,7 +221,11 @@ class DataVisualizer(tt.TickerTools):
         # use central util for excel export
 
         tickers = combined_df["ticker"].tolist()
-        combined_df['marketCap']=combined_df['marketCap'].astype('float')
+        # asset_info-Spalten können als TEXT gespeichert sein (alte, via
+        # bulk_upsert_dicts angelegte DBs) — strings tolerant nach float wandeln
+        for _num_col in ('marketCap', 'enterpriseValue', 'ebitdaMargins',
+                         'totalDebt', 'totalRevenue'):
+            combined_df[_num_col] = pd.to_numeric(combined_df[_num_col], errors='coerce')
         combined_df['dTrend']=combined_df['dTrend'].round(2)
         combined_df['wkTrend']=combined_df['wkTrend'].round(2)
         combined_df['moTrend']=combined_df['moTrend'].round(2)

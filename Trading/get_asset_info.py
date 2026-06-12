@@ -1,6 +1,4 @@
-import sqlite3
 import yfinance as yf
-from datetime import datetime
 import json
 import pandas as pd
 import logging
@@ -19,7 +17,6 @@ db_name = ts.Tools().get_path(path = 'database', file_name="asset_info.db")
 
 # Verbindung zur SQLite-Datenbank herstellen (oder erstellen, falls sie nicht existiert)
 conn = open_db(db_name, timeout=10)
-cursor = conn.cursor()
 
 # Liste der Tickersymbole
 
@@ -86,106 +83,6 @@ def get_data_yf(symbol, period='1d', interval='1m'):
         pass
 
     return df, ticker
-
-# Funktion zur Erstellung der Tabelle, falls sie nicht existiert
-def create_table(cursor, keys, info):
-
-    columns = ['ticker TEXT PRIMARY KEY']
-
-    for key in keys:
-        # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
-        if key[0].isdigit():
-            column_name = f"_{key}"
-        else:
-            column_name = key
-        
-        # Typ des ersten nicht-None Wertes bestimmen
-        value = info.get(key, None)
-        if value is None:
-            column_type = "REAL"
-        elif isinstance(value, str):
-            column_type = "TEXT"
-        elif isinstance(value, (int, float)):
-            column_type = "REAL"
-        elif isinstance(value, list):
-            column_type = "TEXT"  # Listen werden als JSON-Strings gespeichert
-        else:
-            column_type = "TEXT"  # Fallback zu TEXT, wenn der Typ nicht klar ist
-
-        columns.append(f"{column_name} {column_type}")
-    
-    columns_sql = ', '.join(columns)
-    
-    cursor.execute(f"""
-    CREATE TABLE IF NOT EXISTS asset_info (
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-        {columns_sql}
-    )
-    """)
-
-# Funktion zur Erstellung oder Ergänzung der Tabelle, falls sie nicht existiert oder neue Spalten hinzugefügt werden müssen
-def ensure_table_and_columns(cursor, ticker, keys, info):
-    # Prüfe, ob die datenbank existiert
-    cursor.execute(f"PRAGMA table_info('asset_info')")
-    existing_columns = {row[1] for row in cursor.fetchall()}  # Set von existierenden Spaltennamen
-    if len(existing_columns) == 0:
-        # Sicherstellen, dass die Tabelle existiert
-        create_table(cursor, keys, info)
-    
-    else:
-        for key in keys:
-            # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
-            if key[0].isdigit():
-                column_name = f"_{key}"
-            else:
-                column_name = key
-        
-            # Wenn die Spalte noch nicht existiert, füge sie hinzu
-            if column_name not in existing_columns:
-                value = info.get(key, None)
-                if value is None:
-                    column_type = "REAL"
-                elif isinstance(value, str):
-                    column_type = "TEXT"
-                elif isinstance(value, (int, float)):
-                    column_type = "REAL"
-                elif isinstance(value, list):
-                    column_type = "TEXT"  # Listen werden als JSON-Strings gespeichert
-                else:
-                    column_type = "TEXT"  # Fallback zu TEXT, wenn der Typ nicht klar ist
-
-                cursor.execute(f"ALTER TABLE asset_info ADD COLUMN {column_name} {column_type}")
-
-# Funktion, um die Tabelle mit den Daten zu befüllen
-def insert_data(cursor, ticker, keys, info):
-    values = [ticker]
-    column_names = ['ticker']
-
-    for key in keys:
-        # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
-        if key[0].isdigit():
-            column_name = f"_{key}"
-        else:
-            column_name = key
-        
-        column_names.append(column_name)
-        
-        try:
-            value = info.get(key, None)  # Abrufen des Werts für den Schlüssel
-            if isinstance(value, list):
-                value = json.dumps(value)  # Listen in JSON-Strings umwandeln
-        except Exception as e:
-            print(f"Fehler beim Abrufen des Werts für {key} in {ticker}: {e}")
-            value = None  # Setze den Wert auf None, falls ein Fehler auftritt
-        
-        values.append(value)
-    
-    print(f'{ticker}')
-    placeholders = ', '.join(['?'] * (len(values) + 1))  # +1 für den timestamp
-    cursor.execute(f"""
-    INSERT OR REPLACE INTO asset_info (timestamp, {', '.join(column_names)})
-    VALUES ({placeholders})
-    """, [datetime.now()] + values)
 
 count = 0
 batch = []

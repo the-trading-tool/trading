@@ -446,11 +446,31 @@ class DataUtils():
         conn.commit()
 
     @staticmethod
+    def _infer_column_type(rows: list[dict], col: str) -> str:
+        """Return the SQLite column type for col based on the first non-None value.
+
+        TEXT-Affinität würde Zahlen als Strings speichern — pd.read_sql liefert
+        dann object-dtype und Arithmetik (z.B. div) crasht mit 'str'/'int'.
+        Deshalb numerische Werte als REAL anlegen.
+        """
+        for r in rows:
+            v = r.get(col)
+            if v is None:
+                continue
+            if isinstance(v, bool):
+                return "INTEGER"
+            if isinstance(v, (int, float)):
+                return "REAL"
+            return "TEXT"
+        return "TEXT"
+
+    @staticmethod
     def bulk_upsert_dicts(conn: sqlite3.Connection, table_name: str, rows: list[dict]) -> None:
         """Insert or replace a list of dict-like rows into a table using executemany.
 
         - rows: list of dicts mapping column_name -> value
-        - will ensure the table exists and add missing columns as TEXT
+        - will ensure the table exists and add missing columns (type inferred
+          from the row values: REAL/INTEGER for numbers, sonst TEXT)
         - stores lists/dicts as JSON strings
         """
         if not rows:
@@ -479,7 +499,7 @@ class DataUtils():
                 if c == first_col:
                     cols_def_parts.append(f"{c} TEXT PRIMARY KEY")
                 else:
-                    cols_def_parts.append(f"{c} TEXT")
+                    cols_def_parts.append(f"{c} {DataUtils._infer_column_type(rows, c)}")
             cols_def = ', '.join(cols_def_parts)
             cur.execute(f"CREATE TABLE IF NOT EXISTS {table_name} (timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, {cols_def})")
             existing = set(superset_cols) | {'timestamp'}
@@ -487,7 +507,7 @@ class DataUtils():
             # add any missing columns
             for c in superset_cols:
                 if c not in existing:
-                    cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {c} TEXT")
+                    cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {c} {DataUtils._infer_column_type(rows, c)}")
                     existing.add(c)
 
         # prepare executemany
