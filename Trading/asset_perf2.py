@@ -30,9 +30,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 INDICATOR_BACKFILL_MAP: dict = {
     'heikin':  ['ha_close', 'ha_open', 'ha_ema_high', 'ha_ema_low'],
-    # markov_regime_wk/_mo werden nur im normalen Simulationslauf befüllt
-    # (separate Markov-Instanz auf df_weekly/df_monthly) — der Backfill
-    # rechnet bislang nur auf Tagesbasis, daher hier nur markov_regime.
     'markov':  ['markov_regime'],
     'macd':    ['macd', 'macd_diff', 'macd_signal', 'macd_trend'],
     'rsi':     ['rsi', 'rsi_ema', 'momentum'],
@@ -43,6 +40,15 @@ INDICATOR_BACKFILL_MAP: dict = {
     'sup':     ['sup_support', 'sup_resistance'],
     'relvol':  ['relvol_ratio'],
     'atc':     ['atc_top_high', 'atc_bot_low'],
+}
+
+# Indicators that are additionally computed on higher timeframes during
+# backfill. Each entry: (interval, period, column_suffix). The indicator runs
+# on the wk/mo OHLCV and its columns from INDICATOR_BACKFILL_MAP are
+# forward-filled onto the daily index (a wk/mo value holds until the next
+# wk/mo bar closes) and stored as <col><suffix>, e.g. markov_regime_wk.
+INDICATOR_BACKFILL_TF: dict = {
+    'markov': [('1wk', '6y', '_wk'), ('1mo', '10y', '_mo')],
 }
 
 
@@ -87,10 +93,35 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
         except Exception as e:
             logger.warning("backfill %s / %s: indicator error: %s", symbol, ind_name, e)
 
+    # 2b. Higher-timeframe variants (INDICATOR_BACKFILL_TF) — run the indicator
+    #     on local wk/mo OHLCV and forward-fill onto the daily index
+    for ind_name in indicator_names:
+        for interval, period, suffix in INDICATOR_BACKFILL_TF.get(ind_name, []):
+            try:
+                df_tf = ft.load_price_data(symbol, period, interval)
+                if df_tf is None or df_tf.empty:
+                    continue
+                df_tf = DataUtils.ensure_datetime_index(df_tf)
+                ft.init_instance(ind_name, df=df_tf, symbol=symbol)
+                inst = getattr(ft, ind_name, None)
+                if inst is None or not hasattr(inst, 'df'):
+                    continue
+                for base_col in INDICATOR_BACKFILL_MAP.get(ind_name, []):
+                    if base_col in inst.df.columns:
+                        s = inst.df[base_col].sort_index()
+                        df_raw[f'{base_col}{suffix}'] = s.reindex(
+                            df_raw.index, method='ffill')
+            except Exception as e:
+                logger.warning("backfill %s / %s%s: indicator error: %s",
+                               symbol, ind_name, suffix, e)
+
     # 3. Collect the DB columns we need to update
     target_cols: list[str] = []
     for ind_name in indicator_names:
-        target_cols.extend(INDICATOR_BACKFILL_MAP.get(ind_name, []))
+        base_cols = INDICATOR_BACKFILL_MAP.get(ind_name, [])
+        target_cols.extend(base_cols)
+        for _, _, suffix in INDICATOR_BACKFILL_TF.get(ind_name, []):
+            target_cols.extend(f'{c}{suffix}' for c in base_cols)
     target_cols = [c for c in target_cols if c in df_raw.columns]
     if not target_cols:
         logger.debug("backfill %s: no matching columns found in df", symbol)
