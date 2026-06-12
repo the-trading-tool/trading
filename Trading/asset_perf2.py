@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 INDICATOR_BACKFILL_MAP: dict = {
     'heikin':  ['ha_close', 'ha_open', 'ha_ema_high', 'ha_ema_low'],
+    # markov_regime_wk/_mo werden nur im normalen Simulationslauf befüllt
+    # (separate Markov-Instanz auf df_weekly/df_monthly) — der Backfill
+    # rechnet bislang nur auf Tagesbasis, daher hier nur markov_regime.
     'markov':  ['markov_regime'],
     'macd':    ['macd', 'macd_diff', 'macd_signal', 'macd_trend'],
     'rsi':     ['rsi', 'rsi_ema', 'momentum'],
@@ -824,6 +827,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['ha_close'] = DataUtils.safe_last(df, 'ha_close', default=0)
         pdict['ha_open'] = DataUtils.safe_last(df, 'ha_open', default=0)
         pdict['markov_regime'] = DataUtils.safe_last(df, 'markov_regime', default=0)
+        pdict['markov_regime_wk'] = DataUtils.safe_last(df_weekly, 'markov_regime', default=0)
+        pdict['markov_regime_mo'] = DataUtils.safe_last(df_monthly, 'markov_regime', default=0)
         pdict['hor_val'] = DataUtils.safe_last(df, 'hor_val', default=0)
         pdict['hor_threshold'] = DataUtils.safe_last(df, 'hor_threshold', default=0)
         pdict['qtrend_entry_price'] = DataUtils.safe_last(df, 'qtrend_entry_price', default=0)
@@ -1142,7 +1147,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """Funktion, die pro Ticker in einem separaten Prozess läuft."""
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling
@@ -1282,7 +1287,7 @@ if __name__ == "__main__":
     info_db = tt.tools.Db_tools(db_path="database", database_name="yf_tickers.db")
     sim_db = tt.tools.Db_tools(db_path="database", database_name=sim_db_name, db_type=":memory:")
 
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','markov'])
 
     delete_columns = list(NON_STOCK_GROUPS)
     filtered = info_db.get_indices_names(delete_columns=delete_columns, table_name='indices')
