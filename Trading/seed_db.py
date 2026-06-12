@@ -6,6 +6,7 @@ Enthält:
   MDAXI  — MDAX-Auswahl (~20 Titel)
   SDAXI  — SDAX-Auswahl (~14 Titel)
   SPX    — S&P-500-Auswahl (40 Blue Chips)
+  ETF    — UCITS-ETF-Auswahl (Xetra, 19 Titel)
   INDEX  — Index-Instrumente selbst (^GDAXI, ^GSPC …)
 
 Aufruf: python seed_db.py [--dry-run]
@@ -79,6 +80,32 @@ SPX = [
     'ACN',   'ADBE',  'DIS',   'QCOM',  'INTC',  'TXN',   'NKE',   'GS',
 ]
 
+# UCITS-ETFs (Xetra, alle in EUR) — validiert gegen Yahoo Finance 2026-06-11
+ETF = [
+    # Welt / Regionen (Kern)
+    'EUNL.DE',  # iShares Core MSCI World (Acc)
+    'VWCE.DE',  # Vanguard FTSE All-World (Acc)
+    'SXR8.DE',  # iShares Core S&P 500 (Acc)
+    'EXS1.DE',  # iShares Core DAX
+    'EXSA.DE',  # iShares STOXX Europe 600 (Dist)
+    'LYP6.DE',  # Amundi Core Stoxx Europe 600 (Acc)
+    'EUNM.DE',  # iShares MSCI EM (Acc)
+    'XDWD.DE',  # Xtrackers MSCI World 1C
+    # Sektor / Thema / Nasdaq
+    'EXXT.DE',  # iShares NASDAQ-100 (DE)
+    'SXRV.DE',  # iShares NASDAQ 100 (Acc)
+    'XDWT.DE',  # Xtrackers MSCI World Information Technology
+    'EXV1.DE',  # iShares STOXX Europe 600 Banks
+    '2B76.DE',  # iShares Automation & Robotics
+    # Dividenden / Anleihen / Gold / Geldmarkt
+    'ISPA.DE',  # iShares STOXX Global Select Dividend 100
+    'EXSB.DE',  # iShares DivDAX
+    'EUNA.DE',  # iShares Core Global Aggregate Bond EUR Hedged
+    'EXX6.DE',  # iShares eb.rexx Government Germany 10.5+yr
+    '4GLD.DE',  # Xetra-Gold
+    'XEON.DE',  # Xtrackers II EUR Overnight Rate Swap (Geldmarkt)
+]
+
 # Index-Instrumente (werden von der Simulation ausgeschlossen)
 INDEX = [
     '^GDAXI',  # DAX 40
@@ -95,6 +122,7 @@ ALL_GROUPS = {
     'MDAXI': MDAXI,
     'SDAXI': SDAXI,
     'SPX':   SPX,
+    'ETF':   ETF,
     'INDEX': INDEX,
 }
 
