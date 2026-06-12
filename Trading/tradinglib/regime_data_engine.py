@@ -315,12 +315,18 @@ def load_index_members(index_name: str) -> tuple:
 _BREADTH_TIMEFRAMES = {'day': None, 'week': 'W-FRI', 'month': 'ME'}
 _BREADTH_PERIOD = '5y'   # covers 20 monthly bars + warmup with margin
 
+# How many daily regimes to keep: today ('day') + N-1 prior trading days
+# ('day_1' = yesterday … 'day_4'), so the widget can show a short-term tendency.
+_BREADTH_DAY_HISTORY = 5
+_BREADTH_DAY_HIST_COLS = [f'day_{k}' for k in range(1, _BREADTH_DAY_HISTORY)]
+
 
 def _compute_breadth_ticker(ticker: str, period: str) -> dict | None:
     """Latest Markov regime (Bull/Bear/Sideways) on day/week/month bars. Thread-safe.
 
-    Returns {'ticker': ..., 'day': 0|1|2|nan, 'week': ..., 'month': ...}
-    or None if no usable price history is available.
+    Returns {'ticker': ..., 'day': 0|1|2|nan, 'day_1': …, 'day_4': …,
+    'week': ..., 'month': ...} where day_1…day_4 are the regimes of the
+    previous 4 trading days, or None if no usable price history is available.
     """
     try:
         fd = FetchData(database_path='database')
@@ -336,6 +342,8 @@ def _compute_breadth_ticker(ticker: str, period: str) -> dict | None:
         close = df['Close'].astype(float)
 
         out = {'ticker': ticker}
+        for col in _BREADTH_DAY_HIST_COLS:
+            out[col] = np.nan
         for tf, rule in _BREADTH_TIMEFRAMES.items():
             series = close if rule is None else close.resample(rule).last().dropna()
             if len(series) < _LOOKBACK + 5:
@@ -344,6 +352,10 @@ def _compute_breadth_ticker(ticker: str, period: str) -> dict | None:
             valid = _label_regimes(series)
             valid = valid[~np.isnan(valid)]
             out[tf] = float(valid[-1]) if len(valid) else np.nan
+            if tf == 'day':
+                for k, col in enumerate(_BREADTH_DAY_HIST_COLS, start=1):
+                    if len(valid) > k:
+                        out[col] = float(valid[-1 - k])
         return out
 
     except Exception as exc:
@@ -361,13 +373,15 @@ def compute_index_breadth(index_name: str, period: str = _BREADTH_PERIOD) -> pd.
     just applied to bars of different size, so the breadth is directly comparable
     across timeframes.
 
-    Returns a wide DataFrame: ticker | day | week | month
-    (regime codes 0=Sideways, 1=Bull, 2=Bear, NaN where history is too short).
+    Returns a wide DataFrame: ticker | day | day_1 … day_4 | week | month
+    (regime codes 0=Sideways, 1=Bull, 2=Bear, NaN where history is too short;
+    day_1…day_4 are the previous 4 trading days for the short-term tendency).
     Cached for 1h — recompute via compute_index_breadth.clear() if needed sooner.
     """
+    columns = ['ticker', 'day', *_BREADTH_DAY_HIST_COLS, 'week', 'month']
     tickers = load_index_members(index_name)
     if not tickers:
-        return pd.DataFrame(columns=['ticker', 'day', 'week', 'month'])
+        return pd.DataFrame(columns=columns)
 
     results = []
     with ThreadPoolExecutor(max_workers=_WORKERS) as ex:
@@ -381,9 +395,9 @@ def compute_index_breadth(index_name: str, period: str = _BREADTH_PERIOD) -> pd.
                 pass
 
     if not results:
-        return pd.DataFrame(columns=['ticker', 'day', 'week', 'month'])
+        return pd.DataFrame(columns=columns)
 
-    return (pd.DataFrame(results)[['ticker', 'day', 'week', 'month']]
+    return (pd.DataFrame(results)[columns]
             .sort_values('ticker').reset_index(drop=True))
 
 
@@ -393,11 +407,14 @@ def summarize_breadth(df: pd.DataFrame) -> dict:
     Returns:
         {
           'day':   {'bull': pct, 'bear': pct, 'side': pct, 'n': count},
+          'day_1': {...} … 'day_4': {...},   # previous 4 trading days (tendency)
           'week':  {...}, 'month': {...},
           'score': float in [-1, +1],   # weighted (%Bull - %Bear), day=1/week=2/month=3
           'state': 'bull' | 'bear' | 'neutral',   # language-neutral code — UI translates via t()
           'aligned': bool,              # do day/week/month agree on the majority regime?
         }
+    The day_1…day_4 history feeds the chart only — score/state/aligned are still
+    derived from the current day/week/month columns alone.
     Empty dict if df has no usable rows.
     """
     if df is None or df.empty:
@@ -409,7 +426,8 @@ def summarize_breadth(df: pd.DataFrame) -> dict:
     weight_total = 0.0
     majorities = {}
 
-    for tf in ('day', 'week', 'month'):
+    hist_cols = [c for c in _BREADTH_DAY_HIST_COLS if c in df.columns]
+    for tf in ('day', *hist_cols, 'week', 'month'):
         col = df[tf].dropna()
         n = len(col)
         if n == 0:
@@ -421,6 +439,8 @@ def summarize_breadth(df: pd.DataFrame) -> dict:
         side = float((col == 0).sum()) / n * 100.0
         tf_stats[tf] = {'bull': bull, 'bear': bear, 'side': side, 'n': n}
 
+        if tf not in _weights:   # history rows don't influence the score
+            continue
         weighted_sum  += _weights[tf] * (bull - bear) / 100.0
         weight_total  += _weights[tf]
         majorities[tf] = max((bull, 1), (bear, 2), (side, 0))[1]

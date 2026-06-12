@@ -670,6 +670,7 @@
   "mm.breadth_bear": "Bear",
   "mm.breadth_side": "Sideways",
   "mm.breadth_tf_day": "Day",
+  "mm.breadth_tf_day_back": "Day −{n}",
   "mm.breadth_tf_week": "Week",
   "mm.breadth_tf_month": "Month",
   "mm.breadth_state_bull": "Bullish",

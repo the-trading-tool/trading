@@ -389,13 +389,22 @@ class DataVisualizer(tt.TickerTools):
         _colors   = {k: Markov._PALETTE[k]['solid'] for k in _order}
         _tf_label = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
                      'month': t('mm.breadth_tf_month')}
+        # Tages-Historie (Tendenz): älteste zuerst, damit sie im Chart direkt
+        # unter der "Tag"-Zeile von unten nach oben Richtung heute läuft.
+        for k in (4, 3, 2, 1):
+            if (summary.get(f'day_{k}') or {}).get('n'):
+                _tf_label[f'day_{k}'] = t('mm.breadth_tf_day_back', n=k)
 
         # ── Stacked horizontal bars: eine Zeile je Zeitebene ──────────────────
+        rows = [tf for tf in ('month', 'week', 'day_4', 'day_3', 'day_2', 'day_1', 'day')
+                if tf in _tf_label]   # von unten nach oben: Monat → … → Tag
         fig = go.Figure()
-        for tf in ('month', 'week', 'day'):   # von unten nach oben: Monat → Tag
+        n_rows = 0
+        for tf in rows:
             stats = summary.get(tf) or {}
             if not stats.get('n'):
                 continue
+            n_rows += 1
             for regime in _order:
                 pct = stats[_keys[regime]]
                 fig.add_trace(go.Bar(
@@ -410,7 +419,7 @@ class DataVisualizer(tt.TickerTools):
 
         fig.update_layout(
             barmode='stack',
-            height=170,
+            height=max(170, 80 + 30 * n_rows),
             margin=dict(l=60, r=20, t=10, b=30),
             xaxis=dict(range=[0, 100], ticksuffix='%', showgrid=False),
             legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
