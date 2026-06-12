@@ -73,6 +73,8 @@
   "summary.show_assets": "Show assets",
   "summary.select_market": "Select market:",
   "summary.members": "Members",
+  "summary.empty_group": "The group contains no tickers. Please add members or select a different group.",
+  "summary.no_price_data": "No price data available for the selected tickers. Check the tickers or the period.",
   "summary.wait_earnings": "Wait for earnings to load...",
   "summary.wait_graphs": "Wait for graphs to load...",
   "summary.last_chart_update": "Last chart update: {ts}",

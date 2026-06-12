@@ -467,6 +467,10 @@ class TradingApp:
         except (ValueError, SyntaxError):
             tickers = [ti] if ti else []
 
+        if not tickers:
+            st.warning(t('summary.empty_group'))
+            return
+
         # Create optimizer and set whether network access is allowed from system config
         optimizer = PortfolioOptimizer(tickers, investment_per_asset=2000)
         try:
@@ -475,8 +479,11 @@ class TradingApp:
         except Exception:
             # keep default if sys_config unavailable
             pass
-        df_results = optimizer.fetch_and_calculate(period="1mo")
-        st.dataframe(df_results)
+        try:
+            df_results = optimizer.fetch_and_calculate(period="1mo")
+            st.dataframe(df_results)
+        except ValueError:
+            st.warning(t('summary.no_price_data'))
         tst = """
         optimizer.plot_portfolio()
         st.plotly_chart(
