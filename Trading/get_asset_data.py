@@ -5,6 +5,7 @@ import time
 import logging
 import json
 import os
+import concurrent.futures
 from datetime import datetime
 
 # Beispielhafte Nutzung der Klasse
@@ -112,8 +113,8 @@ if __name__ == "__main__":
         ticker_list = info_db.read_data(ticker_query)['Ticker']
         ticker_list = ticker_list.tolist()    
     else:
-        # read all tickers and if file available import new data first 
-        df = tt.StockDataSaver('').read_stock_list(excel_file = 'ALL_Stocks.xlsx')
+        # read all tickers and if file available import new data first
+        df = tt.StockDataSaver('').read_stock_list(excel_file='ALL_Assets.xlsx')
         try:
             ticker_list = df['Ticker']
             ticker_list = ticker_list.tolist()    
@@ -136,14 +137,42 @@ if __name__ == "__main__":
         logger.warning("Konnte failed_tickers.json nicht laden – starte mit leerer Liste.")
 
 #    ticker_list = ["AML.L"]
-    saver = None
-    for ticker in ticker_list:
+    def _fetch_one(ticker):
+        """Download all intervals for one ticker in its own StockDataSaver/DB connection.
+
+        Returns (ticker, failed_intervals) — empty list = all OK, None = total failure.
+        """
         print(f'Fetching data for {ticker}')
         time.sleep(0.5)
+        saver = tt.StockDataSaver(ticker)  # ,tz_ready='Europe/Berlin')
         try:
-            saver = tt.StockDataSaver(ticker) #,tz_ready='Europe/Berlin')
             # force_remote=True ensures we fetch from Yahoo (network) by default and do not loop against local DB
             failed_intervals = saver.save_all_intervals(intervals=intervals, periods=periods, force_remote=True)
+            time.sleep(1)
+            return ticker, failed_intervals
+        except Exception:
+            logger.exception("Error saving data for %s", ticker)
+            return ticker, None
+        finally:
+            try:
+                saver.close_connection()
+            except Exception:
+                logger.exception("Error closing saver connection for %s", ticker)
+
+    # /worker:N → parallele Downloads; Default 1 = bisheriges sequenzielles Verhalten.
+    # Mehr als 4 Worker reizen das Yahoo-Rate-Limit (HTTP 429) unnötig.
+    max_workers = args.get('worker') or 1
+    if max_workers > 1:
+        logger.info("Using %d parallel download workers.", max_workers)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_fetch_one, t): t for t in ticker_list}
+        for future in concurrent.futures.as_completed(futures):
+            # existing_failed wird nur hier im Main-Thread gepflegt (kein Lock nötig)
+            ticker, failed_intervals = future.result()
+            if failed_intervals is None:
+                # Vollständiger Fehler → alle Intervalle als fehlgeschlagen markieren
+                failed_intervals = intervals
             if failed_intervals:
                 # Mindestens ein Intervall hat versagt → in Failed-Liste eintragen
                 logger.warning("Fehlgeschlagene Intervalle für %s: %s", ticker, failed_intervals)
@@ -158,17 +187,6 @@ if __name__ == "__main__":
                 print(f"Data for {ticker} saved.")
                 # Ticker hat diesmal funktioniert → aus Failed-Liste entfernen
                 existing_failed.pop(ticker, None)
-            time.sleep(1)
-        except Exception:
-            logger.exception("Error saving data for %s", ticker)
-            # Vollständiger Fehler → alle Intervalle als fehlgeschlagen markieren
-            existing_failed[ticker] = {
-                'ticker': ticker,
-                'failed_intervals': intervals,
-                'last_seen': datetime.now().isoformat(),
-                'first_seen': existing_failed.get(ticker, {}).get(
-                    'first_seen', datetime.now().isoformat()),
-            }
 
     # Aktualisierte Failed-Liste speichern
     try:
@@ -180,10 +198,4 @@ if __name__ == "__main__":
                         len(existing_failed), failed_tickers_file)
     except Exception:
         logger.exception("Konnte failed_tickers.json nicht schreiben.")
-
-    try:
-        if saver is not None:
-            saver.close_connection()  # Schließt die Datenbankverbindung
-    except Exception:
-        logger.exception("Error closing saver connection")
 

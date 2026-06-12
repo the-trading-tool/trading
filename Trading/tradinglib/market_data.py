@@ -5,6 +5,7 @@ use a single point for logging, retries, and future caching.
 """
 from typing import Optional, Union, List
 import logging
+import threading
 
 try:
     import yfinance as yf
@@ -13,6 +14,10 @@ except Exception:
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+# yf.download() ist nicht threadsafe (modul-globales yfinance.shared._DFS) —
+# parallele Aufrufe müssen serialisiert werden (siehe auch yahoo_provider.py).
+_YF_DOWNLOAD_LOCK = threading.Lock()
 
 # Maximum number of tickers kept in each metadata cache.
 # A single ticker_info dict is typically 2-5 KB; 512 entries ≈ 1-2 MB.
@@ -155,8 +160,9 @@ def download(tickers: Union[str, List[str]], start: Optional[str] = None, end: O
             df = _provider.download(tickers=tickers, start=start, end=end, period=period, interval=interval)
         elif yf is not None:
             call_interval = interval or '1d'
-            df = yf.download(tickers=tickers, start=start, end=end, period=period, interval=call_interval,
-                             actions=actions, progress=progress, auto_adjust=auto_adjust, prepost=prepost)
+            with _YF_DOWNLOAD_LOCK:
+                df = yf.download(tickers=tickers, start=start, end=end, period=period, interval=call_interval,
+                                 actions=actions, progress=progress, auto_adjust=auto_adjust, prepost=prepost)
         else:
             return pd.DataFrame()
         try:

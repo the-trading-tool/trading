@@ -1,5 +1,6 @@
 """Yahoo Finance provider — thin wrapper around yfinance."""
 import logging
+import threading
 from typing import Optional, Union, List
 
 import pandas as pd
@@ -14,6 +15,11 @@ try:
 except Exception:
     yf = None
     _YF_AVAILABLE = False
+
+# yf.download() sammelt Ergebnisse im modul-globalen yfinance.shared._DFS und
+# leert es bei jedem Aufruf — parallele Aufrufe überschreiben sich gegenseitig
+# (Thread A bekommt Daten von Thread B). Daher den Aufruf serialisieren.
+_YF_DOWNLOAD_LOCK = threading.Lock()
 
 
 class YahooProvider(MarketDataProvider):
@@ -38,17 +44,18 @@ class YahooProvider(MarketDataProvider):
         logging.getLogger("yfinance").setLevel(logging.CRITICAL)
         call_interval = interval or "1d"
         try:
-            return yf.download(
-                tickers=tickers,
-                start=start,
-                end=end,
-                period=period,
-                interval=call_interval,
-                actions=False,
-                progress=False,
-                auto_adjust=False,
-                prepost=True,
-            )
+            with _YF_DOWNLOAD_LOCK:
+                return yf.download(
+                    tickers=tickers,
+                    start=start,
+                    end=end,
+                    period=period,
+                    interval=call_interval,
+                    actions=False,
+                    progress=False,
+                    auto_adjust=False,
+                    prepost=True,
+                )
         except Exception as e:
             logger.exception("YahooProvider.download failed for %s: %s", tickers, e)
             return pd.DataFrame()
