@@ -13,7 +13,7 @@ warnings.filterwarnings("ignore")
 from tradinglib.indicator import indicator
 from tradinglib import (fetch_data, ticker_tools as tt,
                         system_config as sysconf)
-from tradinglib.tools import open_db
+from tradinglib.tools import open_db, NON_STOCK_GROUPS
 try:
     from tradinglib.premium import multi_transaction as mt
 except ImportError:
@@ -1284,7 +1284,7 @@ if __name__ == "__main__":
 
     ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema'])
 
-    delete_columns = ['INDEX']
+    delete_columns = list(NON_STOCK_GROUPS)
     filtered = info_db.get_indices_names(delete_columns=delete_columns, table_name='indices')
     if inverse:
         ticker_query = f'SELECT s.Ticker FROM stocks s LEFT JOIN stock_indices si ON s.id = si.stock_id WHERE si.index_id IS NULL;'
@@ -1293,7 +1293,8 @@ if __name__ == "__main__":
 
     if simulate:
         if not index_name == '':
-            ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}" OR i.name = "INDEX"'
+            non_stock_sql = '", "'.join(NON_STOCK_GROUPS)
+            ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}" OR i.name IN ("{non_stock_sql}")'
     if all:
         ticker_query = f'SELECT Ticker FROM stocks;'
         logger.info("Using all tickers")

@@ -42,9 +42,10 @@ if __name__ == "__main__":
     index_only = args.get('index_only', False)
     all = args.get('all', False)
     inverse = args.get('inverse', False)
+    group = args.get('group') or []
 
     # if we have no interval pairs and no actionable pref flags, show usage
-    actionable = bool(intervals_parsed) or any([select, index_members_only, index_only, all, inverse])
+    actionable = bool(intervals_parsed) or any([select, index_members_only, index_only, all, inverse, bool(group)])
     if not actionable:
         print("Wrong arguments. Use pairs of 'interval:period', e.g. '1d:1mo'")
         exit()
@@ -53,14 +54,10 @@ if __name__ == "__main__":
     # If there is a new List of ticker symbols, we load it into our database
     info_db_table_name = "indices"
     info_db = tt.tools.Db_tools(db_path='database', database_name=f'yf_tickers.db')
-    delete_columns = ['INDEX']
+    delete_columns = list(tt.tools.NON_STOCK_GROUPS)
     ticker_list = []
     if index_members_only:
         filtered = info_db.get_indices_names(delete_columns=delete_columns, table_name=info_db_table_name)
-        try:
-            filtered.remove(['INDEX'])
-        except Exception:
-            pass
         try:
             filtered.remove('nan')
         except Exception:
@@ -74,16 +71,31 @@ if __name__ == "__main__":
 #        ticker_list.to_csv("ticker_list.csv",decimal=",",sep=";")
         ticker_list = ticker_list.tolist()    
     elif index_only:
-        ticker_query = f'SELECT s.Ticker AS name FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "INDEX"' +' OR s.Ticker LIKE "%=X"'
+        non_stock_sql = '","'.join(tt.tools.NON_STOCK_GROUPS)
+        ticker_query = f'SELECT s.Ticker AS name FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name IN ("{non_stock_sql}")' +' OR s.Ticker LIKE "%=X"'
 #        ticker_query = 'SELECT Ticker FROM yf_tickers WHERE "OTHER" = 1 OR INVESTED = 1;'
         ticker_list = info_db.read_data(ticker_query)['name']
         ticker_list = ticker_list.tolist()
         try:
             ticker_list.remove('INDEX')
         except Exception:
-            pass    
+            pass
 #        for w in ticker_list:
 #                ticker_list.remove(w)
+    elif group:
+        # Mitglieder beliebiger Gruppen aus der indices-Tabelle laden,
+        # z.B. /group:CRYPTO oder /group:METALS,COMMODITIES.
+        # Gruppennamen kommen aus cli.parse_args bereits uppercased.
+        group_sql = '","'.join(group)
+        ticker_query = (
+            'SELECT s.Ticker FROM stocks s '
+            'JOIN stock_indices si ON s.id = si.stock_id '
+            'JOIN indices i ON si.index_id = i.id '
+            f'WHERE UPPER(i.name) IN ("{group_sql}")'
+        )
+        ticker_list = info_db.read_data(ticker_query)['Ticker'].tolist()
+        if not ticker_list:
+            logger.warning("No tickers found for group(s): %s", group)
     elif select:
         # prefer selection from pref-style arg if provided (e.g. /select:WHERE ...),
         # otherwise fall back to last colon-pair's right-hand side

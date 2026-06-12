@@ -18,6 +18,11 @@ import numpy as np
 ftime_str = '%Y-%m-%d %H:%M:%S'
 BASE_URL = "https://trading.cloogidoo.com"
 
+# Asset-Klassen-Gruppen in yf_tickers.db (Tabelle indices), die keine Aktien
+# enthalten. Sie werden von der Performance-Simulation und vom Aktien-Download
+# (/index_member) ausgeschlossen. ETP (handelbare ETFs/ETCs) zählt NICHT dazu.
+NON_STOCK_GROUPS = ('INDEX', 'COMMODITIES', 'METALS', 'CURRENCIES', 'CRYPTO')
+
 
 def open_db(path: str, readonly: bool = False, timeout: float = 5.0,
             check_same_thread: bool = True) -> sqlite3.Connection:

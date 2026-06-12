@@ -240,7 +240,8 @@ def load_sector_map() -> pd.DataFrame:
         # MIN() on the CASE gives the alphabetically first real index name per ticker.
         idx_map = pd.read_sql_query("""
             SELECT s.Ticker AS ticker,
-                   MIN(CASE WHEN UPPER(TRIM(i.name)) NOT IN ('INDEX','ALL','STOCKS','ETF')
+                   MIN(CASE WHEN UPPER(TRIM(i.name)) NOT IN ('INDEX','ALL','STOCKS','ETF','ETP',
+                                                             'COMMODITIES','METALS','CURRENCIES','CRYPTO')
                             THEN i.name END) AS primary_index
             FROM stocks s
             JOIN stock_indices si ON s.id = si.stock_id

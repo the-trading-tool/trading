@@ -2,12 +2,20 @@
 seed_db.py — erstellt database/yf_tickers.db mit Beispiel-Tickern.
 
 Enthält:
-  GDAXI  — DAX 40 (Stand: 2025)
-  MDAXI  — MDAX-Auswahl (~20 Titel)
-  SDAXI  — SDAX-Auswahl (~14 Titel)
-  SPX    — S&P-500-Auswahl (40 Blue Chips)
-  ETF    — UCITS-ETF-Auswahl (Xetra, 19 Titel)
-  INDEX  — Index-Instrumente selbst (^GDAXI, ^GSPC …)
+  GDAXI       — DAX 40 (Stand: 2025)
+  MDAXI       — MDAX-Auswahl (~20 Titel)
+  SDAXI       — SDAX-Auswahl (~14 Titel)
+  SPX         — S&P-500-Auswahl (40 Blue Chips)
+  ETP         — UCITS-ETF/ETC-Auswahl (Xetra, 19 Titel)
+  INDEX       — Index-Instrumente selbst (^GDAXI, ^GSPC …)
+  COMMODITIES — Energie- und Agrar-Futures (BZ=F, ZW=F …)
+  METALS      — Metall-Futures (GC=F, SI=F …)
+  CURRENCIES  — Währungspaare (EURUSD=X …)
+  CRYPTO      — Kryptowährungen (BTC-EUR, ETH-EUR)
+
+INDEX, COMMODITIES, METALS, CURRENCIES und CRYPTO sind Nicht-Aktien-Gruppen
+(siehe tradinglib.tools.NON_STOCK_GROUPS) — sie werden von der Simulation
+und vom Aktien-Download ausgeschlossen.
 
 Aufruf: python seed_db.py [--dry-run]
 """
@@ -80,8 +88,8 @@ SPX = [
     'ACN',   'ADBE',  'DIS',   'QCOM',  'INTC',  'TXN',   'NKE',   'GS',
 ]
 
-# UCITS-ETFs (Xetra, alle in EUR) — validiert gegen Yahoo Finance 2026-06-11
-ETF = [
+# UCITS-ETFs/ETCs (Xetra, alle in EUR) — validiert gegen Yahoo Finance 2026-06-11
+ETP = [
     # Welt / Regionen (Kern)
     'EUNL.DE',  # iShares Core MSCI World (Acc)
     'VWCE.DE',  # Vanguard FTSE All-World (Acc)
@@ -117,13 +125,56 @@ INDEX = [
     '^VIX',    # CBOE Volatility Index
 ]
 
+# Energie- und Agrar-Futures (werden von der Simulation ausgeschlossen)
+COMMODITIES = [
+    'BZ=F',  # Brent Crude Oil
+    'NG=F',  # Natural Gas
+    'HO=F',  # Heating Oil
+    'RB=F',  # Gasoline (RBOB)
+    'ZW=F',  # Weizen
+    'ZC=F',  # Mais
+    'ZS=F',  # Sojabohnen
+    'KC=F',  # Kaffee
+    'CC=F',  # Kakao
+    'SB=F',  # Zucker
+    'CT=F',  # Baumwolle
+    'LE=F',  # Live Cattle
+]
+
+# Metall-Futures (werden von der Simulation ausgeschlossen)
+METALS = [
+    'GC=F',  # Gold
+    'SI=F',  # Silber
+    'HG=F',  # Kupfer
+    'PL=F',  # Platin
+    'PA=F',  # Palladium
+]
+
+# Währungspaare (werden von der Simulation ausgeschlossen)
+CURRENCIES = [
+    'EURUSD=X',
+    'GBPUSD=X',
+    'JPYEUR=X',
+    'HKDEUR=X',
+]
+
+# Kryptowährungen (werden von der Simulation ausgeschlossen)
+CRYPTO = [
+    'BTC-EUR',  # Bitcoin
+    'ETH-EUR',  # Ethereum
+]
+
 ALL_GROUPS = {
-    'GDAXI': GDAXI,
-    'MDAXI': MDAXI,
-    'SDAXI': SDAXI,
-    'SPX':   SPX,
-    'ETF':   ETF,
-    'INDEX': INDEX,
+    'GDAXI':       GDAXI,
+    'MDAXI':       MDAXI,
+    'SDAXI':       SDAXI,
+    'SPX':         SPX,
+    'ETP':         ETP,
+    'INDEX':       INDEX,
+    'COMMODITIES': COMMODITIES,
+    'METALS':      METALS,
+    'CURRENCIES':  CURRENCIES,
+    'CRYPTO':      CRYPTO,
 }
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,8 @@ def print_help():
           "  /all - all = all tickers but does not send Pushover notifications,\n"
           "  /year:[YYYY] - get data for a specific year (max 6 years back),\n"
           "  /index:[^SPX] - scan only a specific index,\n"
+          "  /group:NAME1,NAME2 - only tickers of the given groups from the indices table\n"
+          "                       (e.g. /group:CRYPTO or /group:METALS,COMMODITIES),\n"
           "  /add_current - adds the last close price,\n"
           "  /inverse - select tickers not related to an index,\n"
           "  /silent - suppress notifications,\n"
@@ -41,6 +43,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'index_only': False,
         'select': False,
         'index_member': False,
+        'group': None,      # list[str] when set (group names from the indices table)
     'selection': None,
         'silent': False,
         'add_current': False,
@@ -103,6 +106,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                     result['index_name'] = suf
                 else:
                     result['index_only'] = True
+            if pref == 'group' and suf:
+                # pref/suf sind bereits lowercase — Gruppennamen in der DB sind
+                # uppercase (CRYPTO, METALS, ^GDAXI …), daher hier normalisieren.
+                result['group'] = [s.strip().upper() for s in suf.split(',') if s.strip()]
             if pref == 'log':
                 result['log_to_console'] = True
                 if suf:
