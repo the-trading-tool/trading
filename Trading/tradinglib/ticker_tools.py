@@ -354,7 +354,7 @@ class TickerTools(tools.Tools):
         return df, info
 
 
-    def read_stock_list(self, excel_file='All_Stocks.xlsx', db_path='database', db_name='yf_tickers.db', tbl_columns=['id', 'Ticker', 'Date', 'Invested', 'ISIN']):
+    def read_stock_list(self, excel_file='All_Assets.xlsx', db_path='database', db_name='yf_tickers.db', tbl_columns=['id', 'Ticker', 'Date', 'Invested', 'ISIN']):
         """Import the stock list from an Excel file into yf_tickers.db.
 
         Creates stocks, indices, and stock_indices tables if needed, then upserts
