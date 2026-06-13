@@ -459,6 +459,9 @@ class Scheduler:
 
         Wrapped in its own fragment so the periodic jobs_status() refresh
         does NOT cause this widget to re-render (and lose unsaved edits).
+        The data_editor uses a fixed key so the background scheduler thread
+        updating `last_run` doesn't change the auto-generated widget key and
+        reset in-progress edits.
         """
         # ── Manuell starten ──────────────────────────────────────────────────
         df = self.load_schedule_from_db(conn)
@@ -494,6 +497,7 @@ class Scheduler:
             df,
             num_rows="dynamic",
             height=500,
+            key="_jobs_editor_table",
             column_config={
                 "enabled":  st.column_config.CheckboxColumn("Aktiv", default=True, width="small"),
                 "id":       st.column_config.NumberColumn("ID", disabled=True, width="small"),
@@ -512,7 +516,9 @@ class Scheduler:
         if st.button("Save"):
             self.save_schedule_to_db(conn, edited_df)
             self.schedule_tasks(edited_df, conn)
+            del st.session_state["_jobs_editor_table"]
             st.success("Jobs saved.")
+            st.rerun()
 
     def jobs(self, conn):
         """Render a coloured status overview (auto-refresh) and an editable jobs table."""
