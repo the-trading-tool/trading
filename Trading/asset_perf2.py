@@ -1269,6 +1269,7 @@ if __name__ == "__main__":
     year = args.get('year', '')
     inverse = args.get('inverse', False)
     index_name = args.get('index_name', '')
+    group = args.get('group') or []   # list[str] aus /group:NAME1,NAME2 (uppercased)
     silent = args.get('silent', False)
     add_current = args.get('add_current', False)
     memory = args.get('memory', False)
@@ -1322,15 +1323,32 @@ if __name__ == "__main__":
 
     delete_columns = list(NON_STOCK_GROUPS)
     filtered = info_db.get_indices_names(delete_columns=delete_columns, table_name='indices')
+    # Default-Lauf = ausschließlich echte Börsen-Indizes: deren Namen beginnen per
+    # Konvention mit '^' (^GDAXI, ^SPX, …). Kategorie-Gruppen wie ETP/COMMODITIES/
+    # CRYPTO/CURRENCIES sind nur über /group:NAME ansprechbar und werden hier nicht
+    # subsumiert (analog get_asset_data.py).
+    filtered = [name for name in filtered if name.startswith('^')]
     if inverse:
         ticker_query = f'SELECT s.Ticker FROM stocks s LEFT JOIN stock_indices si ON s.id = si.stock_id WHERE si.index_id IS NULL;'
+    elif group:
+        # Mitglieder beliebiger Gruppen aus der indices-Tabelle, z.B. /group:ETP
+        # oder /group:METALS,COMMODITIES. Gruppennamen kommen bereits uppercased.
+        group_sql = '","'.join(group)
+        ticker_query = (
+            'SELECT s.Ticker FROM stocks s '
+            'JOIN stock_indices si ON s.id = si.stock_id '
+            'JOIN indices i ON si.index_id = i.id '
+            f'WHERE UPPER(i.name) IN ("{group_sql}")'
+        )
     else:
         ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "' + '" OR i.name = "'.join(filtered)+'"'
 
     if simulate:
         if not index_name == '':
-            non_stock_sql = '", "'.join(NON_STOCK_GROUPS)
-            ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}" OR i.name IN ("{non_stock_sql}")'
+            # /index:NAME wertet ausschließlich diesen einen Index aus. Das frühere
+            # pauschale Anhängen von NON_STOCK_GROUPS ist ein Relikt aus der Zeit vor
+            # /group und entfällt — Kategorie-Gruppen laufen jetzt über /group:NAME.
+            ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}"'
     if all:
         ticker_query = f'SELECT Ticker FROM stocks;'
         logger.info("Using all tickers")
