@@ -80,6 +80,18 @@ def _fetch_single_ticker(ticker: str, db_path: str = 'database') -> tuple[list, 
     return msgs_ok, msgs_err
 
 
+def _has_price_data(ticker: str, db_path: str = 'database') -> bool:
+    """Return True if yf_<ticker>.db exists and its day_data table has at least one row."""
+    try:
+        path = tools.Tools().get_path(path=db_path, file_name=f'yf_{ticker}.db')
+        if not os.path.exists(path):
+            return False
+        with open_db(path, readonly=True) as conn:
+            return conn.execute("SELECT 1 FROM day_data LIMIT 1").fetchone() is not None
+    except Exception:
+        return False
+
+
 def _tab_overlay(label: str) -> str:
     """Full-viewport loading overlay — must be injected into an st.empty() that lives
     OUTSIDE any tab/expander context so position:fixed covers the real viewport."""
@@ -698,10 +710,12 @@ class Admin():
         missing_info_expander = st.expander(t('admin.missing_info_expander'), expanded=False)
         with missing_info_expander:
             _spin.markdown(_tab_overlay(t('admin.missing_info_expander')), unsafe_allow_html=True)
+            st.caption(t('admin.missing_info_hint'))
             _mi_yf_db = tools.Tools().get_path(path=self.db_path, file_name='yf_tickers.db')
             _mi_info_db = tools.Tools().get_path(path=self.db_path, file_name='asset_info.db')
 
-            _mi_rows: list[tuple[str, str]] = []
+            _mi_stocks: list[tuple[str, str]] = []
+            _mi_info_good: set[str] = set()
             try:
                 with open_db(_mi_yf_db, readonly=True) as _mic:
                     _mi_stocks = _mic.execute("""
@@ -714,22 +728,61 @@ class Admin():
                         ORDER BY s.Ticker
                     """).fetchall()
 
-                _mi_info_tickers: set[str] = set()
                 if os.path.exists(_mi_info_db):
                     with open_db(_mi_info_db, readonly=True) as _mic2:
-                        _mi_info_tickers = {r[0] for r in _mic2.execute(
-                            "SELECT DISTINCT ticker FROM asset_info").fetchall()}
-
-                _mi_rows = [(tk, idx) for tk, idx in _mi_stocks if tk not in _mi_info_tickers]
+                        try:
+                            _mi_info_good = {r[0] for r in _mic2.execute(
+                                "SELECT ticker FROM asset_info "
+                                "WHERE longName IS NOT NULL AND TRIM(longName) != ''"
+                            ).fetchall()}
+                        except Exception:
+                            _mi_info_good = {r[0] for r in _mic2.execute(
+                                "SELECT DISTINCT ticker FROM asset_info").fetchall()}
             except Exception as _mie:
-                st.error(f"Error comparing databases: {_mie}")
+                st.error(f"Error reading databases: {_mie}")
 
-            if not _mi_rows:
+            if st.button(t('admin.missing_info_check_price_btn'), key='mi_check_price_btn'):
+                _mi_total = len(_mi_stocks)
+                _mi_price_missing: set[str] = set()
+                if _mi_total:
+                    _mi_progress = st.progress(0.0)
+                    _mi_step = max(1, _mi_total // 100)
+                    for _i, (_tk, _) in enumerate(_mi_stocks):
+                        if not _has_price_data(_tk, self.db_path):
+                            _mi_price_missing.add(_tk)
+                        if _i % _mi_step == 0 or _i == _mi_total - 1:
+                            _mi_progress.progress((_i + 1) / _mi_total)
+                    _mi_progress.empty()
+                st.session_state['mi_price_missing'] = _mi_price_missing
+                st.session_state['mi_price_checked'] = True
+
+            _mi_price_checked = st.session_state.get('mi_price_checked', False)
+            _mi_price_missing = st.session_state.get('mi_price_missing', set())
+            if _mi_price_checked:
+                st.caption(t('admin.missing_info_price_checked', count=len(_mi_price_missing)))
+
+            _mi_combined: list[tuple[str, str, str, str]] = []
+            for _tk, _idx in _mi_stocks:
+                _info_ok = _tk in _mi_info_good
+                _price_ok = (_tk not in _mi_price_missing) if _mi_price_checked else None
+                if not _info_ok or _price_ok is False:
+                    _mi_combined.append((
+                        _tk, _idx,
+                        '✅' if _info_ok else '❌',
+                        ('✅' if _price_ok else '❌') if _mi_price_checked else '–',
+                    ))
+
+            if not _mi_combined:
                 st.success(t('admin.missing_info_none'))
             else:
-                st.warning(t('admin.missing_info_count', count=len(_mi_rows)))
+                st.warning(t('admin.missing_info_count', count=len(_mi_combined)))
 
-                _mi_df = pd.DataFrame(_mi_rows, columns=['Ticker', 'Indices'])
+                _mi_df = pd.DataFrame(
+                    _mi_combined,
+                    columns=['Ticker', 'Indices',
+                             t('admin.missing_info_col_info'),
+                             t('admin.missing_info_col_price')]
+                )
                 _mi_df.insert(0, 'Select', False)
 
                 if st.checkbox(t('admin.missing_info_select_all'), key='mi_select_all'):
@@ -747,10 +800,17 @@ class Admin():
 
                 if _mi_selected:
                     st.markdown("---")
-                    _mi_del_price = st.checkbox(
-                        t('admin.missing_info_del_price'),
-                        value=False, key="mi_del_price"
-                    )
+                    _mi_col1, _mi_col2 = st.columns(2)
+                    with _mi_col1:
+                        _mi_del_info = st.checkbox(
+                            t('admin.missing_info_del_info'),
+                            value=False, key="mi_del_info"
+                        )
+                    with _mi_col2:
+                        _mi_del_price = st.checkbox(
+                            t('admin.missing_info_del_price'),
+                            value=False, key="mi_del_price"
+                        )
                     _mi_confirm = st.checkbox(
                         t('admin.missing_info_confirm', count=len(_mi_selected)),
                         key="mi_confirm"
@@ -776,6 +836,24 @@ class Admin():
                         except Exception as _e:
                             _mi_err.append(f"yf_tickers.db: {_e}")
 
+                        if _mi_del_info and os.path.exists(_mi_info_db):
+                            try:
+                                with open_db(_mi_info_db) as _mic:
+                                    _tables = [r[0] for r in _mic.execute(
+                                        "SELECT name FROM sqlite_master "
+                                        "WHERE type='table'").fetchall()]
+                                    for _tk in _mi_selected:
+                                        for _tbl in _tables:
+                                            try:
+                                                _mic.execute(
+                                                    f"DELETE FROM {_tbl} WHERE ticker = ?", (_tk,))
+                                            except Exception:
+                                                pass
+                                _mi_ok.append(t('admin.missing_info_info_ok',
+                                                 tickers=', '.join(_mi_selected)))
+                            except Exception as _e:
+                                _mi_err.append(f"asset_info.db: {_e}")
+
                         if _mi_del_price:
                             _deleted_price = []
                             for _tk in _mi_selected:
@@ -796,6 +874,8 @@ class Admin():
                         for _m in _mi_err:
                             st.error(_m)
                         if _mi_ok and not _mi_err:
+                            st.session_state.pop('mi_price_checked', None)
+                            st.session_state.pop('mi_price_missing', None)
                             st.info(t('admin.done_reload'))
             _spin.empty()
 

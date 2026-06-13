@@ -976,13 +976,20 @@
   "admin.del_ticker_price_ok": "Preisdatei yf_{ticker}.db gelöscht.",
   "admin.del_ticker_price_not_found": "Preisdatei yf_{ticker}.db nicht gefunden.",
 
-  "admin.missing_info_expander": "Ticker ohne asset_info-Eintrag",
-  "admin.missing_info_none": "Alle Ticker in yf_tickers.db haben einen asset_info-Eintrag.",
-  "admin.missing_info_count": "{count} Ticker in yf_tickers.db haben keinen asset_info-Eintrag.",
+  "admin.missing_info_expander": "Ticker mit fehlenden Infos oder Preisdaten",
+  "admin.missing_info_hint": "Listet Ticker aus yf_tickers.db, die keinen asset_info-Eintrag (bzw. keinen Firmennamen) haben und optional auch keine lokalen Preisdaten.",
+  "admin.missing_info_check_price_btn": "Preisdaten prüfen (kann etwas dauern)",
+  "admin.missing_info_price_checked": "{count} Ticker haben keine lokalen Preisdaten.",
+  "admin.missing_info_col_info": "Info",
+  "admin.missing_info_col_price": "Preisdaten",
+  "admin.missing_info_none": "Alle Ticker in yf_tickers.db haben einen asset_info-Eintrag mit Firmennamen.",
+  "admin.missing_info_count": "{count} Ticker haben fehlende Infos oder Preisdaten.",
   "admin.missing_info_select_all": "Alle auswählen",
+  "admin.missing_info_del_info": "Auch asset_info.db-Eintrag löschen",
   "admin.missing_info_del_price": "Auch Preisdatenbank löschen (yf_<ticker>.db)",
   "admin.missing_info_confirm": "Ich bestätige die Löschung von {count} Ticker(n)",
   "admin.missing_info_btn": "Ausgewählte löschen",
   "admin.missing_info_yf_ok": "{count} Ticker aus yf_tickers.db entfernt.",
+  "admin.missing_info_info_ok": "asset_info.db-Eintrag/Einträge gelöscht: {tickers}",
   "admin.missing_info_price_ok": "Preisdatenbank(en) gelöscht: {tickers}"
 }
