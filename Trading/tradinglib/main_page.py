@@ -2,11 +2,12 @@ from tradinglib import ( tiny_chart as tc, search as sr,
         sentiment as se, headlines as hl, multi_select as ms, fetch_data,
         system_config as sysconf, graph_tools as gt, tools as ts)
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
-from tradinglib.i18n import t
+from tradinglib.i18n import t, current_language
 from tradinglib.premium_availability import PAPER_TRADING_AVAILABLE
 import streamlit as st
 import streamlit_nested_layout
 import datetime as dt
+import json
 import sqlite3
 import pandas as pd
 import logging
@@ -90,6 +91,60 @@ class render_mainpage(fetch_data.FetchData):
         except Exception:
             pass
         return item
+
+    def _get_isin(self, ticker: str) -> str:
+        """Look up the ISIN for ticker from the stocks table in yf_tickers.db."""
+        try:
+            db_file = ts.Tools().get_path('database', 'yf_tickers.db')
+            with sqlite3.connect(db_file) as conn:
+                row = conn.execute("SELECT ISIN FROM stocks WHERE Ticker = ?", (ticker,)).fetchone()
+            if row and row[0]:
+                return row[0]
+        except Exception:
+            pass
+        return ''
+
+    def _inject_justetf_auto_open(self, ticker: str, url: str, tab_label: str) -> None:
+        """Open justETF in a new tab on the first click on the Info tab per ticker/session.
+
+        Best-effort DOM hack (like the external-links opener in asset_analyzer.py):
+        finds the Streamlit tab button by its visible label and binds a single
+        persistent click listener that reads the current ticker/URL from a shared
+        state object (updated every rerun). A sessionStorage flag per ticker
+        prevents repeat clicks from opening more tabs. If Streamlit's internal DOM
+        ever changes, this silently does nothing -- the link_button stays as
+        fallback.
+        """
+        storage_key = f"justetf_opened_{ticker}"
+        js = f"""
+        (function() {{
+            var TAB_LABEL = {json.dumps(tab_label)};
+            var STATE = {{url: {json.dumps(url)}, key: {json.dumps(storage_key)}}};
+            window.parent.__justetfState = STATE;
+
+            function attach() {{
+                var doc = window.parent.document;
+                var btns = doc.querySelectorAll('button[data-baseweb="tab"]');
+                for (var i = 0; i < btns.length; i++) {{
+                    var b = btns[i];
+                    if (b.textContent.trim() === TAB_LABEL && !b.dataset.justetfBound) {{
+                        b.dataset.justetfBound = "1";
+                        b.addEventListener("click", function() {{
+                            var s = window.parent.__justetfState;
+                            if (s && s.url && !window.parent.sessionStorage.getItem(s.key)) {{
+                                window.parent.sessionStorage.setItem(s.key, "1");
+                                window.parent.window.open(s.url, "_blank");
+                            }}
+                        }});
+                    }}
+                }}
+            }}
+            attach();
+            setTimeout(attach, 300);
+            setTimeout(attach, 1000);
+        }})();
+        """
+        st.components.v1.html(f"<script>{js}</script>", height=0)
 
 #    @st.fragment(run_every='300s')
     def render_trend(self, ticker_selected, ticker_selected_longname, interval, period, region=st):
@@ -505,23 +560,6 @@ class render_mainpage(fetch_data.FetchData):
             show_details = True
 
         refresh = True
-        if not self.hide_details:
-
-            tab_list = [
-                t('main.tab_trend'), t('main.tab_info'),
-                t('main.tab_income'), t('main.tab_balance'), t('main.tab_news'),
-            ]
-            if show_details:
-                tab_list.append(t('main.tab_details'))
-
-            tabs = pp_right.tabs(tab_list)
-            tab_trend = tabs[0]
-            tab_info = tabs[1]
-            tab_income_sheet = tabs[2]
-            tab_balance_sheet = tabs[3]
-            tab_news = tabs[4]
-            if show_details:
-                tab_details = tabs[5]
 
         # Priority logic:
         #
@@ -618,6 +656,40 @@ class render_mainpage(fetch_data.FetchData):
                         self.multi_selector.render_pine_export()
 
                 else:
+
+                    # Info/News/Income/Balance tabs nur anzeigen, wenn dafuer Daten vorhanden sind.
+                    info_text = self.get_ticker_value(self.ticker, 'longBusinessSummary')
+                    quote_type = self.get_ticker_value(self.ticker, 'quoteType')
+                    isin = self._get_isin(ticker_selected) if str(quote_type).upper() == 'ETF' else ''
+                    has_info = bool(info_text) or bool(isin)
+
+                    income_df = self.get_sheet_as_df(self.ticker, 'incomeSheet', 'Category')
+                    balance_df = self.get_sheet_as_df(self.ticker, 'balanceSheet', 'Category')
+                    try:
+                        news_articles = se.YahooNewsSentiment(ticker_selected).fetch_news()
+                    except Exception:
+                        news_articles = []
+
+                    tab_list = [t('main.tab_trend')]
+                    if has_info:
+                        tab_list.append(t('main.tab_info'))
+                    if not income_df.empty:
+                        tab_list.append(t('main.tab_income'))
+                    if not balance_df.empty:
+                        tab_list.append(t('main.tab_balance'))
+                    if news_articles:
+                        tab_list.append(t('main.tab_news'))
+                    if show_details:
+                        tab_list.append(t('main.tab_details'))
+
+                    tab_iter = iter(pp_right.tabs(tab_list))
+                    tab_trend = next(tab_iter)
+                    tab_info = next(tab_iter) if has_info else None
+                    tab_income_sheet = next(tab_iter) if not income_df.empty else None
+                    tab_balance_sheet = next(tab_iter) if not balance_df.empty else None
+                    tab_news = next(tab_iter) if news_articles else None
+                    if show_details:
+                        tab_details = next(tab_iter)
 
                     # Spinner placeholder lives OUTSIDE any tab so position:fixed covers the viewport
                     _spin = st.empty()
@@ -716,37 +788,38 @@ class render_mainpage(fetch_data.FetchData):
 #                                except Exception:
                             _spin.empty()
 
-                    with tab_info:
-                        _spin.markdown(_tab_overlay(t('main.tab_info')), unsafe_allow_html=True)
-                        info = self.get_ticker_value(self.ticker,'longBusinessSummary')
-                        if info:
-                            st.info(info)
-                        _spin.empty()
+                    if tab_info is not None:
+                        with tab_info:
+                            _spin.markdown(_tab_overlay(t('main.tab_info')), unsafe_allow_html=True)
+                            if info_text:
+                                st.info(info_text)
 
-                    with tab_income_sheet:
-                        _spin.markdown(_tab_overlay(t('main.tab_income')), unsafe_allow_html=True)
-                        try:
-                            sht_df = self.get_sheet_as_df(self.ticker, 'incomeSheet', 'Category')
-                            if not sht_df.empty:
-                                st.subheader(t('main.income_header', ticker=ticker_selected))
-                                st.dataframe(sht_df,use_container_width=True)
-                        except Exception:
-                            pass
-                        _spin.empty()
+                            # ETPs (quoteType=='ETF') haben i.d.R. keine longBusinessSummary --
+                            # stattdessen Link auf justETF (per ISIN), falls vorhanden.
+                            if isin:
+                                st.markdown(t('main.justetf_isin', isin=isin))
+                                justetf_url = f"https://www.justetf.com/{current_language()}/etf-profile.html?isin={isin}"
+                                st.link_button(t('main.justetf_button'), justetf_url)
+                                self._inject_justetf_auto_open(ticker_selected, justetf_url, t('main.tab_info'))
+                            _spin.empty()
 
-                    with tab_balance_sheet:
-                        _spin.markdown(_tab_overlay(t('main.tab_balance')), unsafe_allow_html=True)
-                        try:
-                            sht_df = self.get_sheet_as_df(self.ticker, 'balanceSheet', 'Category')
-                            if not sht_df.empty:
-                                st.subheader(t('main.balance_header', ticker=ticker_selected))
-                                st.dataframe(sht_df,use_container_width=True)
-                        except Exception:
-                            pass
-                        _spin.empty()
+                    if tab_income_sheet is not None:
+                        with tab_income_sheet:
+                            _spin.markdown(_tab_overlay(t('main.tab_income')), unsafe_allow_html=True)
+                            st.subheader(t('main.income_header', ticker=ticker_selected))
+                            st.dataframe(income_df, use_container_width=True)
+                            _spin.empty()
 
-                    with tab_news:
-                        _spin.markdown(_tab_overlay(t('main.tab_news')), unsafe_allow_html=True)
-                        _news_tab_fragment(ticker_selected)
-                        _spin.empty()
+                    if tab_balance_sheet is not None:
+                        with tab_balance_sheet:
+                            _spin.markdown(_tab_overlay(t('main.tab_balance')), unsafe_allow_html=True)
+                            st.subheader(t('main.balance_header', ticker=ticker_selected))
+                            st.dataframe(balance_df, use_container_width=True)
+                            _spin.empty()
+
+                    if tab_news is not None:
+                        with tab_news:
+                            _spin.markdown(_tab_overlay(t('main.tab_news')), unsafe_allow_html=True)
+                            _news_tab_fragment(ticker_selected)
+                            _spin.empty()
 

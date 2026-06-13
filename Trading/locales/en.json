@@ -217,6 +217,8 @@
   "search.select_company": "Select company:",
   "main.tab_trend": "Trend",
   "main.tab_info": "Info",
+  "main.justetf_isin": "ISIN: `{isin}`",
+  "main.justetf_button": "View on justETF",
   "main.tab_income": "Income sheet",
   "main.tab_balance": "Balance sheet",
   "main.tab_news": "News",
