@@ -173,23 +173,6 @@ class MultiCheckboxSelector:
                     self.sys_conf.set_value(config_key, selections)
             break
 
-    def _save_no_plot_to_config(self, list_id: str) -> None:
-        """Persist the current no-plot set for Overlay or Oszilator to config.db."""
-        if self.sys_conf is None:
-            return
-        no_plot_key = 'overlay_no_plot' if list_id == 'Overlay' else 'oszilator_no_plot'
-        for l_id, options in self.lists:
-            if l_id != list_id:
-                continue
-            no_plot = [
-                option.split(' - ')[0]
-                for option in options
-                if st.session_state.get(f"{l_id}_{option}_{self.instance_id}", False)
-                and not st.session_state.get(f"plot_{l_id}_{option}_{self.instance_id}", True)
-            ]
-            self.sys_conf.set_value(no_plot_key, no_plot)  # leere Liste ist ok hier
-            break
-
     def render(self):
         """Render all selector columns as checkboxes inside expanders with optional ⚙ config buttons."""
         st.markdown("""
