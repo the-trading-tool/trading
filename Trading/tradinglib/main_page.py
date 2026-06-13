@@ -324,21 +324,30 @@ class render_mainpage(fetch_data.FetchData):
 
         qty = st.number_input(t('main.order_qty'), min_value=1, step=1, value=default_qty)
 
-        # ── Tradability gate ──────────────────────────────────────────────
-        # Only stage the order if the active broker can actually trade this
-        # symbol. resolve_for_broker() returns None for symbols the broker does
-        # not support (e.g. .DE / other non-US tickers on Alpaca). The old
-        # "or ticker" fallback staged them anyway, so they piled up as 'queued'
-        # rows that the broker silently ignores. No fallback now: block + warn.
+        # ── Tradability check (informational, not a hard block) ───────────
+        # resolve_for_broker() returns None for symbols the active broker does
+        # not support (e.g. .DE / other non-US tickers on Alpaca). Rather than
+        # refusing to stage those, we let the user opt in: the order is added to
+        # the Queued Orders list as a reminder and the user later decides there
+        # whether to execute it (e.g. after switching broker) or discard it.
         resolver = TickerResolver(db_path='database')
-        broker_symbol = resolver.resolve_for_broker(ticker, broker_id)
-        tradeable = broker_symbol is not None
+        resolved = resolver.resolve_for_broker(ticker, broker_id)
+        tradeable = resolved is not None
 
+        allow_queue = True
         if not tradeable:
             st.warning(t('main.order_not_tradeable', ticker=ticker, broker=broker_id.upper()))
+            allow_queue = st.checkbox(
+                t('main.order_queue_anyway'),
+                key=f'queue_anyway_{ticker}_{side}',
+            )
+
+        # For supported symbols use the resolved broker symbol; for an opt-in
+        # non-tradeable order keep the original ticker so it stays recognisable.
+        broker_symbol = resolved or ticker
 
         if st.button(t('main.order_queue_btn'), type='primary',
-                     use_container_width=True, disabled=not tradeable):
+                     use_container_width=True, disabled=not allow_queue):
             OrderLog(db_path='database').save_queued(
                 mode=mode, broker=broker_id, strategy='quick',
                 ticker=ticker, broker_symbol=broker_symbol, action=side,
