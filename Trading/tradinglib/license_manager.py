@@ -6,6 +6,7 @@ Tiers / Features
 FEATURE_FREE             always active, no license file needed
 FEATURE_STRATEGY_ENGINE  requires a signed license.json with this feature
 FEATURE_PAPER_TRADING    requires a signed license.json with this feature
+FEATURE_SEASONALITY      requires a signed license.json with this feature
 
 Usage
 -----
@@ -31,8 +32,9 @@ logger = logging.getLogger(__name__)
 FEATURE_FREE = "free"
 FEATURE_STRATEGY_ENGINE = "strategy_engine"
 FEATURE_PAPER_TRADING = "paper_trading"
+FEATURE_SEASONALITY = "seasonality"
 
-ALL_FEATURES = [FEATURE_FREE, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING]
+ALL_FEATURES = [FEATURE_FREE, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING, FEATURE_SEASONALITY]
 
 # ── Embedded public key ──────────────────────────────────────────────────────
 # DER-encoded Ed25519 public key, base64-encoded.

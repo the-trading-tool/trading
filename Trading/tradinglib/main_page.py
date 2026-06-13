@@ -3,7 +3,8 @@ from tradinglib import ( tiny_chart as tc, search as sr,
         system_config as sysconf, graph_tools as gt, tools as ts)
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
 from tradinglib.i18n import t, current_language
-from tradinglib.premium_availability import PAPER_TRADING_AVAILABLE
+from tradinglib.premium_availability import PAPER_TRADING_AVAILABLE, SEASONALITY_AVAILABLE
+from tradinglib.license_manager import has_feature, FEATURE_SEASONALITY
 import streamlit as st
 import streamlit_nested_layout
 import datetime as dt
@@ -11,6 +12,14 @@ import json
 import sqlite3
 import pandas as pd
 import logging
+
+# Premium module — only imported when the file is present
+sn = None
+if SEASONALITY_AVAILABLE:
+    try:
+        from tradinglib.premium import seasonality as sn
+    except Exception as _e:
+        logging.getLogger(__name__).warning("Premium seasonality module could not be loaded: %s", _e)
 
 logger = logging.getLogger(__name__)
 
@@ -670,7 +679,11 @@ class render_mainpage(fetch_data.FetchData):
                     except Exception:
                         news_articles = []
 
+                    seasonality_enabled = SEASONALITY_AVAILABLE and has_feature(FEATURE_SEASONALITY) and sn is not None
+
                     tab_list = [t('main.tab_trend')]
+                    if seasonality_enabled:
+                        tab_list.append(t('main.tab_seasonality'))
                     if has_info:
                         tab_list.append(t('main.tab_info'))
                     if not income_df.empty:
@@ -684,6 +697,7 @@ class render_mainpage(fetch_data.FetchData):
 
                     tab_iter = iter(pp_right.tabs(tab_list))
                     tab_trend = next(tab_iter)
+                    tab_seasonality = next(tab_iter) if seasonality_enabled else None
                     tab_info = next(tab_iter) if has_info else None
                     tab_income_sheet = next(tab_iter) if not income_df.empty else None
                     tab_balance_sheet = next(tab_iter) if not balance_df.empty else None
@@ -723,6 +737,12 @@ class render_mainpage(fetch_data.FetchData):
                         if self.sys_conf.get_value("pine_export", False):
                             self.multi_selector.render_pine_export()
                         _spin.empty()
+
+                    if tab_seasonality is not None:
+                        with tab_seasonality:
+                            _spin.markdown(_tab_overlay(t('main.tab_seasonality')), unsafe_allow_html=True)
+                            sn.render_seasonality(ticker_selected, ticker_selected_longname, region=tab_seasonality)
+                            _spin.empty()
 
     #, add_sub_plots=['ewo']
                     if show_details:
