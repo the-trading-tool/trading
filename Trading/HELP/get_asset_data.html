@@ -30,14 +30,21 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 </table>
 <p>Mehrere Kombinationen gleichzeitig möglich: <code>python get_asset_data.py 1d:1y 1h:6mo</code></p>
 
-<h2>Filter-Parameter</h2>
+<h2>Filter-Parameter (Ticker-Auswahl)</h2>
+<p>Ohne Filter wird die Ticker-Liste aus <code>All_Assets.xlsx</code> importiert (neue Gruppen und Verknüpfungen werden dabei angelegt) und anschließend heruntergeladen.</p>
 <table>
 <tr><th>Parameter</th><th>Wirkung</th></tr>
-<tr><td><code>/select:AAPL,MSFT</code></td><td>Nur diese Ticker herunterladen</td></tr>
-<tr><td><code>/index_member:SPX</code></td><td>Nur Ticker eines bestimmten Index</td></tr>
-<tr><td><code>/index_only</code></td><td>Nur Index-Instrumente (kein Einzeltitel)</td></tr>
-<tr><td><code>/all</code></td><td>Alle bekannten Ticker</td></tr>
-<tr><td><code>/inverse</code></td><td>Bearbeitungsreihenfolge umkehren</td></tr>
+<tr><td><code>/index_member</code></td><td>Nur Mitglieder echter Börsen-Indizes. Das sind genau die Gruppen, deren Name mit <code>^</code> beginnt (<code>^GDAXI</code>, <code>^MDAXI</code>, <code>^SPX</code>, …). Kategorie-Gruppen werden hier <b>nicht</b> mitgenommen.</td></tr>
+<tr><td><code>/group:ETP</code></td><td>Nur Mitglieder der genannten Gruppe(n) aus der <code>indices</code>-Tabelle. Mehrere kommagetrennt: <code>/group:METALS,COMMODITIES</code>. Groß-/Kleinschreibung egal. So werden ETP, CRYPTO, CURRENCIES usw. gezielt in eigenen Läufen abgerufen.</td></tr>
+<tr><td><code>/inverse</code></td><td>Nur Ticker, die <b>keiner</b> Gruppe zugeordnet sind (Einzeltitel ohne Index-/Gruppen-Verknüpfung).</td></tr>
+<tr><td><code>/all</code></td><td>Alle bekannten Ticker (jede Gruppe + ungruppierte).</td></tr>
+<tr><td><code>/index</code></td><td>Nur die Nicht-Aktien-Gruppen (INDEX, COMMODITIES, METALS, CURRENCIES, CRYPTO) plus Währungspaare (<code>…=X</code>).</td></tr>
+</table>
+
+<h2>Parallele Downloads</h2>
+<table>
+<tr><th>Parameter</th><th>Wirkung</th></tr>
+<tr><td><code>/worker:N</code></td><td>N parallele Download-Threads (Default 1 = sequenziell). Empfehlung 2–4 – mehr reizt das Yahoo-Rate-Limit (HTTP&nbsp;429). Jeder Ticker schreibt in seine eigene <code>yf_{TICKER}.db</code>, daher kollisionsfrei.</td></tr>
 </table>
 
 <h2>Gespeicherte Tabellen je Datenbank</h2>

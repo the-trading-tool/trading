@@ -472,3 +472,60 @@ Einstiegspunkte:
 - ✅ 4-N: Scheduler thread-safe (RLock)
 - ⬜ 4-K: tools.py God Object (große Refaktorierung)
 - ⬜ 4-M: Keine Tests
+
+---
+
+## Neu in dieser Session (2026-06-13) — Ticker-Auswahl & paralleler Download
+
+### `^`-Konvention für die Index-Auswahl (wichtig!)
+In der `indices`-Tabelle (`yf_tickers.db`) beginnen **echte Börsen-Indizes
+ausnahmslos mit `^`** (`^GDAXI`, `^MDAXI`, `^SPX`, `^N225`, … — 16 Stück).
+Alles ohne `^` sind **Kategorie-Gruppen**: `INDEX`, `COMMODITIES`, `METALS`,
+`CURRENCIES`, `CRYPTO` und neu `ETP` (3376 Mitglieder).
+
+`/index_member` (get_asset_data.py) bzw. der Default-Lauf (asset_perf2.py)
+filtern die Gruppenliste jetzt hart auf den `^`-Präfix:
+```python
+filtered = [name for name in filtered if name.startswith('^')]
+```
+→ robuster als die `NON_STOCK_GROUPS`-Blockliste: jede künftige Nicht-Index-Gruppe
+ist automatisch ausgeschlossen, ohne Listenpflege. **`NON_STOCK_GROUPS` wurde
+bewusst NICHT um ETP erweitert** — die Konstante hat zwei gegensätzliche
+Verwendungen (Blockliste in `/index_member`, Auswahlliste in `/index`/`index_only`);
+ETP dort einzutragen hätte 3376 ETPs in den `/index`-Pfad und die Sim gezogen.
+
+### `/group:NAME` jetzt auch in asset_perf2.py
+`asset_perf2.py` wertet `args.get('group')` jetzt aus (Parsing war in `cli.py`
+längst vorhanden). Damit volle Parität mit get_asset_data.py:
+- Default / `/index_member` → nur `^`-Indizes (998 Ticker)
+- `/group:ETP` → ETPs (3376) im **eigenen Lauf** (so gewollt)
+- `/group:CURRENCIES` → die 4 `=X`-FX-Paare
+- `/inverse` → die **3650** Ticker ohne jede Gruppe (Einzeltitel wie BABA, AMC) —
+  NICHT redundant zu `/group`, „keine Gruppe" ist kein Gruppenname → bleibt erhalten
+- `/index:NAME` (asset_perf2) wertet jetzt **nur** den genannten Index aus; das alte
+  pauschale `OR i.name IN (NON_STOCK_GROUPS)` war ein Relikt aus der Zeit vor `/group`
+  und wurde entfernt.
+
+Aus `get_asset_data.py` `/index_member` zusätzlich das `OR s.Ticker LIKE "%=X"`
+entfernt (FX-Paare hängen alle an `CURRENCIES` → über `/group:CURRENCIES` erreichbar).
+
+### Paralleler Download in get_asset_data.py (`/worker:N`)
+Download-Schleife auf `ThreadPoolExecutor` umgestellt; `/worker:N` (Default 1).
+yfinance ist **nicht threadsafe** (modul-globales `yfinance.shared._DFS`) → ein
+`threading.Lock` serialisiert `yf.download` in `yahoo_provider.py` und im Fallback
+von `market_data.py`. Empfehlung 2–4 Worker (Yahoo HTTP 429). asset_perf2.py nutzt
+weiterhin `ProcessPoolExecutor` (CPU-lastig), get_asset_data ThreadPool (I/O).
+
+Commits: `8137c55` (parallel download), `26e12fb` (get_asset_data ^-Filter),
+`0d3c0ca` (asset_perf2 ^-Filter + /group). HELP-Seiten `get_asset_data.html` /
+`asset_perf2.html` entsprechend aktualisiert.
+
+### ⚠️ Backlog — neu entdeckt: cli.parse_args kleinschreibt Suffixe
+`cli.parse_args` macht `pref = (argv[i][1:]).lower()` über das **ganze** Argument,
+also auch den Wert nach `:`. Folgen:
+- `/index:^SPX` → `index_name='^spx'` → SQLite-`=` ist case-sensitiv → matcht `^SPX` NICHT.
+- `/select:WHERE Ticker LIKE "%.MC"` → `%.mc` → matcht keine `.MC`-Ticker.
+- `/group` funktioniert nur, weil Parsing zusätzlich `.upper()` macht UND die Query
+  `UPPER(i.name)` nutzt.
+**Fix-Ansatz:** nur den Präfix (Key) lowercasen, den Suffix (Wert) im Original
+belassen. Betrifft `/index:`, `/select:`, evtl. `/logfile:`.

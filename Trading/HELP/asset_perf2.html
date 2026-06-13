@@ -20,21 +20,21 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 
 <h2>Vollständiger Lauf (Standard)</h2>
 <pre>python asset_perf2.py</pre>
-<p>Verarbeitet alle Ticker mit dem Standard-Intervall (<code>1d:1mo</code>) und schreibt Ergebnisse in <code>asset_simulation_.db</code>.</p>
+<p>Verarbeitet ohne Filter genau die Mitglieder echter Börsen-Indizes (Gruppen mit <code>^</code>-Präfix wie <code>^GDAXI</code>/<code>^SPX</code>) mit dem Standard-Intervall (<code>1d:1mo</code>) und schreibt Ergebnisse in <code>asset_simulation_.db</code>. Kategorie-Gruppen (ETP, COMMODITIES, CRYPTO …) sind <b>nicht</b> enthalten – diese laufen über <code>/group:NAME</code> in eigenen Durchläufen.</p>
 
 <h2>Intervall und Zeitraum angeben</h2>
 <pre>python asset_perf2.py 1h:6mo
 python asset_perf2.py 1d:1y 1wk:2y</pre>
 
-<h2>Filter-Parameter</h2>
+<h2>Filter-Parameter (Ticker-Auswahl)</h2>
 <table>
 <tr><th>Parameter</th><th>Wirkung</th></tr>
-<tr><td><code>/select:AAPL,MSFT</code></td><td>Nur diese Ticker verarbeiten</td></tr>
-<tr><td><code>/index-member:SPX</code></td><td>Nur Ticker eines bestimmten Index</td></tr>
-<tr><td><code>/index-only</code></td><td>Nur Index-Instrumente selbst (kein Einzeltitel)</td></tr>
-<tr><td><code>/all</code></td><td>Alle Ticker unabhängig vom Index</td></tr>
-<tr><td><code>/year:2024</code></td><td>Berechnung auf ein Kalenderjahr beschränken</td></tr>
-<tr><td><code>/inverse</code></td><td>Bearbeitungsreihenfolge umkehren</td></tr>
+<tr><td><code>(ohne Filter)</code></td><td>Nur Mitglieder echter Börsen-Indizes (Gruppen mit <code>^</code>-Präfix).</td></tr>
+<tr><td><code>/group:ETP</code></td><td>Nur Mitglieder der genannten Gruppe(n); mehrere kommagetrennt, z.B. <code>/group:METALS,COMMODITIES</code>. Für eigene Läufe von ETP, CRYPTO, CURRENCIES usw.</td></tr>
+<tr><td><code>/inverse</code></td><td>Nur Ticker, die <b>keiner</b> Gruppe zugeordnet sind (Einzeltitel ohne Index-/Gruppen-Verknüpfung).</td></tr>
+<tr><td><code>/all</code></td><td>Alle Ticker unabhängig vom Index; schreibt nach <code>asset_simulation_all.db</code>.</td></tr>
+<tr><td><code>/year:2024</code></td><td>Berechnung auf ein Kalenderjahr beschränken (Snapshot/Backtest).</td></tr>
+<tr><td><code>/worker:N</code></td><td>N parallele Prozesse (ProcessPoolExecutor, CPU-lastig). Auf Windows ohne Angabe automatisch begrenzt (RAM pro Prozess).</td></tr>
 </table>
 
 <h2>Fast-Modes (ohne Neuberechnung)</h2>
@@ -46,13 +46,16 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 
 <h2>Bekannte Backfill-Indikatoren</h2>
 <pre>heikin  → ha_close, ha_open, ha_ema_high, ha_ema_low
-macd    → macd, macd_diff, macd_signal
-rsi     → rsi, rsi_ema, rsi_momentum
-ewo     → ewo, ewo_ema, ewo_diff, ewo_angle
-adx     → adx, adx_plus_di, adx_minus_di
-markov  → markov_regime
+markov  → markov_regime   (zusätzlich markov_regime_wk / _mo auf Wochen-/Monatsbasis)
+macd    → macd, macd_diff, macd_signal, macd_trend
+rsi     → rsi, rsi_ema, momentum
+ewo     → ewo, ewo_ema, ewo_diff, ewo_angle, ewo_trend
+adx     → adx, adx_plus, adx_minus, adx_angle
 dema    → dema_ema_fast, dema_ema_slow, dema_buy, dema_sell
-relvol  → relvol_ratio</pre>
+hor     → hor_val, hor_threshold
+sup     → sup_support, sup_resistance
+relvol  → relvol_ratio
+atc     → atc_top_high, atc_bot_low</pre>
 
 <div class="info">Täglicher Cron-Empfehlung: nach Börsenschluss automatisch ausführen, damit die App immer aktuelle Signale zeigt.</div>
 <div class="warn">Ein vollständiger Lauf kann je nach Tickeranzahl mehrere Minuten dauern. <code>/rescore</code> ist deutlich schneller.</div>
