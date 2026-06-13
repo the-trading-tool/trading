@@ -11,12 +11,39 @@ from tradinglib.tools import open_db
 
 
 ftime_str = '%Y-%m-%d %H:%M:%S'
+logger = logging.getLogger(__name__)
 
 # Datenbankname
 db_name = ts.Tools().get_path(path = 'database', file_name="asset_info.db")
 
 # Verbindung zur SQLite-Datenbank herstellen (oder erstellen, falls sie nicht existiert)
 conn = open_db(db_name, timeout=10)
+
+
+def rebuild_fts_table(conn, table_name='asset_info'):
+    """Suchtabelle (FTS5) <table_name>_fts neu aufbauen, damit frisch geladene
+    Ticker sofort in der Volltextsuche der App findbar sind.
+
+    Entspricht funktional dem Admin-Button „Update index" (search.py
+    FullTextSearch.update_fts_table), kommt aber ohne Streamlit-Import aus –
+    Struktur (fts5(ticker, longName)) muss identisch bleiben, damit
+    create_fts_table() in der App die bestehende Tabelle übernimmt.
+    """
+    fts = f"{table_name}_fts"
+    cur = conn.cursor()
+    # Quell-Spalten prüfen — ohne ticker/longName keinen Rebuild versuchen
+    # (z.B. wenn alle yfinance-Abrufe fehlschlugen und asset_info leer/teilbefüllt ist)
+    cur.execute(f"PRAGMA table_info({table_name})")
+    cols = {row[1] for row in cur.fetchall()}
+    if not {'ticker', 'longName'} <= cols:
+        logger.warning("FTS-Rebuild übersprungen: Spalten ticker/longName fehlen in %s.", table_name)
+        return
+    cur.execute(f"DROP TABLE IF EXISTS {fts};")
+    cur.execute(f"CREATE VIRTUAL TABLE {fts} USING fts5(ticker, longName);")
+    cur.execute(f"INSERT INTO {fts} (ticker, longName) SELECT ticker, longName FROM {table_name};")
+    conn.commit()
+    n = cur.execute(f"SELECT COUNT(*) FROM {fts}").fetchone()[0]
+    logger.info("FTS-Suchtabelle %s neu aufgebaut (%d Einträge).", fts, n)
 
 # Liste der Tickersymbole
 
@@ -156,7 +183,6 @@ if __name__ == '__main__':
     logging_config.configure_logging(to_console=args.get('log_to_console', True),
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
-    logger = logging.getLogger(__name__)
 
     group = args.get('group') or []        # nur diese Gruppen, z.B. /group:ETP
     max_workers = args.get('worker') or 1   # parallele Info-Downloads
@@ -187,5 +213,15 @@ if __name__ == '__main__':
         DataUtils.bulk_upsert_dicts(conn, 'asset_info', batch)
 
     conn.commit()
+
+    # FTS-Suchtabelle neu aufbauen, damit neue Ticker sofort volltextsuchbar sind
+    # (ersetzt den manuellen Admin-Klick "Update index"). Fehler hier dürfen den
+    # bereits committeten Upsert nicht gefährden.
+    try:
+        rebuild_fts_table(conn, 'asset_info')
+    except Exception:
+        logger.exception("FTS-Rebuild fehlgeschlagen — Stammdaten sind gespeichert, "
+                         "Volltextsuche ggf. erst nach Admin-„Update index\" aktuell.")
+
     conn.close()
 

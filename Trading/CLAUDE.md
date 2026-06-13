@@ -538,8 +538,10 @@ Firmen zeigt:
    → Chart-Overlays, Buy/Sell, Kennzahlen-Panel.
 
 **Volltextsuche** (`FullTextSearch`, search.py) liest `asset_info_fts` (FTS5 aus
-`asset_info`). `create_fts_table()` befüllt nur, wenn leer → neue Ticker erscheinen
-erst nach Rebuild über Admin-Button „Update index" (`update_fts_table()`).
+`asset_info`). `create_fts_table()` befüllt nur, wenn leer. `get_asset_info.py`
+baut die FTS-Tabelle am Ende automatisch neu auf (`rebuild_fts_table()`, direktes
+SQL, kein Streamlit-Import) → neue Ticker sind sofort volltextsuchbar. Admin-Button
+„Update index" (`update_fts_table()`) bleibt als Fallback.
 
 ### get_asset_info.py: `/group:NAME` + `/worker:N` ergänzt
 Vorher las get_asset_info immer die volle Liste (~8000 Ticker). Jetzt:
@@ -552,6 +554,11 @@ Vorher las get_asset_info immer die volle Liste (~8000 Ticker). Jetzt:
 - Schleifenkörper in `fetch_info_for(ticker)` ausgelagert; Flush sauber in
   `__main__` (vorher Modul-Ebene). HELP `get_asset_info.html` / `get_asset_data.html`
   um Pipeline-Tabelle erweitert.
+- **FTS-Auto-Rebuild:** `rebuild_fts_table(conn, 'asset_info')` baut am Ende die
+  `asset_info_fts`-Suchtabelle neu (DROP/CREATE fts5(ticker, longName)/INSERT) →
+  neue Ticker sofort volltextsuchbar, kein Admin-„Update index" mehr nötig. Struktur
+  identisch zu search.py, damit die App die Tabelle übernimmt. In try/except, damit
+  ein Rebuild-Fehler den bereits committeten Upsert nicht gefährdet.
 
 ### Fix: `/add_current` in asset_perf2 war wirkungslos
 Im `ProcessPoolExecutor`-Aufruf war das 3. Positionsargument (`add_current`) hart

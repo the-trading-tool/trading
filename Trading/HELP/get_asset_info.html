@@ -37,8 +37,10 @@ erscheint schon nach <code>get_asset_data.py</code> (aus der <code>indices</code
 in <code>yf_tickers.db</code>); die <b>Firmenliste</b> bleibt aber leer
 („No options to select"), bis <code>get_asset_info.py</code> die Stammdaten geladen
 hat (der Dropdown nutzt einen <code>INNER&nbsp;JOIN</code> auf <code>asset_info</code>).<br>
-<b>Volltextsuche:</b> Neue Einträge tauchen erst nach einem Rebuild der FTS-Suchtabelle
-auf – im Admin-Bereich über den Button <b>„Update index"</b>.</div>
+<b>Volltextsuche:</b> Dieses Skript baut am Ende automatisch die FTS-Suchtabelle
+(<code>asset_info_fts</code>) neu auf – neue Ticker sind also direkt nach dem Lauf
+auch per Namenssuche findbar. Der manuelle Admin-Button <b>„Update index"</b> bleibt
+als Fallback erhalten, ist nach diesem Skript aber nicht mehr nötig.</div>
 
 <h2>Gespeicherte Felder (Auswahl)</h2>
 <table>
