@@ -973,5 +973,15 @@
   "admin.del_ticker_info_ok": "Aus asset_info.db entfernt (Tabellen: {tables}).",
   "admin.del_ticker_info_not_found": "'{ticker}' nicht in asset_info.db gefunden.",
   "admin.del_ticker_price_ok": "Preisdatei yf_{ticker}.db gelöscht.",
-  "admin.del_ticker_price_not_found": "Preisdatei yf_{ticker}.db nicht gefunden."
+  "admin.del_ticker_price_not_found": "Preisdatei yf_{ticker}.db nicht gefunden.",
+
+  "admin.missing_info_expander": "Ticker ohne asset_info-Eintrag",
+  "admin.missing_info_none": "Alle Ticker in yf_tickers.db haben einen asset_info-Eintrag.",
+  "admin.missing_info_count": "{count} Ticker in yf_tickers.db haben keinen asset_info-Eintrag.",
+  "admin.missing_info_select_all": "Alle auswählen",
+  "admin.missing_info_del_price": "Auch Preisdatenbank löschen (yf_<ticker>.db)",
+  "admin.missing_info_confirm": "Ich bestätige die Löschung von {count} Ticker(n)",
+  "admin.missing_info_btn": "Ausgewählte löschen",
+  "admin.missing_info_yf_ok": "{count} Ticker aus yf_tickers.db entfernt.",
+  "admin.missing_info_price_ok": "Preisdatenbank(en) gelöscht: {tickers}"
 }

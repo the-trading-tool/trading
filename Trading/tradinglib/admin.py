@@ -695,6 +695,110 @@ class Admin():
                             st.info(t('admin.done_reload'))
             _spin.empty()
 
+        missing_info_expander = st.expander(t('admin.missing_info_expander'), expanded=False)
+        with missing_info_expander:
+            _spin.markdown(_tab_overlay(t('admin.missing_info_expander')), unsafe_allow_html=True)
+            _mi_yf_db = tools.Tools().get_path(path=self.db_path, file_name='yf_tickers.db')
+            _mi_info_db = tools.Tools().get_path(path=self.db_path, file_name='asset_info.db')
+
+            _mi_rows: list[tuple[str, str]] = []
+            try:
+                with open_db(_mi_yf_db, readonly=True) as _mic:
+                    _mi_stocks = _mic.execute("""
+                        SELECT s.Ticker,
+                               COALESCE(GROUP_CONCAT(i.name, ', '), '')
+                        FROM stocks s
+                        LEFT JOIN stock_indices si ON s.id = si.stock_id
+                        LEFT JOIN indices i ON i.id = si.index_id
+                        GROUP BY s.id, s.Ticker
+                        ORDER BY s.Ticker
+                    """).fetchall()
+
+                _mi_info_tickers: set[str] = set()
+                if os.path.exists(_mi_info_db):
+                    with open_db(_mi_info_db, readonly=True) as _mic2:
+                        _mi_info_tickers = {r[0] for r in _mic2.execute(
+                            "SELECT DISTINCT ticker FROM asset_info").fetchall()}
+
+                _mi_rows = [(tk, idx) for tk, idx in _mi_stocks if tk not in _mi_info_tickers]
+            except Exception as _mie:
+                st.error(f"Error comparing databases: {_mie}")
+
+            if not _mi_rows:
+                st.success(t('admin.missing_info_none'))
+            else:
+                st.warning(t('admin.missing_info_count', count=len(_mi_rows)))
+
+                _mi_df = pd.DataFrame(_mi_rows, columns=['Ticker', 'Indices'])
+                _mi_df.insert(0, 'Select', False)
+
+                if st.checkbox(t('admin.missing_info_select_all'), key='mi_select_all'):
+                    _mi_df['Select'] = True
+
+                _mi_edited = st.data_editor(
+                    _mi_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={"Select": st.column_config.CheckboxColumn(required=False)},
+                    key="mi_data_editor",
+                )
+
+                _mi_selected = _mi_edited[_mi_edited['Select']]['Ticker'].tolist()
+
+                if _mi_selected:
+                    st.markdown("---")
+                    _mi_del_price = st.checkbox(
+                        t('admin.missing_info_del_price'),
+                        value=False, key="mi_del_price"
+                    )
+                    _mi_confirm = st.checkbox(
+                        t('admin.missing_info_confirm', count=len(_mi_selected)),
+                        key="mi_confirm"
+                    )
+                    if st.button(t('admin.missing_info_btn'),
+                                  key="mi_delete_btn", type="primary") and _mi_confirm:
+                        _mi_ok, _mi_err = [], []
+
+                        try:
+                            with open_db(_mi_yf_db) as _mic:
+                                for _tk in _mi_selected:
+                                    _row = _mic.execute(
+                                        "SELECT id FROM stocks WHERE Ticker = ?", (_tk,)).fetchone()
+                                    if _row:
+                                        _mic.execute(
+                                            "DELETE FROM stock_indices WHERE stock_id = ?", (_row[0],))
+                                        _mic.execute(
+                                            "DELETE FROM stocks WHERE id = ?", (_row[0],))
+                                _mic.execute(
+                                    "DELETE FROM indices WHERE id NOT IN "
+                                    "(SELECT DISTINCT index_id FROM stock_indices)")
+                            _mi_ok.append(t('admin.missing_info_yf_ok', count=len(_mi_selected)))
+                        except Exception as _e:
+                            _mi_err.append(f"yf_tickers.db: {_e}")
+
+                        if _mi_del_price:
+                            _deleted_price = []
+                            for _tk in _mi_selected:
+                                try:
+                                    _price_path = tools.Tools().get_path(
+                                        path=self.db_path, file_name=f'yf_{_tk}.db')
+                                    if os.path.exists(_price_path):
+                                        os.remove(_price_path)
+                                        _deleted_price.append(_tk)
+                                except Exception as _e:
+                                    _mi_err.append(f"yf_{_tk}.db: {_e}")
+                            if _deleted_price:
+                                _mi_ok.append(t('admin.missing_info_price_ok',
+                                                 tickers=', '.join(_deleted_price)))
+
+                        for _m in _mi_ok:
+                            st.success(_m)
+                        for _m in _mi_err:
+                            st.error(_m)
+                        if _mi_ok and not _mi_err:
+                            st.info(t('admin.done_reload'))
+            _spin.empty()
+
         delisted_expander = st.expander(t('admin.delisted_expander'), expanded=False)
         with delisted_expander:
             _spin.markdown(_tab_overlay(t('admin.delisted_expander')), unsafe_allow_html=True)

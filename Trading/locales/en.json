@@ -973,5 +973,15 @@
   "admin.del_ticker_info_ok": "Removed from asset_info.db (tables: {tables}).",
   "admin.del_ticker_info_not_found": "'{ticker}' not found in asset_info.db.",
   "admin.del_ticker_price_ok": "Price file yf_{ticker}.db deleted.",
-  "admin.del_ticker_price_not_found": "Price file yf_{ticker}.db not found."
+  "admin.del_ticker_price_not_found": "Price file yf_{ticker}.db not found.",
+
+  "admin.missing_info_expander": "Tickers without asset_info entry",
+  "admin.missing_info_none": "All tickers in yf_tickers.db have an asset_info entry.",
+  "admin.missing_info_count": "{count} ticker(s) in yf_tickers.db have no asset_info entry.",
+  "admin.missing_info_select_all": "Select all",
+  "admin.missing_info_del_price": "Also delete price database (yf_<ticker>.db)",
+  "admin.missing_info_confirm": "I confirm deletion of {count} ticker(s)",
+  "admin.missing_info_btn": "Delete selected",
+  "admin.missing_info_yf_ok": "{count} ticker(s) removed from yf_tickers.db.",
+  "admin.missing_info_price_ok": "Price database(s) deleted: {tickers}"
 }
