@@ -324,10 +324,21 @@ class render_mainpage(fetch_data.FetchData):
 
         qty = st.number_input(t('main.order_qty'), min_value=1, step=1, value=default_qty)
 
-        if st.button(t('main.order_queue_btn'), type='primary', use_container_width=True):
-            resolver = TickerResolver(db_path='database')
-            broker_symbol = resolver.resolve_for_broker(ticker, broker_id) or ticker
+        # ── Tradability gate ──────────────────────────────────────────────
+        # Only stage the order if the active broker can actually trade this
+        # symbol. resolve_for_broker() returns None for symbols the broker does
+        # not support (e.g. .DE / other non-US tickers on Alpaca). The old
+        # "or ticker" fallback staged them anyway, so they piled up as 'queued'
+        # rows that the broker silently ignores. No fallback now: block + warn.
+        resolver = TickerResolver(db_path='database')
+        broker_symbol = resolver.resolve_for_broker(ticker, broker_id)
+        tradeable = broker_symbol is not None
 
+        if not tradeable:
+            st.warning(t('main.order_not_tradeable', ticker=ticker, broker=broker_id.upper()))
+
+        if st.button(t('main.order_queue_btn'), type='primary',
+                     use_container_width=True, disabled=not tradeable):
             OrderLog(db_path='database').save_queued(
                 mode=mode, broker=broker_id, strategy='quick',
                 ticker=ticker, broker_symbol=broker_symbol, action=side,
