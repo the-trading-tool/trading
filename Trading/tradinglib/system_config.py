@@ -364,14 +364,43 @@ class SystemConfig(tools.Db_tools):
         self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
         self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
         self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
-        _ov_raw = self.get_value('overlay', "['bos','pre']")
-        _ov_str = str(_ov_raw) if isinstance(_ov_raw, list) else (_ov_raw or "['bos','pre']")
-        self.set_value('overlay', st.text_input(i18n.t("cfg.default_overlay"), _ov_str))
+        def _coerce_names(raw, fallback):
+            """Normalise a config value / user text into a clean list[str] of
+            indicator short-names. Accepts a real list, a JSON or Python-repr
+            list string, or a plain comma/space separated string. This keeps the
+            stored format a proper JSON list regardless of how it was entered, so
+            both the ⚙-dialog and the checkbox selector agree on the format and
+            a bare name like 'gan' no longer silently falls back to the factory
+            defaults."""
+            import re as _re
+            if isinstance(raw, list):
+                names = raw
+            else:
+                s = (raw or '').strip()
+                names = None
+                if s:
+                    for parser in (json.loads, ast.literal_eval):
+                        try:
+                            val = parser(s)
+                            if isinstance(val, list):
+                                names = val
+                                break
+                        except Exception:
+                            pass
+                    if names is None:
+                        names = [p for p in _re.split(r'[\s,]+', s) if p]
+            names = [str(n).split(' - ')[0].strip() for n in (names or [])]
+            names = [n for n in names if n]
+            return names or list(fallback)
+
+        _ov_list = _coerce_names(self.get_value('overlay', None), ['bos', 'pre'])
+        _ov_in = st.text_input(i18n.t("cfg.default_overlay"), ", ".join(_ov_list))
+        self.set_value('overlay', _coerce_names(_ov_in, ['bos', 'pre']))
         self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
         check_list(overlays, 'overlay')
-        _oz_raw = self.get_value('oszilator', "['adx','cci','ewo']")
-        _oz_str = str(_oz_raw) if isinstance(_oz_raw, list) else (_oz_raw or "['adx','cci','ewo']")
-        self.set_value('oszilator', st.text_input(i18n.t("cfg.default_oscillator"), _oz_str))
+        _oz_list = _coerce_names(self.get_value('oszilator', None), ['adx', 'cci', 'ewo'])
+        _oz_in = st.text_input(i18n.t("cfg.default_oscillator"), ", ".join(_oz_list))
+        self.set_value('oszilator', _coerce_names(_oz_in, ['adx', 'cci', 'ewo']))
         check_list(oszilators, 'oszilator')
         self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
         self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))

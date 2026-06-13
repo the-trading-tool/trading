@@ -85,12 +85,26 @@ class MultiCheckboxSelector:
         default_period   = (sys_conf.get_value('period',   '1mo') or '1mo') if sys_conf else '1mo'
 
         # ------------------------------------------------------------------ #
-        # Session-State initialisation (only for keys that do not exist yet). #
+        # "Touched" guard: as long as the user has not actively toggled a     #
+        # checkbox in this session, re-assert the config defaults on EVERY    #
+        # rerun. This prevents a stale/partial widget state (e.g. left over   #
+        # from a previous navigation) from silently dropping default          #
+        # overlays/oscillators — the bug where the chart sometimes rendered   #
+        # without Heikin/oscillators despite a clean config.                  #
+        # Once the user changes a selection the callbacks set the flag and    #
+        # their choice is preserved for the rest of the session.              #
+        # ------------------------------------------------------------------ #
+        self._touched_key = f"{self.instance_name}_touched"
+        force_defaults = not st.session_state.get(self._touched_key, False)
+
+        # ------------------------------------------------------------------ #
+        # Session-State initialisation. Keys missing → set them; additionally #
+        # re-assert them every run while the selector is still untouched.     #
         # ------------------------------------------------------------------ #
         for list_id, options in self.lists:
             for option in options:
                 key = f"{list_id}_{option}_{self.instance_id}"
-                if key not in st.session_state:
+                if key not in st.session_state or force_defaults:
                     if list_id == 'Interval':
                         st.session_state[key] = (option == default_interval)
                     elif list_id == 'Period':
@@ -103,7 +117,7 @@ class MultiCheckboxSelector:
                 # "Plot"-Flag für Overlay/Oszilator: aus config.db lesen, default True
                 if list_id in ('Overlay', 'Oszilator'):
                     plot_key = f"plot_{list_id}_{option}_{self.instance_id}"
-                    if plot_key not in st.session_state:
+                    if plot_key not in st.session_state or force_defaults:
                         short = option.split(' - ')[0].lower()
                         conf_key = 'overlay_no_plot' if list_id == 'Overlay' else 'oszilator_no_plot'
                         no_plot_set = _no_plot_sets.get(conf_key, set())
@@ -217,6 +231,7 @@ class MultiCheckboxSelector:
                     # Callback für Radio-Button-Verhalten (Interval / Period) + Config-Persistierung
                     def _make_single_select_cb(lid, opt, inst_id, opts, selector_self):
                         def _cb():
+                            st.session_state[selector_self._touched_key] = True
                             if st.session_state.get(f"{lid}_{opt}_{inst_id}"):
                                 for o in opts:
                                     if o != opt:
@@ -225,13 +240,21 @@ class MultiCheckboxSelector:
                         return _cb
 
                     def _make_save_cb(lid, selector_self):
+                        # Overlay/Oszilator toggles are session-scoped overrides:
+                        # mark the selector as user-touched (so the init guard stops
+                        # forcing config defaults) but DO NOT auto-persist to
+                        # config.db. Auto-persisting from here corrupted the stored
+                        # defaults, because Streamlit re-fires on_change when widgets
+                        # are recreated after a non-render rerun, writing a partial
+                        # selection. The configured defaults are owned by the
+                        # ⚙ settings dialog only.
                         def _cb():
-                            selector_self._save_to_config(lid)
+                            st.session_state[selector_self._touched_key] = True
                         return _cb
 
                     def _make_plot_cb(lid, selector_self):
                         def _cb():
-                            selector_self._save_no_plot_to_config(lid)
+                            st.session_state[selector_self._touched_key] = True
                         return _cb
 
                     selected_options = []
