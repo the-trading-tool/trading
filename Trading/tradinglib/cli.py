@@ -71,10 +71,17 @@ def parse_args(argv=None) -> Dict[str, Any]:
         if len(argv[i]) == 0:
             continue
         if argv[i][:1] == '/':
-            pref = (argv[i][1:]).lower()
-            suf = None
-            if ":" in pref:
-                pref, suf = pref.split(':', 1)
+            # Nur den Key (Präfix vor ':') kleinschreiben, den Wert dahinter im
+            # Original belassen — sonst gehen case-sensitive Werte verloren
+            # (z.B. /index:^SPX oder /select:'... LIKE "%.MC"'; SQLite '='/LIKE
+            # sind case-sensitiv). Werte, die case-insensitiv sein sollen, werden
+            # unten gezielt normalisiert (group → upper, backfill → lower).
+            raw = argv[i][1:]
+            if ":" in raw:
+                pref, suf = raw.split(':', 1)
+            else:
+                pref, suf = raw, None
+            pref = pref.lower()
             if pref == 'silent':
                 result['silent'] = True
             if pref == 'select':
@@ -107,8 +114,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 else:
                     result['index_only'] = True
             if pref == 'group' and suf:
-                # pref/suf sind bereits lowercase — Gruppennamen in der DB sind
-                # uppercase (CRYPTO, METALS, ^GDAXI …), daher hier normalisieren.
+                # Gruppennamen in der DB sind uppercase (CRYPTO, METALS, ^GDAXI …);
+                # Query nutzt zusätzlich UPPER(i.name) → Eingabe-Case egal.
                 result['group'] = [s.strip().upper() for s in suf.split(',') if s.strip()]
             if pref == 'log':
                 result['log_to_console'] = True
@@ -119,7 +126,9 @@ def parse_args(argv=None) -> Dict[str, Any]:
             if pref == 'rescore':
                 result['rescore'] = True
             if pref == 'backfill' and suf:
-                result['backfill'] = [s.strip() for s in suf.split(',') if s.strip()]
+                # Indikator-Keys in INDICATOR_BACKFILL_MAP sind lowercase →
+                # Eingabe normalisieren, damit /backfill:Heikin weiterhin matcht.
+                result['backfill'] = [s.strip().lower() for s in suf.split(',') if s.strip()]
             if pref == 'force':
                 result['force'] = True
 

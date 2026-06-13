@@ -520,12 +520,12 @@ Commits: `8137c55` (parallel download), `26e12fb` (get_asset_data ^-Filter),
 `0d3c0ca` (asset_perf2 ^-Filter + /group). HELP-Seiten `get_asset_data.html` /
 `asset_perf2.html` entsprechend aktualisiert.
 
-### ⚠️ Backlog — neu entdeckt: cli.parse_args kleinschreibt Suffixe
-`cli.parse_args` macht `pref = (argv[i][1:]).lower()` über das **ganze** Argument,
-also auch den Wert nach `:`. Folgen:
-- `/index:^SPX` → `index_name='^spx'` → SQLite-`=` ist case-sensitiv → matcht `^SPX` NICHT.
-- `/select:WHERE Ticker LIKE "%.MC"` → `%.mc` → matcht keine `.MC`-Ticker.
-- `/group` funktioniert nur, weil Parsing zusätzlich `.upper()` macht UND die Query
-  `UPPER(i.name)` nutzt.
-**Fix-Ansatz:** nur den Präfix (Key) lowercasen, den Suffix (Wert) im Original
-belassen. Betrifft `/index:`, `/select:`, evtl. `/logfile:`.
+### ✅ cli.parse_args-Lowercasing-Bug gefixt
+`cli.parse_args` schrieb `pref = (argv[i][1:]).lower()` über das **ganze** Argument
+klein, also auch den Wert nach `:` → case-sensitive Werte gingen verloren
+(`/index:^SPX` → `^spx` matchte `^SPX` nicht; `/select:… "%.MC"` → `%.mc`).
+**Fix (commit s.u.):** erst auf `:` splitten, dann nur den Key (`pref`) lowercasen,
+den Wert (`suf`) im Original belassen. Case-insensitive gewollte Werte werden
+gezielt normalisiert: `group → .upper()` (+ Query `UPPER(i.name)`),
+`backfill → .lower()` (Map-Keys sind lowercase). Verifiziert: `/index:^SPX` → 515,
+`/select:… "%.MC"` → 30 Treffer (vorher je 0).
