@@ -715,7 +715,7 @@ class Admin():
             _mi_info_db = tools.Tools().get_path(path=self.db_path, file_name='asset_info.db')
 
             _mi_stocks: list[tuple[str, str]] = []
-            _mi_info_good: set[str] = set()
+            _mi_info_map: dict[str, tuple[str, str]] = {}
             try:
                 with open_db(_mi_yf_db, readonly=True) as _mic:
                     _mi_stocks = _mic.execute("""
@@ -731,13 +731,15 @@ class Admin():
                 if os.path.exists(_mi_info_db):
                     with open_db(_mi_info_db, readonly=True) as _mic2:
                         try:
-                            _mi_info_good = {r[0] for r in _mic2.execute(
-                                "SELECT ticker FROM asset_info "
-                                "WHERE longName IS NOT NULL AND TRIM(longName) != ''"
-                            ).fetchall()}
+                            for _r in _mic2.execute(
+                                "SELECT ticker, shortName, longName FROM asset_info"
+                            ).fetchall():
+                                _mi_info_map[_r[0]] = (_r[1] or '', _r[2] or '')
                         except Exception:
-                            _mi_info_good = {r[0] for r in _mic2.execute(
-                                "SELECT DISTINCT ticker FROM asset_info").fetchall()}
+                            for _r in _mic2.execute(
+                                "SELECT ticker, longName FROM asset_info"
+                            ).fetchall():
+                                _mi_info_map[_r[0]] = ('', _r[1] or '')
             except Exception as _mie:
                 st.error(f"Error reading databases: {_mie}")
 
@@ -745,13 +747,17 @@ class Admin():
                 _mi_total = len(_mi_stocks)
                 _mi_price_missing: set[str] = set()
                 if _mi_total:
-                    _mi_progress = st.progress(0.0)
+                    _mi_progress = st.progress(
+                        0.0, text=t('admin.missing_info_progress', current=0, total=_mi_total))
                     _mi_step = max(1, _mi_total // 100)
                     for _i, (_tk, _) in enumerate(_mi_stocks):
                         if not _has_price_data(_tk, self.db_path):
                             _mi_price_missing.add(_tk)
                         if _i % _mi_step == 0 or _i == _mi_total - 1:
-                            _mi_progress.progress((_i + 1) / _mi_total)
+                            _mi_progress.progress(
+                                (_i + 1) / _mi_total,
+                                text=t('admin.missing_info_progress',
+                                       current=_i + 1, total=_mi_total))
                     _mi_progress.empty()
                 st.session_state['mi_price_missing'] = _mi_price_missing
                 st.session_state['mi_price_checked'] = True
@@ -761,13 +767,14 @@ class Admin():
             if _mi_price_checked:
                 st.caption(t('admin.missing_info_price_checked', count=len(_mi_price_missing)))
 
-            _mi_combined: list[tuple[str, str, str, str]] = []
+            _mi_combined: list[tuple[str, str, str, str, str, str]] = []
             for _tk, _idx in _mi_stocks:
-                _info_ok = _tk in _mi_info_good
+                _short, _long = _mi_info_map.get(_tk, ('', ''))
+                _info_ok = bool(_long.strip()) and bool(_short.strip())
                 _price_ok = (_tk not in _mi_price_missing) if _mi_price_checked else None
                 if not _info_ok or _price_ok is False:
                     _mi_combined.append((
-                        _tk, _idx,
+                        _tk, _idx, _short, _long,
                         '✅' if _info_ok else '❌',
                         ('✅' if _price_ok else '❌') if _mi_price_checked else '–',
                     ))
@@ -780,13 +787,34 @@ class Admin():
                 _mi_df = pd.DataFrame(
                     _mi_combined,
                     columns=['Ticker', 'Indices',
+                             t('admin.missing_info_col_short_name'),
+                             t('admin.missing_info_col_long_name'),
                              t('admin.missing_info_col_info'),
                              t('admin.missing_info_col_price')]
                 )
                 _mi_df.insert(0, 'Select', False)
 
-                if st.checkbox(t('admin.missing_info_select_all'), key='mi_select_all'):
+                _mi_sel_col1, _mi_sel_col2, _mi_sel_col3 = st.columns(3)
+                with _mi_sel_col1:
+                    _mi_sel_all = st.checkbox(t('admin.missing_info_select_all'), key='mi_select_all')
+                with _mi_sel_col2:
+                    _mi_sel_no_info = st.checkbox(
+                        t('admin.missing_info_select_no_info'), key='mi_select_no_info')
+                with _mi_sel_col3:
+                    _mi_sel_no_price = st.checkbox(
+                        t('admin.missing_info_select_no_price'), key='mi_select_no_price',
+                        disabled=not _mi_price_checked)
+
+                if _mi_sel_all:
                     _mi_df['Select'] = True
+                if _mi_sel_no_info:
+                    _mi_df.loc[
+                        (_mi_df[t('admin.missing_info_col_short_name')].str.strip() == '') &
+                        (_mi_df[t('admin.missing_info_col_long_name')].str.strip() == ''),
+                        'Select'
+                    ] = True
+                if _mi_sel_no_price:
+                    _mi_df.loc[_mi_df[t('admin.missing_info_col_price')] == '❌', 'Select'] = True
 
                 _mi_edited = st.data_editor(
                     _mi_df,
