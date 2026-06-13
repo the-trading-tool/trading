@@ -1376,7 +1376,9 @@ if __name__ == "__main__":
         logger.info("Year to analyze is %s", year)
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(process_symbol, sym, True, False, year=year, init=init): sym for sym in tickers}
+        # 3. Positionsargument = add_current: die geparste /add_current-Option
+        # durchreichen (vorher hart False → Flag war wirkungslos).
+        futures = {executor.submit(process_symbol, sym, True, add_current, year=year, init=init): sym for sym in tickers}
         for future in concurrent.futures.as_completed(futures):
             symbol = futures[future]
             try:

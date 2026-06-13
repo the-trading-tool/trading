@@ -520,6 +520,12 @@ Commits: `8137c55` (parallel download), `26e12fb` (get_asset_data ^-Filter),
 `0d3c0ca` (asset_perf2 ^-Filter + /group). HELP-Seiten `get_asset_data.html` /
 `asset_perf2.html` entsprechend aktualisiert.
 
+### Fix: `/add_current` in asset_perf2 war wirkungslos
+Im `ProcessPoolExecutor`-Aufruf war das 3. Positionsargument (`add_current`) hart
+auf `False` verdrahtet → die geparste `/add_current`-Option erreichte
+`process_symbol` nie (aktuelle, noch nicht geschlossene Tageskerze wurde nie
+ergänzt). Jetzt wird die Variable durchgereicht.
+
 ### ✅ cli.parse_args-Lowercasing-Bug gefixt
 `cli.parse_args` schrieb `pref = (argv[i][1:]).lower()` über das **ganze** Argument
 klein, also auch den Wert nach `:` → case-sensitive Werte gingen verloren
