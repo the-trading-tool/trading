@@ -27,21 +27,36 @@ class AssetList(tt.TickerTools):
         df = self.read_stock_list(db_path='database', db_name='yf_tickers.db')
         return df
     
-df = AssetList().read_assets()
-if df.empty:
+def build_ticker_list(group=None):
+    """Return the Series of tickers whose Stammdaten should be (re)fetched.
 
-        db_info =  ts.Tools().get_path(path = 'database', file_name='yf_tickers.db')
+    group=['ETP', …] → nur Mitglieder dieser Gruppen aus der indices-Tabelle in
+    yf_tickers.db (gezieltes Nachladen, z.B. nur die ETPs). Ohne Gruppenfilter
+    wird die volle Liste verwendet (read_stock_list importiert dabei
+    All_Assets.xlsx neu, falls vorhanden; sonst Fallback auf die stocks-Tabelle).
+    """
+    if group:
+        db_info = ts.Tools().get_path(path='database', file_name='yf_tickers.db')
         conn2 = open_db(db_info)
+        # Gruppennamen kommen aus cli.parse_args bereits uppercased; Query nutzt
+        # zusätzlich UPPER(i.name) → case-insensitiv.
+        group_sql = '","'.join(group)
+        q = ('SELECT s.Ticker FROM stocks s '
+             'JOIN stock_indices si ON s.id = si.stock_id '
+             'JOIN indices i ON si.index_id = i.id '
+             f'WHERE UPPER(i.name) IN ("{group_sql}")')
+        rows = conn2.execute(q).fetchall()
+        conn2.close()
+        return pd.DataFrame(rows, columns=['Ticker'])['Ticker']
 
-        # Zweite Datenbank anhängen
-        cursor2 = conn2.cursor()
-        cursor2.execute("SELECT Ticker FROM stocks;")
-        # Ergebnisse abrufen und anzeigen
-        rows = cursor2.fetchall()
+    df = AssetList().read_assets()
+    if df.empty:
+        db_info = ts.Tools().get_path(path='database', file_name='yf_tickers.db')
+        conn2 = open_db(db_info)
+        rows = conn2.execute("SELECT Ticker FROM stocks;").fetchall()
         conn2.close()
         df = pd.DataFrame(rows, columns=['Ticker'])
-
-ticker_list = df['Ticker']
+    return df['Ticker']
 
 #ticker_list = ['CLNX.MC','ANA.MC','LOG.MC','GRF.MC','NTGY.MC','BBVA.MC','TEF.MC','COL.MC','IBE.MC','UNI.MC','IAG.MC','AENA.MC','CABK.MC','ITX.MC','MRL.MC','SAN.MC','RED.MC','BKT.MC','PUIG.MC','ELE.MC','ANE.MC','SAB.MC','ACX.MC','ENG.MC','FDR.MC','FER.MC','AMS.MC','MTS.MC','MAP.MC','ACS.MC']
 #['0002.HK','0883.HK','0003.HK','0012.HK','2688.HK','1038.HK','0669.HK','1398.HK','1209.HK','0027.HK','9633.HK','0267.HK','0101.HK','2319.HK','1044.HK','6690.HK','0017.HK','1109.HK','2015.HK','0992.HK','2020.HK','2331.HK','2628.HK','1093.HK','9988.HK','3690.HK','1810.HK','9618.HK','2269.HK','0241.HK']
@@ -84,78 +99,93 @@ def get_data_yf(symbol, period='1d', interval='1m'):
 
     return df, ticker
 
-count = 0
-batch = []
-batch_size = 100
+def fetch_info_for(ticker):
+    """Hole info/financials/balance_sheet für einen Ticker und baue die row_map.
 
-#ticker_list = ['B4B.DE']
-#ticker_list = ['EURUSD=X','GBPUSD=X']
+    Gibt ein dict für bulk_upsert_dicts zurück, oder None bei Fehler. Läuft pro
+    Ticker in eigenem yfinance-Request (threadsicher: kein gemeinsames
+    yf.download-shared._DFS).
+    """
+    print('updating: ', end='')
+    time.sleep(0.5)
+    try:
+        # get data from tradinglib.market_data (wraps yfinance) and force network fetch
+        info = market_data.ticker_info(ticker, use_cache=False)
+        financials = market_data.ticker_financials(ticker, use_cache=False)
+        balance_sheet = market_data.ticker_balance_sheet(ticker, use_cache=False)
+
+        # Get income sheet data
+        try:
+            info['incomeSheet'] = financials.to_json(orient="split")
+        except Exception:
+            pass
+
+        # Get balance sheet data
+        try:
+            info['balanceSheet'] = balance_sheet.to_json(orient="split")
+        except Exception:
+            pass
+
+        # Build mapping (normalize keys and serialize lists/dicts).
+        # ticker muss als erstes eingetragen werden -- bulk_upsert_dicts erstellt
+        # die Tabelle aus den row_map-Keys; ohne expliziten Eintrag wuerde die
+        # ticker-Spalte fehlen und fetch_data.py mit "no such column: ticker"
+        # scheitern.
+        row_map = {'ticker': ticker}
+        for key in info.keys():
+            column_name = f"_{key}" if key and key[0].isdigit() else key
+            try:
+                value = info.get(key, None)
+                if isinstance(value, (list, dict)):
+                    value = json.dumps(value)
+            except Exception:
+                value = None
+            row_map[column_name] = value
+        return row_map
+    except Exception:
+        # ignore tickers that fail, but continue
+        return None
+
+
 # Daten für jedes Tickersymbol abrufen und speichern
 if __name__ == '__main__':
+    import concurrent.futures
+
     # configure logging and parse CLI
     args = cli.parse_args()
     logging_config.configure_logging(to_console=args.get('log_to_console', True),
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
+    logger = logging.getLogger(__name__)
 
-    for ticker in ticker_list:
-        print(f'updating: ',end='')
-        time.sleep(0.5)
-        try:
-            # get data from tradinglib.market_data (wraps yfinance) and force network fetch
-            info = market_data.ticker_info(ticker, use_cache=False)
-            financials = market_data.ticker_financials(ticker, use_cache=False)
-            balance_sheet = market_data.ticker_balance_sheet(ticker, use_cache=False)
+    group = args.get('group') or []        # nur diese Gruppen, z.B. /group:ETP
+    max_workers = args.get('worker') or 1   # parallele Info-Downloads
 
-            # Get income sheet data
-            try:
-                info['incomeSheet'] = financials.to_json(orient="split")
-            except Exception:
-                pass
+    ticker_list = list(build_ticker_list(group))
+    logger.info("get_asset_info: %d Ticker%s, %d Worker",
+                len(ticker_list),
+                f" (Gruppen={group})" if group else "",
+                max_workers)
 
-            # Get balance sheet data
-            try:
-                info['balanceSheet'] = balance_sheet.to_json(orient="split")
-            except Exception:
-                pass
+    # row_maps werden nur hier im Main-Thread eingesammelt (kein Lock nötig)
+    batch = []
+    if max_workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(fetch_info_for, t): t for t in ticker_list}
+            for future in concurrent.futures.as_completed(futures):
+                row_map = future.result()
+                if row_map:
+                    batch.append(row_map)
+    else:
+        for t in ticker_list:
+            row_map = fetch_info_for(t)
+            if row_map:
+                batch.append(row_map)
 
-            # Erhalte alle verfügbaren Schlüssel aus den Info-Daten
-            keys = info.keys()
+    # flush batch using DataUtils helper
+    if len(batch) > 0:
+        DataUtils.bulk_upsert_dicts(conn, 'asset_info', batch)
 
-            # Build mapping (normalize keys and serialize lists/dicts)
-            # ticker muss als erstes eingetragen werden -- bulk_upsert_dicts
-            # erstellt die Tabelle aus den row_map-Keys; ohne expliziten Eintrag
-            # wuerde die ticker-Spalte fehlen und fetch_data.py mit
-            # "no such column: ticker" scheitern.
-            row_map = {'ticker': ticker}
-            for key in keys:
-                if key[0].isdigit():
-                    column_name = f"_{key}"
-                else:
-                    column_name = key
-                try:
-                    value = info.get(key, None)
-                    if isinstance(value, (list, dict)):
-                        value = json.dumps(value)
-                except Exception:
-                    value = None
-                row_map[column_name] = value
-
-            batch.append(row_map)
-
-        except Exception:
-            # ignore tickers that fail, but continue
-            continue
-
-        # Änderungen speichern und die Verbindung schließen
-        count += 1
-        if count % 100 == 0:
-            conn.commit()
-
-# flush remaining batch using DataUtils helper
-if len(batch) > 0:
-    DataUtils.bulk_upsert_dicts(conn, 'asset_info', batch)
-
-conn.commit()
-conn.close()
+    conn.commit()
+    conn.close()
 

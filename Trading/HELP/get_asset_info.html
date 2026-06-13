@@ -19,7 +19,26 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 
 <h2>Aufruf</h2>
 <pre>python get_asset_info.py</pre>
-<p>Liest die Ticker-Liste aus <code>yf_tickers.db</code> und verarbeitet alle Einträge sequenziell.</p>
+<p>Ohne Parameter wird die <b>komplette</b> Ticker-Liste aus <code>yf_tickers.db</code> verarbeitet (re-importiert <code>All_Assets.xlsx</code>, falls vorhanden).</p>
+
+<h2>Parameter (Ticker-Auswahl &amp; Tempo)</h2>
+<table>
+<tr><th>Parameter</th><th>Wirkung</th></tr>
+<tr><td><code>/group:ETP</code></td><td>Stammdaten nur für Mitglieder der genannten Gruppe(n) laden, mehrere kommagetrennt (<code>/group:METALS,COMMODITIES</code>). Groß-/Kleinschreibung egal. So lädst du gezielt z.B. nur die neuen ETPs nach, statt aller ~8000 Ticker.</td></tr>
+<tr><td><code>/worker:N</code></td><td>N parallele Info-Downloads (Default 1 = sequenziell). Die <code>.info</code>-Abfragen sind pro Ticker eigene Requests → threadsicher. Empfehlung 2–4 (Yahoo-Rate-Limit).</td></tr>
+</table>
+<pre>python get_asset_info.py /group:ETP /worker:4</pre>
+
+<div class="info"><b>Pipeline-Hinweis – wann werden importierte Assets sichtbar?</b><br>
+Damit Ticker im <b>„Select asset by market" → „Select company"</b>-Dropdown und in der
+<b>Volltextsuche</b> erscheinen, müssen sie in <code>asset_info.db</code> stehen –
+und genau das schreibt dieses Skript. Der Markt selbst (z.B. <code>ETP</code>)
+erscheint schon nach <code>get_asset_data.py</code> (aus der <code>indices</code>-Tabelle
+in <code>yf_tickers.db</code>); die <b>Firmenliste</b> bleibt aber leer
+(„No options to select"), bis <code>get_asset_info.py</code> die Stammdaten geladen
+hat (der Dropdown nutzt einen <code>INNER&nbsp;JOIN</code> auf <code>asset_info</code>).<br>
+<b>Volltextsuche:</b> Neue Einträge tauchen erst nach einem Rebuild der FTS-Suchtabelle
+auf – im Admin-Bereich über den Button <b>„Update index"</b>.</div>
 
 <h2>Gespeicherte Felder (Auswahl)</h2>
 <table>
@@ -39,6 +58,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <ul>
   <li>Nach dem ersten Setup (nach <code>seed_db.py</code>)</li>
   <li>Nach Hinzufügen neuer Ticker im Admin-Panel</li>
+  <li><b>Nach Import einer neuen Gruppe</b> via <code>get_asset_data.py</code> (z.B. ETP) – gezielt mit <code>/group:NAME</code>, damit die neuen Ticker im „Select company"-Dropdown und in der Suche auftauchen</li>
   <li>Quartalsweise für aktualisierte Fundamentaldaten</li>
 </ul>
 

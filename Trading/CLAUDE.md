@@ -520,6 +520,39 @@ Commits: `8137c55` (parallel download), `26e12fb` (get_asset_data ^-Filter),
 `0d3c0ca` (asset_perf2 ^-Filter + /group). HELP-Seiten `get_asset_data.html` /
 `asset_perf2.html` entsprechend aktualisiert.
 
+### Daten-Pipeline: wann werden importierte Assets in der App sichtbar?
+Drei DBs, drei Stufen — wichtig zu verstehen, warum ein frisch importierter Markt
+(z.B. ETP) zwar im „Select by market" steht, aber „No options to select" bei den
+Firmen zeigt:
+1. **`get_asset_data.py`** (Excel-Default oder `/group`) → `yf_tickers.db`
+   (stocks/indices/stock_indices) + `yf_<TICKER>.db` (OHLCV).
+   → Der **Markt** erscheint sofort (`MarketSearch.get_index_list()` liest
+   `SELECT name FROM indices`).
+2. **`get_asset_info.py`** → `asset_info.db` (Stammdaten).
+   → Erst jetzt füllt sich der **„Select company"-Dropdown** und die Volltextsuche.
+   Grund: `make_query(q=7)` nutzt `INNER JOIN info_db.asset_info ON yt.Ticker =
+   ai.ticker` ([make_query.py](tradinglib/make_query.py)) — ohne asset_info-Zeile
+   kein Dropdown-Eintrag. q=7 joint NICHT auf asset_simulation, d.h. asset_perf2
+   muss dafür noch nicht gelaufen sein.
+3. **`asset_perf2.py`** → `asset_simulation_.db` (Scores/Signale).
+   → Chart-Overlays, Buy/Sell, Kennzahlen-Panel.
+
+**Volltextsuche** (`FullTextSearch`, search.py) liest `asset_info_fts` (FTS5 aus
+`asset_info`). `create_fts_table()` befüllt nur, wenn leer → neue Ticker erscheinen
+erst nach Rebuild über Admin-Button „Update index" (`update_fts_table()`).
+
+### get_asset_info.py: `/group:NAME` + `/worker:N` ergänzt
+Vorher las get_asset_info immer die volle Liste (~8000 Ticker). Jetzt:
+- `/group:ETP` → nur Mitglieder dieser Gruppe(n) (via `build_ticker_list(group)`,
+  Query mit `UPPER(i.name) IN (...)`) — gezieltes Nachladen statt alles.
+- `/worker:N` → parallele Info-Downloads (ThreadPool). `.info/.financials/
+  .balance_sheet` sind pro Ticker eigene Requests → threadsicher, **kein** Lock
+  nötig (anders als `yf.download`). row_maps werden im Main-Thread per
+  `as_completed` eingesammelt, einmal `bulk_upsert_dicts` am Ende.
+- Schleifenkörper in `fetch_info_for(ticker)` ausgelagert; Flush sauber in
+  `__main__` (vorher Modul-Ebene). HELP `get_asset_info.html` / `get_asset_data.html`
+  um Pipeline-Tabelle erweitert.
+
 ### Fix: `/add_current` in asset_perf2 war wirkungslos
 Im `ProcessPoolExecutor`-Aufruf war das 3. Positionsargument (`add_current`) hart
 auf `False` verdrahtet → die geparste `/add_current`-Option erreichte

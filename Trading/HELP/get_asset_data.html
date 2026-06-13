@@ -57,5 +57,18 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 </ul>
 
 <div class="info">Bereits vorhandene Daten werden inkrementell aktualisiert – nur neue Kerzen werden heruntergeladen. Bestehende Einträge bleiben erhalten.</div>
+
+<h2>Pipeline – nach dem Import sichtbar machen</h2>
+<p>Dieses Skript befüllt nur <code>yf_tickers.db</code> (Gruppen/Ticker) und die Kurs-DBs <code>yf_{TICKER}.db</code>. Damit neu importierte Assets in der App vollständig nutzbar werden, sind weitere Schritte nötig:</p>
+<table>
+<tr><th>#</th><th>Skript</th><th>Befüllt</th><th>Macht sichtbar</th></tr>
+<tr><td>1</td><td><code>get_asset_data.py</code> (dieses Skript)</td><td><code>yf_tickers.db</code>, <code>yf_{TICKER}.db</code></td><td>Markt im „Select by market" + Kursdaten</td></tr>
+<tr><td>2</td><td><code>get_asset_info.py /group:NAME</code></td><td><code>asset_info.db</code></td><td><b>„Select company"-Dropdown + Volltextsuche</b></td></tr>
+<tr><td>3</td><td><code>asset_perf2.py /group:NAME</code></td><td><code>asset_simulation_.db</code></td><td>Indikator-Overlays, Buy/Sell-Signale, Kennzahlen</td></tr>
+</table>
+<p>Beispiel für eine neue Gruppe (z.B. ETP), Schritt für Schritt:</p>
+<pre>python get_asset_data.py 1d:1y /group:ETP /worker:3
+python get_asset_info.py /group:ETP /worker:4
+python asset_perf2.py /group:ETP /worker:2</pre>
 </body>
 </html>
