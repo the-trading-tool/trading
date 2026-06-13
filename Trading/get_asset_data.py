@@ -63,9 +63,13 @@ if __name__ == "__main__":
             filtered.remove('nan')
         except Exception:
             pass
+        # /index_member meint ausschließlich echte Börsen-Indizes: deren Namen
+        # beginnen per Konvention mit '^' (^GDAXI, ^SPX, …). Kategorie-Gruppen wie
+        # ETP/COMMODITIES/CRYPTO/CURRENCIES sind nur über /group:NAME ansprechbar
+        # und dürfen hier nicht subsumiert werden (auch keine =X-Währungspaare).
+        filtered = [name for name in filtered if name.startswith('^')]
 
-#        # Achte auf das Ende des join-Teils und das fehlende Quote vor %=X
-        ticker_query = 'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name IN ("' + '","'.join(filtered) + '") OR s.Ticker LIKE "%=X"'
+        ticker_query = 'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name IN ("' + '","'.join(filtered) + '")'
         #ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "' + '" OR i.name = "'.join(filtered)+'"' + '" OR s.Ticker LIKE "%=X"'
 #        ticker_query = f"SELECT Ticker FROM {info_db_table_name} WHERE " + " = 1 OR ".join(filtered) + " = 1;"
         ticker_list = info_db.read_data(ticker_query)['Ticker']
