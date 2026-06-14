@@ -1,4 +1,3 @@
-import ast
 import os
 import streamlit as st
 import datetime as dt
@@ -456,16 +455,13 @@ class TradingApp:
                 )
             mkt.get_df(index=selected_ticker,q=7)
             tickers = list(mkt.df['ticker'])
-        else:
-            tickers = monitored_assets
-
-        if not isinstance(tickers, str):
             tickers.sort()
-        ti = st.text_input(t('summary.members'), tickers)
-        try:
-            tickers = ast.literal_eval(ti)
-        except (ValueError, SyntaxError):
-            tickers = [ti] if ti else []
+            default_tickers = ", ".join(tickers)
+        else:
+            default_tickers = monitored_assets
+
+        ti = st.text_input(t('summary.members'), default_tickers)
+        tickers = [tck.strip() for tck in ti.split(',') if tck.strip()]
 
         if not tickers:
             st.warning(t('summary.empty_group'))

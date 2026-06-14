@@ -644,6 +644,8 @@ class RegimeFlowPage:
             return []
         try:
             v = self.sys_config.get_value('monitored_assets', [])
+            if isinstance(v, str):
+                return [tck.strip() for tck in v.split(',') if tck.strip()]
             return list(v) if v else []
         except Exception:
             return []
