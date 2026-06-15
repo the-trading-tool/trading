@@ -1310,7 +1310,7 @@ if __name__ == "__main__":
             logger.warning("backfill: unknown indicators ignored: %s", unknown)
             backfill_inds = [i for i in backfill_inds if i in INDICATOR_BACKFILL_MAP]
         if backfill_inds:
-            logger.info("backfill mode: %s → indicators=%s force=%s",
+            logger.info("backfill mode: %s -> indicators=%s force=%s",
                         sim_db_path, backfill_inds, force_flag)
             backfill_db(sim_db_path, 'database', backfill_inds, force=force_flag)
         exit(0)
