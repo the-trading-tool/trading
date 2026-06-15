@@ -4,6 +4,7 @@ from tradinglib.i18n import t
 from tradinglib import main_page as mp
 from tradinglib import make_query as mq
 from tradinglib import system_config as sysconf
+from tradinglib import tiny_chart as tc
 from tradinglib.utils import DataUtils
 from tradinglib.tools import open_db
 
@@ -194,6 +195,55 @@ class DataVisualizer(tt.TickerTools):
                 ticker = selection['ticker'][selection[col].index[0]]
             mp.render_mainpage(ticker, search_ticker_only=True, region=mp_window, hide_search=True, hide_details=True, username=self.username)
 
+    @st.dialog('Chart', width='large')
+    def tiny_chart_overlay(self, selection):
+        """Show a tiny_chart overlay for the selected ticker (same pattern as Performance data)."""
+        try:
+            ticker = selection['ticker'].iloc[0]
+            longname = selection['longName'].iloc[0] if 'longName' in selection.columns else ticker
+        except Exception:
+            st.error("No asset selected.")
+            return
+        st.markdown(f"[View (Full details) →](/?details=true&symbol={ticker})")
+        (interval, period, overlays, oszilators) = self.sys_config.get_selectors()
+        with st.spinner(t('assets.spinner')):
+            t_chart = tc.tiny_chart(
+                symbol=ticker,
+                longname=longname,
+                interval=interval,
+                period=period,
+                add_overlays=overlays,
+                add_sub_plots=oszilators,
+                range_breaks=True,
+                username=self.username,
+                url="/?details=true&symbol=",
+            )
+        if t_chart.fig:
+            st.plotly_chart(t_chart.fig, use_container_width=True)
+        else:
+            st.warning(f"No chart data available for {ticker}.")
+
+    def _select_ticker_table(self, df, key_suffix):
+        """Render a clickable ticker table; opens tiny_chart_overlay for the selected row."""
+        if df.empty:
+            st.caption("—")
+            return
+        df = df.reset_index(drop=True)
+        event = st.dataframe(
+            df, hide_index=True, use_container_width=True,
+            on_select="rerun", selection_mode="single-row",
+            key=f"mm_{key_suffix}",
+        )
+        session_key = f"mm_{key_suffix}_last"
+        if event.selection.rows:
+            sel_row = df.iloc[[event.selection.rows[0]]]
+            sel_ticker = sel_row['ticker'].iloc[0]
+            if st.session_state.get(session_key) != sel_ticker:
+                st.session_state[session_key] = sel_ticker
+                self.tiny_chart_overlay(sel_row)
+        else:
+            st.session_state.pop(session_key, None)
+
     def generate_treemap(self, combined_df, order_by):
         """
         Generates an interactive treemap using Plotly.
@@ -312,35 +362,18 @@ class DataVisualizer(tt.TickerTools):
         else:
             combined_df['_display_price'] = combined_df['close']
         price_data = '_display_price'
-        
+
         combined_df['details'] = combined_df['longName'].apply(self.add_url)
 
-        df_expander = st.expander(t('mm.underlying_data'), expanded=False)
-        with df_expander:
-
-
-            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','dayLow','dayHigh','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
-            try:
-                if not selection.empty:
-                    self.overlay_chart(selection)
-            except Exception:
-                pass
-            
-            df_xlsx = DataUtils.get_bin_excel_data(combined_df)
-            st.download_button(label=t('mm.download_btn'),
-                                data=df_xlsx,
-                                file_name='market_map_export.xlsx',
-                                mime='application/octet-stream'
-                                )
-
-        combined_df['longName'] = combined_df['longName'].str[:20]
-        for col in combined_df.select_dtypes(include=['category']).columns:
-            combined_df[col] = combined_df[col].astype('str')
+        treemap_df = combined_df.copy()
+        treemap_df['longName'] = treemap_df['longName'].str[:20]
+        for col in treemap_df.select_dtypes(include=['category']).columns:
+            treemap_df[col] = treemap_df[col].astype('str')
         fig = px.treemap(
-            combined_df, 
-            path=[px.Constant("all"), 'sector','ticker'], 
-            values = box_size, 
-            color='colors', 
+            treemap_df,
+            path=[px.Constant("all"), 'sector','ticker'],
+            values = box_size,
+            color='colors',
             height=700,
             color_discrete_map ={'(?)':'#262931', 'darkred':'darkred', 'red':'red', 'indianred':'indianred','gray':'gray', 'lightgreen':'lightgreen','lime':'lime','green':'green','darkgreen':'darkgreen'},
             hover_data = {f'{self.trend}':''}, #:.2p
@@ -360,8 +393,51 @@ class DataVisualizer(tt.TickerTools):
         fig.data[0].texttemplate = "<b>%{customdata[2]}<br>%{label}</b><br>%{customdata[0]}<br>Price: %{customdata[3]:.2f}"#:.2p
 
 
-        return fig
+        return fig, combined_df, price_data
 
+    def _render_index_winner_loser(self, df, trend_col, price_col):
+        """Gewinner-/Verlierer-Ticker-Listen nach dem aktuell gewählten Trend
+        (self.trend, siehe generate_treemap), klickbar via tiny_chart_overlay
+        (analog Performance data)."""
+        if trend_col not in df.columns:
+            return
+
+        show_cols = [c for c in ['ticker', 'longName', price_col, trend_col] if c in df.columns]
+        rename = {price_col: 'close', trend_col: t('mm.trend_value')}
+
+        winners = (df[df[trend_col] > 0]
+                   .sort_values(trend_col, ascending=False)[show_cols]
+                   .rename(columns=rename))
+        losers  = (df[df[trend_col] < 0]
+                   .sort_values(trend_col, ascending=True)[show_cols]
+                   .rename(columns=rename))
+
+        col_w, col_l = st.columns(2)
+        with col_w:
+            st.markdown(f"**{t('mm.winners')}** ({len(winners)})")
+            self._select_ticker_table(winners, key_suffix='idx_win')
+        with col_l:
+            st.markdown(f"**{t('mm.losers')}** ({len(losers)})")
+            self._select_ticker_table(losers, key_suffix='idx_los')
+
+    def _render_underlying_data(self, combined_df):
+        """Detailtabelle mit Auswahl/Chart-Overlay + Excel-Export
+        (vormals Teil von generate_treemap, jetzt im Index-View-Expander)."""
+        df_expander = st.expander(t('mm.underlying_data'), expanded=False)
+        with df_expander:
+            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','dayLow','dayHigh','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
+            try:
+                if not selection.empty:
+                    self.overlay_chart(selection)
+            except Exception:
+                pass
+
+            df_xlsx = DataUtils.get_bin_excel_data(combined_df)
+            st.download_button(label=t('mm.download_btn'),
+                                data=df_xlsx,
+                                file_name='market_map_export.xlsx',
+                                mime='application/octet-stream'
+                                )
 
     def _render_markov_breadth(self, index_name: str):
         """Kompaktes Breadth-Widget: Bull/Bär/Seitwärts-Verteilung aller Mitglieder
@@ -373,75 +449,109 @@ class DataVisualizer(tt.TickerTools):
         from tradinglib.regime_data_engine import compute_index_breadth, summarize_breadth
 
         idx_label = index_name.lstrip('^') or index_name
-        st.markdown(f"#### {t('mm.breadth_title', index=idx_label)}")
 
         with st.spinner(t('mm.breadth_loading', index=idx_label)):
             df = compute_index_breadth(index_name)
         summary = summarize_breadth(df)
 
-        if df.empty or not summary:
-            st.info(t('mm.breadth_no_data', index=idx_label))
-            return
+        with st.expander(t('mm.breadth_title', index=idx_label), expanded=True):
+            if df.empty or not summary:
+                st.info(t('mm.breadth_no_data', index=idx_label))
+                return
 
-        _names    = {1: t('mm.breadth_bull'), 2: t('mm.breadth_bear'), 0: t('mm.breadth_side')}
-        _keys     = {1: 'bull', 2: 'bear', 0: 'side'}
-        _order    = [1, 2, 0]
-        _colors   = {k: Markov._PALETTE[k]['solid'] for k in _order}
-        _tf_label = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
-                     'month': t('mm.breadth_tf_month')}
-        # Tages-Historie (Tendenz): älteste zuerst, damit sie im Chart direkt
-        # unter der "Tag"-Zeile von unten nach oben Richtung heute läuft.
-        for k in (4, 3, 2, 1):
-            if (summary.get(f'day_{k}') or {}).get('n'):
-                _tf_label[f'day_{k}'] = t('mm.breadth_tf_day_back', n=k)
+            _names    = {1: t('mm.breadth_bull'), 2: t('mm.breadth_bear'), 0: t('mm.breadth_side')}
+            _keys     = {1: 'bull', 2: 'bear', 0: 'side'}
+            _order    = [1, 2, 0]
+            _colors   = {k: Markov._PALETTE[k]['solid'] for k in _order}
+            _tf_label = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
+                         'month': t('mm.breadth_tf_month')}
+            # Tages-Historie (Tendenz): älteste zuerst, damit sie im Chart direkt
+            # unter der "Tag"-Zeile von unten nach oben Richtung heute läuft.
+            for k in (4, 3, 2, 1):
+                if (summary.get(f'day_{k}') or {}).get('n'):
+                    _tf_label[f'day_{k}'] = t('mm.breadth_tf_day_back', n=k)
 
-        # ── Stacked horizontal bars: eine Zeile je Zeitebene ──────────────────
-        rows = [tf for tf in ('month', 'week', 'day_4', 'day_3', 'day_2', 'day_1', 'day')
-                if tf in _tf_label]   # von unten nach oben: Monat → … → Tag
-        fig = go.Figure()
-        n_rows = 0
-        for tf in rows:
-            stats = summary.get(tf) or {}
-            if not stats.get('n'):
-                continue
-            n_rows += 1
-            for regime in _order:
-                pct = stats[_keys[regime]]
-                fig.add_trace(go.Bar(
-                    y=[_tf_label[tf]], x=[pct], orientation='h',
-                    name=_names[regime], marker_color=_colors[regime],
-                    legendgroup=str(regime), showlegend=(tf == 'day'),
-                    text=f"{pct:.0f}%" if pct >= 8 else '',
-                    textposition='inside', insidetextanchor='middle',
-                    textfont=dict(color='white', size=11),
-                    hovertemplate=f"{_tf_label[tf]} · {_names[regime]}: %{{x:.0f}}%<extra></extra>",
-                ))
+            # ── Stacked horizontal bars: eine Zeile je Zeitebene ──────────────────
+            rows = [tf for tf in ('month', 'week', 'day_4', 'day_3', 'day_2', 'day_1', 'day')
+                    if tf in _tf_label]   # von unten nach oben: Monat → … → Tag
+            fig = go.Figure()
+            n_rows = 0
+            for tf in rows:
+                stats = summary.get(tf) or {}
+                if not stats.get('n'):
+                    continue
+                n_rows += 1
+                for regime in _order:
+                    pct = stats[_keys[regime]]
+                    fig.add_trace(go.Bar(
+                        y=[_tf_label[tf]], x=[pct], orientation='h',
+                        name=_names[regime], marker_color=_colors[regime],
+                        legendgroup=str(regime), showlegend=(tf == 'day'),
+                        text=f"{pct:.0f}%" if pct >= 8 else '',
+                        textposition='inside', insidetextanchor='middle',
+                        textfont=dict(color='white', size=11),
+                        hovertemplate=f"{_tf_label[tf]} · {_names[regime]}: %{{x:.0f}}%<extra></extra>",
+                    ))
 
-        fig.update_layout(
-            barmode='stack',
-            height=max(170, 80 + 30 * n_rows),
-            margin=dict(l=60, r=20, t=10, b=30),
-            xaxis=dict(range=[0, 100], ticksuffix='%', showgrid=False),
-            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-        )
-        st.plotly_chart(fig, use_container_width=True)
+            fig.update_layout(
+                barmode='stack',
+                height=max(170, 80 + 30 * n_rows),
+                margin=dict(l=60, r=20, t=10, b=30),
+                xaxis=dict(range=[0, 100], ticksuffix='%', showgrid=False),
+                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-        # ── Abgeleiteter Gesamtzustand ────────────────────────────────────────
-        score, state_code, aligned = summary['score'], summary['state'], summary['aligned']
-        _state_label = {
-            'bull':    t('mm.breadth_state_bull'),
-            'bear':    t('mm.breadth_state_bear'),
-            'neutral': t('mm.breadth_state_neutral'),
-        }
-        arrow = '▲' if score > 0.20 else '▼' if score < -0.20 else '─'
-        align_txt = t('mm.breadth_aligned') if aligned else t('mm.breadth_unaligned')
-        st.caption(t(
-            'mm.breadth_summary',
-            arrow=arrow, state=_state_label[state_code],
-            score=score, n=len(df), align=align_txt,
-        ))
+            # ── Abgeleiteter Gesamtzustand ────────────────────────────────────────
+            score, state_code, aligned = summary['score'], summary['state'], summary['aligned']
+            _state_label = {
+                'bull':    t('mm.breadth_state_bull'),
+                'bear':    t('mm.breadth_state_bear'),
+                'neutral': t('mm.breadth_state_neutral'),
+            }
+            arrow = '▲' if score > 0.20 else '▼' if score < -0.20 else '─'
+            align_txt = t('mm.breadth_aligned') if aligned else t('mm.breadth_unaligned')
+            st.caption(t(
+                'mm.breadth_summary',
+                arrow=arrow, state=_state_label[state_code],
+                score=score, n=len(df), align=align_txt,
+            ))
+
+            # ── Gewinner/Verlierer (heute Bull/Bär, klickbar via tiny_chart_overlay) ──
+            self._render_breadth_winner_loser(df, _names)
+
+    def _render_breadth_winner_loser(self, df, regime_labels):
+        """Ticker-Listen für Mitglieder im heutigen Bull- bzw. Bär-Regime,
+        sortiert nach Übereinstimmung über Tag/Woche/Monat."""
+        tf_cols = ['day', 'week', 'month']
+        work = df.copy()
+        work['bull_count'] = (work[tf_cols] == 1).sum(axis=1)
+        work['bear_count'] = (work[tf_cols] == 2).sum(axis=1)
+
+        winners_mask = work['day'] == 1
+        losers_mask  = work['day'] == 2
+
+        for c in tf_cols:
+            work[c] = work[c].map(regime_labels).fillna('-')
+
+        rename = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
+                  'month': t('mm.breadth_tf_month')}
+        show_cols = ['ticker', *tf_cols]
+
+        winners = (work[winners_mask].sort_values('bull_count', ascending=False)
+                   [show_cols].rename(columns=rename))
+        losers  = (work[losers_mask].sort_values('bear_count', ascending=False)
+                   [show_cols].rename(columns=rename))
+
+        col_w, col_l = st.columns(2)
+        with col_w:
+            st.markdown(f"**{t('mm.winners')}** ({len(winners)})")
+            self._select_ticker_table(winners, key_suffix='breadth_win')
+        with col_l:
+            st.markdown(f"**{t('mm.losers')}** ({len(losers)})")
+            self._select_ticker_table(losers, key_suffix='breadth_los')
 
     def render(self, index_filter=1):
         """
@@ -512,10 +622,6 @@ class DataVisualizer(tt.TickerTools):
                 index = pos
             )
 
-        if self.index_column != 'ANY':
-            self._render_markov_breadth(self.index_column)
-            st.markdown("---")
-
         #Price range
         price_range = {
             'ANY': '',
@@ -554,10 +660,20 @@ class DataVisualizer(tt.TickerTools):
             st.error(t('mm.no_data'))
             return
 
-        # Generate and display treemap
-        fig = self.generate_treemap(combined_df, order_by)
-    
+        # Market Map (Treemap) – ausserhalb der Expander, oben auf der Seite
+        fig, treemap_df, price_col = self.generate_treemap(combined_df, order_by)
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
+
+        # Index View: Gewinner/Verlierer + Detaildaten der Indexmitglieder
+        idx_label = self.index_column.lstrip('^') or self.index_column
+        with st.expander(t('mm.index_view_title', index=idx_label), expanded=True):
+            self._render_index_winner_loser(treemap_df, self.trend, price_col)
+            self._render_underlying_data(treemap_df)
+
+        if self.index_column != 'ANY':
+            st.markdown("---")
+            self._render_markov_breadth(self.index_column)
 
 # Usage example in a Streamlit script (streamlit run <script.py>):
 #visualizer = DataVisualizer("yf_tickers.db", "asset_simulation.db", "asset_info.db", "GDAXI", db_path='C:/Users/Kurt/Development/database')
