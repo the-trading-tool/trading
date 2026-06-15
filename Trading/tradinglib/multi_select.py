@@ -1,11 +1,12 @@
 import ast
+import os
 import streamlit as st
 import uuid
 from tradinglib.indicator import indicator
-                
+
 class MultiCheckboxSelector:
 
-    indicators = indicator.IndicatorLoader('./tradinglib/indicator')
+    indicators = indicator.IndicatorLoader(os.path.dirname(os.path.abspath(indicator.__file__)))
     lists = [
             ('Interval', ['1m','5m','15m','30m','1h','4h','1d','3d','1wk','2wk','1mo','2mo']),
             ('Period',  ['1d','2d','1wk','2wk', '3wk','1mo', '2mo', '3mo','6mo', '1y', '2y','3y','10y','20y','50y']),
