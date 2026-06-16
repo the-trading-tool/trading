@@ -254,6 +254,7 @@
   "main.order_queued": "{side} {qty}× {symbol} vorgemerkt — auf der Trading-Seite prüfen & senden.",
   "main.order_not_tradeable": "⚠️ {ticker} ist bei {broker} nicht handelbar (Nicht-US-Symbole werden von Alpaca nicht unterstützt). Du kannst die Order trotzdem manuell vormerken und später entscheiden, ob du sie sendest oder verwirfst.",
   "main.order_queue_anyway": "Trotzdem vormerken — später entscheiden",
+  "main.search_hint": "Firmenname oder Ticker eingeben, um einen Wert zu laden.",
   "seasonality.no_data": "Keine Tagesdaten für diesen Wert vorhanden.",
   "seasonality.not_enough_years": "Es liegen noch keine zwei vollen Jahre an Kursdaten vor.",
   "seasonality.years_count": "Anzahl Jahre",

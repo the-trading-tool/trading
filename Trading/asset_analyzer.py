@@ -715,7 +715,7 @@ class TradingApp:
             # Scalable-Edition: frischer Aufruf ohne explizite Route → Einstieg
             # auf "Own Transactions". (Wählt der Nutzer später die Asset-Ansicht,
             # ist _nav_params bereits gesetzt und dieser Zweig greift nicht mehr.)
-            if appedition.IS_SCALABLE and not appedition.active_route(parms):
+            if appedition.IS_SCALABLE and not parms:
                 parms = {'own_trades': 'true'}
             st.session_state['_nav_params'] = parms
         if parms.get('stream') == "api":

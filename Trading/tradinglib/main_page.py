@@ -601,11 +601,15 @@ class render_mainpage(fetch_data.FetchData):
                 ticker_selected_longname = mkt.ticker_selected_longname
                 self.data = mkt.df
         
+        if not ticker_selected:
+            st.info(t('main.search_hint'))
+            return
+
         if refresh:
 #        if 1:
 #                try:
             self.t_chart = tc.tiny_chart(
-                ticker_selected, 
+                ticker_selected,
                 longname=f"{ticker_selected_longname} - {interval}/{period}",
                 interval=interval, 
                 period=period, 

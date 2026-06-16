@@ -254,6 +254,7 @@
   "main.order_queued": "{side} {qty}× {symbol} queued — review & send it on the Trading page.",
   "main.order_not_tradeable": "⚠️ {ticker} is not tradeable on {broker} (non-US symbols are not supported on Alpaca). You can still queue it manually and decide later whether to send or discard it.",
   "main.order_queue_anyway": "Queue anyway — decide later",
+  "main.search_hint": "Enter a company name or ticker to load a chart.",
   "seasonality.no_data": "No daily price data available for this asset.",
   "seasonality.not_enough_years": "At least two full years of price history are required.",
   "seasonality.years_count": "Number of years",
