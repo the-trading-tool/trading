@@ -204,7 +204,7 @@ def _show_scalable_trades_df(df: pd.DataFrame, col_cfg: dict, key: str):
 def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') -> pd.DataFrame:
     """
     Aggregate open positions (net shares > 0) from a parsed Scalable trades sub-frame,
-    enriched with current price and performance since purchase.
+    enriched with current price and performance since purchase. FIFO-sorted by first buy date.
     """
     if trades_df.empty or 'ticker' not in trades_df.columns:
         return pd.DataFrame()
@@ -218,21 +218,24 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
         return pd.DataFrame()
 
     buy_agg = buys.groupby('ticker', as_index=False).agg(
-        longname  = ('longname', 'first'),
-        currency  = ('currency', 'first'),
-        shares    = ('shares', 'sum'),
-        buy_value = ('amount', lambda x: x.abs().sum()),
+        longname   = ('longname', 'first'),
+        currency   = ('currency', 'first'),
+        buy_shares = ('shares', 'sum'),
+        buy_value  = ('amount', lambda x: x.abs().sum()),
+        first_buy  = ('timestamp', 'min'),
     )
     sell_agg = sells.groupby('ticker', as_index=False)['shares'].sum().rename(columns={'shares': 'sold_shares'})
 
     pos = buy_agg.merge(sell_agg, on='ticker', how='left')
     pos['sold_shares'] = pos['sold_shares'].fillna(0)
-    pos['shares'] = pos['shares'] - pos['sold_shares']
-    pos = pos[pos['shares'] > 0.0001].drop(columns=['sold_shares']).reset_index(drop=True)
+    pos['shares'] = pos['buy_shares'] - pos['sold_shares']
+    pos = pos[pos['shares'] > 0.0001].reset_index(drop=True)
     if pos.empty:
         return pos
 
-    pos['avg_price'] = pos['buy_value'] / pos['shares']
+    # avg_price = Gesamtkaufwert / Gesamtkaufstückzahl (NICHT durch Netto-Restbestand teilen)
+    pos['avg_price'] = np.where(pos['buy_shares'] > 0, pos['buy_value'] / pos['buy_shares'], 0.0)
+    pos = pos.drop(columns=['sold_shares', 'buy_shares'])
 
     tickers = pos['ticker'].tolist()
     with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as ex:
@@ -248,12 +251,15 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
 
     pos['current_price']  = pos['ticker'].map(prices).fillna(0.0)
     pos['current_value']  = pos['shares'] * pos['current_price']
-    pos['unrealized_pnl'] = pos['current_value'] - pos['buy_value']
+    # Unrealized P&L nur auf den offenen Restbestand (shares * avg_price als Einstandswert)
+    pos['cost_basis']     = pos['shares'] * pos['avg_price']
+    pos['unrealized_pnl'] = pos['current_value'] - pos['cost_basis']
     pos['pnl_pct'] = np.where(pos['avg_price'] > 0, (pos['current_price'] / pos['avg_price'] - 1) * 100, 0.0)
     total_value = pos['current_value'].sum()
     pos['weight_pct'] = np.where(total_value > 0, pos['current_value'] / total_value * 100, 0.0)
 
-    return pos.sort_values('current_value', ascending=False).reset_index(drop=True)
+    # FIFO-Reihenfolge: älteste Position zuerst
+    return pos.sort_values('first_buy', ascending=True).reset_index(drop=True)
 
 
 @st.dialog('Chart', width='large')
@@ -282,11 +288,48 @@ def _overlay_price_chart(ticker: str, longname: str, lines: list, purchase_price
         st.warning(f'Keine Chart-Daten verfügbar für {ticker}.')
 
 
+def _migrate_trades_pk(dbt) -> bool:
+    """
+    Entferne einen problematischen `timestamp`-PRIMARY-KEY aus der trades-Tabelle.
+
+    Beim Rebalancing teilen sich viele Trades exakt denselben Timestamp
+    (z. B. mehrere Orders um 18:54:44). Ist `timestamp` der Primärschlüssel,
+    verwirft `INSERT` die kollidierenden Zeilen stillschweigend — aus 27 Zeilen
+    überleben dann nur die mit eindeutigem Timestamp. Diese Migration baut die
+    Tabelle ohne expliziten PK (rowid) neu auf, sodass jede Zeile eindeutig ist.
+    Gibt True zurück, wenn migriert wurde.
+    """
+    cur = dbt.cursor
+    cols = cur.execute("PRAGMA table_info('trades')").fetchall()
+    if not cols:
+        return False  # Tabelle existiert noch nicht
+    pk_cols = [c[1] for c in cols if c[5] > 0]  # c[5] = pk-Position (0 = kein PK)
+    if pk_cols != ['timestamp']:
+        return False  # kein problematischer timestamp-PK
+    col_names = [c[1] for c in cols]
+    col_defs  = ', '.join(f'"{c[1]}" {c[2] or "TEXT"}' for c in cols)
+    col_list  = ', '.join(f'"{n}"' for n in col_names)
+    cur.execute(f'CREATE TABLE trades_new ({col_defs})')
+    cur.execute(f'INSERT INTO trades_new ({col_list}) SELECT {col_list} FROM trades')
+    cur.execute('DROP TABLE trades')
+    cur.execute('ALTER TABLE trades_new RENAME TO trades')
+    dbt.conn.commit()
+    logger.info('trades-Tabelle migriert: problematischer timestamp-PRIMARY-KEY entfernt.')
+    return True
+
+
 def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
     """Insert parsed Scalable Capital rows into trades.db. Returns inserted count."""
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
     inserted = 0
     try:
+        # Selbstheilung: alten timestamp-PK entfernen, sonst gehen Zeilen mit
+        # identischem Timestamp (Rebalancing) beim Insert verloren.
+        try:
+            _migrate_trades_pk(dbt)
+        except Exception as e:
+            logger.warning(f'Scalable import: trades-PK-Migration fehlgeschlagen: {e}')
+
         for _, row in df.iterrows():
             ts_val = row.get('timestamp')
             if hasattr(ts_val, 'strftime'):
@@ -315,8 +358,11 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
                     rd[k] = None if k not in ('uuid', 'action', 'currency', 'broker') else rd[k]
 
             try:
+                # primary_key=False: frische trades-DBs ohne expliziten PK anlegen
+                # (rowid) — verhindert denselben Zeilenverlust wie der alte timestamp-PK.
                 dbt.ensure_table_and_columns(
-                    keys=list(rd.keys()), row_dict=rd, database_name='trades'
+                    keys=list(rd.keys()), row_dict=rd, database_name='trades',
+                    primary_key=False,
                 )
                 dbt.insert_data(
                     keys=list(rd.keys()), row_dict=rd,
@@ -400,6 +446,11 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
     # ── string columns ────────────────────────────────────────────────────
     df['_type']     = _s('type').astype(str).str.strip().str.lower()
     df['_action']   = df['_type'].map(_SCALABLE_ACTION_MAP).fillna('other')
+    # Fuzzy-Fallback: Typen die 'sell'/'buy' enthalten aber nicht exakt gemappt wurden
+    _unmatched = df['_action'] == 'other'
+    if _unmatched.any():
+        df.loc[_unmatched & df['_type'].str.contains('sell', case=False, na=False), '_action'] = 'sell'
+        df.loc[_unmatched & df['_type'].str.contains('buy',  case=False, na=False), '_action'] = 'buy'
     df['_isin']     = _s('isin').astype(str).str.strip().str.upper().replace('NAN', '')
     df['_longname'] = _s('description').astype(str).str.strip()
     df['_currency'] = _s('currency').astype(str).str.strip().str.upper()
@@ -411,6 +462,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
     is_interest = df['_action'] == 'interest'
     is_fee      = df['_action'] == 'fee'
     is_transfer = df['_action'].isin(['transfer_out', 'transfer_in'])
+    is_unknown  = ~(is_trade | is_dividend | is_interest | is_fee | is_transfer)
 
     def _make_display(mask, extra_cols=None):
         sub = df[mask].copy()
@@ -422,11 +474,20 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
         sub.columns = [c.lstrip('_') for c in sub.columns]
         return sub.reset_index(drop=True)
 
+    def _make_unknown_display(mask):
+        sub = df[mask].copy()
+        # Include the raw type so the user can see what wasn't recognized
+        cols = ['_timestamp', '_type', '_isin', '_longname', '_amount', '_currency', '_ref']
+        sub = sub[[c for c in cols if c in sub.columns]]
+        sub.columns = [c.lstrip('_') for c in sub.columns]
+        return sub.reset_index(drop=True)
+
     trades_raw    = _make_display(is_trade)
     dividends_raw = _make_display(is_dividend)
     interest_raw  = _make_display(is_interest)
     fees_raw      = _make_display(is_fee)
     transfers_raw = _make_display(is_transfer)
+    unknown_raw   = _make_unknown_display(is_unknown)
 
     return dict(
         trades=trades_raw,
@@ -434,6 +495,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
         interest=interest_raw,
         fees=fees_raw,
         transfers=transfers_raw,
+        unknown=unknown_raw,
         skipped=skipped_count,
         raw_executed=df,
     )
@@ -491,16 +553,28 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
     interest_df  = parsed['interest']
     fees_df      = parsed['fees']
     transfers_df = parsed['transfers']
+    unknown_df   = parsed.get('unknown', pd.DataFrame())
     skipped      = parsed['skipped']
 
     total_executed = sum(
         len(v) for k, v in parsed.items()
-        if isinstance(v, pd.DataFrame)
+        if k != 'unknown' and isinstance(v, pd.DataFrame)
     )
     r.success(
         f'**{total_executed}** ausgeführte Transaktionen gefunden '
         f'({skipped} Cancelled-Einträge ignoriert).'
     )
+    if not unknown_df.empty:
+        with r.expander(
+            f'⚠️ {len(unknown_df)} Zeile(n) mit unbekanntem Typ – werden nicht importiert',
+            expanded=True,
+        ):
+            r.caption(
+                'Diese Zeilen haben einen Typ, der keiner bekannten Kategorie '
+                '(Kauf, Verkauf, Dividende, Zinsen, Gebühr, Transfer) zugeordnet '
+                'werden konnte. Prüfe den "type"-Wert und ergänze ggf. den Parser.'
+            )
+            st.dataframe(unknown_df, hide_index=True, use_container_width=True)
 
     # ── Ticker-Auflösung ──────────────────────────────────────────────────
     resolve_now = r.checkbox(
@@ -547,18 +621,20 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             st.info('Keine offenen Positionen gefunden.')
         else:
             _OPEN_POS_FMT = dict(
+                first_buy      = st.column_config.DatetimeColumn('Kauf ab', format='YYYY-MM-DD'),
                 ticker         = st.column_config.TextColumn('Ticker'),
                 longname       = st.column_config.TextColumn('Name'),
                 shares         = st.column_config.NumberColumn('Stück', format='%.4f'),
                 avg_price      = st.column_config.NumberColumn('Ø Kaufkurs', format='%.4f'),
                 current_price  = st.column_config.NumberColumn('Aktueller Kurs', format='%.4f'),
-                pnl_pct        = st.column_config.NumberColumn('Trend seit Kauf %', format='%.2f'),
+                pnl_pct        = st.column_config.NumberColumn('Perf. %', format='%+.2f'),
+                cost_basis     = st.column_config.NumberColumn(f'Einstand ({system_currency})', format='%.2f'),
                 current_value  = st.column_config.NumberColumn(f'Marktwert ({system_currency})', format='%.2f'),
-                unrealized_pnl = st.column_config.NumberColumn(f'G/V ({system_currency})', format='%.2f'),
+                unrealized_pnl = st.column_config.NumberColumn(f'G/V ({system_currency})', format='%+.2f'),
                 weight_pct     = st.column_config.NumberColumn('Gewicht %', format='%.1f'),
             )
-            disp_cols_op = ['ticker', 'longname', 'shares', 'avg_price', 'current_price',
-                            'pnl_pct', 'current_value', 'unrealized_pnl', 'weight_pct']
+            disp_cols_op = ['first_buy', 'ticker', 'longname', 'shares', 'avg_price', 'current_price',
+                            'pnl_pct', 'cost_basis', 'current_value', 'unrealized_pnl', 'weight_pct']
             event = st.dataframe(
                 open_pos_df[disp_cols_op],
                 hide_index=True,
@@ -583,7 +659,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
                 st.session_state.pop('scalable_open_pos_last_shown', None)
 
             total_value = open_pos_df['current_value'].sum()
-            total_cost  = open_pos_df['buy_value'].sum()
+            total_cost  = open_pos_df['cost_basis'].sum()
             total_pnl   = open_pos_df['unrealized_pnl'].sum()
             total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0.0
             c1, c2, c3 = st.columns(3)
