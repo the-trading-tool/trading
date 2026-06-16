@@ -572,6 +572,18 @@ class TradingApp:
         bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="0.5rem")
         st.sidebar.markdown("---")
 
+        # ── Settings & Help ─────────────────────────────────────────────────
+        # Moved here from the top search row (main_page.py): both open an
+        # @st.dialog overlay, so the trigger button can live anywhere. Icon-only
+        # side by side; the localized label is the hover tooltip (help=).
+        _cfg_col, _help_col = st.sidebar.columns(2, gap="small")
+        if _cfg_col.button("⚙", use_container_width=True, key='_nav_settings', help=t('nav.settings')):
+            self.sys_config.render()
+        if _help_col.button("❓", use_container_width=True, key='_nav_help', help=t('nav.help')):
+            self.sys_config.render_help()
+
+        st.sidebar.markdown("---")
+
         def _nav(label, **params):
             """Navigate within the same tab in one click via session state.
 

@@ -97,16 +97,6 @@ class SystemConfig(tools.Db_tools):
             cursor.execute("DELETE FROM config WHERE key = ?", (f"{self.username}:{key}",))
             conn.commit()
 
-    def render_cfg_row(self):
-        """Render a compact inline row with a settings button and a help button."""
-        cfg_line = self.region.empty()
-        (_, cfg_btn_c, cfg_btn_h) = cfg_line.columns([.95,.05,.05], gap='small')
-        #(cfg_btn_c, cfg_btn_h) = cfg_line.columns(2, gap='small')
-        if cfg_btn_c.button(":rosette:", use_container_width=True):
-            self.render()
-        if cfg_btn_h.button(":grey_question:", use_container_width=True):
-            self.render_help()
-
     def get_selectors(self, interval=None, period=None, overlays=None, oszilators=None):
         """Return (interval, period, overlays, oscillators) resolved from config with sensible defaults.
 

@@ -1,6 +1,7 @@
 {
   "_comment": "Deutsche Übersetzungen — Schlüssel in Punkt-Notation: abschnitt.bezeichnung",
   "nav.asset_viewer": "Asset-Ansicht",
+  "upgrade.locked_notice": "Diese Funktion ist Teil des Upgrades und in dieser App-Edition nicht verfügbar.",
   "nav.strategy_finder": "Strategie-Suche",
   "nav.asset_summary": "Asset-Übersicht",
   "nav.admin": "Admin",
@@ -774,6 +775,8 @@
   "nav.admin_credentials": "API-Zugangsdaten",
   "nav.admin_system": "System",
   "nav.admin_scheduler": "Zeitplaner",
+  "nav.settings": "Einstellungen",
+  "nav.help": "Hilfe",
   "cs.title": "Einmalinvestition – Zinseszins-Simulation",
   "cs.caption": "Zeigt wie sich eine Einmalinvestition nominal und inflationsbereinigt entwickelt.",
   "cs.tab_forecast": "📈 Prognose",

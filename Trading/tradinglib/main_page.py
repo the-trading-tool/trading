@@ -463,16 +463,13 @@ class render_mainpage(fetch_data.FetchData):
         slider_row = pp_right.empty()
     
         self.multi_selector = ms.MultiCheckboxSelector(region=slctr_region, sys_conf=self.sys_conf)
-        (sr_left, sr_right, sr_conf, sr_hlp, sr_buy, sr_sell) = srch_region.columns([0.38,0.38,0.045,0.045,0.075,0.075])
+        # Settings (⚙) and Help (❓) moved to the sidebar (asset_analyzer.py
+        # show_navigation_links); the freed width goes to the search/quick-trade
+        # columns. Both still open an @st.dialog, so behaviour is unchanged.
+        (sr_left, sr_right, sr_buy, sr_sell) = srch_region.columns([0.42,0.42,0.08,0.08])
         # Filled later, once ticker_selected/close_price/suggested_investment are known.
         buy_slot = sr_buy.empty()
         sell_slot = sr_sell.empty()
-
-        if not self.hide_search:
-            if sr_conf.button(":rosette:", use_container_width=True):
-                self.sys_conf.render()
-            if sr_hlp.button(":grey_question:",use_container_width=True):
-                self.sys_conf.render_help()
 
 #        (sr_left, sr_right,_,cfg_btn_c,cfg_btn_h) = srch_region.columns([0.35,0.35,0.06,0.07,0.07],gap='small')
         mkt = sr.MarketSearch(region=sr_left, default_ticker=self.symbol)

@@ -1,6 +1,7 @@
 {
   "_comment": "English translations — keep keys in dot-notation: section.label",
   "nav.asset_viewer": "Asset viewer",
+  "upgrade.locked_notice": "This feature is part of the upgrade and not available in this app edition.",
   "nav.strategy_finder": "Strategy finder",
   "nav.asset_summary": "Asset summary",
   "nav.admin": "Admin",
@@ -774,6 +775,8 @@
   "nav.admin_credentials": "API Credentials",
   "nav.admin_system": "System",
   "nav.admin_scheduler": "Scheduler",
+  "nav.settings": "Settings",
+  "nav.help": "Help",
   "cs.title": "Lump Sum Investment – Compound Interest Simulation",
   "cs.caption": "Shows how a one-time investment grows in nominal and inflation-adjusted terms.",
   "cs.tab_forecast": "📈 Forecast",
