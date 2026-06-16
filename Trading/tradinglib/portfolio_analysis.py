@@ -425,13 +425,22 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
         else:
             # Mehrere Lots desselben Tickers aggregieren (normierte Spalten _ticker, _shares, _value, …)
             agg = open_df.groupby('_ticker', as_index=False).agg(
-                longName  = ('_longname', 'first'),
-                isin      = ('_isin',     'first'),
-                currency  = ('_currency', 'first'),
-                shares    = ('_shares',   'sum'),
-                buy_value = ('_value',    lambda x: abs(x).sum()),
+                longName   = ('_longname', 'first'),
+                isin       = ('_isin',     'first'),
+                currency   = ('_currency', 'first'),
+                buy_shares = ('_shares',   'sum'),
+                buy_value  = ('_value',    lambda x: abs(x).sum()),
             ).rename(columns={'_ticker': 'ticker'})
-            agg['avg_price'] = np.where(agg['shares'] > 0, agg['buy_value'] / agg['shares'], 0.0)
+            # Durchschnittlicher Kaufkurs über ALLE Käufe (nicht durch Netto-Restbestand teilen)
+            agg['avg_price'] = np.where(agg['buy_shares'] > 0, agg['buy_value'] / agg['buy_shares'], 0.0)
+            # Netto-offene Stückzahl = Käufe − Verkäufe (aus dem oben berechneten net-DataFrame)
+            agg = agg.merge(
+                net[['_ticker', '_open_sh']].rename(columns={'_ticker': 'ticker', '_open_sh': 'shares'}),
+                on='ticker', how='left',
+            )
+            agg['shares'] = agg['shares'].fillna(agg['buy_shares'])
+            # Einstandswert (Cost Basis) nur auf den offenen Restbestand
+            agg['buy_value'] = agg['shares'] * agg['avg_price']
 
             tickers_open = agg['ticker'].tolist()
 
