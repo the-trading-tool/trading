@@ -80,3 +80,19 @@ def get_provider(name: Optional[str] = None, db_path: str = "database") -> Marke
 
     from tradinglib.providers.yahoo_provider import YahooProvider
     return YahooProvider()
+
+
+def get_fmp_provider(db_path: str = "database"):
+    """Return an FMPProvider when an API key is configured, else None.
+
+    Independent of the configured default provider — used e.g. for ISIN→ticker
+    resolution, which only FMP offers, regardless of which provider serves prices.
+    """
+    api_key = _read_fmp_key(db_path)
+    if not api_key:
+        return None
+    from tradinglib.providers.fmp_provider import FMPProvider
+    overrides_raw = _read_app_config("fmp_ticker_overrides", {})
+    overrides = overrides_raw if isinstance(overrides_raw, dict) else {}
+    provider = FMPProvider(api_key=api_key, overrides=overrides)
+    return provider if provider.available else None

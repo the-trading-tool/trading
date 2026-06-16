@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Portfolio analysis – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.6;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 14px}
+h2{color:#1f78d1;font-size:1.05em;margin:18px 0 6px}
+h3{color:#444;font-size:.97em;margin:12px 0 4px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.88em}
+th{background:#e8f0fe;color:#174ea6;font-weight:600}
+th,td{border:1px solid #dee2e6;padding:6px 10px;text-align:left;vertical-align:top}
+tr:nth-child(even) td{background:#fafbff}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.hero{background:linear-gradient(135deg,#e8f0fe 0%,#f0f7ff 100%);border:1px solid #c5d8f7;border-radius:6px;padding:12px 16px;margin:0 0 16px}
+.step{background:#f8faff;border:1px solid #dde8f8;border-radius:5px;padding:8px 14px;margin:8px 0}
+.step b{color:#1f78d1}
+ul,ol{padding-left:1.4em;margin:6px 0}li{margin:4px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+
+<h1>Analyse your Scalable Capital portfolio</h1>
+
+<div class="hero">
+  This app reads your transaction export from Scalable Capital and turns it into a
+  full portfolio analysis: open positions with their current price, realised and
+  unrealised gains, dividends, interest, fees and cashflow — plus charts, a market
+  overview, sector rotation and a lump-sum investment simulation.
+  <b>All free of charge.</b>
+</div>
+
+<h2>Get started in 3 steps</h2>
+
+<div class="step">
+  <b>1. Get the export from Scalable.</b> In the Scalable Capital app:
+  <code>Account → Transactions → Export CSV</code>. You'll receive a
+  <code>.csv</code> file containing all your bookings.
+</div>
+<div class="step">
+  <b>2. Upload it.</b> This app opens on the <b>Own Transactions</b> page. Open the
+  <b>Scalable Capital</b> tab there and upload the CSV. Only rows with status
+  <code>Executed</code> are processed — cancelled orders are ignored.
+</div>
+<div class="step">
+  <b>3. Automatic detection.</b> Every ISIN in your export is automatically matched
+  to the right exchange ticker, and the corresponding price and reference data are
+  loaded in the background (source: Yahoo Finance, with FMP as a fallback). No manual
+  mapping required.
+</div>
+
+<div class="info">
+  <b>Privacy:</b> Your analysis is protected by your login. Uploaded portfolio data
+  is visible only to you — other users cannot see it.
+</div>
+
+<h2>What the app shows you</h2>
+
+<table>
+  <tr><th>Area</th><th>Content</th></tr>
+  <tr><td><b>Own Transactions</b></td>
+      <td>Open positions with average buy price, current price, market value, weight
+          and profit/loss. Plus a cashflow overview, dividends, interest, fees and
+          taxes from your Scalable export. Click a position to open its chart with
+          your purchase line.</td></tr>
+  <tr><td><b>Asset viewer</b></td>
+      <td>Detailed price chart for each instrument with technical indicators (overlays
+          and oscillators) you can configure yourself.</td></tr>
+  <tr><td><b>Market overview</b></td>
+      <td>Global market indicators (volatility, rates, lead indices, commodities,
+          crypto) at a glance, with an optional AI assessment.</td></tr>
+  <tr><td><b>Sector rotation</b></td>
+      <td>Which sectors are currently attracting or losing capital — shown as a
+          rotation graph and heatmap.</td></tr>
+  <tr><td><b>Lump-sum investment</b></td>
+      <td>Simulation of a one-off investment with compound interest and
+          inflation adjustment — forecast or historical values.</td></tr>
+</table>
+
+<h2>Re-importing & corrections</h2>
+<p>
+  Each import adds new rows without checking for existing ones. Uploading the same
+  CSV twice creates duplicates. Use the <b>Delete trades</b> section on the Scalable
+  page to remove affected rows again (Scalable imports only, or all of them).
+</p>
+
+<div class="warn">
+  <b>Note:</b> This app is not investment advice. Prices may be delayed. All analyses
+  are for information purposes only.
+</div>
+
+<h2>Upgrade to the full version</h2>
+<p>
+  Features such as <b>Strategy finder</b>, <b>Multi-strategies</b>,
+  <b>Paper/Live trading</b>, automatic <b>buy/sell signals</b> and the
+  <b>scoring of all instruments</b> (overallValueTrend) are part of the full trading
+  platform. You'll find the <b>"Upgrade to the full version"</b> button at the bottom
+  of the sidebar.
+</p>
+
+</body>
+</html>

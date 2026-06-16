@@ -66,6 +66,31 @@ def _map_ticker(yahoo_ticker: str, overrides: Optional[Dict[str, str]] = None) -
     return yahoo_ticker
 
 
+def _fmp_to_yahoo(fmp_ticker: str) -> str:
+    """Convert an FMP symbol back to Yahoo style (inverse of the known suffix map).
+
+    Used for ISIN resolution, where downstream consumers (charts, market_data)
+    expect Yahoo-style tickers.
+    """
+    if not fmp_ticker:
+        return ""
+    for yf_sfx, fmp_sfx in _SUFFIX_MAP.items():
+        if fmp_sfx != yf_sfx and fmp_ticker.endswith(fmp_sfx):
+            return fmp_ticker[: -len(fmp_sfx)] + yf_sfx
+    return fmp_ticker
+
+
+def _extract_symbol(data) -> str:
+    """Pull the first 'symbol' field out of an FMP search response (list or dict)."""
+    if isinstance(data, list) and data:
+        first = data[0]
+        if isinstance(first, dict):
+            return (first.get("symbol") or "").strip()
+    elif isinstance(data, dict):
+        return (data.get("symbol") or "").strip()
+    return ""
+
+
 def _period_to_dates(period: Optional[str], start: Optional[str], end: Optional[str]):
     """Return (from_str, to_str) as YYYY-MM-DD strings."""
     today = dt.date.today()
@@ -191,6 +216,34 @@ class FMPProvider(MarketDataProvider):
     ) -> pd.DataFrame:
         from_str, to_str = _period_to_dates(period, None, None)
         return self._fetch_single(ticker, from_str, to_str, interval)
+
+    def search_isin(self, isin: str) -> str:
+        """Resolve an ISIN to a Yahoo-style ticker symbol via FMP. '' on failure.
+
+        Tries the dedicated ISIN endpoint first, then the general search as a
+        fallback (works across more FMP plan tiers).
+        """
+        if not self.available or not isin:
+            return ""
+        isin = isin.strip().upper()
+
+        # 1. dedicated ISIN endpoint
+        try:
+            sym = _extract_symbol(self._get("/v4/search/isin", {"isin": isin}))
+            if sym:
+                return _fmp_to_yahoo(sym).upper()
+        except Exception as e:
+            logger.debug("FMP /v4/search/isin failed for %s: %s", isin, e)
+
+        # 2. general search fallback
+        try:
+            sym = _extract_symbol(self._get("/v3/search", {"query": isin, "limit": 1}))
+            if sym:
+                return _fmp_to_yahoo(sym).upper()
+        except Exception as e:
+            logger.debug("FMP /v3/search failed for %s: %s", isin, e)
+
+        return ""
 
     def test_connection(self) -> bool:
         """Quick connectivity check — returns True when the API key is valid."""

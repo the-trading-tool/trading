@@ -67,14 +67,47 @@ def _parse_de_number(val) -> float:
         return 0.0
 
 
+def _write_isin_ticker(tickers_db: str, symbol: str, isin: str) -> None:
+    """Persist an ISIN→ticker mapping in yf_tickers.db/stocks for future local lookups."""
+    import sqlite3 as _sq
+    try:
+        with _sq.connect(tickers_db) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS stocks (
+                    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Ticker  TEXT,
+                    Date    TEXT,
+                    INVESTED REAL,
+                    ISIN    TEXT
+                )
+            """)
+            try:
+                conn.execute("ALTER TABLE stocks ADD COLUMN ISIN TEXT")
+            except Exception:
+                pass  # column already exists
+            existing = conn.execute(
+                "SELECT id FROM stocks WHERE Ticker=? LIMIT 1", (symbol,)
+            ).fetchone()
+            if existing:
+                conn.execute("UPDATE stocks SET ISIN=? WHERE id=?", (isin, existing[0]))
+            else:
+                conn.execute(
+                    "INSERT INTO stocks (Ticker, ISIN, Date) VALUES (?, ?, ?)",
+                    (symbol, isin, dt.datetime.now().strftime('%Y-%m-%d')),
+                )
+    except Exception as e:
+        logger.debug(f'Could not write ISIN→ticker to yf_tickers.db: {e}')
+
+
 def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     """
     Look up Yahoo Finance ticker for an ISIN.
 
     Resolution order:
-      1. yf_tickers.db → stocks table  (primary local source; ISIN column)
-      2. yfinance: yf.Ticker(isin).info['symbol']  (network fallback)
-         → result is written back to yf_tickers.db/stocks for future lookups
+      1.  yf_tickers.db → stocks table  (primary local source; ISIN column)
+      1b. FMP ISIN search               (network; better for EU ISINs than Yahoo)
+      2.  yfinance: yf.Ticker(isin).info['symbol']  (network fallback)
+    Resolved tickers (1b/2) are written back to yf_tickers.db for future lookups.
 
     Fallback: return isin unchanged.
     """
@@ -89,7 +122,6 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     # ── 1. yf_tickers.db / stocks ─────────────────────────────────────────
     try:
         with _sq.connect(tickers_db) as conn:
-            # Ensure ISIN column exists (added by ensure_isin_column below if needed)
             row = conn.execute(
                 "SELECT Ticker FROM stocks WHERE UPPER(ISIN)=? AND Ticker IS NOT NULL LIMIT 1",
                 (isin,),
@@ -99,46 +131,26 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     except Exception:
         pass
 
+    # ── 1b. FMP ISIN search (only when an FMP key is configured) ───────────
+    try:
+        from tradinglib.providers import get_fmp_provider
+        fmp = get_fmp_provider(db_path)
+        if fmp is not None:
+            symbol = (fmp.search_isin(isin) or '').strip().upper()
+            if symbol and symbol != isin:
+                _write_isin_ticker(tickers_db, symbol, isin)
+                return symbol
+    except Exception as e:
+        logger.debug(f'FMP ISIN lookup failed for {isin}: {e}')
+
     # ── 2. yfinance network lookup ─────────────────────────────────────────
     try:
         import yfinance as yf
         info = yf.Ticker(isin).info
         symbol = (info.get('symbol') or '').strip().upper()
         if symbol and symbol != isin:
-            # Write back to yf_tickers.db so next lookup is local
-            try:
-                with _sq.connect(tickers_db) as conn:
-                    # Ensure table + ISIN column exist
-                    conn.execute("""
-                        CREATE TABLE IF NOT EXISTS stocks (
-                            id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                            Ticker  TEXT,
-                            Date    TEXT,
-                            INVESTED REAL,
-                            ISIN    TEXT
-                        )
-                    """)
-                    try:
-                        conn.execute("ALTER TABLE stocks ADD COLUMN ISIN TEXT")
-                    except Exception:
-                        pass  # column already exists
-                    # Update existing row or insert new one
-                    existing = conn.execute(
-                        "SELECT id FROM stocks WHERE Ticker=? LIMIT 1", (symbol,)
-                    ).fetchone()
-                    if existing:
-                        conn.execute(
-                            "UPDATE stocks SET ISIN=? WHERE id=?",
-                            (isin, existing[0]),
-                        )
-                    else:
-                        conn.execute(
-                            "INSERT INTO stocks (Ticker, ISIN, Date) VALUES (?, ?, ?)",
-                            (symbol, isin, dt.datetime.now().strftime('%Y-%m-%d')),
-                        )
-            except Exception as e:
-                logger.debug(f'Could not write ISIN→ticker to yf_tickers.db: {e}')
-            return symbol.upper()
+            _write_isin_ticker(tickers_db, symbol, isin)
+            return symbol
     except Exception:
         pass
 
@@ -577,11 +589,24 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             st.dataframe(unknown_df, hide_index=True, use_container_width=True)
 
     # ── Ticker-Auflösung ──────────────────────────────────────────────────
-    resolve_now = r.checkbox(
-        'ISIN → Ticker auflösen (benötigt Internet, dauert einen Moment)',
-        value=True,
-        key='scalable_resolve_tickers',
-    )
+    # In der Scalable-Edition ist die Auflösung verpflichtend: die ISIN liegt
+    # immer vor, und nur mit echtem Ticker sind die Positionen in trades.db
+    # später chart-/analysefähig. Die Checkbox entfällt dort.
+    try:
+        from tradinglib import app_edition as _appedition
+        _force_resolve = _appedition.IS_SCALABLE
+    except Exception:
+        _force_resolve = False
+
+    if _force_resolve:
+        resolve_now = True
+        r.caption('ISINs werden automatisch in Börsenticker aufgelöst.')
+    else:
+        resolve_now = r.checkbox(
+            'ISIN → Ticker auflösen (benötigt Internet, dauert einen Moment)',
+            value=True,
+            key='scalable_resolve_tickers',
+        )
     status_ph = r.empty()
     if resolve_now:
         with r.spinner('Ticker werden aufgelöst …'):
@@ -784,6 +809,47 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
 
         inserted = _insert_scalable_rows(all_rows, db_path=db_path)
         r.success(f'{inserted} Zeilen erfolgreich in trades.db importiert.')
+
+        # ── On-Demand: Kurs- und Stammdaten für die importierten Ticker nachladen ──
+        # Nur in der Scalable-Edition: dort gibt es keine vorbefüllte Bulk-Pipeline,
+        # also werden genau die hochgeladenen Titel bei Bedarf nachgeladen.
+        try:
+            from tradinglib import app_edition as _appedition
+            if _appedition.IS_SCALABLE:
+                # Scalable liefert die ISIN immer mit → (ticker, isin)-Paare übergeben,
+                # damit der Loader auch ohne vorab aufgelösten Ticker laden kann.
+                cols = [c for c in ('ticker', 'isin') if c in all_rows.columns]
+                assets = (all_rows[cols].dropna(how='all').drop_duplicates()
+                          .to_dict('records')) if cols else []
+                if assets:
+                    from tradinglib.on_demand_loader import ensure_assets_loaded
+                    prog = r.progress(0.0, text='Lade Kurs- und Stammdaten …')
+
+                    def _cb(done, total, label):
+                        frac = (done / total) if total else 1.0
+                        try:
+                            prog.progress(min(frac, 1.0),
+                                          text=f'Lade {label or "…"} ({done}/{total})')
+                        except Exception:
+                            pass
+
+                    stats = ensure_assets_loaded(assets, db_path=db_path, progress=_cb)
+                    try:
+                        prog.empty()
+                    except Exception:
+                        pass
+                    r.info(
+                        f"Nachgeladen: {stats['ohlc_loaded']} Kursreihen, "
+                        f"{stats['info_loaded']} Stammdatensätze "
+                        f"({stats['tickers']} Ticker geprüft"
+                        + (f", {stats['resolved_from_isin']} per ISIN aufgelöst"
+                           if stats['resolved_from_isin'] else "")
+                        + (f", {stats['unresolved']} nicht auflösbar"
+                           if stats['unresolved'] else "")
+                        + ")."
+                    )
+        except Exception as _e:
+            logger.warning("On-demand asset load after Scalable import failed: %s", _e)
 
     # ── Danger Zone: Trades löschen ─────────────────────────────────────────
     r.markdown('---')

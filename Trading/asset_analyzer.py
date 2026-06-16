@@ -582,56 +582,92 @@ class TradingApp:
         if _help_col.button("❓", use_container_width=True, key='_nav_help', help=t('nav.help')):
             self.sys_config.render_help()
 
-        st.sidebar.markdown("---")
+#        st.sidebar.markdown("---")
 
-        def _nav(label, **params):
+        def _nav(label, locked=False, **params):
             """Navigate within the same tab in one click via session state.
 
             Sets '_nav_params' in session_state and calls st.rerun() so the routing
             in render() picks up the new params immediately — no query_params race
             condition, no browser reload, no new tab.
             Must be called inside a with-block (expander/container).
+
+            locked=True: prefixes the label with 🔒 (Scalable-Edition Upgrade-Feature).
+            Beim Klick navigiert es regulär — der Edition-Guard fängt die gesperrte
+            Route ab und zeigt die Upgrade-Seite.
             """
             _key = f'_nav_{"_".join(f"{k}{v}" for k, v in sorted(params.items())) or "home"}'
-            if st.button(label, use_container_width=True, key=_key):
+            disp = f'🔒 {label}' if locked else label
+            if st.button(disp, use_container_width=True, key=_key):
                 st.session_state['_nav_params'] = params
                 st.rerun()
 
-        # ── Markt ──────────────────────────────────────────────────────────
-        with st.sidebar.expander(t('nav.group_market'), expanded=False):
-            _nav(t('nav.market_map'), marketmap='true')
-            _nav(t('nav.sector_rotation'), rotation='true')
-            _nav(t('nav.market_overview'), market_overview='true')
-
-        # ── Assets & Performance ────────────────────────────────────────────
-        with st.sidebar.expander(t('nav.group_assets'), expanded=True):
-            _nav(t('nav.asset_viewer'))
-            _nav(t('nav.asset_summary'), summary='true')
-            _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
-            _nav(t('nav.performance'), performance='true')
-            if self.is_admin:
-                _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
-            _nav(t('nav.compound_simulation'), compound='true')
-
-        # ── Portfolio ───────────────────────────────────────────────────────
-        if self.is_admin:
-            with st.sidebar.expander(t('nav.group_portfolio'), expanded=False):
-                if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
-                    _nav(t('nav.strategy_finder'), strategy_finder='true')
-                    _nav(t('nav.multi_strategies'), multi='true')
-                if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
-                    _nav(t('nav.trading'), trading='true')
+        if appedition.IS_SCALABLE:
+            # ── Scalable-Edition: schlanke Navigation ───────────────────────
+            # Frei: Own Transactions (Einstieg), Asset-Ansicht, Markt-Features,
+            # Lump Sum. Upgrade-Features werden mit 🔒 gezeigt (Klick → Upgrade-Seite).
+            with st.sidebar.expander(t('nav.group_portfolio'), expanded=True):
                 _nav(t('nav.own_transactions'), own_trades='true')
 
-        # ── Admin (always last) ─────────────────────────────────────────────
-        if self.is_admin:
+            with st.sidebar.expander(t('nav.group_assets'), expanded=False):
+                _nav(t('nav.asset_viewer'))
+                _nav(t('nav.compound_simulation'), compound='true')
+                _nav(t('nav.performance'), locked=True, performance='true')
+                _nav(t('nav.asset_summary'), locked=True, summary='true')
+
+            with st.sidebar.expander(t('nav.group_market'), expanded=False):
+                _nav(t('nav.market_overview'), market_overview='true')
+                _nav(t('nav.sector_rotation'), rotation='true')
+                _nav(t('nav.market_map'), marketmap='true')
+
+            with st.sidebar.expander(t('nav.group_upgrade'), expanded=False):
+                if STRATEGY_ENGINE_AVAILABLE:
+                    _nav(t('nav.strategy_finder'), locked=True, strategy_finder='true')
+                    _nav(t('nav.multi_strategies'), locked=True, multi='true')
+                if PAPER_TRADING_AVAILABLE:
+                    _nav(t('nav.trading'), locked=True, trading='true')
+
             st.sidebar.markdown("---")
-            with st.sidebar.expander(t('nav.group_admin'), expanded=False):
-                _nav(t('nav.admin_ticker'),      admin='true', section='ticker')
-                _nav(t('nav.admin_database'),    admin='true', section='database')
-                _nav(t('nav.admin_credentials'), admin='true', section='credentials')
-                _nav(t('nav.admin_system'),      admin='true', section='system')
-                _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
+            if st.sidebar.button(t('upgrade.cta_button'), use_container_width=True,
+                                 type='primary', key='_nav_upgrade_cta'):
+                st.session_state['_nav_params'] = {'upgrade': 'true'}
+                st.rerun()
+        else:
+            # ── Markt ──────────────────────────────────────────────────────────
+            with st.sidebar.expander(t('nav.group_market'), expanded=False):
+                _nav(t('nav.market_map'), marketmap='true')
+                _nav(t('nav.sector_rotation'), rotation='true')
+                _nav(t('nav.market_overview'), market_overview='true')
+
+            # ── Assets & Performance ────────────────────────────────────────────
+            with st.sidebar.expander(t('nav.group_assets'), expanded=True):
+                _nav(t('nav.asset_viewer'))
+                _nav(t('nav.asset_summary'), summary='true')
+                _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
+                _nav(t('nav.performance'), performance='true')
+                if self.is_admin:
+                    _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
+                _nav(t('nav.compound_simulation'), compound='true')
+
+            # ── Portfolio ───────────────────────────────────────────────────────
+            if self.is_admin:
+                with st.sidebar.expander(t('nav.group_portfolio'), expanded=False):
+                    if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                        _nav(t('nav.strategy_finder'), strategy_finder='true')
+                        _nav(t('nav.multi_strategies'), multi='true')
+                    if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                        _nav(t('nav.trading'), trading='true')
+                    _nav(t('nav.own_transactions'), own_trades='true')
+
+            # ── Admin (always last) ─────────────────────────────────────────────
+            if self.is_admin:
+                st.sidebar.markdown("---")
+                with st.sidebar.expander(t('nav.group_admin'), expanded=False):
+                    _nav(t('nav.admin_ticker'),      admin='true', section='ticker')
+                    _nav(t('nav.admin_database'),    admin='true', section='database')
+                    _nav(t('nav.admin_credentials'), admin='true', section='credentials')
+                    _nav(t('nav.admin_system'),      admin='true', section='system')
+                    _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
 
         # ── External links ──────────────────────────────────────────────────
         st.sidebar.markdown("---")
@@ -676,6 +712,11 @@ class TradingApp:
             parms = st.session_state['_nav_params']
         else:
             parms = st.query_params.to_dict()
+            # Scalable-Edition: frischer Aufruf ohne explizite Route → Einstieg
+            # auf "Own Transactions". (Wählt der Nutzer später die Asset-Ansicht,
+            # ist _nav_params bereits gesetzt und dieser Zweig greift nicht mehr.)
+            if appedition.IS_SCALABLE and not appedition.active_route(parms):
+                parms = {'own_trades': 'true'}
             st.session_state['_nav_params'] = parms
         if parms.get('stream') == "api":
                 data = json.loads(parms.get('data'))
@@ -730,8 +771,9 @@ class TradingApp:
                 # (Default) ist dies ein No-Op — jede Route ist erlaubt.
                 _route = appedition.active_route(parms)
                 if not appedition.is_route_allowed(_route):
-                    self.set_page_config('Upgrade')
-                    st.warning(t('upgrade.locked_notice'))
+                    self.set_page_config(t('page.upgrade'))
+                    from tradinglib.upgrade_page import render_upgrade_teaser
+                    render_upgrade_teaser(region=st, route=_route, username=self.username)
                     self.authenticator.logout('Logout', 'sidebar')
                     st.stop()
 

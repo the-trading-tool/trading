@@ -475,6 +475,19 @@ class SystemConfig(tools.Db_tools):
     @st.dialog('Help', width='large')
     def render_help(self):
         """Render the tabbed help dialog with HTML content from the HELP/ directory."""
+        if self.bare_mode:
+            return
+
+        # Scalable-Edition: fokussierte Hilfe (Einstieg + freie Features), keine
+        # Premium-/Admin-/CLI-Tabs.
+        try:
+            from tradinglib import app_edition as appedition
+            if appedition.IS_SCALABLE:
+                self._render_scalable_help()
+                return
+        except Exception:
+            pass
+
         if not self.bare_mode:
 
             tabs = st.tabs(["OVT-Indikator", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte"])
@@ -538,3 +551,26 @@ class SystemConfig(tools.Db_tools):
                 ]:
                     with st.expander(label):
                         st.html(help_text.load_help(module))
+
+    def _render_scalable_help(self):
+        """Focused help dialog for the Scalable edition (no Premium/Admin/CLI tabs)."""
+        tabs = st.tabs(["🚀 Erste Schritte / Getting started", "📊 Funktionen / Features"])
+
+        with tabs[0]:
+            lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
+            with lang_tabs[0]:
+                st.html(help_text.load_help("scalable_de"))
+            with lang_tabs[1]:
+                st.html(help_text.load_help("scalable_en"))
+
+        with tabs[1]:
+            for label, module in [
+                ("Eigene Transaktionen / Own Transactions", "own_trades_analysis"),
+                ("Asset-Ansicht / Asset viewer", "main_page"),
+                ("Sektorrotation / Sector rotation", "sector_rotation_page"),
+                ("Market Map", "market_map"),
+                ("Einmalinvestition / Lump sum", "compound_simulation"),
+                ("Datenquellen (Yahoo / FMP)", "providers"),
+            ]:
+                with st.expander(label):
+                    st.html(help_text.load_help(module))

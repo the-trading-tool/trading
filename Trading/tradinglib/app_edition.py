@@ -74,10 +74,13 @@ SCALABLE_FREE_ROUTES = frozenset({
 
 # Alle Routen-bestimmenden query-params in Prüf-Reihenfolge. Spiegelt die
 # if/elif-Kette in asset_analyzer.AssetAnalyzer.render() wider.
+# 'upgrade' ist eine virtuelle Route (kein elif-Zweig): sie ist nie in
+# SCALABLE_FREE_ROUTES und wird daher vom Guard immer auf die Upgrade-Seite
+# geleitet — genutzt vom Upgrade-CTA in der Sidebar.
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
     'strategy_finder', 'trading', 'rotation', 'market_overview',
-    'compound', 'marketmap', 'summary', 'option_calc',
+    'compound', 'marketmap', 'summary', 'option_calc', 'upgrade',
 )
 
 # Routen/Endpunkte, die unabhängig von der Edition immer durchlaufen

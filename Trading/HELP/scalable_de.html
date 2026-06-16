@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Depot-Auswertung – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.6;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 14px}
+h2{color:#1f78d1;font-size:1.05em;margin:18px 0 6px}
+h3{color:#444;font-size:.97em;margin:12px 0 4px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:.88em}
+th{background:#e8f0fe;color:#174ea6;font-weight:600}
+th,td{border:1px solid #dee2e6;padding:6px 10px;text-align:left;vertical-align:top}
+tr:nth-child(even) td{background:#fafbff}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:8px 12px;margin:10px 0;font-size:.92em;border-radius:0 4px 4px 0}
+.hero{background:linear-gradient(135deg,#e8f0fe 0%,#f0f7ff 100%);border:1px solid #c5d8f7;border-radius:6px;padding:12px 16px;margin:0 0 16px}
+.step{background:#f8faff;border:1px solid #dde8f8;border-radius:5px;padding:8px 14px;margin:8px 0}
+.step b{color:#1f78d1}
+ul,ol{padding-left:1.4em;margin:6px 0}li{margin:4px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:3px;padding:1px 5px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+
+<h1>Dein Scalable-Capital-Depot auswerten</h1>
+
+<div class="hero">
+  Diese App liest deinen Transaktions-Export von Scalable Capital ein und macht
+  daraus eine vollständige Depot-Auswertung: offene Positionen mit aktuellem Kurs,
+  realisierte und unrealisierte Gewinne, Dividenden, Zinsen, Gebühren und
+  Cashflow — dazu Charts, Marktüberblick, Sektorrotation und eine
+  Einmalinvestitions-Simulation. <b>Alles ohne Kosten.</b>
+</div>
+
+<h2>In 3 Schritten loslegen</h2>
+
+<div class="step">
+  <b>1. Export bei Scalable holen.</b> In der Scalable-Capital-App:
+  <code>Konto → Transaktionen → CSV exportieren</code>. Du erhältst eine
+  <code>.csv</code>-Datei mit allen Buchungen.
+</div>
+<div class="step">
+  <b>2. Hochladen.</b> Diese App startet auf der Seite <b>Eigene Transaktionen</b>.
+  Öffne dort den Tab <b>Scalable Capital</b> und lade die CSV hoch. Es werden nur
+  Zeilen mit dem Status <code>Executed</code> verarbeitet — stornierte Aufträge
+  werden ignoriert.
+</div>
+<div class="step">
+  <b>3. Automatische Erkennung.</b> Jede ISIN aus deinem Export wird automatisch
+  dem passenden Börsenticker zugeordnet und die zugehörigen Kurs- und Stammdaten
+  werden im Hintergrund nachgeladen (Quelle: Yahoo Finance, mit FMP als Reserve).
+  Du musst nichts manuell zuordnen.
+</div>
+
+<div class="info">
+  <b>Datenschutz:</b> Deine Auswertung ist durch deinen Login geschützt. Hochgeladene
+  Depotdaten sind nur für dich sichtbar — andere Nutzer sehen sie nicht.
+</div>
+
+<h2>Was dir die App zeigt</h2>
+
+<table>
+  <tr><th>Bereich</th><th>Inhalt</th></tr>
+  <tr><td><b>Eigene Transaktionen</b></td>
+      <td>Offene Positionen mit Ø-Kaufkurs, aktuellem Kurs, Marktwert, Gewicht und
+          Gewinn/Verlust. Dazu Cashflow-Übersicht, Dividenden, Zinsen, Gebühren und
+          Steuern aus deinem Scalable-Export. Klick auf eine Position öffnet den Chart
+          mit deiner Kauflinie.</td></tr>
+  <tr><td><b>Asset-Ansicht</b></td>
+      <td>Detaillierter Kurschart jedes Titels mit technischen Indikatoren (Overlays
+          und Oszillatoren), die du selbst zusammenstellen kannst.</td></tr>
+  <tr><td><b>Marktüberblick</b></td>
+      <td>Globale Marktindikatoren (Volatilität, Zinsen, Leitindizes, Rohstoffe,
+          Krypto) auf einen Blick, mit optionaler KI-Einschätzung.</td></tr>
+  <tr><td><b>Sektorrotation</b></td>
+      <td>Welche Branchen gerade Kapital anziehen oder verlieren — als Rotations-Graph
+          und Heatmap.</td></tr>
+  <tr><td><b>Einmalinvestition</b></td>
+      <td>Simulation einer Einmalanlage mit Zinseszins und Inflationsbereinigung —
+          Prognose oder historische Werte.</td></tr>
+</table>
+
+<h2>Mehrfach-Import & Korrekturen</h2>
+<p>
+  Jeder Import fügt neue Zeilen hinzu, ohne auf bereits vorhandene zu prüfen. Lädst
+  du dieselbe CSV zweimal hoch, entstehen Duplikate. Über den Bereich
+  <b>Trades löschen</b> auf der Scalable-Seite kannst du betroffene Zeilen wieder
+  entfernen (nur Scalable-Importe oder alle).
+</p>
+
+<div class="warn">
+  <b>Hinweis:</b> Diese App ersetzt keine Anlageberatung. Kurse können verzögert sein.
+  Alle Auswertungen dienen ausschließlich der Information.
+</div>
+
+<h2>Upgrade auf die volle Version</h2>
+<p>
+  Features wie <b>Strategie-Suche</b>, <b>Multi-Strategien</b>, <b>Paper/Live Trading</b>,
+  automatische <b>Kauf-/Verkaufssignale</b> und das <b>Scoring aller Titel</b>
+  (overallValueTrend) sind Teil der vollen Trading-Plattform. Den Button
+  <b>„Auf volle Version upgraden"</b> findest du unten in der Seitenleiste.
+</p>
+
+</body>
+</html>
