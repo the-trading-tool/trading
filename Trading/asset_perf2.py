@@ -40,6 +40,7 @@ INDICATOR_BACKFILL_MAP: dict = {
     'sup':     ['sup_support', 'sup_resistance'],
     'relvol':  ['relvol_ratio'],
     'atc':     ['atc_top_high', 'atc_bot_low'],
+    'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
 }
 
 # Indicators that are additionally computed on higher timeframes during
