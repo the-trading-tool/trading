@@ -18,6 +18,7 @@ from tradinglib import (
 )
 from tradinglib.premium_availability import STRATEGY_ENGINE_AVAILABLE, PAPER_TRADING_AVAILABLE
 from tradinglib.license_manager import has_feature, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING
+from tradinglib import app_edition as appedition
 
 # Premium modules — only imported when the files are present
 ass = None
@@ -711,7 +712,17 @@ class TradingApp:
                 
                 self.is_admin= self.config['credentials']['usernames'].get(self.username, {}).get('admin', False)
                 self.show_navigation_links()
-        
+
+                # Edition-Guard: In der Scalable-Edition sind nur ausgewählte Routen
+                # frei; alle übrigen Features sind ein Upgrade. In der 'full'-Edition
+                # (Default) ist dies ein No-Op — jede Route ist erlaubt.
+                _route = appedition.active_route(parms)
+                if not appedition.is_route_allowed(_route):
+                    self.set_page_config('Upgrade')
+                    st.warning(t('upgrade.locked_notice'))
+                    self.authenticator.logout('Logout', 'sidebar')
+                    st.stop()
+
                 if self.is_admin and parms.get('admin'):
                     self.set_page_config(t('page.admin'))
                     with st.spinner(t('page.admin') + " …"):
@@ -775,6 +786,7 @@ class TradingApp:
                                     region=tab_scalable,
                                     db_path='database',
                                     system_currency=system_currency,
+                                    username=self.username,
                                 )
                             with tab_trades:
                                 # Trade Import/Export ist fuer alle Nutzer verfuegbar.

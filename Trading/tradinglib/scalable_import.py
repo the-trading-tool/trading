@@ -9,12 +9,16 @@ Herausgelöst aus own_trades_analysis.py.
 import datetime as dt
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 from tradinglib import tools
+from tradinglib import tiny_chart as tc
+from tradinglib import system_config as sysconf
+from tradinglib.portfolio_analysis import _fetch_close_series_for_portfolio
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +185,103 @@ def _show_scalable_df(df: pd.DataFrame, col_cfg: dict):
     )
 
 
+def _show_scalable_trades_df(df: pd.DataFrame, col_cfg: dict, key: str):
+    """Like _show_scalable_df, but with single-row selection enabled. Returns the selection event."""
+    disp_cols = [c for c in ['timestamp', 'action', 'ticker', 'isin', 'longname',
+                              'shares', 'price', 'amount', 'fee', 'tax', 'currency']
+                 if c in df.columns]
+    return st.dataframe(
+        df[disp_cols],
+        hide_index=True,
+        use_container_width=True,
+        column_config={k: v for k, v in col_cfg.items() if k in disp_cols},
+        on_select='rerun',
+        selection_mode='single-row',
+        key=key,
+    )
+
+
+def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') -> pd.DataFrame:
+    """
+    Aggregate open positions (net shares > 0) from a parsed Scalable trades sub-frame,
+    enriched with current price and performance since purchase.
+    """
+    if trades_df.empty or 'ticker' not in trades_df.columns:
+        return pd.DataFrame()
+
+    df = trades_df.copy()
+    df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+
+    buys  = df[df['action'] == 'buy']
+    sells = df[df['action'] == 'sell']
+    if buys.empty:
+        return pd.DataFrame()
+
+    buy_agg = buys.groupby('ticker', as_index=False).agg(
+        longname  = ('longname', 'first'),
+        currency  = ('currency', 'first'),
+        shares    = ('shares', 'sum'),
+        buy_value = ('amount', lambda x: x.abs().sum()),
+    )
+    sell_agg = sells.groupby('ticker', as_index=False)['shares'].sum().rename(columns={'shares': 'sold_shares'})
+
+    pos = buy_agg.merge(sell_agg, on='ticker', how='left')
+    pos['sold_shares'] = pos['sold_shares'].fillna(0)
+    pos['shares'] = pos['shares'] - pos['sold_shares']
+    pos = pos[pos['shares'] > 0.0001].drop(columns=['sold_shares']).reset_index(drop=True)
+    if pos.empty:
+        return pos
+
+    pos['avg_price'] = pos['buy_value'] / pos['shares']
+
+    tickers = pos['ticker'].tolist()
+    with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as ex:
+        futs = {ex.submit(_fetch_close_series_for_portfolio, t, db_path): t for t in tickers}
+        prices = {}
+        for fut in as_completed(futs):
+            t = futs[fut]
+            try:
+                s = fut.result()
+                prices[t] = float(s.iloc[-1]) if s is not None and not s.empty else 0.0
+            except Exception:
+                prices[t] = 0.0
+
+    pos['current_price']  = pos['ticker'].map(prices).fillna(0.0)
+    pos['current_value']  = pos['shares'] * pos['current_price']
+    pos['unrealized_pnl'] = pos['current_value'] - pos['buy_value']
+    pos['pnl_pct'] = np.where(pos['avg_price'] > 0, (pos['current_price'] / pos['avg_price'] - 1) * 100, 0.0)
+    total_value = pos['current_value'].sum()
+    pos['weight_pct'] = np.where(total_value > 0, pos['current_value'] / total_value * 100, 0.0)
+
+    return pos.sort_values('current_value', ascending=False).reset_index(drop=True)
+
+
+@st.dialog('Chart', width='large')
+def _overlay_price_chart(ticker: str, longname: str, lines: list, purchase_price: float = 0, username: str = ''):
+    """Show a tiny_chart overlay for a selected trade/position, with buy/sell price lines."""
+    sys_conf = sysconf.SystemConfig(username=username)
+    (interval, period, overlays, oszilators) = sys_conf.get_selectors()
+    with st.spinner('Lade Chart …'):
+        t_chart = tc.tiny_chart(
+            symbol=ticker,
+            longname=longname or ticker,
+            interval=interval,
+            period=period,
+            add_overlays=overlays,
+            add_sub_plots=oszilators,
+            range_breaks=True,
+            purchase_price=purchase_price,
+            username=username,
+        )
+    if t_chart.fig:
+        for price, text, color in lines:
+            if price and price > 0:
+                t_chart._add_hline_outside(y=price, text=text, line_color=color, line_dash='dash')
+        st.plotly_chart(t_chart.fig, use_container_width=True)
+    else:
+        st.warning(f'Keine Chart-Daten verfügbar für {ticker}.')
+
+
 def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
     """Insert parsed Scalable Capital rows into trades.db. Returns inserted count."""
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
@@ -342,7 +443,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
 # Render-Funktion
 # ─────────────────────────────────────────────────────────────────────────────
 
-def render_scalable_import(region=st, db_path: str = 'database', system_currency: str = 'EUR'):
+def render_scalable_import(region=st, db_path: str = 'database', system_currency: str = 'EUR', username: str = ''):
     """
     Full Scalable Capital CSV import UI.
 
@@ -418,8 +519,13 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             if not df_.empty and 'isin' in df_.columns:
                 df_['ticker'] = df_['isin']
 
+    # ── Offene Positionen (mit aktuellem Kurs) vorab berechnen ─────────────
+    with r.spinner('Lade aktuelle Kurse für offene Positionen …'):
+        open_pos_df = _compute_open_positions(trades_df, db_path)
+
     # ── Preview tabs ──────────────────────────────────────────────────────
-    tab_t, tab_d, tab_i, tab_f, tab_tf = r.tabs([
+    tab_op, tab_t, tab_d, tab_i, tab_f, tab_tf = r.tabs([
+        f'Offene Positionen ({len(open_pos_df)})',
         f'Trades ({len(trades_df)})',
         f'Dividenden ({len(dividends_df)})',
         f'Zinsen ({len(interest_df)})',
@@ -436,11 +542,79 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         timestamp= st.column_config.DatetimeColumn('Datum/Zeit', format='YYYY-MM-DD HH:mm'),
     )
 
+    with tab_op:
+        if open_pos_df.empty:
+            st.info('Keine offenen Positionen gefunden.')
+        else:
+            _OPEN_POS_FMT = dict(
+                ticker         = st.column_config.TextColumn('Ticker'),
+                longname       = st.column_config.TextColumn('Name'),
+                shares         = st.column_config.NumberColumn('Stück', format='%.4f'),
+                avg_price      = st.column_config.NumberColumn('Ø Kaufkurs', format='%.4f'),
+                current_price  = st.column_config.NumberColumn('Aktueller Kurs', format='%.4f'),
+                pnl_pct        = st.column_config.NumberColumn('Trend seit Kauf %', format='%.2f'),
+                current_value  = st.column_config.NumberColumn(f'Marktwert ({system_currency})', format='%.2f'),
+                unrealized_pnl = st.column_config.NumberColumn(f'G/V ({system_currency})', format='%.2f'),
+                weight_pct     = st.column_config.NumberColumn('Gewicht %', format='%.1f'),
+            )
+            disp_cols_op = ['ticker', 'longname', 'shares', 'avg_price', 'current_price',
+                            'pnl_pct', 'current_value', 'unrealized_pnl', 'weight_pct']
+            event = st.dataframe(
+                open_pos_df[disp_cols_op],
+                hide_index=True,
+                use_container_width=True,
+                column_config=_OPEN_POS_FMT,
+                on_select='rerun',
+                selection_mode='single-row',
+                key='scalable_open_pos_table',
+            )
+            if event.selection.rows:
+                sel = open_pos_df.iloc[event.selection.rows[0]]
+                if st.session_state.get('scalable_open_pos_last_shown') != sel['ticker']:
+                    st.session_state['scalable_open_pos_last_shown'] = sel['ticker']
+                    _overlay_price_chart(
+                        ticker=sel['ticker'],
+                        longname=sel.get('longname') or sel['ticker'],
+                        lines=[(sel['avg_price'], f"Ø Kauf: {round(sel['avg_price'], 2)}", 'blue')],
+                        purchase_price=sel['avg_price'],
+                        username=username,
+                    )
+            else:
+                st.session_state.pop('scalable_open_pos_last_shown', None)
+
+            total_value = open_pos_df['current_value'].sum()
+            total_cost  = open_pos_df['buy_value'].sum()
+            total_pnl   = open_pos_df['unrealized_pnl'].sum()
+            total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else 0.0
+            c1, c2, c3 = st.columns(3)
+            c1.metric('Marktwert',     f'{total_value:,.2f} {system_currency}')
+            c2.metric('Einstand',      f'{total_cost:,.2f} {system_currency}')
+            c3.metric('Unreal. G/V',   f'{total_pnl:+,.2f} {system_currency}', delta=f'{total_pnl_pct:+.1f}%')
+
     with tab_t:
         if trades_df.empty:
             st.info('Keine Trades gefunden.')
         else:
-            _show_scalable_df(trades_df, _NUM_FMT)
+            event = _show_scalable_trades_df(trades_df, _NUM_FMT, key='scalable_trades_table')
+            if event.selection.rows:
+                sel = trades_df.iloc[event.selection.rows[0]]
+                ts = sel.get('timestamp')
+                ts_label = ts.strftime('%Y-%m-%d') if hasattr(ts, 'strftime') else str(ts)
+                sel_key = f"{sel['ticker']}_{ts_label}_{sel['action']}"
+                if st.session_state.get('scalable_trade_last_shown') != sel_key:
+                    st.session_state['scalable_trade_last_shown'] = sel_key
+                    is_buy = sel['action'] == 'buy'
+                    action_label = 'Kauf' if is_buy else 'Verkauf'
+                    color = 'darkcyan' if is_buy else 'darkred'
+                    _overlay_price_chart(
+                        ticker=sel['ticker'],
+                        longname=sel.get('longname') or sel['ticker'],
+                        lines=[(sel['price'], f"{action_label}: {round(sel['price'], 2)} ({ts_label})", color)],
+                        purchase_price=sel['price'] if is_buy else 0,
+                        username=username,
+                    )
+            else:
+                st.session_state.pop('scalable_trade_last_shown', None)
             # Summary
             buys  = trades_df[trades_df['action'] == 'buy' ]['amount'].apply(abs).sum()
             sells = trades_df[trades_df['action'] == 'sell']['amount'].sum()
@@ -534,3 +708,56 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
 
         inserted = _insert_scalable_rows(all_rows, db_path=db_path)
         r.success(f'{inserted} Zeilen erfolgreich in trades.db importiert.')
+
+    # ── Danger Zone: Trades löschen ─────────────────────────────────────────
+    r.markdown('---')
+    with r.expander('⚠️ Trades löschen (z. B. doppelte Importe entfernen)'):
+        r.caption(
+            'Jeder Import fügt neue Zeilen hinzu, ohne auf bereits vorhandene Trades zu prüfen. '
+            'Wird dieselbe CSV mehrfach importiert, entstehen dadurch Duplikate in trades.db. '
+            'Hier können betroffene Zeilen wieder entfernt werden. Diese Aktion kann nicht '
+            'widerrufen werden.'
+        )
+        del_c1, del_c2 = r.columns(2)
+
+        with del_c1:
+            r.markdown('**Nur ScalableCapital-Importe löschen**')
+            confirm_sc = r.text_input(
+                'Zum Bestätigen "DELETE" eingeben', key='scalable_delete_confirm_sc',
+            )
+            if r.button('ScalableCapital-Trades löschen', key='scalable_delete_sc_btn'):
+                if confirm_sc == 'DELETE':
+                    try:
+                        dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
+                        try:
+                            dbt.cursor.execute("DELETE FROM trades WHERE broker = 'ScalableCapital'")
+                            deleted = dbt.cursor.rowcount
+                            dbt.conn.commit()
+                            r.success(f'{deleted} ScalableCapital-Trades gelöscht.')
+                        finally:
+                            dbt.close()
+                    except Exception as e:
+                        r.error(f'Fehler beim Löschen: {e}')
+                else:
+                    r.warning('Bitte "DELETE" eingeben, um zu bestätigen.')
+
+        with del_c2:
+            r.markdown('**Alle Trades löschen (komplette trades.db)**')
+            confirm_all = r.text_input(
+                'Zum Bestätigen "DELETE" eingeben', key='scalable_delete_confirm_all',
+            )
+            if r.button('Alle Trades löschen', key='scalable_delete_all_btn', type='primary'):
+                if confirm_all == 'DELETE':
+                    try:
+                        dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
+                        try:
+                            dbt.cursor.execute('DELETE FROM trades')
+                            deleted = dbt.cursor.rowcount
+                            dbt.conn.commit()
+                            r.success(f'{deleted} Trades gelöscht.')
+                        finally:
+                            dbt.close()
+                    except Exception as e:
+                        r.error(f'Fehler beim Löschen: {e}')
+                else:
+                    r.warning('Bitte "DELETE" eingeben, um zu bestätigen.')

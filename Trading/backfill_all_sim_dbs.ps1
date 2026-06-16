@@ -14,7 +14,7 @@
          ohne /force -- der eingebaute Skip-Check (erste Spalte IS NOT NULL)
          ist hier zuverlaessig und ueberspringt bereits befuellte Ticker.
 
-      2. "force"-Indikatoren (heikin, macd, ewo, atc):
+      2. "force"-Indikatoren (heikin, macd, ewo, atc, scr):
          mit /force -- diese Spalten wurden per ALTER TABLE ... DEFAULT 0
          nachtraeglich angelegt, der Skip-Check wuerde sie faelschlich als
          "schon befuellt" werten und alles uebergehen.
@@ -50,7 +50,7 @@ $normalIndicators = 'markov,rsi,adx,dema,hor,sup,relvol'
 
 # Indikatoren mit per ALTER TABLE...DEFAULT 0 nachtraeglich angelegten Spalten
 # -> Skip-Check waere falsch-positiv, daher /force
-$forceIndicators = 'heikin,macd,ewo,atc'
+$forceIndicators = 'heikin,macd,ewo,atc,scr'
 
 function Invoke-Backfill {
     param(
