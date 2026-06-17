@@ -707,11 +707,17 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
                     is_buy = sel['action'] == 'buy'
                     action_label = 'Kauf' if is_buy else 'Verkauf'
                     color = 'darkcyan' if is_buy else 'darkred'
+                    ticker_buys = trades_df[(trades_df['ticker'] == sel['ticker']) & (trades_df['action'] == 'buy')]
+                    buy_shares = ticker_buys['shares'].sum()
+                    avg_price = (ticker_buys['amount'].abs().sum() / buy_shares) if buy_shares > 0 else 0.0
+                    lines = [(sel['price'], f"{action_label}: {round(sel['price'], 2)} ({ts_label})", color)]
+                    if avg_price > 0:
+                        lines.append((avg_price, f"Ø Kauf: {round(avg_price, 2)}", 'blue'))
                     _overlay_price_chart(
                         ticker=sel['ticker'],
                         longname=sel.get('longname') or sel['ticker'],
-                        lines=[(sel['price'], f"{action_label}: {round(sel['price'], 2)} ({ts_label})", color)],
-                        purchase_price=sel['price'] if is_buy else 0,
+                        lines=lines,
+                        purchase_price=avg_price if avg_price > 0 else 0,
                         username=username,
                     )
             else:
