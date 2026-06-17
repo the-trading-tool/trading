@@ -188,6 +188,152 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
     return result
 
 
+def _fetch_fx_daily(currency: str, system_currency: str, daily: pd.DatetimeIndex,
+                    db_path: str = 'database') -> pd.Series:
+    """Tagesgenaue FX-Reihe (Einheiten *currency* je 1 *system_currency*) auf *daily*.
+
+    Nutzt den Yahoo-FX-Ticker ``{SYS}{CUR}=X`` (gleiche Konvention wie
+    DataUtils.get_exchange_rate). Umrechnung nativer Betrag → System: betrag / rate.
+    Fällt auf 1.0 zurück, wenn keine FX-Daten verfügbar sind (keine Umrechnung).
+    """
+    if not currency or currency == system_currency:
+        return pd.Series(1.0, index=daily)
+    try:
+        fx = _fetch_close_series_for_portfolio(f"{system_currency}{currency}=X", db_path)
+    except Exception:
+        fx = None
+    if fx is None or fx.empty:
+        return pd.Series(1.0, index=daily)
+    fx = fx[~fx.index.duplicated(keep='last')].sort_index()
+    fx.index = pd.to_datetime(fx.index, errors='coerce').normalize()
+    return fx.reindex(daily).ffill().bfill().replace(0, np.nan).ffill().bfill().fillna(1.0)
+
+
+def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
+                             system_currency: str = 'EUR',
+                             currency_map: dict = None) -> pd.DataFrame:
+    """Tatsächlicher Portfolioverlauf aus den Transaktionen (trades.db).
+
+    Im Gegensatz zur reinen Kurshistorie eines Titels rekonstruiert dies die
+    tatsächlich GEHALTENEN Stückzahlen über die Zeit (kumulierte Käufe − Verkäufe)
+    und bewertet sie täglich mit dem Schlusskurs. Die Kurve startet damit am ersten
+    Trade — nicht am Beginn der (viel älteren) Kurshistorie.
+
+    Beträge werden tagesgenau in die System-Währung umgerechnet (historische
+    FX-Reihe je Fremdwährung).
+
+    Args:
+        events: DataFrame mit Spalten
+                _ts  (datetime), _ticker,
+                _signed_sh  (Käufe +, Verkäufe −),
+                _signed_val (eingesetztes Kapital: Kauf +, Verkauf −),
+                _cur (Trade-Währung, optional).
+        currency_map: {ticker: Währung} für die Kurs-Umrechnung.
+    Returns:
+        DataFrame, index=Tagesdatum, Spalten:
+          'value'    – Marktwert der gehaltenen Stücke (System-Währung)
+          'invested' – kumuliertes Netto-Kapital (System-Währung)
+    """
+    if events is None or events.empty:
+        return pd.DataFrame()
+
+    ev = events.dropna(subset=['_ts']).copy()
+    ev['_date'] = pd.to_datetime(ev['_ts'], errors='coerce').dt.normalize()
+    ev = ev.dropna(subset=['_date'])
+    if ev.empty:
+        return pd.DataFrame()
+
+    sys_cur = (system_currency or 'EUR').upper()
+    currency_map = {k: (str(v).upper().strip() or sys_cur)
+                    for k, v in (currency_map or {}).items()}
+    if '_cur' not in ev.columns:
+        ev['_cur'] = sys_cur
+    ev['_cur'] = ev['_cur'].astype(str).str.upper().str.strip().replace(
+        {'': sys_cur, 'NAN': sys_cur, 'NONE': sys_cur})
+
+    start = ev['_date'].min()
+    end = pd.Timestamp.today().normalize()
+    if end < start:
+        end = ev['_date'].max()
+    daily = pd.date_range(start, end, freq='D')
+
+    tickers = sorted([t for t in ev['_ticker'].dropna().unique().tolist() if t])
+
+    # Kurse je Ticker laden (lokal → Netz-Fallback)
+    series_map: dict = {}
+    if tickers:
+        with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as exr:
+            futs = {exr.submit(_fetch_close_series_for_portfolio, t, db_path): t for t in tickers}
+            for fut in as_completed(futs):
+                t = futs[fut]
+                try:
+                    s = fut.result()
+                except Exception:
+                    s = None
+                if s is not None and not s.empty:
+                    s = s[~s.index.duplicated(keep='last')].sort_index()
+                    s.index = pd.to_datetime(s.index, errors='coerce').normalize()
+                    series_map[t] = s.astype(float)
+
+    # FX-Tagesreihen je benötigter Fremdwährung (CUR pro SYS)
+    needed = {currency_map.get(t, sys_cur) for t in tickers} | set(ev['_cur'].unique())
+    fx_daily = {cur: _fetch_fx_daily(cur, sys_cur, daily, db_path)
+                for cur in needed if cur and cur != sys_cur}
+
+    def _to_sys(series: pd.Series, cur: str) -> pd.Series:
+        if not cur or cur == sys_cur:
+            return series
+        rate = fx_daily.get(cur)
+        return series / rate if rate is not None else series
+
+    # ── Marktwert: gehaltene Stücke × Kurs, in System-Währung ──────────────
+    value_total = pd.Series(0.0, index=daily)
+    for t in tickers:
+        delta = ev[ev['_ticker'] == t].groupby('_date')['_signed_sh'].sum()
+        held = delta.reindex(daily, fill_value=0.0).cumsum().clip(lower=0)  # Rundungsreste
+        s = series_map.get(t)
+        if s is None:
+            continue
+        close = s.reindex(daily).ffill().bfill()
+        native_val = held * close
+        val_sys = _to_sys(native_val, currency_map.get(t, sys_cur)).fillna(0.0)
+        value_total = value_total.add(val_sys, fill_value=0.0)
+
+    # ── Eingesetztes Kapital: je Trade zum Trade-Tag-FX umrechnen ──────────
+    def _val_sys(row) -> float:
+        cur = row['_cur']
+        v = float(row['_signed_val'])
+        if cur == sys_cur:
+            return v
+        rate = fx_daily.get(cur)
+        if rate is None:
+            return v
+        try:
+            rr = float(rate.loc[row['_date']])
+        except Exception:
+            rr = 0.0
+        return v / rr if rr else v
+
+    ev['_val_sys'] = ev.apply(_val_sys, axis=1)
+    daily_cf = ev.groupby('_date')['_val_sys'].sum().reindex(daily, fill_value=0.0)
+    invested = daily_cf.cumsum()
+
+    out = pd.DataFrame({'value': value_total, 'invested': invested})
+
+    # ── Reiner Gesamttrend (zeitgewichtet, ohne Ein-/Auszahlungen) ─────────
+    # TWR: Tagesrendite bezogen auf das zu Tagesbeginn investierte Kapital
+    # (V_t-1 + Cashflow_t), damit Zukäufe/Verkäufe keine Scheingewinne erzeugen.
+    v_prev = value_total.shift(1)
+    base = v_prev + daily_cf
+    r = (value_total / base) - 1.0
+    r = r.where(base > 0, 0.0).replace([np.inf, -np.inf], 0.0).fillna(0.0)
+    if len(r) > 0:
+        r.iloc[0] = 0.0  # erster Tag = Basis (Index 100)
+    out['trend_index'] = 100.0 * (1.0 + r).cumprod()
+
+    return out[out.index >= start]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Haupt-Render-Funktion
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,10 +440,16 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
 
     r.markdown(_t('ota.trades_loaded', total=len(raw), open=len(open_tickers), closed=len(closed_tickers)))
 
+    # Anzeige-Reihenfolge der Expander (unabhängig von der Code-Reihenfolge):
+    #   A) Offene Positionen, B) History, C) Abgeschlossene Trades
+    _sec_open    = r.container()
+    _sec_history = r.container()
+    _sec_closed  = r.container()
+
     # ══════════════════════════════════════════════════════════════════════════
-    # A) ABGESCHLOSSENE TRADES – Normierter Kursverlauf
+    # C) ABGESCHLOSSENE TRADES – Normierter Kursverlauf
     # ══════════════════════════════════════════════════════════════════════════
-    with r.expander(_t('ota.section_closed'), expanded=not closed_df.empty):
+    with _sec_closed.expander(_t('ota.section_closed'), expanded=False):
 
         if closed_df.empty:
             st.info(_t('ota.no_closed_trades'))
@@ -416,9 +568,9 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 pass
 
     # ══════════════════════════════════════════════════════════════════════════
-    # B) OFFENE POSITIONEN – Rebalancing & Paritäts-Analyse
+    # A) OFFENE POSITIONEN – Rebalancing & Paritäts-Analyse
     # ══════════════════════════════════════════════════════════════════════════
-    with r.expander(_t('ota.section_open'), expanded=True):
+    with _sec_open.expander(_t('ota.section_open'), expanded=True):
 
         if open_df.empty:
             st.info(_t('ota.no_open_positions'))
@@ -633,3 +785,94 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                                  hide_index=True, use_container_width=True)
                 if buys.empty and sells.empty:
                     st.info(_t('ota.balanced'))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # B) HISTORY – Tatsächlicher Portfolioverlauf aus den Transaktionen
+    # ══════════════════════════════════════════════════════════════════════════
+    with _sec_history.expander(_t('ota.section_history'), expanded=False):
+        st.caption(_t('ota.history_caption'))
+        events = pd.DataFrame({
+            '_ts':         raw['_ts'],
+            '_ticker':     raw['_ticker'],
+            '_cur':        raw['_currency'],
+            '_signed_sh':  np.where(raw[act_col] == 'buy',  raw['_shares'],      -raw['_shares']),
+            '_signed_val': np.where(raw[act_col] == 'buy',  raw['_value'].abs(), -raw['_value'].abs()),
+        })
+        # Währung je Ticker (erste belastbare Trade-Währung) für die Kurs-Umrechnung
+        def _first_currency(s):
+            for x in s:
+                xs = str(x).upper().strip()
+                if xs and xs not in ('NAN', 'NONE'):
+                    return xs
+            return system_currency
+        currency_map = raw.groupby('_ticker')['_currency'].apply(_first_currency).to_dict()
+        with st.spinner(_t('ota.history_loading')):
+            hist = _build_portfolio_history(events, db_path,
+                                            system_currency=system_currency,
+                                            currency_map=currency_map)
+
+        if hist is None or hist.empty or len(hist) < 2:
+            st.info(_t('ota.history_no_data'))
+        else:
+            cur_val   = float(hist['value'].iloc[-1])
+            start_val = float(hist['value'].iloc[0])
+            cur_inv   = float(hist['invested'].iloc[-1])
+            pnl       = cur_val - cur_inv
+            pnl_pct   = (pnl / cur_inv * 100) if cur_inv else 0.0
+
+            line_color = '#1e8e3e' if cur_val >= start_val else '#c5221f'
+            fill_color = 'rgba(30,142,62,0.12)' if cur_val >= start_val else 'rgba(197,34,31,0.12)'
+
+            fig_h = go.Figure()
+            fig_h.add_trace(go.Scatter(
+                x=hist.index, y=hist['value'].round(2),
+                mode='lines', name=_t('ota.history_value'),
+                line=dict(color=line_color, width=2),
+                fill='tozeroy', fillcolor=fill_color,
+                hovertemplate='%{x|%Y-%m-%d}<br>%{y:,.2f} ' + system_currency + '<extra></extra>',
+            ))
+            fig_h.add_trace(go.Scatter(
+                x=hist.index, y=hist['invested'].round(2),
+                mode='lines', name=_t('ota.history_invested'),
+                line=dict(color='#5f6368', width=1.5, dash='dash'),
+                hovertemplate='%{x|%Y-%m-%d}<br>%{y:,.2f} ' + system_currency + '<extra></extra>',
+            ))
+            fig_h.update_layout(
+                template='plotly_white', height=340,
+                margin=dict(l=10, r=10, t=10, b=10),
+                yaxis_title=system_currency, xaxis_title=None,
+                legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='left', x=0),
+            )
+            st.plotly_chart(fig_h, use_container_width=True)
+
+            h1, h2, h3 = st.columns(3)
+            h1.metric(_t('ota.history_metric_value'),    f'{cur_val:,.2f} {system_currency}')
+            h2.metric(_t('ota.history_metric_invested'), f'{cur_inv:,.2f} {system_currency}')
+            h3.metric(_t('ota.history_metric_pnl'),      f'{pnl:+,.2f} {system_currency}', delta=f'{pnl_pct:+.1f}%')
+            st.caption(_t('ota.history_fx_note'))
+
+            # ── Reiner Gesamttrend (zeitgewichtet, ohne Ein-/Auszahlungen) ──
+            if 'trend_index' in hist.columns and hist['trend_index'].notna().any():
+                st.markdown(f"**{_t('ota.history_trend_header')}**")
+                st.caption(_t('ota.history_trend_caption'))
+                trend = hist['trend_index'].dropna()
+                trend_ret = float(trend.iloc[-1]) - 100.0 if len(trend) else 0.0
+                t_color = '#1e8e3e' if trend_ret >= 0 else '#c5221f'
+
+                fig_tr = go.Figure()
+                fig_tr.add_trace(go.Scatter(
+                    x=trend.index, y=trend.round(2),
+                    mode='lines', name=_t('ota.history_trend_label'),
+                    line=dict(color=t_color, width=2),
+                    hovertemplate='%{x|%Y-%m-%d}<br>%{y:.2f} (Basis 100)<extra></extra>',
+                ))
+                fig_tr.add_hline(y=100, line_dash='dot', line_color='#9aa0a6')
+                fig_tr.update_layout(
+                    template='plotly_white', height=300,
+                    margin=dict(l=10, r=10, t=30, b=10),
+                    yaxis_title=_t('ota.history_trend_label'), xaxis_title=None,
+                    showlegend=False,
+                    title=dict(text=f'{trend_ret:+.1f}% ({_t("ota.history_trend_twr")})',
+                               font=dict(size=14)),
+                )
+                st.plotly_chart(fig_tr, use_container_width=True)

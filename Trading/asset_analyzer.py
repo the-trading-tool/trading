@@ -809,11 +809,11 @@ class TradingApp:
                         )
                         system_currency = self.sys_config.get_value('system_currency', 'EUR')
                         with st.spinner(t('page.own_transactions') + " …"):
-                            tab_portfolio, tab_entry, tab_risk, tab_scalable, tab_trades = st.tabs([
+                            tab_scalable, tab_portfolio, tab_entry, tab_risk, tab_trades = st.tabs([
+                                t('own_trades.tab_scalable'),
                                 t('own_trades.tab_portfolio'),
                                 t('own_trades.tab_entry'),
                                 t('own_trades.tab_risk'),
-                                t('own_trades.tab_scalable'),
                                 t('own_trades.tab_trades'),
                             ])
                             with tab_portfolio:
