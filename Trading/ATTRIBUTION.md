@@ -107,7 +107,6 @@ Best Practice.
 | Datei | Funktion | Konzept / Herkunft |
 |---|---|---|
 | `predictlib.py` | Kursprognose mit XGBoost | XGBoost + Lag-Features für Time-Series-Prognose — in vielen Medium-Artikeln beschrieben (z. B. *"Stock Price Prediction with XGBoost"*) |
-| `PortfolioAnalysis.py` | Portfolio-Performance vs. Index | Eigenimplementierung auf Basis von `yfinance` und `pandas` |
 | `sector_rotation.py` | Sektor-Rotation, RRG-Graph | **Mansfield Relative Strength** (Stan Weinstein, 1988); **JdK RS-Ratio / RS-Momentum** (Julius de Kempenaer — Relative Rotation Graph); **Chaikin Money Flow** (Marc Chaikin) — alle Public-Domain-Algorithmen, RRG-Konzept durch Medium-Artikel angeregt |
 | `option_calculator.py` | Optionsscheinrechner | **Black-Scholes-Formel** (Fischer Black, Myron Scholes, 1973) — Public domain; Implementierung via `scipy.stats.norm` |
 | `sentiment.py` | Nachrichten-Sentiment | NLTK VADER Sentiment Analyser (Hutto & Gilbert, 2014, MIT) auf Yahoo-Finance-RSS-Feed |

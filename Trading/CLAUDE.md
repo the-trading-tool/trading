@@ -231,9 +231,6 @@ entfernt. Migration: `df = df.sort_values(...)` statt `df.sort_values(inplace=Tr
 inkonsistentes Verhalten je nach Expression.
 **Fix:** Alten Evaluator entfernen, sobald der neue alle Fälle abdeckt.
 
-**I) Zwei `PortfolioAnalysis`-Dateien** — `PortfolioAnalysis.py` und
-`PortfolioAnalysis1.py` liegen parallel. Unklar welche aktuell ist → eine löschen.
-
 **J) Stale `.tmp.*`-Dateien** in `tradinglib/` bereinigen:
 ```
 tradinglib/market_data.py.tmp.19064.*
