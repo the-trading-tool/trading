@@ -510,6 +510,7 @@ class SystemConfig(tools.Db_tools):
 
             with tabs[2]:
                 for label, module in [
+                    ("Einstellungen (⚙)", "system_config"),
                     ("Zinseszins-Simulation", "compound_simulation"),
                     ("Earnings-Kalender", "earnings_calendar"),
                     ("Pine Script Export", "pine_exporter"),

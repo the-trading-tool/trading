@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Einstellungen – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:4px 8px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:inline;white-space:pre-wrap}
+pre{display:block;margin:6px 0;padding:6px 10px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>⚙ Einstellungen <small style="font-size:.6em;color:#888">system_config.py</small></h1>
+
+<p>Der Einstellungs-Dialog öffnet sich über den <b>⚙</b>-Button in der Sidebar.
+Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim nächsten App-Start automatisch geladen.</p>
+
+<h2>Allgemein</h2>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th><th style="width:20%">Mögliche Werte</th></tr>
+<tr>
+  <td><b>Sprache</b></td>
+  <td>App-Sprache. Wirkt sofort auf alle Beschriftungen, Tabs und Hilfetexte.</td>
+  <td><code>de</code> · <code>en</code></td>
+</tr>
+<tr>
+  <td><b>Währung</b></td>
+  <td>Systemwährung für Portfoliowerte, Gewinnberechnungen und Anzeigen (z.&nbsp;B. in der Banner-Seite und den Strategien). Muss ein gültiges ISO-4217-Kürzel sein.</td>
+  <td><code>EUR</code> · <code>USD</code> · …</td>
+</tr>
+<tr>
+  <td><b>Standard-Zeitzone</b></td>
+  <td>Zeitzone für die Anzeige von Kursdaten und Signalen. Die gespeicherten Daten bleiben UTC-neutral — die Konvertierung erfolgt nur in der Darstellung.</td>
+  <td><code>Europe/Berlin</code> · <code>America/New_York</code> · …</td>
+</tr>
+</table>
+
+<h2>Chart-Vorgaben</h2>
+<p>Diese Werte definieren, was beim ersten Laden des Asset-Viewers voreingestellt ist. Sie können pro Session über die Selektoren oben im Chart jederzeit überschrieben werden.</p>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th><th style="width:20%">Mögliche Werte</th></tr>
+<tr>
+  <td><b>Standard-Intervall</b></td>
+  <td>Kerzen-Zeitrahmen beim ersten Aufruf.</td>
+  <td><code>5m</code> · <code>30m</code> · <code>60m</code> · <code>1d</code> · <code>1wk</code> · <code>1mo</code></td>
+</tr>
+<tr>
+  <td><b>Standard-Zeitraum</b></td>
+  <td>Dargestellter Zeitraum beim ersten Aufruf.</td>
+  <td><code>2d</code> · <code>2wk</code> · <code>1mo</code> · <code>3mo</code> · <code>6mo</code> · <code>1y</code> · <code>5y</code></td>
+</tr>
+<tr>
+  <td><b>Standard-Overlay</b></td>
+  <td>Komma-getrennte Liste von Indikator-Kurzbezeichnungen, die beim ersten Aufruf auf den Kurs gelegt werden.</td>
+  <td><code>heikin, sup, bos</code> · <code>candle, gan</code> · …</td>
+</tr>
+<tr>
+  <td><b>Standard-Oszillator</b></td>
+  <td>Komma-getrennte Liste von Indikatoren, die beim ersten Aufruf als Untercharts erscheinen.</td>
+  <td><code>ewo, adx, macd</code> · …</td>
+</tr>
+<tr>
+  <td><b>Details-Tab anzeigen</b></td>
+  <td>Zeigt auf der Hauptseite einen zusätzlichen „Details"-Tab mit erweiterten Kennzahlen. Hilfreich für die Detailanalyse, aber breiter Platz empfohlen.</td>
+  <td><code>True</code> · <code>False</code></td>
+</tr>
+<tr>
+  <td><b>Pine Script Export anzeigen</b></td>
+  <td>Blendet unter dem Chart den Button zum Export der aktuellen Indikator-Konfiguration als Pine Script v5 (TradingView) ein.</td>
+  <td><code>True</code> · <code>False</code></td>
+</tr>
+</table>
+
+<h2>Kauf- und Verkaufsbedingungen</h2>
+<p>Diese Ausdrücke steuern, welche Kerzen in der Performance-Simulation (<code>asset_perf2.py</code>) und im Asset-Viewer als Kauf- bzw. Verkaufssignal markiert werden.</p>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
+<tr>
+  <td><b>Kauf-Bedingung</b></td>
+  <td>Python-ähnlicher boolescher Ausdruck auf DataFrame-Spalten. Jede Kerze, für die der Ausdruck <code>True</code> ergibt, wird als Kaufsignal markiert (grünes ▲ im Chart).</td>
+</tr>
+<tr>
+  <td><b>Verkauf-Bedingung</b></td>
+  <td>Analoger Ausdruck für das Verkaufssignal (rotes ▼ im Chart).</td>
+</tr>
+</table>
+<p>Verfügbare Spalten entsprechen den berechneten Indikatoren, z.&nbsp;B.:</p>
+<pre>(ha_close > ha_open) &amp; (Close > ha_ema_high) &amp; (macd > macd_signal) &amp; (rsi > 50) &amp; (markov_regime &lt; 2)</pre>
+<div class="warn">Nur Spaltennamen verwenden, die nach dem gewählten Intervall/Zeitraum tatsächlich berechnet werden. Unbekannte Spalten führen zu einem stillen Fehler (kein Signal).</div>
+
+<h2>Strategien (Transaktionen)</h2>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
+<tr>
+  <td><b>Transaktionen</b></td>
+  <td>JSON-Konfiguration der Handelsstrategien. Äußere Keys = Strategiename, innere Keys = Index-Name, Wert = maximale Anzahl gleichzeitiger Positionen in diesem Index.<br>
+  Wird von der Banner-Seite, Multi-Strategien und dem Trading-Agenten gelesen.</td>
+</tr>
+<tr>
+  <td><b>Handelskosten in %</b></td>
+  <td>Prozentualer Aufschlag je Trade (Ein- + Ausstieg), der bei der Gewinnberechnung abgezogen wird. Typisch 0,1–1,0 %.</td>
+</tr>
+<tr>
+  <td><b>Beobachtete Assets</b></td>
+  <td>Komma-getrennte Ticker-Liste für den Live-Ticker und Push-Benachrichtigungen (Pushover).</td>
+</tr>
+</table>
+<p>Beispiel Transaktions-JSON:</p>
+<pre>{"Value Trend Strategy": {"^GDAXI": 3, "^SPX": 3}, "Support Strategy": {"^GDAXI": 2}}</pre>
+
+<h2>Administration (nur Admin-Benutzer)</h2>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
+<tr>
+  <td><b>Datenprovider</b></td>
+  <td>Quelle für Kursdaten: <b>Yahoo Finance</b> (kostenlos, Standard) oder <b>FMP</b> (Financial Modeling Prep, erfordert API-Key im KSP-Eintrag <code>fmp</code>).</td>
+</tr>
+<tr>
+  <td><b>Echtzeit-Kurse</b></td>
+  <td>Aktiviert den automatischen Kurs-Refresh im Live-Ticker. Erhöht die Yahoo-API-Last — bei vielen Assets auf <code>False</code> lassen.</td>
+</tr>
+<tr>
+  <td><b>S/R-Skalierung</b></td>
+  <td>Skalierungsfaktor für Support/Resistance-Berechnungen. Höhere Werte erzeugen weiter gefasste S/R-Zonen; Standardwert 100.</td>
+</tr>
+<tr>
+  <td><b>OVT-Glättung</b></td>
+  <td>Glättungsperiode für den Overall-Value-Trend-Indikator (OVT). Werte 1–5; höhere Werte reduzieren Rauschen, verzögern aber Signale.</td>
+</tr>
+<tr>
+  <td><b>Logging</b></td>
+  <td>Aktiviert die Ausgabe von Debug-Meldungen in Konsole und Logdatei.</td>
+</tr>
+<tr>
+  <td><b>Log-Dateiname</b></td>
+  <td>Pfad/Name der Logdatei, relativ zum App-Verzeichnis. Standard: <code>out.txt</code>.</td>
+</tr>
+<tr>
+  <td><b>Log-Level</b></td>
+  <td>Mindest-Schweregrad für protokollierte Meldungen: <code>DEBUG</code> &gt; <code>INFO</code> &gt; <code>WARNING</code> &gt; <code>ERROR</code> &gt; <code>CRITICAL</code>.</td>
+</tr>
+<tr>
+  <td><b>Lizenz</b></td>
+  <td>Zeigt Lizenz-Tier, Lizenznehmer, Ablaufdatum und aktive Features. Über „Lizenz neu laden" wird <code>license.json</code> ohne App-Neustart eingelesen.</td>
+</tr>
+</table>
+
+<div class="info">Alle Änderungen werden erst nach Klick auf <b>Speichern</b> dauerhaft in <code>config.db</code> geschrieben. Ein Reload ohne Speichern verwirft die Eingaben.</div>
+</body>
+</html>
