@@ -490,14 +490,10 @@ class SystemConfig(tools.Db_tools):
 
         if not self.bare_mode:
 
-            tabs = st.tabs(["OVT-Indikator", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte"])
+            tabs = st.tabs(["Scalable", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte", "OVT-Indikator"])
 
             with tabs[0]:
-                lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
-                with lang_tabs[0]:
-                    st.html(help_text.load_help("ovt_de"))
-                with lang_tabs[1]:
-                    st.html(help_text.load_help("ovt_en"))
+                self._render_scalable_help()
 
             with tabs[1]:
                 for label, module in [
@@ -551,6 +547,13 @@ class SystemConfig(tools.Db_tools):
                 ]:
                     with st.expander(label):
                         st.html(help_text.load_help(module))
+
+            with tabs[6]:
+                lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
+                with lang_tabs[0]:
+                    st.html(help_text.load_help("ovt_de"))
+                with lang_tabs[1]:
+                    st.html(help_text.load_help("ovt_en"))
 
     def _render_scalable_help(self):
         """Focused help dialog for the Scalable edition (no Premium/Admin/CLI tabs)."""

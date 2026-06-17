@@ -64,11 +64,12 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <tr><th>#</th><th>Skript</th><th>Befüllt</th><th>Macht sichtbar</th></tr>
 <tr><td>1</td><td><code>get_asset_data.py</code> (dieses Skript)</td><td><code>yf_tickers.db</code>, <code>yf_{TICKER}.db</code></td><td>Markt im „Select by market" + Kursdaten</td></tr>
 <tr><td>2</td><td><code>get_asset_info.py /group:NAME</code></td><td><code>asset_info.db</code></td><td><b>„Select company"-Dropdown + Volltextsuche</b></td></tr>
-<tr><td>3</td><td><code>asset_perf2.py /group:NAME</code></td><td><code>asset_simulation_.db</code></td><td>Indikator-Overlays, Buy/Sell-Signale, Kennzahlen</td></tr>
+<tr><td>3</td><td><code>asset_perf2.py /group:NAME</code> oder <code>/all /group:NAME</code></td><td><code>asset_simulation_.db</code> (Jahres-DB) oder <code>asset_simulation_{name}.db</code> (eigene DB)</td><td>Indikator-Overlays, Buy/Sell-Signale, Kennzahlen</td></tr>
 </table>
 <p>Beispiel für eine neue Gruppe (z.B. ETP), Schritt für Schritt:</p>
 <pre>python get_asset_data.py 1d:1y /group:ETP /worker:3
 python get_asset_info.py /group:ETP /worker:4
-python asset_perf2.py /group:ETP /worker:2</pre>
+python asset_perf2.py /all /group:ETP /worker:2</pre>
+<p><b>Hinweis:</b> <code>/all /group:ETP</code> schreibt in die eigene Datenbank <code>asset_simulation_etp.db</code> (separates Universum, sichtbar unter <i>→ ETP Assets</i>). Ohne <code>/all</code> würde in die jahresbasierte <code>asset_simulation_.db</code> geschrieben.</p>
 </body>
 </html>

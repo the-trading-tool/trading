@@ -32,7 +32,8 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><td><code>(ohne Filter)</code></td><td>Nur Mitglieder echter Börsen-Indizes (Gruppen mit <code>^</code>-Präfix).</td></tr>
 <tr><td><code>/group:ETP</code></td><td>Nur Mitglieder der genannten Gruppe(n); mehrere kommagetrennt, z.B. <code>/group:METALS,COMMODITIES</code>. Für eigene Läufe von ETP, CRYPTO, CURRENCIES usw.</td></tr>
 <tr><td><code>/inverse</code></td><td>Nur Ticker, die <b>keiner</b> Gruppe zugeordnet sind (Einzeltitel ohne Index-/Gruppen-Verknüpfung).</td></tr>
-<tr><td><code>/all</code></td><td>Alle Ticker unabhängig vom Index; schreibt nach <code>asset_simulation_all.db</code>.</td></tr>
+<tr><td><code>/all</code></td><td>Alle Stocks und Indizes <b>außer ETP-Gruppe</b>; schreibt nach <code>asset_simulation_all.db</code>.</td></tr>
+<tr><td><code>/all /group:ETP</code></td><td>Nur ETP-Mitglieder; schreibt nach <code>asset_simulation_etp.db</code>. Läuft unabhängig von <code>/all</code> – eigener teurer Berechnungslauf.</td></tr>
 <tr><td><code>/year:2024</code></td><td>Berechnung auf ein Kalenderjahr beschränken (Snapshot/Backtest).</td></tr>
 <tr><td><code>/worker:N</code></td><td>N parallele Prozesse (ProcessPoolExecutor, CPU-lastig). Auf Windows ohne Angabe automatisch begrenzt (RAM pro Prozess).</td></tr>
 </table>
@@ -55,7 +56,8 @@ dema    → dema_ema_fast, dema_ema_slow, dema_buy, dema_sell
 hor     → hor_val, hor_threshold
 sup     → sup_support, sup_resistance
 relvol  → relvol_ratio
-atc     → atc_top_high, atc_bot_low</pre>
+atc     → atc_top_high, atc_bot_low
+scr     → scr_1mo, scr_3mo, scr_eoy, scr_buy, scr_sell</pre>
 
 <div class="info">Täglicher Cron-Empfehlung: nach Börsenschluss automatisch ausführen, damit die App immer aktuelle Signale zeigt.</div>
 <div class="warn">Ein vollständiger Lauf kann je nach Tickeranzahl mehrere Minuten dauern. <code>/rescore</code> ist deutlich schneller.</div>

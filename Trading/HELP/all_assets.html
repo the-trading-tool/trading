@@ -15,7 +15,11 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <body>
 <h1>Asset-Übersicht <small style="font-size:.6em;color:#888">all_assets.py</small></h1>
 
-<p>Screener für <b>alle Ticker</b> der lokalen Datenbank: filterbare Tabelle mit den aktuellen Indikatorwerten, optional ergänzt um ein Mini-Chart-Grid der Top-Titel. Erreichbar für Admin-Konten unter Assets &amp; Performance → <b>→ Alle Assets</b>.</p>
+<p>Screener für <b>alle Ticker</b> der lokalen Datenbank: filterbare Tabelle mit den aktuellen Indikatorwerten, optional ergänzt um ein Mini-Chart-Grid der Top-Titel. Für Admin-Konten unter Assets &amp; Performance in zwei Varianten verfügbar:</p>
+<ul>
+  <li><b>→ Alle Assets</b> – Stocks und Indizes aus <code>asset_simulation_all.db</code> (ohne ETP-Gruppe)</li>
+  <li><b>→ ETP Assets</b> – nur ETP-Gruppe aus <code>asset_simulation_etp.db</code> (separater Berechnungslauf via <code>asset_perf2.py /all /group:ETP</code>)</li>
+</ul>
 
 <h2>Bedienung</h2>
 <table>
@@ -27,7 +31,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 </table>
 
 <h2>Sortierung &amp; Inhalt</h2>
-<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus <code>asset_simulation_all.db</code>, sortiert nach Währung, Sortino-Ratio und <code>overallValueTrend</code>. Alle berechneten Indikator-Spalten sind enthalten.</p>
+<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus der jeweiligen Datenbank (<code>asset_simulation_all.db</code> bzw. <code>asset_simulation_etp.db</code>), sortiert nach Währung, Sortino-Ratio und <code>overallValueTrend</code>. Alle berechneten Indikator-Spalten sind enthalten.</p>
 
 <h2>Filter-Syntax</h2>
 <p>Das Filterfeld akzeptiert pandas-/SQL-kompatible Bedingungen auf den Indikator-Spalten, z.&nbsp;B.:</p>
