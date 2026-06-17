@@ -19,10 +19,11 @@ class AllAssetsView(tt.TickerTools):
 
     url="/?details=true&symbol="
     
-    def __init__(self, username=None, is_admin=False):
+    def __init__(self, username=None, is_admin=False, db_name="asset_simulation_all"):
         """Initialize the all-assets screener view and immediately render it."""
         self.username = username
         self.is_admin = is_admin
+        self.db_name = db_name
         self.sys_config = sysconf.SystemConfig(username=username, is_admin = self.is_admin)
         self.system_currency = self.sys_config.get_value("system_currency",default="EUR")
         self.render()
@@ -59,8 +60,8 @@ class AllAssetsView(tt.TickerTools):
 
     def render(self):
         """Render the full screener: filtered asset table, Excel export, and optional mini-chart grid."""
-        db_name = "asset_simulation_all"
-#        if qv:
+        db_name = self.db_name
+        _sk = db_name  # session-state key suffix — prevents state collisions between All/ETP views
         db = tt.tools.Db_tools(db_path='database', database_name=f'{db_name}.db')
         # Attach die anderen Datenbanken
         buy_query = self.sys_config.get_value("buy_query",default="(ewo>ewo_ema)")
@@ -98,20 +99,20 @@ class AllAssetsView(tt.TickerTools):
                 use_container_width=True,
                 on_select="rerun",
                 selection_mode="single-row",
-                key="aa_asset_table",
+                key=f"aa_asset_table_{_sk}",
             )
             if event.selection.rows:
                 selected_ticker = df.iloc[event.selection.rows[0]]['ticker']
-                if st.session_state.get("aa_last_shown") != selected_ticker:
-                    st.session_state["aa_last_shown"] = selected_ticker
+                if st.session_state.get(f"aa_last_shown_{_sk}") != selected_ticker:
+                    st.session_state[f"aa_last_shown_{_sk}"] = selected_ticker
                     self.overlay_chart(df.iloc[[event.selection.rows[0]]])
             else:
-                st.session_state.pop("aa_last_shown", None)
+                st.session_state.pop(f"aa_last_shown_{_sk}", None)
 
             self.export_to_excel(df, button_label=t('assets.download_btn'), file_name='Asset_dataset.xlsx', region=st)
             col_chk, col_sel = st.columns([1, 2])
-            show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key='aa_show_grid')
-            grid_count = col_sel.selectbox(t('perf.grid_count'), [5, 10, 20], index=1, key='aa_grid_count') if show_grid else 10
+            show_grid = col_chk.checkbox(t('perf.show_grid'), value=False, key=f'aa_show_grid_{_sk}')
+            grid_count = col_sel.selectbox(t('perf.grid_count'), [5, 10, 20], index=1, key=f'aa_grid_count_{_sk}') if show_grid else 10
             if show_grid:
                 date = df['Date'].iloc[0] if not df.empty else None
                 tickers = df[df['Date']==date].sort_values('sortino', ascending=False)['ticker'].head(grid_count)

@@ -647,6 +647,7 @@ class TradingApp:
                 _nav(t('nav.performance'), performance='true')
                 if self.is_admin:
                     _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
+                    _nav(t('nav.perf_tab_etp'), performance='true', tab='etp_assets')
                 _nav(t('nav.compound_simulation'), compound='true')
 
             # ── Portfolio ───────────────────────────────────────────────────────
@@ -790,6 +791,9 @@ class TradingApp:
                     with st.spinner(t('page.performance') + " …"):
                         if self.is_admin and parms.get('tab') == 'all_assets':
                             aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
+                        elif self.is_admin and parms.get('tab') == 'etp_assets':
+                            aa.AllAssetsView(username=self.username, is_admin=self.is_admin,
+                                             db_name='asset_simulation_etp')
                         else:
                             perfdetails.Performance(username=self.username).render()
                 elif parms.get('multi'):

@@ -22,17 +22,21 @@
 .PARAMETER Years
     Optionale Liste der zu verarbeitenden Jahre (Default: alle).
     '' steht fuer asset_simulation_.db (aktuelles Jahr ohne Suffix),
-    'all' fuer asset_simulation_all.db.
+    'all' fuer asset_simulation_all.db (alle Stocks ausser ETP),
+    'etp' fuer asset_simulation_etp.db (nur ETP-Gruppe).
 
-    Beispiel: -Years 2024,2025
+    Hinweis: asset_simulation_etp.db muss zuerst per einmaligem vollem
+    Lauf erstellt werden: python asset_perf2.py /all /group:ETP
+
+    Beispiel: -Years 2024,2025,etp
 
 .EXAMPLE
     .\backfill_all_sim_dbs.ps1
-    .\backfill_all_sim_dbs.ps1 -Years 2025,all
+    .\backfill_all_sim_dbs.ps1 -Years 2025,all,etp
 #>
 
 param(
-    [string[]]$Years = @('', '2020', '2021', '2022', '2023', '2024', '2025', 'all')
+    [string[]]$Years = @('', '2020', '2021', '2022', '2023', '2024', '2025', 'all', 'etp')
 )
 
 $ErrorActionPreference = 'Continue'
@@ -73,6 +77,10 @@ try {
         if ($year -eq 'all') {
             $label = 'asset_simulation_all'
             $extra = @('/all')
+        }
+        elseif ($year -eq 'etp') {
+            $label = 'asset_simulation_etp'
+            $extra = @('/all', '/group:ETP')
         }
         elseif ($year -eq '') {
             $label = 'asset_simulation_'

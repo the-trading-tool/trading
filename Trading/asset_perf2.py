@@ -1285,7 +1285,7 @@ if __name__ == "__main__":
     system_currency = sys_conf.get_value("system_currency", "EUR")
     db_table = "asset_simulation"
     if all:
-        sim_db_name = f"{db_table}_all.db"
+        sim_db_name = f"{db_table}_etp.db" if group == ['ETP'] else f"{db_table}_all.db"
     else:
         sim_db_name = f"{db_table}_{year}.db"
 
@@ -1351,8 +1351,18 @@ if __name__ == "__main__":
             # /group und entfällt — Kategorie-Gruppen laufen jetzt über /group:NAME.
             ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}"'
     if all:
-        ticker_query = f'SELECT Ticker FROM stocks;'
-        logger.info("Using all tickers")
+        if group == ['ETP']:
+            ticker_query = ('SELECT s.Ticker FROM stocks s '
+                             'JOIN stock_indices si ON s.id = si.stock_id '
+                             'JOIN indices i ON si.index_id = i.id '
+                             'WHERE UPPER(i.name) = "ETP"')
+            logger.info("Using all ETP tickers")
+        else:
+            ticker_query = ('SELECT Ticker FROM stocks WHERE id NOT IN ('
+                             'SELECT si.stock_id FROM stock_indices si '
+                             'JOIN indices i ON si.index_id = i.id '
+                             'WHERE UPPER(i.name) = "ETP")')
+            logger.info("Using all tickers (excl. ETP)")
         simulate = True
 
     logger.debug("Running query: %s", ticker_query)

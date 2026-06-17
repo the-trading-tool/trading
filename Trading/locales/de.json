@@ -796,6 +796,7 @@
   "nav.group_admin": "Admin",
   "nav.summary_tab_flow": "→ Regime Flow",
   "nav.perf_tab_all": "→ Alle Assets",
+  "nav.perf_tab_etp": "→ ETP Assets",
   "nav.admin_ticker": "Ticker",
   "nav.admin_database": "Datenbank",
   "nav.admin_credentials": "API-Zugangsdaten",
