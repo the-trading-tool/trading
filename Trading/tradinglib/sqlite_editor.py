@@ -139,75 +139,98 @@ class SQLiteEditor(tt.TickerTools):
         finally:
             conn.close()
 
-    def _query_templates(self, primary_tables: list, attached_dbs: dict) -> dict:
-        """Build cross-DB query templates based on which databases are attached."""
-        pt = primary_tables[0] if primary_tables else "table"
+    def _query_templates(self, selected_table: str, attached_dbs: dict, attached_schemas: dict) -> dict:
+        """Build cross-DB query templates based on selected table and attached database schemas."""
+        pt = selected_table or "table"
         attached = set(attached_dbs.keys())
+        known = {"asset_info", "yf_tickers"}
         tpl = {}
 
         if "asset_info" in attached:
+            ai_table = next(iter(attached_schemas.get("asset_info", {"asset_info": []})), "asset_info")
             tpl["Ticker + Firmeninfo"] = (
                 f"SELECT t.*, ai.longName, ai.sector, ai.country, ai.marketCap\n"
                 f"FROM {pt} t\n"
-                f"JOIN asset_info.asset_info ai ON t.ticker = ai.ticker\n"
+                f"JOIN asset_info.{ai_table} ai ON t.ticker = ai.ticker\n"
                 f"ORDER BY ai.longName\n"
                 f"LIMIT 50;"
             )
 
         if "yf_tickers" in attached:
-            tpl["Ticker nach Index filtern"] = (
-                f"SELECT t.ticker, i.name AS markt\n"
-                f"FROM {pt} t\n"
-                f"JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
-                f"JOIN yf_tickers.indices i ON si.index_id = i.id\n"
-                f"WHERE i.name = '^SPX'\n"
-                f"LIMIT 50;"
-            )
-            tpl["Alle Indexmitgliedschaften je Ticker"] = (
-                f"SELECT t.ticker, GROUP_CONCAT(i.name, ', ') AS maerkte\n"
-                f"FROM {pt} t\n"
-                f"JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
-                f"JOIN yf_tickers.indices i ON si.index_id = i.id\n"
-                f"GROUP BY t.ticker\n"
-                f"ORDER BY t.ticker\n"
-                f"LIMIT 50;"
-            )
+            schema_yf = attached_schemas.get("yf_tickers", {})
+            if "stock_indices" in schema_yf and "indices" in schema_yf:
+                tpl["Ticker nach Index filtern"] = (
+                    f"SELECT t.ticker, i.name AS markt\n"
+                    f"FROM {pt} t\n"
+                    f"JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
+                    f"JOIN yf_tickers.indices i ON si.index_id = i.id\n"
+                    f"WHERE i.name = '^SPX'\n"
+                    f"LIMIT 50;"
+                )
+                tpl["Alle Indexmitgliedschaften je Ticker"] = (
+                    f"SELECT t.ticker, GROUP_CONCAT(i.name, ', ') AS maerkte\n"
+                    f"FROM {pt} t\n"
+                    f"JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
+                    f"JOIN yf_tickers.indices i ON si.index_id = i.id\n"
+                    f"GROUP BY t.ticker\n"
+                    f"ORDER BY t.ticker\n"
+                    f"LIMIT 50;"
+                )
 
         if "asset_info" in attached and "yf_tickers" in attached:
-            tpl["Vollständige Ansicht (Info + Markt)"] = (
-                f"SELECT t.ticker, ai.longName, ai.sector, ai.country,\n"
-                f"       GROUP_CONCAT(i.name, ', ') AS maerkte\n"
-                f"FROM {pt} t\n"
-                f"JOIN asset_info.asset_info ai ON t.ticker = ai.ticker\n"
-                f"LEFT JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
-                f"LEFT JOIN yf_tickers.indices i ON si.index_id = i.id\n"
-                f"GROUP BY t.ticker\n"
-                f"ORDER BY ai.sector, ai.longName\n"
-                f"LIMIT 100;"
-            )
+            ai_table = next(iter(attached_schemas.get("asset_info", {"asset_info": []})), "asset_info")
+            schema_yf = attached_schemas.get("yf_tickers", {})
+            if "stock_indices" in schema_yf and "indices" in schema_yf:
+                tpl["Vollständige Ansicht (Info + Markt)"] = (
+                    f"SELECT t.ticker, ai.longName, ai.sector, ai.country,\n"
+                    f"       GROUP_CONCAT(i.name, ', ') AS maerkte\n"
+                    f"FROM {pt} t\n"
+                    f"JOIN asset_info.{ai_table} ai ON t.ticker = ai.ticker\n"
+                    f"LEFT JOIN yf_tickers.stock_indices si ON t.ticker = si.Ticker\n"
+                    f"LEFT JOIN yf_tickers.indices i ON si.index_id = i.id\n"
+                    f"GROUP BY t.ticker\n"
+                    f"ORDER BY ai.sector, ai.longName\n"
+                    f"LIMIT 100;"
+                )
 
-        # Simulation-DB in attached → cross-sim-Abfragen
+        # Simulation-DBs in attached → cross-sim-Abfragen
         sim_aliases = [a for a in attached if "simulation" in a or a.startswith("sim_")]
         for sim_alias in sim_aliases[:1]:
-            if "asset_info" in attached:
-                tpl[f"Top Scores [{sim_alias}] + Firmeninfo"] = (
+            sim_schema = attached_schemas.get(sim_alias, {})
+            sim_table = next(iter(sim_schema), None)
+            if sim_table and "asset_info" in attached:
+                ai_table = next(iter(attached_schemas.get("asset_info", {"asset_info": []})), "asset_info")
+                tpl[f"Top Scores [{sim_alias}.{sim_table}] + Firmeninfo"] = (
                     f"SELECT s.ticker, ai.longName, ai.sector,\n"
                     f"       s.score, s.ewo, s.rsi, s.adx\n"
-                    f"FROM {sim_alias}.assets s\n"
-                    f"JOIN asset_info.asset_info ai ON s.ticker = ai.ticker\n"
+                    f"FROM {sim_alias}.{sim_table} s\n"
+                    f"JOIN asset_info.{ai_table} ai ON s.ticker = ai.ticker\n"
                     f"WHERE s.score > 0\n"
                     f"ORDER BY s.score DESC\n"
                     f"LIMIT 100;"
                 )
             if len(sim_aliases) > 1:
                 other = sim_aliases[1]
-                tpl[f"Score-Vergleich [{sim_alias}] vs [{other}]"] = (
-                    f"SELECT a.ticker, a.score AS score_{sim_alias},\n"
-                    f"       b.score AS score_{other},\n"
-                    f"       (a.score - b.score) AS diff\n"
-                    f"FROM {sim_alias}.assets a\n"
-                    f"JOIN {other}.assets b ON a.ticker = b.ticker\n"
-                    f"ORDER BY diff DESC\n"
+                other_table = next(iter(attached_schemas.get(other, {})), None)
+                if sim_table and other_table:
+                    tpl[f"Score-Vergleich [{sim_alias}] vs [{other}]"] = (
+                        f"SELECT a.ticker, a.score AS score_{sim_alias},\n"
+                        f"       b.score AS score_{other},\n"
+                        f"       (a.score - b.score) AS diff\n"
+                        f"FROM {sim_alias}.{sim_table} a\n"
+                        f"JOIN {other}.{other_table} b ON a.ticker = b.ticker\n"
+                        f"ORDER BY diff DESC\n"
+                        f"LIMIT 50;"
+                    )
+
+        # Generische Templates für unbekannte attached DBs (nicht asset_info/yf_tickers/sim)
+        for alias in sorted(attached - known - set(sim_aliases)):
+            schema = attached_schemas.get(alias, {})
+            for tname in list(schema.keys())[:3]:
+                tpl[f"JOIN {alias}.{tname}"] = (
+                    f"SELECT t.*, j.*\n"
+                    f"FROM {pt} t\n"
+                    f"JOIN {alias}.{tname} j ON t.ticker = j.ticker\n"
                     f"LIMIT 50;"
                 )
 
@@ -245,9 +268,14 @@ class SQLiteEditor(tt.TickerTools):
             for lbl in chosen_labels
         }
 
-        # Schema der eingebundenen DBs
-        for alias, path in attached_dbs.items():
-            schema = self._schema_attached(alias, path)
+        # Schema aller eingebundenen DBs einmal laden
+        attached_schemas = {
+            alias: self._schema_attached(alias, path)
+            for alias, path in attached_dbs.items()
+        }
+
+        # Sidebar: Tabellen + Spalten je attached DB
+        for alias, schema in attached_schemas.items():
             with self.sb.expander(f"[{alias}]", expanded=False):
                 for tname, cols in schema.items():
                     st.markdown(f"**{tname}**")
@@ -268,7 +296,7 @@ class SQLiteEditor(tt.TickerTools):
         # --- Query-Templates (nur wenn DBs eingebunden) ---
         default_query = f"SELECT * FROM {selected_table} LIMIT 20;" if selected_table else ""
         if attached_dbs:
-            templates = self._query_templates(tables, attached_dbs)
+            templates = self._query_templates(selected_table, attached_dbs, attached_schemas)
             if templates:
                 options = ["– Eigene Abfrage –"] + list(templates.keys())
                 chosen = self.main.selectbox("Query-Template:", options)
