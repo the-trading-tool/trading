@@ -94,6 +94,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['add_current'] = True
             if pref == 'all':
                 result['all'] = True
+            if pref == 'init':
+                result['init'] = True
             if pref == 'inverse':
                 result['inverse'] = True
             if pref == 'memory':
