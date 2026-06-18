@@ -36,6 +36,61 @@ def _max_streak(series: pd.Series, positive: bool) -> int:
     return best
 
 
+def _split_closed_open(df: pd.DataFrame):
+    """Split trades into (closed, open). Open positions are those without a sell
+    volume (still held); they carry a mark-to-market 'gain' from the simulation
+    post-processing. Falls back to sellDate when sellVolume is unavailable."""
+    if 'sellVolume' in df.columns:
+        open_mask = df['sellVolume'].isna()
+    elif 'sellDate' in df.columns:
+        open_mask = df['sellDate'].isna()
+    else:
+        open_mask = pd.Series(False, index=df.index)
+    return df[~open_mask], df[open_mask]
+
+
+def _kpi_set(sub: pd.DataFrame) -> dict:
+    """Compute the full KPI bundle from a set of trades (each row needs a 'gain').
+
+    sub should be pre-sorted by sell date so the win/loss streaks are chronological.
+    The same formula is used for realised (closed only) and potential
+    (closed + open, mark-to-market) so both are directly comparable.
+    """
+    n = len(sub)
+    if n == 0:
+        return dict(trades=0, win_rate=0.0, profit_factor=float('inf'),
+                    avg_gain=0.0, total_gain=0.0, win_streak=0, loss_streak=0)
+    g = sub['gain']
+    wins   = g[g > 0]
+    losses = g[g <= 0]
+    loss_sum = abs(losses.sum())
+    return dict(
+        trades=n,
+        win_rate=round(len(wins) / n * 100, 1),
+        profit_factor=(round(wins.sum() / loss_sum, 2) if loss_sum > 0 else float('inf')),
+        avg_gain=round(g.mean(), 2),
+        total_gain=round(g.sum(), 2),
+        win_streak=_max_streak(g, positive=True),
+        loss_streak=_max_streak(g, positive=False),
+    )
+
+
+def _render_kpi_row(container, kpi: dict, gain_label: str, system_currency: str,
+                    gain_delta: 'str | None' = None):
+    """Render one KPI row (profit factor, win rate, avg gain, total gain, streaks)."""
+    pf = kpi['profit_factor']
+    pf_str = f"{pf}" if pf != float('inf') else "∞"
+    cols = container.columns(6)
+    cols[0].metric(t('banner.kpi_profit_factor'), pf_str)
+    cols[1].metric(t('banner.kpi_win_rate'),      f"{kpi['win_rate']} %")
+    cols[2].metric(t('banner.kpi_avg_gain'),      f"{kpi['avg_gain']:+,.2f}")
+    cols[3].metric(gain_label,                    f"{kpi['total_gain']:+,.2f}",
+                   delta=(gain_delta if gain_delta is not None
+                          else f"{kpi['total_gain']:+,.0f} {system_currency}"))
+    cols[4].metric(t('banner.kpi_win_streak'),    f"{kpi['win_streak']} {t('banner.kpi_trades_unit')}")
+    cols[5].metric(t('banner.kpi_loss_streak'),   f"{kpi['loss_streak']} {t('banner.kpi_trades_unit')}")
+
+
 def _make_heatmap_pivot(df: pd.DataFrame) -> 'pd.DataFrame | None':
     """Compute a year×month gain pivot from closed trades; returns None when data is empty."""
     try:
@@ -184,15 +239,21 @@ def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str
         if total_trades == 0:
             continue
 
-        wins   = s_closed[s_closed['gain'] > 0]
-        losses = s_closed[s_closed['gain'] <= 0]
-        win_rate      = round(len(wins) / total_trades * 100, 1)
-        loss_sum      = abs(losses['gain'].sum())
-        profit_factor = round(wins['gain'].sum() / loss_sum, 2) if loss_sum > 0 else float('inf')
-        avg_gain      = round(s_closed['gain'].mean(), 2)
-        total_gain    = round(s_closed['gain'].sum(), 2)
-        win_streak    = _max_streak(s_closed['gain'], positive=True)
-        loss_streak   = _max_streak(s_closed['gain'], positive=False)
+        # Realised KPIs (closed trades only) and potential KPIs (closed + open,
+        # open positions valued mark-to-market) — identical formula via _kpi_set.
+        s_all_sorted = s_all.copy()
+        try:
+            s_all_sorted['_sd'] = pd.to_datetime(s_all_sorted['sellDate'], errors='coerce')
+            s_all_sorted = s_all_sorted.sort_values('_sd')
+        except Exception:
+            pass
+
+        real_kpi = _kpi_set(s_closed)
+        pot_kpi  = _kpi_set(s_all_sorted)
+        unrealised_gain = round(pot_kpi['total_gain'] - real_kpi['total_gain'], 2)
+
+        win_rate      = real_kpi['win_rate']
+        profit_factor = real_kpi['profit_factor']
 
         try:
             open_pos = int(s_all['sellVolume'].isna().sum())
@@ -218,18 +279,18 @@ def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str
             if 'value trend' in strategy.lower():
                 st.warning(t('banner.hint_global_tensions'))
 
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric(t('banner.kpi_open_pos'),      open_pos)
-            c2.metric(t('banner.kpi_profit_factor'),  pf_str)
-            c3.metric(t('banner.kpi_win_rate'),       f"{win_rate} %")
-            c4.metric(t('banner.kpi_avg_gain'),       f"{avg_gain:+,.2f}")
-            c5.metric(t('banner.kpi_total_gain'),     f"{total_gain:+,.2f}",
-                      delta=f"{total_gain:+,.0f} {system_currency}")
+            st.metric(t('banner.kpi_open_pos'), open_pos)
             st.markdown("")
 
-            c6, c7, _, _ = st.columns(4)
-            c6.metric(t('banner.kpi_win_streak'), f"{win_streak} {t('banner.kpi_trades_unit')}")
-            c7.metric(t('banner.kpi_loss_streak'), f"{loss_streak} {t('banner.kpi_trades_unit')}")
+            st.markdown(f"**📌 {t('banner.kpi_section_realised')}**")
+            _render_kpi_row(st, real_kpi, t('banner.kpi_total_gain'), system_currency)
+            st.markdown("")
+
+            st.markdown(f"**🔮 {t('banner.kpi_section_potential')}**")
+            _render_kpi_row(
+                st, pot_kpi, t('banner.kpi_potential_gain'), system_currency,
+                gain_delta=f"{unrealised_gain:+,.0f} {system_currency} {t('banner.kpi_unrealised_gain')}",
+            )
             st.markdown("")
 
             def _row(row, period: str):
@@ -315,50 +376,50 @@ def render_compact_analysis(df: pd.DataFrame, region=None, system_currency: str 
     if df.empty or 'gain' not in df.columns:
         return
 
-    try:
-        closed = df[df['sellDate'].notna()].copy()
-        if closed.empty:
-            return
-        closed['_sd'] = pd.to_datetime(closed['sellDate'], errors='coerce')
-    except Exception:
+    # Split into realised (closed) and potential (closed + open, mark-to-market).
+    s_closed, _s_open = _split_closed_open(df)
+    s_closed = s_closed.copy()
+    if s_closed.empty:
         return
+    try:
+        s_closed['_sd'] = pd.to_datetime(s_closed['sellDate'], errors='coerce')
+    except Exception:
+        s_closed['_sd'] = pd.NaT
 
     now = pd.Timestamp.now()
     m3  = now - pd.DateOffset(months=3)
     y1  = now - pd.DateOffset(years=1)
 
-    total_trades = len(closed)
+    total_trades = len(s_closed)
     if total_trades == 0:
         return
 
-    wins   = closed[closed['gain'] > 0]
-    losses = closed[closed['gain'] <= 0]
-    win_rate      = round(len(wins) / total_trades * 100, 1)
-    loss_sum      = abs(losses['gain'].sum())
-    profit_factor = round(wins['gain'].sum() / loss_sum, 2) if loss_sum > 0 else float('inf')
-    avg_gain      = round(closed['gain'].mean(), 2)
-    total_gain    = round(closed['gain'].sum(), 2)
-    win_streak    = _max_streak(closed['gain'], positive=True)
-    loss_streak   = _max_streak(closed['gain'], positive=False)
+    s_all_sorted = df.copy()
+    try:
+        s_all_sorted['_sd'] = pd.to_datetime(s_all_sorted['sellDate'], errors='coerce')
+        s_all_sorted = s_all_sorted.sort_values('_sd')
+    except Exception:
+        pass
 
-    pf_str = f"{profit_factor}" if profit_factor != float('inf') else "∞"
+    real_kpi = _kpi_set(s_closed.sort_values('_sd'))
+    pot_kpi  = _kpi_set(s_all_sorted)
+    unrealised_gain = round(pot_kpi['total_gain'] - real_kpi['total_gain'], 2)
 
     region.divider()
     region.markdown(f"## {t('banner.strategy_analysis_header')}")
 
-    c1, c2, c3, c4, c5 = region.columns(5)
-    c1.metric(t('banner.kpi_profit_factor'), pf_str)
-    c2.metric(t('banner.kpi_win_rate'),       f"{win_rate} %")
-    c3.metric(t('banner.kpi_avg_gain'),       f"{avg_gain:+,.2f}")
-    c4.metric(t('banner.kpi_total_gain'),     f"{total_gain:+,.2f}",
-              delta=f"{total_gain:+,.0f} {system_currency}")
-    c5.metric(t('banner.kpi_trades'),         str(total_trades))
+    region.markdown(f"**📌 {t('banner.kpi_section_realised')}**")
+    _render_kpi_row(region, real_kpi, t('banner.kpi_total_gain'), system_currency)
     region.markdown("")
 
-    c6, c7, _, _ = region.columns(4)
-    c6.metric(t('banner.kpi_win_streak'), f"{win_streak} {t('banner.kpi_trades_unit')}")
-    c7.metric(t('banner.kpi_loss_streak'), f"{loss_streak} {t('banner.kpi_trades_unit')}")
+    region.markdown(f"**🔮 {t('banner.kpi_section_potential')}**")
+    _render_kpi_row(
+        region, pot_kpi, t('banner.kpi_potential_gain'), system_currency,
+        gain_delta=f"{unrealised_gain:+,.0f} {system_currency} {t('banner.kpi_unrealised_gain')}",
+    )
+    region.markdown("")
 
+    closed = s_closed
     if 'gainPct' not in closed.columns:
         return
 
