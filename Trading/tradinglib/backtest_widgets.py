@@ -323,6 +323,135 @@ def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str
                     st.caption("—")
 
 
+def compute_buy_hold_benchmark(df: pd.DataFrame, budgets: dict, price_lookup,
+                               eval_date=None) -> list:
+    """Compare each strategy against a buy-and-hold blend of the indices it trades.
+
+    df          : trades (buyDate, sellDate, buyValueEUR, gain, sellVolume, Strategy, stockIndex)
+    budgets     : {strategy: {index: invest_eur}} — per-index capital budget
+    price_lookup: callable(index, date, mode) -> close|None, mode in {'after','before'}
+    eval_date   : valuation date for the buy-and-hold leg (defaults to today)
+
+    Returns one dict per strategy with realised/potential P&L, capital exposure
+    (avg capital-days deployed / period), buy-and-hold blend P&L and the edge.
+    The buy-and-hold leg invests each index's budget at the strategy's first buy
+    and marks it to eval_date — i.e. 100 % exposure for the whole window, which is
+    the honest yardstick for an exposure-minimising strategy.
+    """
+    if eval_date is None:
+        eval_date = pd.Timestamp.now().normalize()
+    else:
+        eval_date = pd.Timestamp(eval_date)
+
+    df = df.copy()
+    df['_bd'] = pd.to_datetime(df['buyDate'], errors='coerce')
+    df['_sd'] = pd.to_datetime(df['sellDate'], errors='coerce')
+
+    rows = []
+    for strat in sorted(df['Strategy'].dropna().unique()):
+        per_idx = budgets.get(strat, {}) or {}
+        budget = sum(per_idx.values())
+        g = df[df['Strategy'] == strat]
+        if g.empty or budget <= 0:
+            continue
+        start = g['_bd'].min()
+        if pd.isna(start):
+            continue
+        period_days = max((eval_date - start).days, 1)
+
+        if 'sellVolume' in g.columns:
+            realised = float(g[g['sellVolume'].notna()]['gain'].sum())
+        else:
+            realised = float(g['gain'].sum())
+        potential = float(g['gain'].sum())
+
+        # Capital exposure: average EUR tied up = capital-days / period days.
+        hold = (g['_sd'].fillna(eval_date) - g['_bd']).dt.days.clip(lower=0)
+        bv   = g['buyValueEUR'].abs()
+        avg_cap = float((bv * hold).sum()) / period_days
+
+        # Time in market: union of all open intervals / period.
+        intervals = sorted((s, e if pd.notna(e) else eval_date)
+                           for s, e in zip(g['_bd'], g['_sd']) if pd.notna(s))
+        merged = []
+        for s, e in intervals:
+            if merged and s <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        tim_days = sum((e - s).days for s, e in merged)
+
+        # Buy-and-hold blend: each index's budget held from start to eval_date.
+        bh_gain = 0.0
+        bh_cov  = 0.0
+        for idx, inv in per_idx.items():
+            c0 = price_lookup(idx, start, 'after')
+            c1 = price_lookup(idx, eval_date, 'before')
+            if c0 and c1 and c0 > 0:
+                bh_gain += inv * (c1 / c0 - 1.0)
+                bh_cov  += inv
+
+        rows.append(dict(
+            strategy=strat,
+            budget=budget,
+            start=start,
+            eval_date=eval_date,
+            period_days=period_days,
+            realised=round(realised, 2),
+            potential=round(potential, 2),
+            avg_cap=round(avg_cap, 2),
+            exposure_pct=round(100 * avg_cap / budget, 1) if budget else 0.0,
+            time_in_market_pct=round(100 * tim_days / period_days, 1),
+            bh_gain=round(bh_gain, 2),
+            bh_pct=round(100 * bh_gain / budget, 1) if budget else 0.0,
+            strat_pct=round(100 * realised / budget, 1) if budget else 0.0,
+            pot_pct=round(100 * potential / budget, 1) if budget else 0.0,
+            roc_pct=round(100 * realised / avg_cap, 1) if avg_cap > 0 else 0.0,
+            roc_pot_pct=round(100 * potential / avg_cap, 1) if avg_cap > 0 else 0.0,
+            edge=round(realised - bh_gain, 2),
+            edge_pot=round(potential - bh_gain, 2),
+            bh_coverage=round(100 * bh_cov / budget, 0) if budget else 0.0,
+        ))
+    return rows
+
+
+def render_buy_hold_benchmark(df: pd.DataFrame, budgets: dict, price_lookup,
+                              region=None, system_currency: str = '', eval_date=None):
+    """Render the buy-and-hold benchmark table (one row per strategy)."""
+    if region is None:
+        region = st
+    if df.empty or 'Strategy' not in df.columns or not budgets:
+        return
+    try:
+        rows = compute_buy_hold_benchmark(df, budgets, price_lookup, eval_date)
+    except Exception:
+        logger.exception("buy_hold_benchmark failed")
+        return
+    if not rows:
+        return
+
+    region.divider()
+    region.markdown(f"## {t('banner.bh_header')}")
+    region.caption(t('banner.bh_caption'))
+
+    cur = system_currency
+    table = []
+    for r in rows:
+        table.append({
+            t('banner.bh_col_strategy'):  r['strategy'],
+            t('banner.bh_col_exposure'):  f"{r['exposure_pct']:.0f} %",
+            t('banner.bh_col_strat_real'): f"{r['realised']:+,.0f} {cur} ({r['strat_pct']:+.1f} %)",
+            t('banner.bh_col_strat_pot'):  f"{r['potential']:+,.0f} {cur} ({r['pot_pct']:+.1f} %)",
+            t('banner.bh_col_bh'):         f"{r['bh_gain']:+,.0f} {cur} ({r['bh_pct']:+.1f} %)",
+            t('banner.bh_col_edge'):       f"{r['edge']:+,.0f} {cur}",
+            t('banner.bh_col_edge_pot'):   f"{r['edge_pot']:+,.0f} {cur}",
+            t('banner.bh_col_roc'):        f"{r['roc_pct']:+.0f} %",
+            t('banner.bh_col_roc_pot'):    f"{r['roc_pot_pct']:+.0f} %",
+        })
+    region.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    region.caption(t('banner.bh_legend'))
+
+
 def render_portfolio_overlap(df: pd.DataFrame, region=None):
     """Warning when the same ticker is held by more than one strategy simultaneously."""
     if region is None:
