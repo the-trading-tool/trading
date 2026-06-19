@@ -352,6 +352,7 @@ class SystemConfig(tools.Db_tools):
         self.set_value('system_currency', st.text_input(i18n.t("cfg.currency"), self.get_value('system_currency', 'EUR')))
         self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
         self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
+        self.set_value('default_ticker', st.text_input(i18n.t("cfg.default_ticker"), self.get_value('default_ticker', '^GDAXI')) or '^GDAXI')
         self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
         self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
         def _coerce_names(raw, fallback):

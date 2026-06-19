@@ -50,6 +50,7 @@
   "cfg.currency": "Currency:",
   "cfg.transactions": "Transactions:",
   "cfg.trading_cost": "Trading cost percentage:",
+  "cfg.default_ticker": "Default ticker (start view):",
   "cfg.default_interval": "Default chart interval:",
   "cfg.default_period": "Default chart period:",
   "cfg.default_overlay": "Default chart overlay:",

@@ -50,6 +50,7 @@
   "cfg.currency": "Währung:",
   "cfg.transactions": "Transaktionen:",
   "cfg.trading_cost": "Handelskosten in %:",
+  "cfg.default_ticker": "Standard-Ticker (Startansicht):",
   "cfg.default_interval": "Standard-Chart-Intervall:",
   "cfg.default_period": "Standard-Chart-Zeitraum:",
   "cfg.default_overlay": "Standard-Chart-Overlay:",

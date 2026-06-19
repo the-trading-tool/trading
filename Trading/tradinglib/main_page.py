@@ -84,7 +84,11 @@ class render_mainpage(fetch_data.FetchData):
         # otherwise it blocks the interactive market-search widget every rerun.
         self._symbol_from_url = bool(symbol)
         if not self.symbol:
-            self.symbol = self.sys_conf.get_value('last_ticker', '') or ''
+            # Startansicht: zuletzt gewählter Ticker, sonst der konfigurierte
+            # Default-Ticker (default ^GDAXI), damit der Chart nie leer startet.
+            self.symbol = (self.sys_conf.get_value('last_ticker', '')
+                           or self.sys_conf.get_value('default_ticker', '^GDAXI')
+                           or '^GDAXI')
             self.ticker = self.symbol
         self.overlays=['heikin','candle','atc']
         self.oszilators=['ewo','zcr']
