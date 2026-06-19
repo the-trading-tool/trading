@@ -201,12 +201,13 @@ class FullTextSearch(tools.Db_tools):
                 results = self.search(search_query)
 
                 if results:
-                	# Eine Liste von Ergebnissen für die Auswahl bereitstellen
-                    if self.search_ticker_only:
-                        org = results
-                        results = [row for row in results if row['ticker'] == self.symbol]
-                        if len(results) == 0:
-                            results = org
+                    # Eine Liste von Ergebnissen für die Auswahl bereitstellen.
+                    # Hinweis: Früher wurde hier bei `search_ticker_only` auf
+                    # `row['ticker'] == self.symbol` gefiltert. Das sabotierte die
+                    # freie Volltextsuche — sobald der aktuelle Ticker (z.B. nach
+                    # einem Rerun-Default) zur Eingabe passte, blieb nur dieser eine
+                    # Treffer übrig und man konnte nichts anderes mehr auswählen.
+                    # Die getippte Suche zeigt jetzt immer alle Treffer.
                     ticker_list = []
                     for row in results:
                         longname = row['longName']
