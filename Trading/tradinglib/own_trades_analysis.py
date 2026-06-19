@@ -683,7 +683,7 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
             r.info(_t('own_trades.trail_no_positions'))
         else:
             tickers = [p['ticker'] for p in positions]
-            with r.spinner('Loading prices …'):
+            with st.spinner('Loading prices …'):
                 with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as ex:
                     futs = {ex.submit(_get_current_price, t, db_path): t for t in tickers}
                     prices = {}

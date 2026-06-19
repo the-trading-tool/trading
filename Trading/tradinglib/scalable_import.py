@@ -609,7 +609,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         )
     status_ph = r.empty()
     if resolve_now:
-        with r.spinner('Ticker werden aufgelöst …'):
+        with st.spinner('Ticker werden aufgelöst …'):
             trades_df    = _resolve_tickers_for_df(trades_df,    db_path, status_ph)
             dividends_df = _resolve_tickers_for_df(dividends_df, db_path, status_ph)
             interest_df  = _resolve_tickers_for_df(interest_df,  db_path, status_ph)
@@ -619,7 +619,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
                 df_['ticker'] = df_['isin']
 
     # ── Offene Positionen (mit aktuellem Kurs) vorab berechnen ─────────────
-    with r.spinner('Lade aktuelle Kurse für offene Positionen …'):
+    with st.spinner('Lade aktuelle Kurse für offene Positionen …'):
         open_pos_df = _compute_open_positions(trades_df, db_path)
 
     # ── Preview tabs ──────────────────────────────────────────────────────
