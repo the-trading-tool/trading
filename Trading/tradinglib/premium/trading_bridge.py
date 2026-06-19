@@ -1134,7 +1134,13 @@ class StopLossMonitor(Tools):
         db_file = Tools().get_path(path=self._db_path, file_name=sim_db)
         if not os.path.exists(db_file):
             return 0.0
-        table = sim_db.replace('.db', '')
+        # The table inside every asset_simulation_*.db is always named
+        # 'asset_simulation'. Deriving it from the filename (e.g. dropping '.db'
+        # off 'asset_simulation_.db' → 'asset_simulation_') yielded a non-existent
+        # table, so the query always raised and _get_atr silently returned 0.0 —
+        # which forced every stop onto the 8%-below-HWM fallback instead of
+        # ATR × atr_mult. Use the fixed table name.
+        table = 'asset_simulation'
         try:
             with sqlite3.connect(db_file) as conn:
                 row = conn.execute(

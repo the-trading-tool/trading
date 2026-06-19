@@ -39,12 +39,13 @@ def _get_atr_for_own_trades(ticker: str, db_path: str = 'database') -> float:
     for fname in candidates:
         full = Tools().get_path(path=db_path, file_name=fname)
         if os.path.exists(full) and os.path.getsize(full) > 4096:
-            table = fname.replace('.db', '')
+            # All simulation DBs store their data in a single table named
+            # 'asset_simulation' (no filename-derived suffix).
             try:
                 import sqlite3
                 with sqlite3.connect(full) as conn:
                     row = conn.execute(
-                        f"SELECT atr FROM [{table}] WHERE ticker=? ORDER BY date DESC LIMIT 1",
+                        "SELECT atr FROM asset_simulation WHERE ticker=? ORDER BY date DESC LIMIT 1",
                         (ticker,)
                     ).fetchone()
                 if row and row[0]:
@@ -768,6 +769,7 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
             trails_df['trail_stop'] > 0,
             ((trails_df['last_price'] / trails_df['trail_stop']) - 1) * 100, 0.0
         ).round(2)
+        trails_df['atr_x_mult'] = (trails_df['atr'] * trails_df['atr_mult']).round(4)
 
         breached_rows = trails_df[trails_df['breached'] == 1]
         ok_rows       = trails_df[trails_df['breached'] == 0]
@@ -789,7 +791,8 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
             return [''] * len(row)
 
         disp = trails_df[['ticker', 'entry_price', 'last_price', 'high_water_mark',
-                           'trail_stop', 'gain_pct', 'dist_to_trail', 'atr', 'atr_mult', 'updated_at']].copy()
+                           'trail_stop', 'gain_pct', 'dist_to_trail', 'atr', 'atr_mult',
+                           'atr_x_mult', 'updated_at']].copy()
         r.dataframe(
             disp.style.apply(_trail_style, axis=1),
             hide_index=True,
@@ -805,6 +808,8 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                                        help='% above trailing stop', format='%.2f'),
                 'atr':             st.column_config.NumberColumn(_t('own_trades.trail_col_atr'),     format='%.4f'),
                 'atr_mult':        st.column_config.NumberColumn('Mult.', format='%.1f'),
+                'atr_x_mult':      st.column_config.NumberColumn('ATR × Mult.',
+                                       help='ATR × multiplier = distance subtracted from the high-water mark', format='%.4f'),
                 'updated_at':      st.column_config.TextColumn(_t('own_trades.trail_col_updated')),
             },
         )
