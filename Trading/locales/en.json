@@ -551,6 +551,8 @@
   "tp.cmp_header": "#### Backtest vs. Paper Trading",
   "tp.cmp_no_backtest": "No backtest data yet. Run the [Multi-Strategies simulation](/?multi=true) — results will appear here automatically.",
   "tp.cmp_multi_btn": "▶ Multi-Strategies",
+  "tp.cmp_align_start": "Align to paper-trading start",
+  "tp.cmp_align_help": "Clip the backtest to the paper-trading period and rebase both curves to 0 at the first paper trade, so the paper trend is comparable. Turn off to see the full backtest history.",
   "tp.set_alpaca_header": "#### Alpaca Paper Trading — Connection",
   "tp.set_ksp_label": "KSP API Name",
   "tp.set_ksp_save": "Save",
