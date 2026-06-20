@@ -368,11 +368,11 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
     # get_mo_trend + wk_trend + d_trend  (3,3,False)
     combined_trend = mo_trend + wk_trend + d_trend
     ov_trend, ov_val, tw, vw = _up(combined_trend, 3, 3, False, ov_trend, ov_val, tw, vw)
-    ov_trend, ov_val, tw, vw = _up(ewo_angle > 0, 0.5, 0.5, False, ov_trend, ov_val, tw, vw)
-    ov_trend, ov_val, tw, vw = _up(ewo > ewo_ema, 0.5, 0.5, False, ov_trend, ov_val, tw, vw)
-    ov_trend, ov_val, tw, vw = _up(ha_ema_lo < close, 1, 1, False, ov_trend, ov_val, tw, vw)
-    ov_trend, ov_val, tw, vw = _up(ha_ema_hi < close, 1, 1, False, ov_trend, ov_val, tw, vw)
-    ov_trend, ov_val, tw, vw = _up(ha_ema_lo > close, 1, -2, False, ov_trend, ov_val, tw, vw)
+#    ov_trend, ov_val, tw, vw = _up(ewo_angle > 0, 0.5, 0.5, False, ov_trend, ov_val, tw, vw)
+#    ov_trend, ov_val, tw, vw = _up(ewo > ewo_ema, 0.5, 0.5, False, ov_trend, ov_val, tw, vw)
+#    ov_trend, ov_val, tw, vw = _up(ha_ema_lo < close, 1, 1, False, ov_trend, ov_val, tw, vw)
+#    ov_trend, ov_val, tw, vw = _up(ha_ema_hi < close, 1, 1, False, ov_trend, ov_val, tw, vw)
+#    ov_trend, ov_val, tw, vw = _up(ha_ema_lo > close, 1, -2, False, ov_trend, ov_val, tw, vw)
     ov_trend, ov_val, tw, vw = _up(trend_dir >= 1, 3, 3, False, ov_trend, ov_val, tw, vw)
     ov_trend, ov_val, tw, vw = _up(vola / 2 < mo_trend_s, 1, 1, False, ov_trend, ov_val, tw, vw)
     ov_trend, ov_val, tw, vw = _up(mo_trend_s > vola, 1, 1, False, ov_trend, ov_val, tw, vw)
@@ -877,36 +877,36 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
                 3,
                 isValue=False
             )
-        sum.up(
-                    df['ewo_angle'].iloc[-1] > 0,
-                    0.5,
-                    0.5,
-                    isValue=False
-                )
-        sum.up(
-                    df['ewo'].iloc[-1] > df['ewo_ema'].iloc[-1],
-                    0.5,
-                    0.5,
-                    isValue=False
-                )
-        sum.up(
-                (pdict['ha_ema_low'] < pdict['close']),
-                1,
-                1,
-                isValue=False
-                )
-        sum.up(
-                (pdict['ha_ema_high'] < pdict['close']),
-                1,
-                1,
-                isValue=False
-                )
-        sum.up(
-                pdict['ha_ema_low'] > pdict['close'],
-                1,
-                -2,
-                isValue=False
-                )
+#        sum.up(
+#                    df['ewo_angle'].iloc[-1] > 0,
+#                    0.5,
+#                    0.5,
+#                    isValue=False
+#                )
+#        sum.up(
+#                    df['ewo'].iloc[-1] > df['ewo_ema'].iloc[-1],
+#                    0.5,
+#                    0.5,
+#                    isValue=False
+#                )
+#        sum.up(
+#                (pdict['ha_ema_low'] < pdict['close']),
+#                1,
+#                1,
+#                isValue=False
+#                )
+#        sum.up(
+#                (pdict['ha_ema_high'] < pdict['close']),
+#                1,
+#                1,
+#                isValue=False
+#                )
+#        sum.up(
+#                pdict['ha_ema_low'] > pdict['close'],
+#                1,
+#                -2,
+#                isValue=False
+#                )
 
         sum.up(
                 pdict['trendDirection'] >= 1,
