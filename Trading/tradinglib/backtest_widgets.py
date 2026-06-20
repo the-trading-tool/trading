@@ -36,6 +36,22 @@ def _max_streak(series: pd.Series, positive: bool) -> int:
     return best
 
 
+def _max_drawdown(gains: pd.Series) -> float:
+    """Largest peak-to-trough decline of the cumulative gain curve (EUR, <= 0).
+
+    gains must be ordered chronologically (by sell date). Returns 0.0 when the
+    curve never falls below a prior peak.
+    """
+    try:
+        equity = gains.cumsum()
+        if equity.empty:
+            return 0.0
+        drawdown = equity - equity.cummax()
+        return float(min(drawdown.min(), 0.0))
+    except Exception:
+        return 0.0
+
+
 def _split_closed_open(df: pd.DataFrame):
     """Split trades into (closed, open). Open positions are those without a sell
     volume (still held); they carry a mark-to-market 'gain' from the simulation
@@ -59,7 +75,8 @@ def _kpi_set(sub: pd.DataFrame) -> dict:
     n = len(sub)
     if n == 0:
         return dict(trades=0, win_rate=0.0, profit_factor=float('inf'),
-                    avg_gain=0.0, total_gain=0.0, win_streak=0, loss_streak=0)
+                    avg_gain=0.0, total_gain=0.0, max_dd=0.0,
+                    win_streak=0, loss_streak=0)
     g = sub['gain']
     wins   = g[g > 0]
     losses = g[g <= 0]
@@ -70,25 +87,36 @@ def _kpi_set(sub: pd.DataFrame) -> dict:
         profit_factor=(round(wins.sum() / loss_sum, 2) if loss_sum > 0 else float('inf')),
         avg_gain=round(g.mean(), 2),
         total_gain=round(g.sum(), 2),
+        max_dd=round(_max_drawdown(g), 2),
         win_streak=_max_streak(g, positive=True),
         loss_streak=_max_streak(g, positive=False),
     )
 
 
 def _render_kpi_row(container, kpi: dict, gain_label: str, system_currency: str,
-                    gain_delta: 'str | None' = None):
-    """Render one KPI row (profit factor, win rate, avg gain, total gain, streaks)."""
+                    gain_delta: 'str | None' = None, dd_base: 'float | None' = None):
+    """Render one KPI row (profit factor, win rate, avg gain, total gain,
+    max drawdown, streaks).
+
+    dd_base: capital base (budget) for expressing the max drawdown as a percent.
+    Falls back to an absolute EUR value when no base is available.
+    """
     pf = kpi['profit_factor']
     pf_str = f"{pf}" if pf != float('inf') else "∞"
-    cols = container.columns(6)
+    if dd_base and dd_base > 0:
+        dd_str = f"{kpi['max_dd'] / dd_base * 100:.1f} %"
+    else:
+        dd_str = f"{kpi['max_dd']:,.0f} {system_currency}"
+    cols = container.columns(7)
     cols[0].metric(t('banner.kpi_profit_factor'), pf_str)
     cols[1].metric(t('banner.kpi_win_rate'),      f"{kpi['win_rate']} %")
     cols[2].metric(t('banner.kpi_avg_gain'),      f"{kpi['avg_gain']:+,.2f}")
     cols[3].metric(gain_label,                    f"{kpi['total_gain']:+,.2f}",
                    delta=(gain_delta if gain_delta is not None
                           else f"{kpi['total_gain']:+,.0f} {system_currency}"))
-    cols[4].metric(t('banner.kpi_win_streak'),    f"{kpi['win_streak']} {t('banner.kpi_trades_unit')}")
-    cols[5].metric(t('banner.kpi_loss_streak'),   f"{kpi['loss_streak']} {t('banner.kpi_trades_unit')}")
+    cols[4].metric(t('banner.kpi_max_dd'),        dd_str)
+    cols[5].metric(t('banner.kpi_win_streak'),    f"{kpi['win_streak']} {t('banner.kpi_trades_unit')}")
+    cols[6].metric(t('banner.kpi_loss_streak'),   f"{kpi['loss_streak']} {t('banner.kpi_trades_unit')}")
 
 
 def _make_heatmap_pivot(df: pd.DataFrame) -> 'pd.DataFrame | None':
@@ -203,12 +231,15 @@ def render_per_strategy_heatmaps(df: pd.DataFrame, region=None, system_currency:
         cols[i].plotly_chart(fig, use_container_width=True)
 
 
-def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str = ''):
-    """KPI block grouped by Strategy — closed trades only."""
+def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str = '',
+                             budgets: 'dict | None' = None):
+    """KPI block grouped by Strategy. budgets ({strategy: budget_eur}) expresses
+    the max drawdown as a percent of capital."""
     if region is None:
         region = st
     if df.empty or 'Strategy' not in df.columns:
         return
+    budgets = budgets or {}
 
     now = pd.Timestamp.now()
     m3  = now - pd.DateOffset(months=3)
@@ -282,14 +313,18 @@ def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str
             st.metric(t('banner.kpi_open_pos'), open_pos)
             st.markdown("")
 
+            _dd_base = budgets.get(strategy)
+
             st.markdown(f"**📌 {t('banner.kpi_section_realised')}**")
-            _render_kpi_row(st, real_kpi, t('banner.kpi_total_gain'), system_currency)
+            _render_kpi_row(st, real_kpi, t('banner.kpi_total_gain'), system_currency,
+                            dd_base=_dd_base)
             st.markdown("")
 
             st.markdown(f"**🔮 {t('banner.kpi_section_potential')}**")
             _render_kpi_row(
                 st, pot_kpi, t('banner.kpi_potential_gain'), system_currency,
                 gain_delta=f"{unrealised_gain:+,.0f} {system_currency} {t('banner.kpi_unrealised_gain')}",
+                dd_base=_dd_base,
             )
             st.markdown("")
 
@@ -498,8 +533,10 @@ def render_portfolio_overlap(df: pd.DataFrame, region=None):
     region.dataframe(detail_rows, hide_index=True, use_container_width=True)
 
 
-def render_compact_analysis(df: pd.DataFrame, region=None, system_currency: str = ''):
-    """Simplified KPI block for single-strategy views (no Strategy grouping)."""
+def render_compact_analysis(df: pd.DataFrame, region=None, system_currency: str = '',
+                            budget: 'float | None' = None):
+    """Simplified KPI block for single-strategy views (no Strategy grouping).
+    budget expresses the max drawdown as a percent of capital."""
     if region is None:
         region = st
     if df.empty or 'gain' not in df.columns:
@@ -538,13 +575,15 @@ def render_compact_analysis(df: pd.DataFrame, region=None, system_currency: str 
     region.markdown(f"## {t('banner.strategy_analysis_header')}")
 
     region.markdown(f"**📌 {t('banner.kpi_section_realised')}**")
-    _render_kpi_row(region, real_kpi, t('banner.kpi_total_gain'), system_currency)
+    _render_kpi_row(region, real_kpi, t('banner.kpi_total_gain'), system_currency,
+                    dd_base=budget)
     region.markdown("")
 
     region.markdown(f"**🔮 {t('banner.kpi_section_potential')}**")
     _render_kpi_row(
         region, pot_kpi, t('banner.kpi_potential_gain'), system_currency,
         gain_delta=f"{unrealised_gain:+,.0f} {system_currency} {t('banner.kpi_unrealised_gain')}",
+        dd_base=budget,
     )
     region.markdown("")
 

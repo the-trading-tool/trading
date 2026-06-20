@@ -198,6 +198,7 @@
   "banner.kpi_trades": "Closed trades",
   "banner.kpi_win_streak": "Longest winning streak",
   "banner.kpi_loss_streak": "Longest losing streak",
+  "banner.kpi_max_dd": "Max. drawdown",
   "banner.kpi_best_3m": "Best trade (3M)",
   "banner.kpi_best_1y": "Best trade (1Y)",
   "banner.kpi_worst_3m": "Worst trade (3M)",
