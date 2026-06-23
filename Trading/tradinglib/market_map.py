@@ -223,16 +223,17 @@ class DataVisualizer(tt.TickerTools):
         else:
             st.warning(f"No chart data available for {ticker}.")
 
-    def _select_ticker_table(self, df, key_suffix):
+    def _select_ticker_table(self, df, key_suffix, height=None):
         """Render a clickable ticker table; opens tiny_chart_overlay for the selected row."""
         if df.empty:
             st.caption("—")
             return
         df = df.reset_index(drop=True)
+        kwargs = {'height': height} if height is not None else {}
         event = st.dataframe(
             df, hide_index=True, use_container_width=True,
             on_select="rerun", selection_mode="single-row",
-            key=f"mm_{key_suffix}",
+            key=f"mm_{key_suffix}", **kwargs,
         )
         session_key = f"mm_{key_suffix}_last"
         if event.selection.rows:
@@ -493,16 +494,18 @@ class DataVisualizer(tt.TickerTools):
                         hovertemplate=f"{_tf_label[tf]} · {_names[regime]}: %{{x:.0f}}%<extra></extra>",
                     ))
 
+            # Kompakte Höhe, damit Chart und Ticker-Listen nebeneinander auf einen
+            # Blick passen (kein Scrollen beim Öffnen des Expanders).
+            content_h = max(170, 60 + 26 * n_rows)
             fig.update_layout(
                 barmode='stack',
-                height=max(170, 80 + 30 * n_rows),
+                height=content_h,
                 margin=dict(l=60, r=20, t=10, b=30),
                 xaxis=dict(range=[0, 100], ticksuffix='%', showgrid=False),
                 legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
             )
-            st.plotly_chart(fig, use_container_width=True)
 
             # ── Abgeleiteter Gesamtzustand ────────────────────────────────────────
             score, state_code, aligned = summary['score'], summary['state'], summary['aligned']
@@ -513,16 +516,21 @@ class DataVisualizer(tt.TickerTools):
             }
             arrow = '▲' if score > 0.20 else '▼' if score < -0.20 else '─'
             align_txt = t('mm.breadth_aligned') if aligned else t('mm.breadth_unaligned')
-            st.caption(t(
+            summary_txt = t(
                 'mm.breadth_summary',
                 arrow=arrow, state=_state_label[state_code],
                 score=score, n=len(df), align=align_txt,
-            ))
+            )
 
-            # ── Gewinner/Verlierer (heute Bull/Bär, klickbar via tiny_chart_overlay) ──
-            self._render_breadth_winner_loser(df, _names)
+            # ── Chart | Gewinner | Verlierer nebeneinander ────────────────────────
+            c_chart, c_win, c_los = st.columns([1.6, 1, 1])
+            with c_chart:
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption(summary_txt)
+            # Tabellenhöhe an die Chart-Höhe angleichen → keine vertikale Überlänge.
+            self._render_breadth_winner_loser(df, _names, c_win, c_los, table_height=content_h)
 
-    def _render_breadth_winner_loser(self, df, regime_labels):
+    def _render_breadth_winner_loser(self, df, regime_labels, col_w, col_l, table_height=None):
         """Ticker-Listen für Mitglieder im heutigen Bull- bzw. Bär-Regime,
         sortiert nach Übereinstimmung über Tag/Woche/Monat."""
         tf_cols = ['day', 'week', 'month']
@@ -545,13 +553,12 @@ class DataVisualizer(tt.TickerTools):
         losers  = (work[losers_mask].sort_values('bear_count', ascending=False)
                    [show_cols].rename(columns=rename))
 
-        col_w, col_l = st.columns(2)
         with col_w:
             st.markdown(f"**{t('mm.winners')}** ({len(winners)})")
-            self._select_ticker_table(winners, key_suffix='breadth_win')
+            self._select_ticker_table(winners, key_suffix='breadth_win', height=table_height)
         with col_l:
             st.markdown(f"**{t('mm.losers')}** ({len(losers)})")
-            self._select_ticker_table(losers, key_suffix='breadth_los')
+            self._select_ticker_table(losers, key_suffix='breadth_los', height=table_height)
 
     def render(self, index_filter=1):
         """
