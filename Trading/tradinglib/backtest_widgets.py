@@ -614,14 +614,14 @@ def render_compact_analysis(df: pd.DataFrame, region=None, system_currency: str 
 
     c_best, c_worst = region.columns(2)
     with c_best:
-        region.markdown(f"**🏆 {t('banner.kpi_best_trades')}**")
+        st.markdown(f"**🏆 {t('banner.kpi_best_trades')}**")
         _rows = [r for r in [_row(_best(s_3m), '3M'), _row(_best(s_1y), '1Y')] if r]
         if _rows:
             st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
         else:
             st.caption("—")
     with c_worst:
-        region.markdown(f"**📉 {t('banner.kpi_worst_trades')}**")
+        st.markdown(f"**📉 {t('banner.kpi_worst_trades')}**")
         _rows = [r for r in [_row(_worst(s_3m), '3M'), _row(_worst(s_1y), '1Y')] if r]
         if _rows:
             st.dataframe(pd.DataFrame(_rows), hide_index=True, use_container_width=True)
