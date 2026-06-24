@@ -84,10 +84,13 @@ class render_mainpage(fetch_data.FetchData):
         # otherwise it blocks the interactive market-search widget every rerun.
         self._symbol_from_url = bool(symbol)
         if not self.symbol:
-            # Startansicht: zuletzt gewählter Ticker, sonst der konfigurierte
-            # Default-Ticker (default ^GDAXI), damit der Chart nie leer startet.
-            self.symbol = (self.sys_conf.get_value('last_ticker', '')
-                           or self.sys_conf.get_value('default_ticker', '^GDAXI')
+            # Startansicht: der konfigurierte Default-Ticker (⚙-Dialog, key
+            # 'default_ticker', Vorgabe ^GDAXI) hat Vorrang, damit ein bewusst
+            # gesetzter Default beim Neuaufruf wirklich angezogen wird. Nur wenn
+            # kein Default konfiguriert ist, wird auf den zuletzt gewählten Ticker
+            # zurückgegriffen, damit der Chart nie leer startet.
+            self.symbol = (self.sys_conf.get_value('default_ticker', '')
+                           or self.sys_conf.get_value('last_ticker', '')
                            or '^GDAXI')
             self.ticker = self.symbol
         self.overlays=['heikin','candle','atc']
