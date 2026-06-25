@@ -1154,8 +1154,22 @@ class StopLossMonitor(Tools):
             return 0.0
 
     # ── Open positions from order log ────────────────────────────────
-    def _open_positions(self, mode: str, broker_id: str) -> list[dict]:
-        """FIFO-matched open positions from the local order log."""
+    def _open_positions(
+        self, mode: str, broker_id: str, broker=None
+    ) -> list[dict]:
+        """FIFO-matched open positions from the local order log.
+
+        When *broker* is provided, the FIFO result is intersected with the
+        positions the broker actually holds. This guards against phantom
+        positions caused by a closing sell that was logged with a wrong
+        quantity (e.g. ``qty=0``) or never recorded at all — without the
+        intersection, such a position keeps triggering trailing-stop alerts
+        forever even though it has long been closed at the broker.
+
+        If the broker lookup fails (transient network/API error) the FIFO
+        result is returned unfiltered, so a temporary broker outage never
+        silently suppresses stop-loss monitoring.
+        """
         try:
             df = self._log.get_orders_df(mode=mode, broker=broker_id)
         except Exception:
@@ -1202,6 +1216,29 @@ class StopLossMonitor(Tools):
                 })
                 break
 
+        # ── Cross-check against positions actually held at the broker ──
+        # Drops phantom positions (e.g. a close logged with qty=0) that the
+        # FIFO matcher still believes are open. On broker error, keep FIFO.
+        if broker is not None and result:
+            try:
+                held = {p.broker_symbol for p in broker.get_positions()}
+            except Exception as e:
+                logger.warning(
+                    '_open_positions: get_positions failed (%s); '
+                    'skipping broker reconciliation', e,
+                )
+                held = None
+            if held is not None:
+                dropped = [r['ticker'] for r in result
+                           if r['broker_symbol'] not in held]
+                if dropped:
+                    logger.info(
+                        '_open_positions: dropping %d phantom position(s) '
+                        'not held at broker: %s',
+                        len(dropped), ', '.join(dropped),
+                    )
+                result = [r for r in result if r['broker_symbol'] in held]
+
         return result
 
     # ── Main check ───────────────────────────────────────────────────
@@ -1234,7 +1271,7 @@ class StopLossMonitor(Tools):
         """
         result = {'triggered': [], 'executed': 0, 'errors': []}
 
-        positions = self._open_positions(mode, broker_id)
+        positions = self._open_positions(mode, broker_id, broker=broker)
         if not positions:
             return result
 
@@ -1354,8 +1391,9 @@ class StopLossMonitor(Tools):
         The trail state is persisted in the ``position_trails`` table so that
         the high-water-mark survives between runs.
         """
-        positions = self._open_positions(mode, broker_id)
+        positions = self._open_positions(mode, broker_id, broker=broker)
         if not positions:
+            self._prune_trails(mode, broker_id, keep=set())
             return []
 
         symbols = list({p['broker_symbol'] for p in positions})
@@ -1485,11 +1523,37 @@ class StopLossMonitor(Tools):
                 'updated_at':      now_ts,
             })
 
+        # Drop persisted trail rows for positions that are no longer open,
+        # so the Trailing Stops table doesn't keep showing stale tickers.
+        self._prune_trails(mode, broker_id, keep={r['ticker'] for r in results})
+
         logger.info(
             'update_trails: %d positions, %d breached',
             len(results), sum(1 for r in results if r['breached']),
         )
         return results
+
+    def _prune_trails(self, mode: str, broker_id: str, keep: set[str]) -> None:
+        """Delete persisted ``position_trails`` rows for tickers not in *keep*."""
+        try:
+            with sqlite3.connect(self._log._db) as conn:
+                rows = conn.execute(
+                    "SELECT ticker FROM position_trails WHERE mode=? AND broker=?",
+                    (mode, broker_id),
+                ).fetchall()
+                stale = [t for (t,) in rows if t not in keep]
+                if stale:
+                    conn.executemany(
+                        "DELETE FROM position_trails "
+                        "WHERE ticker=? AND mode=? AND broker=?",
+                        [(t, mode, broker_id) for t in stale],
+                    )
+                    logger.info(
+                        'update_trails: pruned %d stale trail row(s): %s',
+                        len(stale), ', '.join(stale),
+                    )
+        except Exception as e:
+            logger.error('update_trails: prune trails failed: %s', e)
 
     def get_trails_df(self, mode: str, broker_id: str) -> 'pd.DataFrame':
         """Load persisted trail state from DB."""
