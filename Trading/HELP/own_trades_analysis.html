@@ -25,7 +25,37 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td><b>Strategie-Kennzahlen</b></td><td>Profit-Faktor, Trefferquote, beste/schlechteste Trades je Strategie</td></tr>
 <tr><td><b>Monatliche Heatmap</b></td><td>Farbkodierter Monat × Jahr – Gewinne (grün) und Verluste (rot)</td></tr>
 <tr><td><b>Portfolio-Overlap</b></td><td>Warnung bei Doppelpositionen über mehrere Strategien hinweg</td></tr>
+<tr><td><b>Position Sizing Calculator</b></td><td>Berechnet die erlaubte Stückzahl, damit der maximale Verlust eines Trades dein festgelegtes Risikolimit nicht überschreitet</td></tr>
 </table>
+
+<h2>Position Sizing Calculator (Positionsgrößen-Rechner)</h2>
+<p>Dieser Rechner beantwortet <b>eine einzige Frage</b>: <em>„Wie viele Aktien darf ich kaufen, damit ich bei diesem Trade nicht mehr verliere, als ich bereit bin zu riskieren?"</em> Er bestimmt also <b>nicht</b>, wie viel Geld du investierst, sondern wie groß deine Position sein darf, damit dein maximaler Verlust (falls der Stop-Loss greift) einen festen Prozentsatz deines Kontos nicht überschreitet.</p>
+
+<h3 style="color:#444;font-size:.97em;margin:12px 0 4px">Eingaben</h3>
+<table>
+<tr><th>Feld</th><th>Bedeutung</th></tr>
+<tr><td><b>Kontogröße</b></td><td>Dein gesamtes Handelskapital</td></tr>
+<tr><td><b>Risiko pro Trade (%)</b></td><td>Wie viel Prozent des Kontos du bei diesem Trade maximal verlieren willst (Faustregel: 1–2 %)</td></tr>
+<tr><td><b>Einstiegskurs</b></td><td>Geplanter Kaufpreis je Aktie</td></tr>
+<tr><td><b>Stop-Loss-Kurs</b></td><td>Kurs, bei dem du die Position mit Verlust schließt (muss unter dem Einstieg liegen)</td></tr>
+<tr><td><b>Take-Profit (optional)</b></td><td>Zielkurs für den Ausstieg mit Gewinn – nur für das Chance-Risiko-Verhältnis</td></tr>
+</table>
+
+<h3 style="color:#444;font-size:.97em;margin:12px 0 4px">Die Rechnung (Beispiel)</h3>
+<p>Beispiel: Konto 100.000 €, Risiko 2 %, Einstieg 84 €, Stop-Loss 82 €.</p>
+<table>
+<tr><th>Schritt</th><th>Formel</th><th>Beispielwert</th></tr>
+<tr><td>Risiko pro Aktie</td><td>Einstieg − Stop-Loss</td><td>84 − 82 = <b>2 €</b></td></tr>
+<tr><td>Risikobetrag (Konto)</td><td>Kontogröße × Risiko %</td><td>100.000 × 2 % = <b>2.000 €</b></td></tr>
+<tr><td>Empfohlene Stückzahl</td><td>Risikobetrag ÷ Risiko pro Aktie</td><td>2.000 ÷ 2 = <b>1.000 Aktien</b></td></tr>
+<tr><td>Positionswert</td><td>Stückzahl × Einstieg</td><td>1.000 × 84 = <b>84.000 €</b></td></tr>
+</table>
+
+<div class="info"><b>Wichtig:</b> Der <b>Positionswert</b> (84.000 €) ist nur das gebundene Kapital, <b>nicht</b> dein Risiko. Dein tatsächliches Verlustrisiko bleibt der Risikobetrag (2.000 €) – das eigentliche Sicherheitsnetz ist der Stop-Loss.</div>
+
+<p><b>Kernidee:</b> Der Stop-Loss-Abstand steuert die Positionsgröße. Ein enger Stop-Loss (hier 2 € Abstand) erlaubt eine große Position; ein tieferer Stop-Loss (z. B. 79 € = 5 € Abstand) erlaubt nur 400 Aktien (2.000 ÷ 5) – das Konto-Risiko bleibt in beiden Fällen identisch bei 2.000 €.</p>
+
+<p><b>Take-Profit:</b> Trägst du einen Take-Profit über dem Einstieg ein, zeigt der Rechner zusätzlich das <b>Chance-Risiko-Verhältnis</b>. Beispiel Take-Profit 90 € → Gewinn 6 € je Aktie ÷ Risiko 2 € = <b>1 : 3</b> (du riskierst 1 €, um 3 € zu gewinnen; Faustregel: mindestens 1 : 2).</p>
 
 <h2>Kennzahlen</h2>
 <table>
