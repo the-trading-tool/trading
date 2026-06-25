@@ -96,15 +96,72 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
             hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Base 100)<extra></extra>',
         ))
     fig.update_layout(
-        title='Normalised Price Chart (Base 100)',
         xaxis_title='Date',
         yaxis_title='Indexed (Start = 100)',
         template='plotly_white',
         height=500,
         hovermode='x unified',
+        margin=dict(t=70),
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
     )
     return fig
+
+
+def _build_since_buy_figs(series_dict: dict, buy_dates: dict, label_map: dict = None,
+                          end_date: str = None, xaxis_days: str = 'Trading days held') -> tuple:
+    """
+    Two normalised charts – each open position rebased to 100 at its OWN buy date.
+    Returns (fig_calendar, fig_days):
+      - fig_calendar: x = calendar date; each line starts on the day it was bought
+                      → unrealised P&L trajectory per position.
+      - fig_days:     x = trading days held (0, 1, 2, …); all lines start at the left
+                      → compares the post-entry trajectory across positions,
+                        independent of when each was bought.
+    series_dict: {ticker: pd.Series(Close, DatetimeIndex)}
+    buy_dates:   {ticker: Timestamp of the first buy}
+    """
+    fig_cal  = go.Figure()
+    fig_days = go.Figure()
+    for ticker, s in series_dict.items():
+        if s is None or s.empty:
+            continue
+        bd = buy_dates.get(ticker)
+        if bd is None or pd.isna(bd):
+            continue
+        s = s.copy()
+        s.index = pd.to_datetime(s.index, errors='coerce')
+        s = s.dropna().sort_index()
+        try:
+            seg = s[s.index >= pd.Timestamp(bd)]
+            if end_date:
+                seg = seg[seg.index <= pd.Timestamp(end_date)]
+        except Exception:
+            seg = s
+        if seg.empty or seg.iloc[0] == 0:
+            continue
+        norm  = (seg / seg.iloc[0]) * 100
+        label = (label_map or {}).get(ticker, ticker)
+        fig_cal.add_trace(go.Scatter(
+            x=norm.index, y=norm.values.round(2), mode='lines', name=label,
+            hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Buy=100)<extra></extra>',
+        ))
+        fig_days.add_trace(go.Scatter(
+            x=list(range(len(norm))), y=norm.values.round(2), mode='lines', name=label,
+            hovertemplate=f'<b>{label}</b><br>+%{{x}}d<br>%{{y:.1f}} (Buy=100)<extra></extra>',
+        ))
+    # No plotly title – the column sub-header labels each chart; this avoids the
+    # title overlapping the horizontal legend (the per-ticker entries above the plot).
+    _common = dict(template='plotly_white', height=460, hovermode='x unified',
+                   margin=dict(t=70),
+                   legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0))
+    fig_cal.update_layout(xaxis_title='Date',
+                          yaxis_title='Indexed (Buy = 100)', **_common)
+    fig_days.update_layout(xaxis_title=xaxis_days,
+                           yaxis_title='Indexed (Buy = 100)', **_common)
+    # Break-even reference line at 100
+    for _f in (fig_cal, fig_days):
+        _f.add_hline(y=100, line_dash='dot', line_color='#888', opacity=0.6)
+    return fig_cal, fig_days
 
 
 def _compute_parity_weights(series_dict: dict, window: int = 30) -> pd.Series:
@@ -582,6 +639,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 currency   = ('_currency', 'first'),
                 buy_shares = ('_shares',   'sum'),
                 buy_value  = ('_value',    lambda x: abs(x).sum()),
+                buy_ts     = ('_ts',       'min'),
             ).rename(columns={'_ticker': 'ticker'})
             # Durchschnittlicher Kaufkurs über ALLE Käufe (nicht durch Netto-Restbestand teilen)
             agg['avg_price'] = np.where(agg['buy_shares'] > 0, agg['buy_value'] / agg['buy_shares'], 0.0)
@@ -712,6 +770,25 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
 
             trend_fig = _build_normalized_trend_fig(filtered_series, label_map=label_map, start_date=start_date)
             st.plotly_chart(trend_fig, use_container_width=True)
+
+            # ── Seit-Kauf-Charts (B: Kalender, C: Haltedauer) ─────────────
+            st.markdown(_t('ota.norm_chart_since_buy'))
+            st.caption(_t('ota.norm_chart_since_buy_caption'))
+            buy_dates = {
+                row['ticker']: pd.Timestamp(row['buy_ts'])
+                for _, row in agg.iterrows() if pd.notna(row.get('buy_ts'))
+            }
+            fig_since_cal, fig_since_days = _build_since_buy_figs(
+                open_series, buy_dates, label_map=label_map, end_date=end_date,
+                xaxis_days=_t('ota.since_buy_xdays'),
+            )
+            _sb_c1, _sb_c2 = st.columns(2)
+            with _sb_c1:
+                st.markdown(f"**{_t('ota.since_buy_calendar')}**")
+                st.plotly_chart(fig_since_cal, use_container_width=True)
+            with _sb_c2:
+                st.markdown(f"**{_t('ota.since_buy_holding')}**")
+                st.plotly_chart(fig_since_days, use_container_width=True)
 
             # ── Parity analysis ───────────────────────────────────────────
             st.markdown(_t('ota.parity_header'))
