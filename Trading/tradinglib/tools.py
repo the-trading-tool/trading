@@ -730,19 +730,39 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
     und nicht ueber Ticker-Grenzen hinweg "bluten". Pro Gruppe wird zuerst der
     ExpressionEvaluator versucht, dann pandas df.eval als Fallback.
 
-    Wirft, wenn eine Gruppe mit keiner der beiden Methoden ausgewertet werden kann —
-    die Aufrufer entscheiden dann ueber ihren jeweiligen Endfallback (z.B. all-False).
+    Optimierung: Nur Bedingungen mit Zeitreihen-Operatoren (rolling/shift/mean-Kette
+    oder col[-1]) brauchen die Pro-Gruppen-Auswertung. Rein row-wise Bedingungen
+    (z.B. "ewo_angle < -20") liefern ueber den ganzen df in EINEM Pass dasselbe
+    Ergebnis — das spart bei vielen Tickern (z.B. ^RUT, ~1900) Tausende Einzel-Evals.
+
+    Wirft, wenn die Auswertung mit keiner Methode gelingt — die Aufrufer entscheiden
+    dann ueber ihren jeweiligen Endfallback (z.B. all-False).
     """
-    mask = pd.Series(False, index=df.index)
     if not condition:
-        return mask
-    groups = df.groupby(group_col) if (group_col and group_col in df.columns) else [(None, df)]
-    for _key, g in groups:
+        return pd.Series(False, index=df.index)
+
+    needs_group = bool(re.search(r'\.(rolling|shift|mean)\s*\(|\w\s*\[\s*-?\d+\s*\]', condition))
+    if not (needs_group and group_col and group_col in df.columns):
+        # Single-Pass ueber den ganzen df (row-wise -> identisch zu pro-Gruppe).
         try:
-            ev = ExpressionEvaluator(g, dataframe_name='g')
-            res = eval(ev.validate_and_transform(condition), {}, {'g': g})
+            ev = ExpressionEvaluator(df, dataframe_name='g')
+            res = eval(ev.validate_and_transform(condition), {}, {'g': df})
         except Exception:
-            # pandas-Fallback; wirft weiter, wenn auch das scheitert
+            res = df.eval(condition)
+        if not isinstance(res, pd.Series):
+            return pd.Series(bool(res), index=df.index)
+        return res.astype(bool).reindex(df.index, fill_value=False)
+
+    # Pro-Ticker-Gruppe; Transform einmal ueber den ganzen df (gleiche Spalten).
+    mask = pd.Series(False, index=df.index)
+    try:
+        transformed = ExpressionEvaluator(df, dataframe_name='g').validate_and_transform(condition)
+    except Exception:
+        transformed = None
+    for _key, g in df.groupby(group_col):
+        try:
+            res = eval(transformed, {}, {'g': g}) if transformed is not None else g.eval(condition)
+        except Exception:
             res = g.eval(condition)
         if not isinstance(res, pd.Series):
             res = pd.Series(bool(res), index=g.index)
@@ -839,45 +859,50 @@ class BuySellSignalGenerator:
                 # Bei jedem Problem komplett auf den Pro-Zeilen-Fallback zurueck.
                 sell_mask_global = None
 
-        open_positions = {}
+        # Stateful Open/Close-Pass ueber numpy-Arrays statt df.iterrows()/df.at —
+        # bei ~228k Zeilen (^RUT) ist der reine Python-Loop ueber Arrays um ein
+        # Vielfaches schneller als der pandas-Pro-Zeilen-Zugriff. Semantik identisch.
+        tickers = self.df['ticker'].to_numpy()
+        buysell = self.df['buySell'].to_numpy().copy()
+        n = len(buysell)
+        tp_col = self.df['take_profit'].to_numpy() if 'take_profit' in self.df.columns else np.full(n, np.nan)
+        sl_col = self.df['stop_loss'].to_numpy() if 'stop_loss' in self.df.columns else np.full(n, np.nan)
+        sell_arr = sell_mask_global.to_numpy() if sell_mask_global is not None else None
 
-        for i, row in self.df.iterrows():
-            ticker = row['ticker']
+        open_positions = {}
+        for i in range(n):
+            ticker = tickers[i]
 
             # Verkauf bei offener Position
             if ticker in open_positions:
-                tp = open_positions[ticker]['tp']
-                sl = open_positions[ticker]['sl']
-
-                try:
-                    if sell_mask_global is not None:
-                        # Fast-Pfad: vorberechneten Bool nur noch lesen.
-                        cond = bool(sell_mask_global.at[i])
-                    else:
-                        # Fallback: Pro-Zeilen-Auswertung (z.B. tp/sl referenziert).
-                        context = {**row.to_dict(), 'tp': tp, 'sl': sl}
+                if sell_arr is not None:
+                    # Fast-Pfad: vorberechneten Bool nur noch lesen.
+                    cond = bool(sell_arr[i])
+                else:
+                    # Fallback: Pro-Zeilen-Auswertung (z.B. tp/sl referenziert).
+                    tp, sl = open_positions[ticker]
+                    row = self.df.iloc[i]
+                    context = {**row.to_dict(), 'tp': tp, 'sl': sl}
+                    try:
+                        evaluator = ExpressionEvaluator(pd.DataFrame([row]), dataframe_name='r')
+                        sell_res = eval(evaluator.validate_and_transform(self.sell_condition), {}, {'r': pd.DataFrame([row])})
+                        cond = bool(sell_res) if not isinstance(sell_res, pd.Series) else bool(sell_res.iloc[0])
+                    except Exception:
                         try:
-                            evaluator = ExpressionEvaluator(pd.DataFrame([row]), dataframe_name='r')
-                            transformed_sell = evaluator.validate_and_transform(self.sell_condition)
-                            sell_res = eval(transformed_sell, {}, {'r': pd.DataFrame([row])})
-                            cond = bool(sell_res) if not isinstance(sell_res, pd.Series) else bool(sell_res.iloc[0])
-                        except Exception:
-                            # letzter Fallback: bare eval auf context dict
                             cond = bool(eval(self.sell_condition, {}, context))
-                    if cond:
-                        self.df.at[i, 'buySell'] = -1
-                        del open_positions[ticker]
-                        continue
-                except Exception as e:
-                    st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
+                        except Exception as e:
+                            st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
+                            cond = False
+                if cond:
+                    buysell[i] = -1
+                    del open_positions[ticker]
+                    continue
 
             # Kauf, wenn markiert
-            if self.df.at[i, 'buySell'] == 1 and ticker not in open_positions:
-                open_positions[ticker] = {
-                    'tp': row['take_profit'],
-                    'sl': row['stop_loss'],
-                    'entry_index': i
-                }
+            if buysell[i] == 1 and ticker not in open_positions:
+                open_positions[ticker] = (tp_col[i], sl_col[i])
+
+        self.df['buySell'] = buysell
 
         # Remove alias columns added in __init__ so they don't appear in
         # the display DataFrame or get persisted anywhere.
