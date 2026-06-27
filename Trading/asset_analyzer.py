@@ -686,6 +686,7 @@ class TradingApp:
                     _nav(t('nav.admin_credentials'), admin='true', section='credentials')
                     _nav(t('nav.admin_system'),      admin='true', section='system')
                     _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
+                    _nav(t('nav.admin_pine'),        admin='true', section='pine')
 
         # ── External links ──────────────────────────────────────────────────
         st.sidebar.markdown("---")

@@ -133,8 +133,8 @@ class Admin():
         logger = logging.getLogger(__name__)
         logger.debug('Admin.render called by user=%s', self.username)
 
-        _section_keys   = ['ticker', 'database', 'credentials', 'system', 'scheduler']
-        _section_labels = ["Ticker", "Database", "API Credentials", "System", "Scheduler"]
+        _section_keys   = ['ticker', 'database', 'credentials', 'system', 'scheduler', 'pine']
+        _section_labels = ["Ticker", "Database", "API Credentials", "System", "Scheduler", "Pine Script"]
         _spin = st.empty()
 
         if self.section and self.section in _section_keys:
@@ -146,11 +146,12 @@ class Admin():
                 'credentials': self._render_credentials,
                 'system':      self._render_system,
                 'scheduler':   self._render_scheduler,
+                'pine':        self._render_pine,
             }
             _dispatch[self.section](_spin)
         else:
             # Tab mode: native Streamlit tabs (direct /admin access without section param)
-            tab_ticker, tab_db, tab_creds, tab_system, tab_scheduler = self.region.tabs(_section_labels)
+            tab_ticker, tab_db, tab_creds, tab_system, tab_scheduler, tab_pine = self.region.tabs(_section_labels)
             with tab_ticker:
                 _spin.markdown(_tab_overlay("Ticker"), unsafe_allow_html=True)
                 self._render_ticker(_spin)
@@ -166,6 +167,9 @@ class Admin():
             with tab_scheduler:
                 _spin.markdown(_tab_overlay("Scheduler"), unsafe_allow_html=True)
                 self._render_scheduler(_spin)
+            with tab_pine:
+                _spin.markdown(_tab_overlay("Pine Script"), unsafe_allow_html=True)
+                self._render_pine(_spin)
 
     # ── Section methods ────────────────────────────────────────────────────────
 
@@ -1662,3 +1666,71 @@ class Admin():
             )
         st.session_state['_scheduler'].render_tabs()
         _spin.empty()
+
+    def _render_pine(self, _spin):
+        import os, json, ast as _ast
+        from tradinglib.indicator import indicator as _ind_mod
+        from tradinglib.pine_exporter import render_export_buttons
+
+        _spin.empty()
+
+        # Load all available indicators from the indicator package
+        _loader = _ind_mod.IndicatorLoader(
+            os.path.dirname(os.path.abspath(_ind_mod.__file__))
+        )
+        _ovl_raw = _loader.get_overlay_indicators()   # ["atc - Auto Trend Channels", ...]
+        _osc_raw = _loader.get_oszilator_indicators()  # ["adx - ADX", ...]
+        _ovl_map = {s.split(' - ')[0]: s for s in _ovl_raw}
+        _osc_map = {s.split(' - ')[0]: s for s in _osc_raw}
+        _all_ovl = sorted(_ovl_map.keys())
+        _all_osc = sorted(_osc_map.keys())
+
+        # Load stored defaults from user config
+        _cfg = sysconf.SystemConfig(db_path=self.db_path, username=self.username)
+
+        def _parse_stored(raw):
+            if not raw:
+                return []
+            if isinstance(raw, list):
+                return raw
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+            try:
+                return _ast.literal_eval(raw)
+            except Exception:
+                return []
+
+        _default_ovl = [n for n in _parse_stored(_cfg.get_value('overlay',   None)) if n in _ovl_map]
+        _default_osc = [n for n in _parse_stored(_cfg.get_value('oszilator', None)) if n in _osc_map]
+
+        st.markdown("### Pine Script Export")
+        st.caption(
+            "Wähle Indikatoren aus und lade die fertigen Pine Script Dateien für TradingView herunter.  \n"
+            "Die Vorauswahl entspricht deinen gespeicherten Indikator-Einstellungen."
+        )
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            sel_ovl = st.multiselect(
+                "Overlays (auf dem Preis-Chart)",
+                options=_all_ovl,
+                default=_default_ovl,
+                format_func=lambda k: _ovl_map.get(k, k),
+                key="pine_admin_ovl",
+            )
+        with col_r:
+            sel_osc = st.multiselect(
+                "Oszillatoren (eigene Pane)",
+                options=_all_osc,
+                default=_default_osc,
+                format_func=lambda k: _osc_map.get(k, k),
+                key="pine_admin_osc",
+            )
+
+        if sel_ovl or sel_osc:
+            st.divider()
+            render_export_buttons(sel_ovl, sel_osc, _cfg)
+        else:
+            st.info("Bitte mindestens einen Overlay oder Oszillator auswählen.")

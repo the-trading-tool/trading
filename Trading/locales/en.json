@@ -830,6 +830,7 @@
   "nav.admin_credentials": "API Credentials",
   "nav.admin_system": "System",
   "nav.admin_scheduler": "Scheduler",
+  "nav.admin_pine": "Pine Script",
   "nav.settings": "Settings",
   "nav.help": "Help",
   "cs.title": "Lump Sum Investment – Compound Interest Simulation",

@@ -830,6 +830,7 @@
   "nav.admin_credentials": "API-Zugangsdaten",
   "nav.admin_system": "System",
   "nav.admin_scheduler": "Zeitplaner",
+  "nav.admin_pine": "Pine Script",
   "nav.settings": "Einstellungen",
   "nav.help": "Hilfe",
   "cs.title": "Einmalinvestition – Zinseszins-Simulation",
