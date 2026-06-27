@@ -780,6 +780,8 @@
   "sf.invest": "Invest",
   "sf.buy_delay": "Delay buy (days):",
   "sf.fee_pct": "Fee per trade (%):",
+  "sf.trailing_stop": "Trailing stop (%):",
+  "sf.trailing_stop_help": "Sell when the price falls this percentage below the highest close since entry (0 = off). Before the first new high it acts as a fixed stop below the buy price.",
   "sf.buy_when": "Buy assets when:",
   "sf.sell_when": "Sell assets when:",
   "sf.calc_btn": "Calculate",

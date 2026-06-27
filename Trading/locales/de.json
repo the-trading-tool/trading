@@ -780,6 +780,8 @@
   "sf.invest": "Investition",
   "sf.buy_delay": "Kauf-Verzögerung (Tage):",
   "sf.fee_pct": "Gebühr pro Trade (%):",
+  "sf.trailing_stop": "Trailing Stop (%):",
+  "sf.trailing_stop_help": "Verkauf, wenn der Kurs um diesen Prozentsatz unter den höchsten Close seit Einstieg fällt (0 = aus). Wirkt vor dem ersten neuen Hoch als fixer Stop unter dem Kaufkurs.",
   "sf.buy_when": "Assets kaufen wenn:",
   "sf.sell_when": "Assets verkaufen wenn:",
   "sf.calc_btn": "Berechnen",
