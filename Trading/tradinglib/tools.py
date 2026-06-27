@@ -721,6 +721,35 @@ class ExpressionEvaluator():
             raise ValueError(f"Fehler bei Auswertung: {e}")
 
 
+def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'ticker') -> pd.Series:
+    """Wertet eine Buy/Sell-Bedingung zu einer Bool-Serie aus (auf df.index ausgerichtet).
+
+    Geteilte Evaluierungs-Schicht fuer Strategy Finder (BuySellSignalGenerator) und
+    Multi Strategies. Die Auswertung erfolgt **pro Ticker-Gruppe** (group_col), damit
+    Zeitreihen-Operatoren (rolling/shift, col[-1]) innerhalb eines Instruments bleiben
+    und nicht ueber Ticker-Grenzen hinweg "bluten". Pro Gruppe wird zuerst der
+    ExpressionEvaluator versucht, dann pandas df.eval als Fallback.
+
+    Wirft, wenn eine Gruppe mit keiner der beiden Methoden ausgewertet werden kann —
+    die Aufrufer entscheiden dann ueber ihren jeweiligen Endfallback (z.B. all-False).
+    """
+    mask = pd.Series(False, index=df.index)
+    if not condition:
+        return mask
+    groups = df.groupby(group_col) if (group_col and group_col in df.columns) else [(None, df)]
+    for _key, g in groups:
+        try:
+            ev = ExpressionEvaluator(g, dataframe_name='g')
+            res = eval(ev.validate_and_transform(condition), {}, {'g': g})
+        except Exception:
+            # pandas-Fallback; wirft weiter, wenn auch das scheitert
+            res = g.eval(condition)
+        if not isinstance(res, pd.Series):
+            res = pd.Series(bool(res), index=g.index)
+        mask.loc[g.index] = res.astype(bool).values
+    return mask
+
+
 class BuySellSignalGenerator:
     # OHLCV columns that may appear in either capitalised (live df) or
     # lowercase (simulation db) form.  We add the missing alias so that
@@ -769,41 +798,47 @@ class BuySellSignalGenerator:
             pass
         delayed_signals = []
 
-        # Schritt 1: Kaufbedingung merken
-        for ticker, group in self.df.groupby('ticker'):
-            group = group.reset_index()
-            context_df = group.copy()
+        # Schritt 1: Kaufbedingung gruppenweise auswerten (geteilte Schicht).
+        try:
+            buy_mask_global = compute_signal_mask(self.df, self.buy_condition)
+        except Exception as e:
+            st.error(f"[BUY-ERROR] {e}")
+            buy_mask_global = pd.Series(False, index=self.df.index)
 
-            try:
-                # Prefer the newer evaluator which can transform expressions like ewo[-1] or ewo.rolling(5).mean()
-                try:
-                    evaluator = ExpressionEvaluator(context_df, dataframe_name='context_df')
-                    transformed = evaluator.validate_and_transform(self.buy_condition)
-                    buy_mask = eval(transformed, {}, {'context_df': context_df})
-                    # ensure boolean Series
-                    if not isinstance(buy_mask, (pd.Series,)):
-                        raise ValueError('Transformed expression did not return a Series')
-                except Exception:
-                    # fallback to pandas eval on the dataframe
-                    try:
-                        buy_mask = context_df.eval(self.buy_condition)
-                    except Exception as e:
-                        st.error(f"[BUY-ERROR] {e}")
-                        buy_mask = pd.Series([False]*len(group))
-            except Exception as e:
-                st.error(f"[BUY-ERROR] {e}")
-                buy_mask = pd.Series([False]*len(group))
-
-            # Kaufsignale + Delay
-            for idx in group[buy_mask].index:
-                delayed_idx = idx + self.buy_delay_days
-                if delayed_idx < len(group):
-                    delayed_signals.append(group.loc[delayed_idx, 'index'])  # merke globale DF-Index
+        # Kaufsignale + Delay: pro Ticker den Treffer um buy_delay_days nach
+        # vorne schieben (Position innerhalb der Gruppe), dann globalen Index merken.
+        for _tk, _g in self.df.groupby('ticker'):
+            gidx = _g.index.to_numpy()
+            hits = np.nonzero(buy_mask_global.loc[gidx].to_numpy())[0]
+            for pos in hits:
+                dpos = pos + self.buy_delay_days
+                if dpos < len(gidx):
+                    delayed_signals.append(gidx[dpos])
 
         # Schritt 2: Kaufmarkierungen setzen
         self.df.loc[delayed_signals, 'buySell'] = 1
 
-        # Schritt 3: Verkaufslogik (wie bisher)
+        # Schritt 3: Verkaufslogik
+        #
+        # Fast-Pfad (vektorisiert): Die Sell-Bedingung wird EINMAL pro Ticker-
+        # Gruppe ausgewertet (analog zur Kaufseite oben) statt pro Zeile einen
+        # frischen ExpressionEvaluator + Single-Row-DataFrame zu bauen. Das
+        # Ergebnis ist eine Bool-Serie, ausgerichtet auf self.df.index; die
+        # stateful Open/Close-Schleife darunter liest nur noch daraus — die
+        # Semantik (offene Position, Tie-Bars, buy_delay) bleibt unverändert.
+        #
+        # Fallback (per Zeile): sobald die Sell-Bedingung entry-relative tp/sl
+        # referenziert, ist der Wahrheitswert positionsabhängig und kann nicht
+        # vorberechnet werden -> dann greift exakt die bisherige Pro-Zeilen-Logik.
+        uses_entry_state = bool(re.search(r'(?<![\w])(tp|sl)(?![\w])', self.sell_condition or ''))
+        sell_mask_global = None
+        if not uses_entry_state:
+            try:
+                sell_mask_global = compute_signal_mask(self.df, self.sell_condition)
+            except Exception:
+                # Bei jedem Problem komplett auf den Pro-Zeilen-Fallback zurueck.
+                sell_mask_global = None
+
         open_positions = {}
 
         for i, row in self.df.iterrows():
@@ -814,25 +849,25 @@ class BuySellSignalGenerator:
                 tp = open_positions[ticker]['tp']
                 sl = open_positions[ticker]['sl']
 
-                context = {**row.to_dict(), 'tp': tp, 'sl': sl}
                 try:
-                    # Try to evaluate sell_condition using a safe transformed expression
-                    try:
-                        evaluator = ExpressionEvaluator(pd.DataFrame([row]), dataframe_name='r')
-                        transformed_sell = evaluator.validate_and_transform(self.sell_condition)
-                        # r is a single-row df, so evaluate transformed expression
-                        sell_res = eval(transformed_sell, {}, {'r': pd.DataFrame([row])})
-                        cond = bool(sell_res) if not isinstance(sell_res, pd.Series) else bool(sell_res.iloc[0])
-                        if cond:
-                            self.df.at[i, 'buySell'] = -1
-                            del open_positions[ticker]
-                            continue
-                    except Exception:
-                        # fallback to old style eval using context dict
-                        if eval(self.sell_condition, {}, context):
-                            self.df.at[i, 'buySell'] = -1
-                            del open_positions[ticker]
-                            continue
+                    if sell_mask_global is not None:
+                        # Fast-Pfad: vorberechneten Bool nur noch lesen.
+                        cond = bool(sell_mask_global.at[i])
+                    else:
+                        # Fallback: Pro-Zeilen-Auswertung (z.B. tp/sl referenziert).
+                        context = {**row.to_dict(), 'tp': tp, 'sl': sl}
+                        try:
+                            evaluator = ExpressionEvaluator(pd.DataFrame([row]), dataframe_name='r')
+                            transformed_sell = evaluator.validate_and_transform(self.sell_condition)
+                            sell_res = eval(transformed_sell, {}, {'r': pd.DataFrame([row])})
+                            cond = bool(sell_res) if not isinstance(sell_res, pd.Series) else bool(sell_res.iloc[0])
+                        except Exception:
+                            # letzter Fallback: bare eval auf context dict
+                            cond = bool(eval(self.sell_condition, {}, context))
+                    if cond:
+                        self.df.at[i, 'buySell'] = -1
+                        del open_positions[ticker]
+                        continue
                 except Exception as e:
                     st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
 
