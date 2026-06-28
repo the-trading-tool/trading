@@ -245,6 +245,25 @@ class FMPProvider(MarketDataProvider):
 
         return ""
 
+    def profile_isin(self, yahoo_ticker: str) -> str:
+        """Resolve a ticker to its ISIN via the FMP company profile. '' on failure.
+
+        Inverse of search_isin(): used to backfill ISINs for tickers where
+        yfinance returns nothing (common for young US small-caps).
+        """
+        if not self.available or not yahoo_ticker:
+            return ""
+        fmp_ticker = _map_ticker(yahoo_ticker, self._overrides)
+        try:
+            data = self._get(f"/v3/profile/{fmp_ticker}")
+            if isinstance(data, list) and data and isinstance(data[0], dict):
+                isin = (data[0].get("isin") or "").strip().upper()
+                if len(isin) == 12:
+                    return isin
+        except Exception as e:
+            logger.debug("FMP /v3/profile failed for %s: %s", fmp_ticker, e)
+        return ""
+
     def test_connection(self) -> bool:
         """Quick connectivity check — returns True when the API key is valid."""
         try:

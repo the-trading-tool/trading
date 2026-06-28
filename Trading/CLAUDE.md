@@ -572,3 +572,71 @@ den Wert (`suf`) im Original belassen. Case-insensitive gewollte Werte werden
 gezielt normalisiert: `group → .upper()` (+ Query `UPPER(i.name)`),
 `backfill → .lower()` (Map-Keys sind lowercase). Verifiziert: `/index:^SPX` → 515,
 `/select:… "%.MC"` → 30 Treffer (vorher je 0).
+
+---
+
+## Neu in dieser Session (2026-06-28) — Broker-Handelbarkeits-Filter
+
+Ziel: Signale auf die beim eigenen Broker **tatsächlich orderbaren** Ticker
+einschränken (Auslöser: Scalable Capital handelt nicht jeden ^RUT-Small-Cap).
+
+**`tradinglib/broker_tradability.py`** — broker-agnostischer Filter (Plugin-Muster):
+- Checker je Broker: `scalable` (Proxy `unofficial-scalable-capital-api`,
+  `GET /securities/{isin}/buyable`), `alpaca` (`/v2/assets`-Liste), `ibkr`
+  (permissiv: SMART deckt faktisch alles; `config.db ibkr_exclude`), `none`
+  (kein Filter, Default). Aktiver Broker: `config.db '<user>:broker'`.
+- Öffentliche API: `check_tradable(tickers, broker_id=None)` → `{ticker:
+  Tradability}`; `filter_tradable(...)` → `{tradable, not_tradable, unknown}`.
+  `drop_unknown=False` (Default) lässt Unbekannte durch (kein Signalverlust bei
+  Broker/Proxy-Ausfall); `drop_unknown=True` = strikt.
+- Cache: `asset_info.db.broker_tradability_cache` (PK broker+ticker), Re-Check
+  nach `REFRESH_DAYS=7` → eine Online-Abfrage pro ISIN, danach offline.
+- Scalable-Antwort wird defensiv geparst (`_parse_scalable_payload`); Proxy down
+  / keine ISIN → `tradable=None`. Scalable-Config-Keys: `scalable_proxy_url`
+  (Default `http://localhost:8080`), `scalable_gateway_token`.
+- CLI: `python -m tradinglib.broker_tradability /index:^RUT|/tickers:A,B|/file:x.txt
+  [/broker:scalable] [/strict] [/out:report.json]`. Ersetzt den Ad-hoc-
+  `rut_*`-Workflow (die `.DE`-Yahoo-Heuristik in `rut_91_check.json` lieferte
+  Fehltreffer wie IESC→tonies SE).
+
+**ISIN-Quelle / -Lücke:** ISINs liegen in `yf_tickers.db.stocks.ISIN`
+(`backfill_isin.py`), aber nur ~43 % gefüllt — gerade junge Small-Caps (PLUG,
+OKLO, RGTI…) fehlten, weil `yf.Ticker().isin` für sie nichts liefert.
+- `backfill_isin.py fetch_isin()` hat jetzt **FMP-Fallback** (`/v3/profile/{t}`
+  → `isin`) nach yfinance. FMP-Key via KSP-Eintrag `fmp`.
+- `tradinglib/providers/fmp_provider.py`: neue Methode `profile_isin(ticker)`
+  (Inverse zu `search_isin`).
+- `IsinResolver` (in broker_tradability) liest `stocks.ISIN`, lädt Fehlende bei
+  Bedarf nach und **schreibt sie zurück** → Lücke schließt sich progressiv.
+
+**Einfacher `require_isin`-Vorfilter (verdrahtet):** Zusätzlich zum proxy-
+basierten Broker-Check gibt es einen leichtgewichtigen Schalter, der die
+Selektion auf Werte **mit gültiger ISIN** beschränkt — als Näherung für
+„handelbar" ohne jede externe Abhängigkeit.
+- Eingehängt in `AssetSimulator.fetch_combined_data_with_attach()`
+  (asset_simulator.py) — der **gemeinsame Engpass**: Strategy Finder (Single-
+  *und* Multi-Jahr via `_fetch_for_year`) UND Multi-Transactions
+  (`multi_transaction.py:541`) laufen dort durch, ein Filter deckt alles ab.
+- Schalter: `config.db` key `require_isin` (Default False). UI-Checkbox im
+  Strategy-Finder-Sidebar („Nur handelbare (ISIN vorhanden)", Locale-Keys
+  `sf.require_isin[_help]`), schreibt den Wert global in config.db (kein
+  `on_change` → meidet das Overlay-Korruptions-Muster).
+- **Global + per-Index-Override:** `fetch_combined_data_with_attach(...,
+  require_isin=None)` — `None` = globaler Schalter, `True/False` = überschreibt
+  global. Multi-Transactions liest pro Index das optionale Feld `require_isin`
+  aus `multi_transactions` (analog `trailing_stop`) und reicht es durch; akzeptiert
+  bool / `'yes'`/`'no'`/`'true'`/`'ja'`. Beispiel-Eintrag im Index-Dict:
+  `'^RUT': { ..., 'order_by': 'sortino', 'require_isin': True }`. Fehlt das Feld
+  → globaler Default. Strategy Finder ruft ohne Param → global.
+- ISIN-Validierung: `AssetSimulator._has_valid_isin()` —
+  Regex `[A-Z]{2}[A-Z0-9]{9}[0-9]`; NULL→'None'/'nan', Indizes (`^…`), FX (`=X`)
+  fallen korrekt raus.
+- **Wichtig:** erst nach vollem `python backfill_isin.py` (jetzt mit FMP-Fallback)
+  aktivieren — sonst filtert er ~57 % bloß-noch-nicht-aufgelöste Werte (inkl.
+  handelbarer Large-Caps) mit raus. „Keine ISIN" = derzeit eher „nicht aufgelöst"
+  als „nicht handelbar".
+
+**Noch offen:** Der proxy-basierte Scalable/IBKR-Filter (`broker_tradability.py`)
+ist als Funktion/CLI nutzbar, aber noch **nicht** in den Live-Signal-Loop
+eingehängt (Integrationspunkt: vor dem Trade-Insert). Scalable-Pfad braucht den
+lokalen Proxy (Login/2FA, Session wird wiederverwendet).

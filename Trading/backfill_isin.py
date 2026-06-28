@@ -75,14 +75,50 @@ def parse_args(argv=None):
 
 # ── Hilfsfunktionen ────────────────────────────────────────────────────────
 
-def fetch_isin(ticker: str) -> str | None:
-    """Return the ISIN for ticker via yfinance, or None when unavailable."""
+_FMP_PROVIDER = None
+_FMP_TRIED = False
+
+
+def _get_fmp():
+    """Lazily build a FMPProvider from the configured KSP key (None if unavailable)."""
+    global _FMP_PROVIDER, _FMP_TRIED
+    if _FMP_TRIED:
+        return _FMP_PROVIDER
+    _FMP_TRIED = True
+    try:
+        from tradinglib.providers import _read_fmp_key
+        from tradinglib.providers.fmp_provider import FMPProvider
+        provider = FMPProvider(api_key=_read_fmp_key())
+        _FMP_PROVIDER = provider if provider.available else None
+    except Exception as e:
+        logger.debug(f"FMP-Fallback nicht verfügbar: {e}")
+        _FMP_PROVIDER = None
+    return _FMP_PROVIDER
+
+
+def fetch_isin(ticker: str, use_fmp: bool = True) -> str | None:
+    """Return the ISIN for ticker, or None when unavailable.
+
+    Tries yfinance first; falls back to the FMP company profile, which covers
+    many young US small-caps that yfinance returns no ISIN for.
+    """
     try:
         isin = yf.Ticker(ticker).isin
         if isin and isin != '-':
             return isin
     except Exception as e:
         logger.debug(f"{ticker}: yfinance-Fehler — {e}")
+
+    if use_fmp:
+        fmp = _get_fmp()
+        if fmp is not None:
+            try:
+                isin = fmp.profile_isin(ticker)
+                if isin:
+                    logger.debug(f"{ticker}: ISIN via FMP — {isin}")
+                    return isin
+            except Exception as e:
+                logger.debug(f"{ticker}: FMP-Fehler — {e}")
     return None
 
 
@@ -136,25 +172,25 @@ def main():
         for i, ticker in enumerate(tickers, start=1):
             # Indices (^GSPC) und Währungspaare (EURUSD=X) haben keine ISIN
             if ticker.startswith('^') or ticker.endswith('=X'):
-                logger.debug(f"[{i:>5}/{total}] {ticker:<20} → übersprungen (Index/FX)")
+                logger.debug(f"[{i:>5}/{total}] {ticker:<20} -> uebersprungen (Index/FX)")
                 skipped += 1
                 continue
 
             isin = fetch_isin(ticker)
 
             if isin:
-                logger.info(f"[{i:>5}/{total}] {ticker:<20} → {isin}")
+                logger.info(f"[{i:>5}/{total}] {ticker:<20} -> {isin}")
                 if not dry_run:
                     update_isin(conn, ticker, isin)
                 found += 1
             else:
-                logger.debug(f"[{i:>5}/{total}] {ticker:<20} → kein ISIN")
+                logger.debug(f"[{i:>5}/{total}] {ticker:<20} -> kein ISIN")
                 skipped += 1
 
             # Batch-Commit
             if not dry_run and i % BATCH_SIZE == 0:
                 conn.commit()
-                logger.info(f"  ↳ Commit nach {i} Einträgen")
+                logger.info(f"  Commit nach {i} Eintraegen")
 
             # Rate-Limit
             if i < total:
