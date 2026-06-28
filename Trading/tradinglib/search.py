@@ -186,7 +186,40 @@ class FullTextSearch(tools.Db_tools):
                 self.ticker_selected_longname = best['longName'] or ''
         except Exception:
             pass
-        
+
+    def resolve_index_name(self, ticker=None):
+        """Resolve a ticker to its primary index name directly from yf_tickers.db.
+
+        Uses a direct stocks -> stock_indices -> indices join, with NO dependency
+        on asset_simulation / asset_info. The index_name shown in the Asset Viewer
+        otherwise only got set when the user picked a result from the FTS box
+        (render()); tickers reached via URL auto-resolve or market-search kept the
+        empty class default. This method makes index_name resolve for every path.
+
+        Real exchange indices (^-prefixed) win over category groups (INDEX, ETP, …).
+        Sets and returns self.index_name ('' when the ticker is in no index).
+        """
+        t_sel = (ticker or self.ticker_selected or '').strip()
+        if not t_sel:
+            self.index_name = ''
+            return ''
+        try:
+            db = tools.Tools().get_path(path='database', file_name='yf_tickers.db')
+            with open_db(db, readonly=True) as conn:
+                row = conn.execute(
+                    "SELECT i.name FROM stocks s "
+                    "JOIN stock_indices si ON si.stock_id = s.id "
+                    "JOIN indices i ON i.id = si.index_id "
+                    "WHERE s.Ticker = ? "
+                    "ORDER BY (i.name LIKE '^%') DESC LIMIT 1",
+                    (t_sel,),
+                ).fetchone()
+            self.index_name = row[0] if row and row[0] else ''
+        except Exception:
+            self.index_name = ''
+        return self.index_name
+
+
     
     def render(self):
         """Render the full-text search expander with query input and ticker select box."""

@@ -227,6 +227,27 @@ class render_mainpage(fetch_data.FetchData):
 
 #                except Exception:
 
+    def _render_market_stress(self, index_name, region=st):
+        """Prominent breadth-based early-warning banner below the chart.
+
+        For assets bound to a real exchange index (^…) this reads the
+        market-stress score (compute_market_stress) — derived from how the
+        index members' Bull/Bear/Sideways breadth is *changing* plus a price/
+        breadth divergence term — and renders a traffic-light box. Silently
+        does nothing for non-index assets or when no breadth data is available.
+        Failures never break the page (the chart already rendered above).
+        """
+        try:
+            from tradinglib.regime_data_engine import compute_market_stress
+            from tradinglib.regime_flow_page import render_market_stress_banner
+            if not index_name or not str(index_name).startswith('^'):
+                return
+            s = compute_market_stress(index_name)
+        except Exception:
+            logger.debug('market-stress banner skipped', exc_info=True)
+            return
+        render_market_stress_banner(s, index_name, region=region)
+
     def _add_portfolio_markers(self, ticker: str) -> list:
         """Query Own Trades, Strategy Engine, and Paper Trading for this ticker.
 
@@ -612,6 +633,12 @@ class render_mainpage(fetch_data.FetchData):
             st.info(t('main.search_hint'))
             return
 
+        # Indexzugehörigkeit für den final gewählten Ticker auflösen — unabhängig
+        # davon, ob er aus FTS, URL-Auto-Resolve oder Market-Search kam. fts.index_name
+        # wurde sonst nur beim FTS-Box-Pick (render) gesetzt und blieb sonst leer
+        # (z.B. AAMI/^RUT), obwohl die Membership in yf_tickers.db vorliegt.
+        fts.resolve_index_name(ticker_selected)
+
         if refresh:
 #        if 1:
 #                try:
@@ -719,6 +746,9 @@ class render_mainpage(fetch_data.FetchData):
                     with tab_trend:
                         _spin.markdown(_tab_overlay(t('main.tab_trend')), unsafe_allow_html=True)
                         self.render_trend(ticker_selected, ticker_selected_longname, interval=interval, period=period)
+                        # Prominent early-warning banner directly below the chart
+                        # for index-bound assets (breadth-derived market stress).
+                        self._render_market_stress(fts.index_name, region=tab_trend)
                         _ppos = getattr(self, '_portfolio_positions', [])
                         if _ppos:
                             _open  = [p for p in _ppos if p['open']]
