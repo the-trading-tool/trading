@@ -770,6 +770,32 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
     return mask
 
 
+def lazy_excel_download(data, button_label, file_name, region=st, state_key=None, spinner_text='…'):
+    """Streamlit-Download fuer (potenziell teure) Excel-Exports — lazy.
+
+    Die Excel-Konvertierung (DataUtils.get_bin_excel_data) laeuft erst auf
+    Knopfdruck statt bei JEDEM Rerun. Wichtig fuer grosse DataFrames: ein voller
+    Strategy-Finder-Datensatz (z.B. ^RUT, ~228k Zeilen x ~96 Spalten) braucht
+    mehrere Minuten zum Serialisieren — das darf nicht bei jeder Interaktion und
+    auch nicht fuer einen ggf. nie geklickten Download anfallen.
+
+    Ablauf: Button -> baut Bytes einmalig in st.session_state -> Download-Button.
+    state_key sollte den Datensatz eindeutig kennzeichnen (z.B. Index+Dateiname),
+    sonst werden ueber Reruns/Indizes hinweg veraltete Bytes wiederverwendet.
+    """
+    from tradinglib.utils import DataUtils  # lazy: vermeidet Import-Zyklus tools<->utils
+    key = state_key or f'_xlsx_{file_name}'
+    if region.button(button_label, key=f'prep_{key}'):
+        with st.spinner(spinner_text):
+            st.session_state[key] = DataUtils.get_bin_excel_data(data)
+    if st.session_state.get(key) is not None:
+        region.download_button(label=f'⬇ {file_name}',
+                               data=st.session_state[key],
+                               file_name=file_name,
+                               mime='application/octet-stream',
+                               key=f'dl_{key}')
+
+
 class BuySellSignalGenerator:
     # OHLCV columns that may appear in either capitalised (live df) or
     # lowercase (simulation db) form.  We add the missing alias so that
