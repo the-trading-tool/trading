@@ -60,6 +60,7 @@
   "cfg.mp_details": "Show Main page Details-Tab:",
   "cfg.pine_export": "Show Pine Script Export:",
   "cfg.require_isin": "Only tradable (ISIN required):",
+  "cfg.show_regime": "Show regime / market-stress banner:",
   "cfg.buy_query": "Buy query:",
   "cfg.sell_query": "Sell query:",
   "cfg.data_provider_header": "Data provider",

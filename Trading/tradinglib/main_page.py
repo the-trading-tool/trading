@@ -236,7 +236,12 @@ class render_mainpage(fetch_data.FetchData):
         breadth divergence term — and renders a traffic-light box. Silently
         does nothing for non-index assets or when no breadth data is available.
         Failures never break the page (the chart already rendered above).
+
+        Opt-in: only shown when the user config 'show_regime' is True (default
+        False), so the breadth banner stays hidden unless explicitly enabled.
         """
+        if not self.sys_conf.get_value('show_regime', False):
+            return
         try:
             from tradinglib.regime_data_engine import compute_market_stress
             from tradinglib.regime_flow_page import render_market_stress_banner

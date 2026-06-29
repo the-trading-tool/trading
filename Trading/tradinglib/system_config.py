@@ -198,6 +198,7 @@ class SystemConfig(tools.Db_tools):
         idx_mp_details = self.get_idx_selected(b_select, 'mp_details',1)
         idx_pine_export = self.get_idx_selected(b_select, 'pine_export', 1)
         idx_require_isin = self.get_idx_selected(b_select, 'require_isin', 1)
+        idx_show_regime = self.get_idx_selected(b_select, 'show_regime', 1)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
         self.region.write(i18n.t("cfg.user", username=self.username))
 
@@ -398,6 +399,7 @@ class SystemConfig(tools.Db_tools):
         self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))
         self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
         self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
+        self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
         self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
         self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
 
