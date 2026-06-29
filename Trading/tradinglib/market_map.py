@@ -523,12 +523,30 @@ class DataVisualizer(tt.TickerTools):
             )
 
             # ── Chart | Gewinner | Verlierer nebeneinander ────────────────────────
-            c_chart, c_win, c_los = st.columns([1.6, 1, 1])
-            with c_chart:
-                st.plotly_chart(fig, use_container_width=True)
-                st.caption(summary_txt)
-            # Tabellenhöhe an die Chart-Höhe angleichen → keine vertikale Überlänge.
-            self._render_breadth_winner_loser(df, _names, c_win, c_los, table_height=content_h)
+            # st.columns hat flex-wrap aktiv und stapelt die Spalten automatisch
+            # untereinander, sobald der Container zu schmal wird — im Expander
+            # passiert das auf kleineren Bildschirmen früher als auf der freien
+            # Seite. Wir erzwingen das Nebeneinander per scoped CSS (nowrap) auf
+            # genau dieser Zeile; overflow-x sorgt für horizontales Scrollen statt
+            # Abschneiden, falls es wirklich eng wird.
+            st.markdown(
+                """
+                <style>
+                  .st-key-mm_breadth_row [data-testid="stHorizontalBlock"] {
+                      flex-wrap: nowrap !important;
+                      overflow-x: auto;
+                  }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+            with st.container(key='mm_breadth_row'):
+                c_chart, c_win, c_los = st.columns([1.6, 1, 1])
+                with c_chart:
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.caption(summary_txt)
+                # Tabellenhöhe an die Chart-Höhe angleichen → keine vertikale Überlänge.
+                self._render_breadth_winner_loser(df, _names, c_win, c_los, table_height=content_h)
 
     def _render_breadth_winner_loser(self, df, regime_labels, col_w, col_l, table_height=None):
         """Ticker-Listen für Mitglieder im heutigen Bull- bzw. Bär-Regime,
