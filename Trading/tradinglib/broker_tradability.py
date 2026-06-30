@@ -8,7 +8,7 @@ orderbaren Werte einschränken.
 Broker werden über einen Plugin-Mechanismus angebunden:
   - scalable : Scalable Capital (gettex + Xetra + LS Exchange) — per-ISIN-Abfrage
                über den lokalen Proxy ``unofficial-scalable-capital-api``
-               (``/securities/{isin}/buyable``).
+               (``/securities/{isin}/tradability``, Default-Port 3141).
   - alpaca   : Alpaca — ``/v2/assets``-Liste (US-Aktien), Symbol-basiert.
   - ibkr     : Interactive Brokers — permissiv (SMART-Routing deckt faktisch
                alle gelisteten US/EU-Titel), optionale Ausschlussliste.
@@ -141,12 +141,17 @@ class NoFilterChecker(BrokerChecker):
 class ScalableChecker(BrokerChecker):
     """Scalable Capital via lokalem Proxy (unofficial-scalable-capital-api).
 
-    Abgefragt wird ``GET {base}/securities/{isin}/buyable``. Ist der Proxy nicht
-    erreichbar oder fehlt die ISIN, wird ``tradable=None`` (unbekannt) gemeldet —
-    der Filter verliert dann keine Signale durch eine Infrastruktur-Störung.
+    Abgefragt wird ``GET {base}/securities/{isin}/tradability`` (Handelbarkeit
+    über die Handelsplätze — passender als ``/buyable``, das die Kaufbarkeit in
+    den eigenen Portfolios prüft). Ist der Proxy nicht erreichbar oder fehlt die
+    ISIN, wird ``tradable=None`` (unbekannt) gemeldet — der Filter verliert dann
+    keine Signale durch eine Infrastruktur-Störung.
+
+    Der Proxy läuft per Default auf Port 3141 (``http://127.0.0.1:3141``); abweichend
+    nur, wenn er mit ``--port`` gestartet wurde.
 
     Konfiguration (config.db, je Nutzer):
-      - ``scalable_proxy_url``    Default ``http://localhost:8080``
+      - ``scalable_proxy_url``    Default ``http://localhost:3141``
       - ``scalable_gateway_token`` optional → Header ``X-Gateway-Token``
     """
 
@@ -154,7 +159,7 @@ class ScalableChecker(BrokerChecker):
     needs_isin = True
 
     def __init__(self, base_url: str, token: Optional[str] = None):
-        self._base = (base_url or "http://localhost:8080").rstrip("/")
+        self._base = (base_url or "http://localhost:3141").rstrip("/")
         self._token = token or ""
 
     def _check(self, ticker, isin):
@@ -168,7 +173,7 @@ class ScalableChecker(BrokerChecker):
         headers = {"X-Gateway-Token": self._token} if self._token else {}
         try:
             resp = requests.get(
-                f"{self._base}/securities/{isin}/buyable", headers=headers, timeout=10
+                f"{self._base}/securities/{isin}/tradability", headers=headers, timeout=10
             )
             if resp.status_code == 404:
                 # Proxy kennt das Papier nicht → bei Scalable nicht handelbar
@@ -260,17 +265,51 @@ class IbkrChecker(BrokerChecker):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_scalable_payload(payload) -> tuple[Optional[bool], Optional[str]]:
-    """Robustes Parsen der Proxy-Antwort → (tradable, venues).
+    """Robustes Parsen der /tradability- (bzw. /buyable-) Antwort → (tradable, venues).
 
-    Die Antwortstruktur des inoffiziellen Proxys ist nicht garantiert; daher
-    werden gängige Bool-Felder geprüft. Bei unklarer Struktur → (None, None).
+    Die Antwortstruktur des inoffiziellen Proxys ist nicht garantiert. Geprüft
+    werden, in dieser Reihenfolge:
+      1. direkter Bool,
+      2. eine Venue-Liste (Tradability über Handelsplätze) — handelbar = mindestens
+         ein Handelsplatz erlaubt den Kauf; die Venue-Namen werden gesammelt,
+      3. flache Bool-Felder (z.B. /buyable).
+    Bei unklarer Struktur → (None, None), sodass der Filter sauber degradiert.
     """
     if isinstance(payload, bool):
         return payload, None
+
+    # 2. Venue-Liste — direkt oder unter einem bekannten Schlüssel
+    venue_list = None
+    if isinstance(payload, list):
+        venue_list = payload
+    elif isinstance(payload, dict):
+        for vk in ("venues", "tradingVenues", "tradability", "exchanges"):
+            if isinstance(payload.get(vk), list):
+                venue_list = payload[vk]
+                break
+
+    if venue_list is not None:
+        buyable, names = None, []
+        for v in venue_list:
+            if not isinstance(v, dict):
+                continue
+            flag = next((v[k] for k in ("buy", "buyable", "tradable", "isTradable")
+                         if isinstance(v.get(k), bool)), None)
+            if flag is True:
+                buyable = True
+                nm = (v.get("name") or v.get("venue") or v.get("exchange")
+                      or v.get("venueId"))
+                if nm:
+                    names.append(str(nm))
+            elif flag is False and buyable is None:
+                buyable = False
+        return buyable, (",".join(dict.fromkeys(names)) or None)
+
+    # 3. Flache Bool-Felder
     if isinstance(payload, dict):
-        for key in ("buyable", "tradable", "isTradable", "isBuyable"):
+        for key in ("buyable", "tradable", "isTradable", "isBuyable", "buy"):
             if isinstance(payload.get(key), bool):
-                venues = payload.get("venues") or payload.get("exchanges")
+                venues = payload.get("exchanges")
                 if isinstance(venues, list):
                     venues = ",".join(str(v) for v in venues)
                 return payload[key], venues if isinstance(venues, str) else None
@@ -316,7 +355,7 @@ def get_checker(broker_id: Optional[str] = None, username: str = "admin") -> Bro
 
     if broker_id == "scalable":
         return ScalableChecker(
-            base_url=_cfg("scalable_proxy_url", "http://localhost:8080", username),
+            base_url=_cfg("scalable_proxy_url", "http://localhost:3141", username),
             token=_cfg("scalable_gateway_token", "", username),
         )
     if broker_id == "alpaca":
