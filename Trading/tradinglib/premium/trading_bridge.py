@@ -654,6 +654,62 @@ class OrderLog(Tools):
             open_pos.discard(ticker)
         return open_pos
 
+    def get_open_position_strategies(self, mode: str, broker: str) -> dict:
+        """Map each open position to the strategy under which it was bought.
+
+        FIFO-aware: per ticker the still-open buy (after matching sells by
+        quantity, strategy-agnostic) determines the strategy. Returns a dict
+        keyed by BOTH the ticker and the broker_symbol so callers can look up
+        by either. Values are the recorded strategy verbatim — '' for
+        external/imported buys, 'quick' for manual quick orders, or a named
+        strategy. Unlike get_open_tickers this covers ALL strategies, so
+        positions opened outside a named strategy are still attributed.
+        """
+        out: dict[str, str] = {}
+        try:
+            with sqlite3.connect(self._db) as conn:
+                rows = conn.execute("""
+                    SELECT ticker, broker_symbol, strategy, action, status, qty, submitted_at
+                    FROM broker_orders
+                    WHERE mode=? AND broker=?
+                    ORDER BY submitted_at
+                """, (mode, broker)).fetchall()
+        except Exception as e:
+            logger.error(f"get_open_position_strategies failed: {e}")
+            return out
+
+        df = pd.DataFrame(
+            rows,
+            columns=['ticker', 'broker_symbol', 'strategy', 'action',
+                     'status', 'qty', 'submitted_at'],
+        )
+        if df.empty:
+            return out
+
+        for tk, grp in df.groupby('ticker'):
+            buys  = grp[(grp['action'] == 'buy')
+                        & (grp['status'].isin(['submitted', 'filled']))].copy()
+            sells = grp[(grp['action'] == 'sell')
+                        & (grp['status'].isin(['filled', 'submitted', 'canceled', 'cancelled']))]
+            if buys.empty:
+                continue
+            sold = float(pd.to_numeric(sells['qty'], errors='coerce').fillna(0).sum())
+            buys['_ts'] = pd.to_datetime(buys['submitted_at'], errors='coerce')
+            buys = buys.sort_values('_ts')
+            rem = sold
+            for _, b in buys.iterrows():
+                bq = float(pd.to_numeric(b['qty'], errors='coerce') or 0)
+                if rem >= bq:
+                    rem -= bq          # this buy is fully covered by earlier sells
+                    continue
+                strat = str(b['strategy'] or '')
+                out[str(tk)] = strat
+                bsym = str(b['broker_symbol'] or '')
+                if bsym:
+                    out[bsym] = strat
+                break
+        return out
+
 
 # ------------------------------------------------------------------ #
 #  Signal evaluator                                                    #
