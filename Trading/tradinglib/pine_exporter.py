@@ -15,8 +15,10 @@ from typing import Callable
 
 
 # Indicators that cannot be meaningfully translated to Pine Script:
-#   pre — loads an external ML model (predictlib); Pine Script has no model-loading
-_UNSUPPORTED: set[str] = {'pre'}
+#   pre    — loads an external ML model (predictlib); Pine Script has no model-loading
+#   bar    — standard OHLC bar chart; use TradingView's native "Bars" chart type
+#   candle — standard candlestick chart; use TradingView's native "Candles" chart type
+_UNSUPPORTED: set[str] = {'pre', 'bar', 'candle'}
 
 # ── License block prepended to every generated Pine Script ────────────────────
 # Pine Script convention: "// ©" marks the copyright line (shown in TradingView).
@@ -44,6 +46,8 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'stoch':  'George C. Lane (1950s) — Stochastic Oscillator',
     'vol':    'Volume Delta — standard order-flow concept',
     'zcr':    'Standard zero-crossing-rate concept (signal processing)',
+    'hbo':    'Hull Butterfly Oscillator — custom Hull MA derivative',
+    'scr':    'Seasonal Score Oscillator — custom forward-return seasonal average',
     # ── Overlays ─────────────────────────────────────────────────────────────
     'atc':    'Average True Channel — custom implementation',
     'atl':    'Auto Trend Lines — custom implementation',
@@ -63,6 +67,8 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'nsdt':   'NSDT (TradingView community) — Hama Candles concept',
     'oft':    'Order Flow Tools — custom implementation',
     'qtrend': 'Quantitative Trend — custom implementation',
+    'gframa': 'QuantEdgeB — G-FRAMA (Gaussian-smoothed Fractal Adaptive Moving Average)',
+    'renko':  'Renko chart — standard brick-based price-movement technique',
     'sup':    'Standard support / resistance detection concept',
     'vwap':   'Volume Weighted Average Price — standard market-microstructure concept',
     'wml':    'Weighted Momentum Levels — custom implementation',
@@ -137,6 +143,8 @@ _INDICATOR_LABELS: dict[str, str] = {
     'stoch':  'Stochastic',
     'vol':    'Volume Delta',
     'zcr':    'Z-Score',
+    'hbo':    'Hull Butterfly Oscillator',
+    'scr':    'Seasonal Score',
     # Overlays
     'atc':    'Auto Trend Channels',
     'atl':    'Auto Trend Lines',
@@ -157,6 +165,8 @@ _INDICATOR_LABELS: dict[str, str] = {
     'oft':    'Order Flow',
     'pvt':    'Pivot Points',
     'qtrend': 'Quantitative Trend',
+    'gframa': 'G-FRAMA',
+    'renko':  'Renko Candles',
     'sup':    'Support/Resistance',
     'vwap':   'VWAP',
     'wml':    'Week/Month Levels',
@@ -491,6 +501,103 @@ hline( 2, color = color.new(color.gray,  60), linestyle = hline.style_dashed)
 hline( 1, color = color.new(color.red,    0), linestyle = hline.style_dashed)
 hline(-1, color = color.new(color.green,  0), linestyle = hline.style_dashed)
 hline(-2, color = color.new(color.gray,  60), linestyle = hline.style_dashed)
+"""
+
+
+def _t_hbo(p: dict) -> str:
+    """Return the Pine Script v6 Hull Butterfly Oscillator template with configurable params."""
+    length = int(p.get('length', 14))
+    mult   = float(p.get('mult', 2.0))
+    col_bull = _hex_to_pine_color(p.get('color_bull', ''), 'color.rgb(12, 181, 26)')
+    col_bear = _hex_to_pine_color(p.get('color_bear', ''), 'color.rgb(255, 17, 0)')
+    grp  = "HBO"
+    grps = "HBO -- Style"
+    return f"""\
+// ── Hull Butterfly Oscillator ─────────────────────────────────────────────────
+hbo_len      = input.int({length}, "Length", minval=4, maxval=200, group="{grp}")
+hbo_mult     = input.float({mult:.1f}, "Levels multiplier", minval=0.1, maxval=10.0, step=0.1, group="{grp}")
+hbo_col_bull = input.color({col_bull}, "Bull color", group="{grps}")
+hbo_col_bear = input.color({col_bear}, "Bear color", group="{grps}")
+f_wma_inv(src, length) =>
+    den = float(length) * (length + 1) / 2.0
+    s   = 0.0
+    for i = 0 to length - 1
+        s += src[i] * float(i + 1)
+    s / den
+hbo_half = int(hbo_len / 2)
+hbo_hull = int(math.round(math.sqrt(float(hbo_len))))
+hbo_lc   = 2.0 * f_wma_inv(close, hbo_half) - f_wma_inv(close, hbo_len)
+max_bars_back(hbo_lc, 25)
+hbo_hso  = f_wma_inv(hbo_lc, hbo_hull) - ta.hma(close, hbo_len)
+var float hbo_abs_sum = 0.0
+var int   hbo_cnt     = 0
+hbo_abs_sum += na(hbo_hso) ? 0.0 : math.abs(hbo_hso)
+hbo_cnt     += 1
+hbo_cmean    = hbo_abs_sum / float(hbo_cnt) * hbo_mult
+var int hbo_os = 0
+_hbo_cross   = (not na(hbo_hso) and not na(hbo_hso[1]) and not na(hbo_cmean) and not na(hbo_cmean[1])) and ((hbo_hso[1] < hbo_cmean[1] and hbo_hso >= hbo_cmean) or (hbo_hso[1] > hbo_cmean[1] and hbo_hso <= hbo_cmean) or (hbo_hso[1] < -hbo_cmean[1] and hbo_hso >= -hbo_cmean) or (hbo_hso[1] > -hbo_cmean[1] and hbo_hso <= -hbo_cmean))
+hbo_os := na(hbo_hso) ? 0 : _hbo_cross ? 0 : hbo_hso < hbo_hso[1] and hbo_hso > hbo_cmean ? -1 : hbo_hso > hbo_hso[1] and hbo_hso < -hbo_cmean ? 1 : hbo_os
+hbo_bull = hbo_os == 1  and hbo_os[1] != 1
+hbo_bear = hbo_os == -1 and hbo_os[1] != -1
+plot(hbo_hso, "HBO bars", hbo_hso >= 0 ? color.new(hbo_col_bull, 35) : color.new(hbo_col_bear, 35), 1, plot.style_columns)
+plot(hbo_hso, "HBO line", color.new(color.gray, 30), 1)
+plot(hbo_cmean,      "+cmean",   color.new(color.gray, 50), 1)
+plot(hbo_cmean / 2,  "+cmean/2", color.new(color.gray, 65), 1)
+plot(-hbo_cmean / 2, "-cmean/2", color.new(color.gray, 65), 1)
+plot(-hbo_cmean,     "-cmean",   color.new(color.gray, 50), 1)
+plotshape(hbo_bull ? hbo_hso : na, "Bull", shape.circle, location.absolute, hbo_col_bull, size=size.small)
+plotshape(hbo_bear ? hbo_hso : na, "Bear", shape.circle, location.absolute, hbo_col_bear, size=size.small)
+plot(0, "Zero", color.new(color.gray, 50), 1)
+"""
+
+
+def _t_scr(p: dict) -> str:
+    """Return the Pine Script v6 Seasonal Score Oscillator template with configurable params."""
+    scale     = float(p.get('scale', 10.0))
+    min_years = int(p.get('min_years', 3))
+    threshold = float(p.get('threshold', 30.0))
+    col_1mo   = _hex_to_pine_color(p.get('color_1mo',  ''), 'color.black')
+    col_3mo   = _hex_to_pine_color(p.get('color_3mo',  ''), 'color.orange')
+    col_eoy   = _hex_to_pine_color(p.get('color_eoy',  ''), 'color.gray')
+    grp  = "Seasonal Score"
+    grps = "Seasonal Score -- Style"
+    return f"""\
+// ── Seasonal Score Oscillator ─────────────────────────────────────────────────
+// Requires 1800+ bars of history for the full 7-year lookback.
+max_bars_back(close, 2000)
+scr_scale     = input.float({scale:.1f}, "Normalisation scale (%)", minval=1.0, maxval=50.0, step=0.5, group="{grp}")
+scr_min_years = input.int({min_years}, "Min. prior years", minval=2, maxval=10, group="{grp}")
+scr_threshold = input.float({threshold:.1f}, "Buy/Sell threshold (+/-)", minval=5.0, maxval=90.0, step=5.0, group="{grp}")
+scr_col_1mo   = input.color({col_1mo},  "1-month line",  group="{grps}")
+scr_col_3mo   = input.color({col_3mo},  "3-month line",  group="{grps}")
+scr_col_eoy   = input.color({col_eoy},  "Year-end line", group="{grps}")
+f_scr_score(horizon_bars) =>
+    s = 0.0
+    n = 0
+    for k = 1 to 7
+        past = close[252 * k]
+        fwd  = close[252 * k - horizon_bars]
+        if not na(past) and not na(fwd) and past > 0
+            s += (fwd / past - 1.0) * 100.0
+            n += 1
+    n >= scr_min_years ? math.max(-100.0, math.min(100.0, s / n / scr_scale * 100.0)) : na
+scr_1mo = f_scr_score(21)
+scr_3mo = f_scr_score(63)
+scr_eoy = f_scr_score(252)
+var bool scr_state = false
+scr_buy_raw  = not na(scr_1mo) and scr_1mo >  scr_threshold
+scr_sell_raw = not na(scr_1mo) and scr_1mo < -scr_threshold
+scr_buy_sig  = scr_buy_raw  and not scr_state
+scr_sell_sig = scr_sell_raw and scr_state
+scr_state := scr_buy_sig ? true : scr_sell_sig ? false : scr_state
+plot(scr_1mo, "SCR 1-month",  scr_col_1mo, 2)
+plot(scr_3mo, "SCR 3-month",  scr_col_3mo, 2)
+plot(scr_eoy, "SCR year-end", scr_col_eoy, 1, plot.style_line)
+plotshape(scr_buy_sig  ? scr_1mo : na, "Buy",  shape.triangleup,   location.absolute, color.teal,   size=size.small)
+plotshape(scr_sell_sig ? scr_1mo : na, "Sell", shape.triangledown, location.absolute, color.maroon, size=size.small)
+plot( scr_threshold, "Buy threshold",  color.new(color.green, 50), 1)
+plot(-scr_threshold, "Sell threshold", color.new(color.red,   50), 1)
+plot(0, "Zero", color.new(color.gray, 50), 1)
 """
 
 
@@ -2437,16 +2544,184 @@ def _t_wml(p: dict) -> str:
     return body
 
 
+def _t_renko(p: dict) -> str:
+    """Return the Pine Script v6 Renko Candles overlay template with configurable params."""
+    mode      = str(p.get('mode', 'ATR/2'))
+    atr_per   = int(p.get('atr_period', 14))
+    brick_fix = float(p.get('brick_size', 10.0))
+    pct       = float(p.get('percentage', 0.1))
+
+    col_up = _hex_to_pine_color(p.get('color_up',   ''), 'color.rgb(91, 156, 246)')
+    col_dn = _hex_to_pine_color(p.get('color_down', ''), 'color.rgb(12, 50, 153)')
+    grp  = "Renko"
+    grps = "Renko -- Style"
+
+    mode_lit = mode if mode in ('ATR/2', 'ATR', 'percentage', 'fixed') else 'ATR/2'
+
+    return f"""\
+// ── Renko Candles ─────────────────────────────────────────────────────────────
+rk_mode      = input.string("{mode_lit}", "Brick size mode", options=["ATR/2", "ATR", "percentage", "fixed"], group="{grp}")
+rk_atr_per   = input.int({atr_per}, "ATR Period", minval=2, maxval=100, group="{grp}")
+rk_brick_fix = input.float({brick_fix:.4f}, "Fixed brick size", minval=0.0001, group="{grp}")
+rk_pct       = input.float({pct:.4f}, "Percentage brick size (%)", minval=0.001, step=0.01, group="{grp}")
+rk_col_up    = input.color({col_up}, "Bull brick color", group="{grps}")
+rk_col_dn    = input.color({col_dn}, "Bear brick color", group="{grps}")
+float rk_atr = ta.atr(rk_atr_per)
+float rk_box = na(rk_atr) ? rk_brick_fix : rk_mode == "ATR" ? rk_atr : rk_mode == "ATR/2" ? rk_atr / 2 : rk_mode == "percentage" ? close * rk_pct / 100 : rk_brick_fix
+rk_box := math.max(rk_box, 0.0001)
+var float rk_o   = na
+var float rk_c   = na
+var int   rk_dir = 0
+if na(rk_o)
+    rk_o := math.floor(close / rk_box) * rk_box
+    rk_c := rk_o
+if not na(rk_c)
+    float rk_diff = close - rk_c
+    int   rk_n    = int(math.abs(rk_diff) / rk_box)
+    if rk_n > 0
+        int rk_d = rk_diff > 0 ? 1 : -1
+        if rk_dir != 0 and rk_d != rk_dir and rk_n >= 2
+            rk_d := -rk_dir
+            rk_n := rk_n - 1
+        rk_o   := rk_c
+        rk_c   := rk_c + float(rk_d * rk_n) * rk_box
+        rk_dir := rk_d
+rk_col = rk_dir >= 0 ? rk_col_up : rk_col_dn
+rk_h   = math.max(rk_o, rk_c)
+rk_l   = math.min(rk_o, rk_c)
+plotcandle(rk_o, rk_h, rk_l, rk_c, "Renko",
+           rk_col, rk_col, bordercolor = color.new(color.gray, 70))
+"""
+
+
+def _t_gframa(p: dict) -> str:
+    """Return the Pine Script v6 G-FRAMA overlay template with configurable params."""
+    gauss_len  = int(p.get('gauss_length', 4))
+    sigma      = float(p.get('gauss_sigma', 2.0))
+    frama_len  = int(p.get('frama_length', 20))
+    fast       = int(p.get('frama_upper', 8))
+    slow       = int(p.get('frama_lower', 40))
+    atr_len    = int(p.get('atr_length', 14))
+    atr_mult   = float(p.get('atr_mult', 1.9))
+    show_bands = 'true' if bool(p.get('show_bands', True)) else 'false'
+    fill_bands = 'true' if bool(p.get('fill_bands', True)) else 'false'
+    col_long   = _hex_to_pine_color(p.get('color_long',    ''), 'color.rgb(23, 191, 238)')
+    col_short  = _hex_to_pine_color(p.get('color_short',   ''), 'color.rgb(180, 30, 30)')
+    col_neu    = _hex_to_pine_color(p.get('color_neutral', ''), 'color.rgb(128, 128, 128)')
+    grp  = "G-FRAMA"
+    grps = "G-FRAMA -- Style"
+    return f"""\
+// ── G-FRAMA ───────────────────────────────────────────────────────────────────
+gf_gauss_len  = input.int({gauss_len},   "Gaussian length",       minval=1,   maxval=50,   group="{grp}")
+gf_sigma      = input.float({sigma:.1f}, "Gaussian sigma",        minval=0.1, maxval=10.0, step=0.1, group="{grp}")
+gf_frama_len  = input.int({frama_len},   "FRAMA length",          minval=4,   maxval=200,  group="{grp}")
+gf_fast       = input.int({fast},        "FRAMA fast limit",      minval=1,   maxval=50,   group="{grp}")
+gf_slow       = input.int({slow},        "FRAMA slow limit",      minval=2,   maxval=200,  group="{grp}")
+gf_atr_len    = input.int({atr_len},     "ATR length",            minval=1,   maxval=100,  group="{grp}")
+gf_atr_mult   = input.float({atr_mult:.1f}, "ATR mult (upper band)", minval=0.1, maxval=10.0, step=0.1, group="{grp}")
+gf_show_bands = input.bool({show_bands}, "Show ATR bands",        group="{grp}")
+gf_fill_bands = input.bool({fill_bands}, "Fill ATR band",         group="{grp}")
+gf_col_long   = input.color({col_long},  "Long color",    group="{grps}")
+gf_col_short  = input.color({col_short}, "Short color",   group="{grps}")
+gf_col_neu    = input.color({col_neu},   "Neutral color", group="{grps}")
+gf_gauss(src, length, sigma) =>
+    sum_n = 0.0
+    sum_d = 0.0
+    for i = 0 to length - 1
+        w = math.exp(-0.5 * math.pow((i - (length - 1) / 2.0) / sigma, 2.0))
+        sum_n += w * src[i]
+        sum_d += w
+    sum_n / sum_d
+gf_frama(src, length, fast, slow) =>
+    half    = length / 2
+    hl_full = (ta.highest(high, length)        - ta.lowest(low, length))        / length
+    hl1     = (ta.highest(high, half)           - ta.lowest(low, half))           / half
+    hl_old  = (ta.highest(high[half], half)     - ta.lowest(low[half], half))     / half
+    var float _d = 1.5
+    if hl1 > 0 and hl_old > 0 and hl_full > 0
+        _d := (math.log(hl1 + hl_old) - math.log(hl_full)) / math.log(2.0)
+    _w     = math.log(2.0 / (slow + 1))
+    _alpha = math.max(0.01, math.min(1.0, math.exp(_w * (_d - 1.0))))
+    _oldN  = (2.0 - _alpha) / _alpha
+    _newN  = float(slow - fast) * (_oldN - 1.0) / float(slow - 1) + float(fast)
+    _na    = math.max(2.0 / (slow + 1), math.min(1.0, 2.0 / (_newN + 1.0)))
+    var float _f = na
+    _f := na(_f[1]) ? src : (1.0 - _na) * _f[1] + _na * src
+    _f
+gf_src   = gf_gauss(close, gf_gauss_len, gf_sigma)
+gf_line  = gf_frama(gf_src, gf_frama_len, gf_fast, gf_slow)
+gf_atr   = ta.atr(gf_atr_len)
+gf_upper = gf_line + gf_atr * gf_atr_mult
+gf_lower = gf_line - gf_atr
+var int gf_qb = 0
+gf_qb := close > gf_upper ? 1 : close < gf_lower ? -1 : gf_qb
+gf_col  = gf_qb == 1 ? gf_col_long : gf_qb == -1 ? gf_col_short : gf_col_neu
+gf_band_col = gf_show_bands ? color.new(color.gray, 70) : color.new(color.gray, 100)
+gf_fill_col = gf_show_bands and gf_fill_bands ? color.new(gf_col, 88) : color.new(color.gray, 100)
+gf_p_up = plot(gf_upper, "G-FRAMA Upper", gf_band_col, 1)
+gf_p_dn = plot(gf_lower, "G-FRAMA Lower", gf_band_col, 1)
+fill(gf_p_up, gf_p_dn, color = gf_fill_col)
+plot(gf_line, "G-FRAMA", gf_col, 2)
+"""
+
+
+def _n_hbo(p: dict, slot: int) -> str:
+    """Return the Pine Script v6 normalized Hull Butterfly Oscillator block for strategy scripts."""
+    length = int(p.get('length', 14))
+    mult   = float(p.get('mult', 2.0))
+    style  = _style_inputs(p, 'n_hbo', 'color.rgb(12, 181, 26)', 'HBO (combined)')
+    return f"""\
+// ── Hull Butterfly Oscillator  (slot {slot}) ──────────────────────────────────
+{style}f_wma_inv_hbo(src, length) =>
+    den = float(length) * (length + 1) / 2.0
+    s   = 0.0
+    for i = 0 to length - 1
+        s += src[i] * float(i + 1)
+    s / den
+_hbo_lc  = 2.0 * f_wma_inv_hbo(close, {int(length // 2)}) - f_wma_inv_hbo(close, {length})
+max_bars_back(_hbo_lc, 25)
+_hbo_hso = f_wma_inv_hbo(_hbo_lc, {int(round(length ** 0.5))}) - ta.hma(close, {length})
+_hbo_lo  = ta.lowest(_hbo_hso,  300)
+_hbo_hi  = ta.highest(_hbo_hso, 300)
+plot(_osc_px(_hbo_hso, _hbo_lo, _hbo_hi, {slot}), "HBO", n_hbo_col, n_hbo_width)
+"""
+
+
+def _n_scr(p: dict, slot: int) -> str:
+    """Return the Pine Script v6 normalized Seasonal Score block for strategy scripts."""
+    scale     = float(p.get('scale', 10.0))
+    min_years = int(p.get('min_years', 3))
+    style     = _style_inputs(p, 'n_scr', 'color.black', 'Seasonal Score (combined)')
+    return f"""\
+// ── Seasonal Score  (slot {slot}) ─────────────────────────────────────────────
+max_bars_back(close, 2000)
+{style}f_scr_score_n(horizon_bars) =>
+    s = 0.0
+    n = 0
+    for k = 1 to 7
+        past = close[252 * k]
+        fwd  = close[252 * k - horizon_bars]
+        if not na(past) and not na(fwd) and past > 0
+            s += (fwd / past - 1.0) * 100.0
+            n += 1
+    n >= {min_years} ? math.max(-100.0, math.min(100.0, s / n / {scale:.1f} * 100.0)) : na
+_scr_1mo_n = f_scr_score_n(21)
+plot(_osc_px(_scr_1mo_n, -100.0, 100.0, {slot}), "SCR 1mo", n_scr_col, n_scr_width)
+"""
+
+
 _OSC_NORM_TEMPLATES: dict[str, Callable] = {
     'adx':    _n_adx,
     'cci':    _n_cci,
     'cumd':   _n_cumd,
     'dema':   _n_dema,
     'ewo':    _n_ewo,
+    'hbo':    _n_hbo,
     'hor':    _n_hor,
     'macd':   _n_macd,
     'relvol': _n_relvol,
     'rsi':    _n_rsi,
+    'scr':    _n_scr,
     'stoch':  _n_stoch,
     'vol':    _n_vol,
     'zcr':    _n_zcr,
@@ -2461,10 +2736,12 @@ _OSC_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'cumd':   _t_cumd,
     'dema':   _t_dema,
     'ewo':    _t_ewo,
+    'hbo':    _t_hbo,
     'hor':    _t_hor,
     'macd':   _t_macd,
     'relvol': _t_relvol,
     'rsi':    _t_rsi,
+    'scr':    _t_scr,
     'stoch':  _t_stoch,
     'vol':    _t_vol,
     'zcr':    _t_zcr,
@@ -2480,6 +2757,7 @@ _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'fib':    _t_fib,
     'fvg':    _t_fvg,
     'gan':    _t_gan,
+    'gframa': _t_gframa,
     'heikin': _t_heikin,
     'ici':    _t_ici,
     'lqz':    _t_lqz,
@@ -2490,6 +2768,7 @@ _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'oft':    _t_oft,
     'pvt':    _t_pvt,
     'qtrend': _t_qtrend,
+    'renko':  _t_renko,
     'sup':    _t_sup,
     'vwap':   _t_vwap,
     'wml':    _t_wml,
@@ -3067,10 +3346,15 @@ def render_export_buttons(
     unsup_sel   = [n for n in overlays + oscillators if n in _UNSUPPORTED]
 
     if unsup_sel:
-        r.warning(
-            f"Cannot translate to Pine Script: **{', '.join(sorted(unsup_sel))}**  \n"
-            "• **pre** — loads an external ML model; Pine Script has no model-loading capability"
-        )
+        _unsup_reasons = {
+            'pre':    'loads an external ML model; Pine Script has no model-loading capability',
+            'bar':    'standard OHLC bar chart — use TradingView\'s native "Bars" chart type',
+            'candle': 'standard candlestick chart — use TradingView\'s native "Candles" chart type',
+        }
+        _lines = [f"Cannot translate to Pine Script: **{', '.join(sorted(unsup_sel))}**"]
+        for _n in sorted(unsup_sel):
+            _lines.append(f"• **{_n}** — {_unsup_reasons.get(_n, 'not supported')}")
+        r.warning("  \n".join(_lines))
     if missing_ovl or missing_osc:
         r.info(f"Pine template not yet available for: "
                f"**{', '.join(sorted(missing_ovl + missing_osc))}** "

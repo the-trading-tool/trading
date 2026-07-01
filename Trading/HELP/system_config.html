@@ -74,6 +74,16 @@ Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim n�
   <td>Blendet unter dem Chart den Button zum Export der aktuellen Indikator-Konfiguration als Pine Script v5 (TradingView) ein.</td>
   <td><code>True</code> · <code>False</code></td>
 </tr>
+<tr>
+  <td><b>Regime-/Market-Stress-Banner anzeigen</b> <small style="color:#888">show_regime</small></td>
+  <td>Blendet im Asset Viewer unter dem Chart das Frühwarn-Banner zur Marktbreite des zugehörigen Index ein (Bull/Bär/Seitwärts-Veränderung + Divergenz). Standardmäßig <b>aus</b>, da die Erstberechnung großer Indizes (z.&nbsp;B. ^RUT mit ~1900 Membern) Zeit kostet; das Ergebnis wird danach pro Tag gecacht (siehe <code>warm_market_stress.py</code>).</td>
+  <td><code>True</code> · <code>False</code> (Default <code>False</code>)</td>
+</tr>
+<tr>
+  <td><b>Nur handelbare (ISIN erforderlich)</b> <small style="color:#888">require_isin</small></td>
+  <td>Beschränkt die Auswahl in Strategy Finder und Multi-Transactions auf Werte mit gültiger ISIN (Näherung für „beim Broker handelbar"). Erst nach einem vollständigen <code>backfill_isin.py</code>-Lauf sinnvoll, sonst werden auch bloß-noch-nicht-aufgelöste Werte herausgefiltert. Pro Strategie/Index per Feld <code>require_isin</code> im Transaktions-JSON überschreibbar.</td>
+  <td><code>True</code> · <code>False</code> (Default <code>False</code>)</td>
+</tr>
 </table>
 
 <h2>Kauf- und Verkaufsbedingungen</h2>

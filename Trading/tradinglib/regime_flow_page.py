@@ -20,6 +20,8 @@ import streamlit as st
 
 from tradinglib.i18n import t
 from tradinglib.regime_data_engine import (
+    compute_breadth_stress,
+    compute_market_stress,
     compute_regimes,
     load_index_members,
     load_index_names,
@@ -54,6 +56,135 @@ def _sector_color(sector: str, sector_list: list) -> str:
         return _SECTOR_PALETTE[idx]
     except ValueError:
         return '#888888'
+
+
+# ── Shared early-warning banner ───────────────────────────────────────────────
+
+# Traffic-light palettes: (border/accent color, icon).
+_STRESS_PALETTE = {
+    'warning':  ('#C57F86', '🔴'),
+    'elevated': ('#E0A458', '🟡'),
+    'calm':     ('#84BBA1', '🟢'),
+    'subdued':  ('#A4ABB7', '⚪'),   # bearish-but-stable / washed out, no turn
+}
+_STRESS_LEVEL_KEY = {
+    'warning':  'main.stress_level_warning',
+    'elevated': 'main.stress_level_elevated',
+    'calm':     'main.stress_level_calm',
+}
+_STRESS_COMP_KEYS = {
+    'bull_drop':  'main.stress_comp_bull_drop',
+    'bear_rise':  'main.stress_comp_bear_rise',
+    'side_rise':  'main.stress_comp_side_rise',
+    'relvol':     'main.stress_comp_relvol',
+    'divergence': 'main.stress_comp_divergence',
+}
+# Recovery / breadth-thrust (bottom-turn counterpart). Distinct icons so the
+# green recovery light can't be confused with the green "calm" state.
+_RECOVERY_PALETTE = {
+    'turning':  ('#3C9D6E', '📈'),
+    'building': ('#7CB89A', '🌱'),
+}
+_RECOVERY_LEVEL_KEY = {
+    'turning':  'main.recovery_level_turning',
+    'building': 'main.recovery_level_building',
+}
+_RECOVERY_COMP_KEYS = {
+    'bull_rise':  'main.recovery_comp_bull_rise',
+    'bear_drop':  'main.recovery_comp_bear_drop',
+    'relvol':     'main.recovery_comp_relvol',
+    'washed_out': 'main.recovery_comp_washed_out',
+}
+
+
+def _top_drivers(components: dict, key_map: dict, threshold: float = 15.0,
+                 n: int = 3) -> list:
+    """Translated labels of the n strongest contributing components (≥ threshold)."""
+    return [t(key_map[k]) for k, v in
+            sorted(components.items(), key=lambda kv: kv[1], reverse=True)
+            if k in key_map and v >= threshold][:n]
+
+
+def _render_stress_box(region, color, icon, headline, detail, why_line, disclaimer):
+    """Shared coloured banner markup."""
+    region.markdown(
+        f'<div style="border-left:6px solid {color};background:{color}1f;'
+        f'padding:0.7rem 1rem;border-radius:6px;margin:0.4rem 0;">'
+        f'<div style="font-size:1.05rem;font-weight:600;">{headline}</div>'
+        f'<div style="font-size:0.9rem;opacity:0.92;margin-top:0.25rem;">{detail}</div>'
+        f'<div style="font-size:0.9rem;opacity:0.92;margin-top:0.15rem;">{why_line}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    region.caption(disclaimer)
+
+
+def render_market_stress_banner(stress: dict, index_name: str, region=st) -> None:
+    """Prominent breadth traffic-light banner. Shared by the Asset Viewer (below
+    the chart) and the Regime Flow page (below the summary metrics).
+
+    Picks ONE coherent banner by priority:
+      1. active deterioration  → red/amber early-warning box
+      2. else breadth turning  → green recovery / thrust box (bottom-turn)
+      3. else healthy breadth  → green "market calm" box (Bull > Bear)
+      4. else                  → grey "subdued / washed out" box (Bear ≥ Bull):
+                                 a low score on a fallen market is NOT reassuring,
+                                 so it must not show the green calm colour.
+    Renders nothing for an empty dict.
+    """
+    if not stress:
+        return
+
+    idx_label = str(index_name).lstrip('^') or str(index_name)
+    detail = t('main.stress_detail', bull=stress['bull'], bear=stress['bear'],
+               side=stress['side'], n=stress['n'], as_of=stress['as_of'])
+
+    s_level   = stress.get('level')
+    rec_level = stress.get('recovery_level', 'none')
+
+    # 1. Active deterioration warning takes precedence.
+    if s_level in ('warning', 'elevated'):
+        color, icon = _STRESS_PALETTE[s_level]
+        headline = t('main.stress_headline', icon=icon,
+                     level=t(_STRESS_LEVEL_KEY[s_level]),
+                     index=idx_label, score=stress['score'])
+        drivers = _top_drivers(stress.get('components', {}), _STRESS_COMP_KEYS)
+        why = ', '.join(drivers) if drivers else t('main.stress_no_drivers')
+        why_line = t('main.stress_why', drivers=why)
+        if stress.get('divergence'):
+            why_line += ' ' + t('main.stress_divergence_note', change=stress['index_change'])
+        _render_stress_box(region, color, icon, headline, detail, why_line,
+                           t('main.stress_disclaimer'))
+
+    # 2. Breadth turning up from a washed-out base → green recovery light.
+    elif rec_level in ('turning', 'building'):
+        color, icon = _RECOVERY_PALETTE[rec_level]
+        headline = t('main.recovery_headline', icon=icon,
+                     level=t(_RECOVERY_LEVEL_KEY[rec_level]),
+                     index=idx_label, score=stress['recovery_score'])
+        drivers = _top_drivers(stress.get('recovery_components', {}), _RECOVERY_COMP_KEYS)
+        why = ', '.join(drivers) if drivers else t('main.recovery_no_drivers')
+        why_line = t('main.stress_why', drivers=why)
+        _render_stress_box(region, color, icon, headline, detail, why_line,
+                           t('main.recovery_disclaimer'))
+
+    # 3./4. Low stress + no recovery → split by breadth level so a deeply
+    #       bearish (just-fallen) market is NOT painted reassuring green.
+    else:
+        if stress.get('bull', 0.0) > stress.get('bear', 0.0):
+            color, icon = _STRESS_PALETTE['calm']      # healthy → green
+            level_label = t(_STRESS_LEVEL_KEY['calm'])
+            why_line = t('main.stress_why', drivers=t('main.stress_no_drivers'))
+            disclaimer = t('main.stress_disclaimer')
+        else:
+            color, icon = _STRESS_PALETTE['subdued']   # washed out → grey
+            level_label = t('main.stress_level_subdued')
+            why_line = t('main.stress_subdued_why')
+            disclaimer = t('main.stress_subdued_disclaimer')
+        headline = t('main.stress_headline', icon=icon, level=level_label,
+                     index=idx_label, score=stress['score'])
+        _render_stress_box(region, color, icon, headline, detail, why_line,
+                           disclaimer)
 
 
 # ── Data preparation ──────────────────────────────────────────────────────────
@@ -667,6 +798,7 @@ class RegimeFlowPage:
 
         # ── Ticker list ───────────────────────────────────────────────────────
         tickers: tuple = ()
+        stress_index = None   # set only for real ^-index sources (for the banner)
 
         if src == t('flow.src_monitored'):
             mon = self._get_monitored()
@@ -683,6 +815,7 @@ class RegimeFlowPage:
                 return
             sel_idx = st.selectbox(t('flow.select_index'), idx_names,
                                    key='rf_idx_select')
+            stress_index = sel_idx
             tickers = load_index_members(sel_idx)
             if not tickers:
                 st.warning(t('flow.no_members', index=sel_idx))
@@ -727,6 +860,21 @@ class RegimeFlowPage:
         c4.metric('─ Sideways', f'{n_side/max(n_total,1)*100:.0f}% ({n_side})',
                   side_d, delta_color='off')
         c5.metric(t('flow.metric_date'), as_of)
+
+        # ── Early-warning banner ──────────────────────────────────────────────
+        # Real ^-index → full score incl. price/breadth divergence.
+        # Grouping / monitored assets → slimmed breadth-only score (no own
+        # index price for a divergence term).
+        try:
+            if stress_index and str(stress_index).startswith('^'):
+                stress = compute_market_stress(stress_index)
+                banner_label = stress_index
+            else:
+                stress = compute_breadth_stress(tuple(sorted(set(tickers))))
+                banner_label = stress_index or t('flow.src_monitored')
+            render_market_stress_banner(stress, banner_label)
+        except Exception:
+            logger.debug('regime-flow stress banner skipped', exc_info=True)
 
         # ── Sector aggregation ────────────────────────────────────────────────
         snap_now  = _sector_snapshot(df_now  if not df_now.empty  else df_all, sector_map)

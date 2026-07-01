@@ -174,6 +174,32 @@ class MultiCheckboxSelector:
                     self.sys_conf.set_value(config_key, selections)
             break
 
+    def _save_no_plot_flag(self, list_id: str, option: str, is_plot: bool) -> None:
+        """Persist a single Plot-toggle to config.db as a targeted delta.
+
+        Updates only the toggled indicator in the stored no-plot set instead of
+        rewriting the whole set from session_state. The full-set rewrite (V1's
+        _save_no_plot_to_config) was the source of the "Overlay-Default-Korruption":
+        Streamlit re-fires on_change when widgets are recreated after a non-render
+        rerun, at which point the session_state set is partial and would overwrite
+        the good config value. A single-option delta against the config-stored set
+        is idempotent under such spurious re-fires, so it is safe to auto-persist.
+        """
+        if self.sys_conf is None:
+            return
+        conf_key = {'Overlay': 'overlay_no_plot', 'Oszilator': 'oszilator_no_plot'}.get(list_id)
+        if not conf_key:
+            return
+        short = option.split(' - ')[0]
+        raw = self.sys_conf.get_value(conf_key, [])
+        current = [str(n) for n in raw] if isinstance(raw, list) else []
+        # Rebuild preserving order; compare case-insensitively so a single name
+        # never ends up duplicated with differing case.
+        rest = [n for n in current if n.lower() != short.lower()]
+        if not is_plot:
+            rest.append(short)
+        self.sys_conf.set_value(conf_key, rest)
+
     def render(self):
         """Render all selector columns as checkboxes inside expanders with optional ⚙ config buttons."""
         st.markdown("""
@@ -236,9 +262,14 @@ class MultiCheckboxSelector:
                             st.session_state[selector_self._touched_key] = True
                         return _cb
 
-                    def _make_plot_cb(lid, selector_self):
+                    def _make_plot_cb(lid, opt, p_key, selector_self):
+                        # Unlike the overlay/oscillator *selection* toggles (which stay
+                        # session-scoped), the Plot flag is persisted — but via a
+                        # corruption-safe single-option delta, see _save_no_plot_flag.
                         def _cb():
                             st.session_state[selector_self._touched_key] = True
+                            selector_self._save_no_plot_flag(
+                                lid, opt, st.session_state.get(p_key, True))
                         return _cb
 
                     selected_options = []
@@ -288,13 +319,13 @@ class MultiCheckboxSelector:
                                 self.sys_conf.render_plugin_params(short_name, merged_params)
                             if checked:
                                 c3.checkbox("Plot", key=plot_key,
-                                            on_change=_make_plot_cb(list_id, self))
+                                            on_change=_make_plot_cb(list_id, option, plot_key, self))
                         elif is_indicator:
                             c1, c2 = st.columns([0.70, 0.30])
                             checked = c1.checkbox(option, key=unique_key, **cb_kwargs)
                             if checked:
                                 c2.checkbox("Plot", key=plot_key,
-                                            on_change=_make_plot_cb(list_id, self))
+                                            on_change=_make_plot_cb(list_id, option, plot_key, self))
                         else:
                             checked = st.checkbox(option, key=unique_key, **cb_kwargs)
 

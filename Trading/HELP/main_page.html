@@ -63,6 +63,21 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
   <li><b>▼ rot</b> – Verkaufssignal (EWO unter EMA oder OVT fällt unter Schwellwert)</li>
 </ul>
 
+<h2>Regime-/Market-Stress-Banner</h2>
+<p>Gehört das Asset zu einem echten Börsen-Index (Ticker mit <code>^</code>), kann unter
+dem Chart ein Frühwarn-Banner zur <b>Marktbreite</b> des Index erscheinen: wie sich der
+Anteil Bull/Bär/Seitwärts der Index-Mitglieder verändert, plus ein Divergenz-Term
+(Index hält, Breite bröckelt). Es ist ein wahrscheinlichkeitsbasiertes Frühwarnsignal
+mit Tagen-bis-Wochen-Vorlauf, keine Crash-Vorhersage.</p>
+<ul>
+  <li>Standardmäßig <b>ausgeblendet</b> — in den ⚙ Einstellungen über
+      <b>„Regime-/Market-Stress-Banner anzeigen"</b> (<code>show_regime</code>) aktivierbar.</li>
+  <li>Die Erstberechnung großer Indizes (z.&nbsp;B. ^RUT, ~1900 Mitglieder) dauert; das
+      Ergebnis wird danach <b>pro Tag gecacht</b>. Der Scheduler-Job
+      <code>WARM_MARKET_STRESS</code> kann den Cache morgens vorwärmen, damit der erste
+      Seitenaufruf nicht wartet.</li>
+</ul>
+
 <div class="warn">Signale sind keine Anlageempfehlung. Immer eigenes Urteil und Stop-Loss verwenden.</div>
 </body>
 </html>

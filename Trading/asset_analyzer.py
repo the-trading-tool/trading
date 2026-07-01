@@ -400,8 +400,25 @@ class TradingApp:
 
                 renderer = ChartsGridRenderer()
                 (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
-                
-                region.plotly_chart(tc.tiny_chart( f'{index_columns}',f' {interval}/{period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays,url=f"{self.url}").fig,
+
+                # Overlays/Oszillatoren, die der User auf "nur berechnen, nicht
+                # zeichnen" gestellt hat (⚙-Dialog → overlay_no_plot /
+                # oszilator_no_plot), dürfen — wie im Asset Viewer — nicht geplottet
+                # werden. Ohne das zeigt die Market-Map-Grafik mehr Linien
+                # (z.B. Trend-/Regressionslinien) als die Detailseite für denselben
+                # Ticker. Mirrors main_page.py's hide_details path.
+                def _no_plot_set(conf_key):
+                    raw = self.sys_config.get_value(conf_key, [])
+                    return {str(n).lower() for n in raw} if isinstance(raw, list) else set()
+                _ov_no_plot = _no_plot_set('overlay_no_plot')
+                _oz_no_plot = _no_plot_set('oszilator_no_plot')
+                no_plot_overlays = [n for n in overlays if str(n).lower() in _ov_no_plot]
+                no_plot_oszilators = [n for n in oszilators if str(n).lower() in _oz_no_plot]
+
+                # username durchreichen, sonst liest tiny_chart die Indikator-Params
+                # (z.B. markov forecast_pos/show_matrix) aus der leeren Default-Config
+                # statt aus der User-Config → Forecast oben-rechts + Matrix sichtbar.
+                region.plotly_chart(tc.tiny_chart( f'{index_columns}',f' {interval}/{period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays,no_plot_overlays=no_plot_overlays,no_plot_oszilators=no_plot_oszilators,username=self.username,url=f"{self.url}").fig,
                     use_container_width = True,
                     theme="streamlit",
                     config = gt.chart_config,
@@ -669,6 +686,7 @@ class TradingApp:
                     _nav(t('nav.admin_credentials'), admin='true', section='credentials')
                     _nav(t('nav.admin_system'),      admin='true', section='system')
                     _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
+                    _nav(t('nav.admin_pine'),        admin='true', section='pine')
 
         # ── External links ──────────────────────────────────────────────────
         st.sidebar.markdown("---")

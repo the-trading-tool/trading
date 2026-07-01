@@ -90,7 +90,9 @@ _INDEX_NAMES: dict[str, tuple[str, str]] = {
 }
 
 # yfinance-Ticker weicht vom Display-Ticker ab
-_YF_TICKER_MAP: dict[str, str] = {'^SPX': '^GSPC'}
+# DX=F (US-Dollar-Index-Future) liefert über Yahoo keine Daten mehr (404/delisted);
+# der ICE-Spot-Index DX-Y.NYB liefert dieselbe Größe und funktioniert.
+_YF_TICKER_MAP: dict[str, str] = {'^SPX': '^GSPC', 'DX=F': 'DX-Y.NYB'}
 
 # Symbole die immer im Pool sind (unabhängig von yf_tickers.db)
 _EXTRA_SYMBOLS = [
@@ -469,9 +471,14 @@ def _compute_for_symbol(
 
 
 def _ensure_core_indicators(df: pd.DataFrame, ind: dict) -> None:
-    """Ergänzt RSI(14) und ATR(14) in ind, falls FetchData sie nicht berechnet hat.
+    """Ergänzt RSI(14), MACD(12/26/9) und ATR(14) in ind, falls FetchData sie
+    nicht berechnet hat.
 
-    Pflicht-Indikatoren für das Regime-Modell (Momentum + Volatilität).
+    Pflicht-Indikatoren für das Regime-Modell (Momentum + Volatilität). Die
+    Prompt-Überschrift "[2-MOMENTUM — RSI + MACD]" ist hartkodiert; MACD wird von
+    FetchData aber nur erzeugt, wenn 'macd' in der Chart-Indikator-Config steht.
+    Damit das Format zur Datenlage passt, wird MACD hier — wie RSI/ATR — notfalls
+    direkt aus dem Schlusskurs berechnet (Standard 12/26/9).
     Mutiert ind in-place — kein Rückgabewert.
     """
     # RSI(14)
@@ -485,6 +492,23 @@ def _ensure_core_indicators(df: pd.DataFrame, ind: dict) -> None:
             v     = float((100 - 100 / (1 + rs)).iloc[-1])
             if not pd.isna(v):
                 ind['rsi'] = round(v, 1)
+        except Exception:
+            pass
+
+    # MACD(12/26/9) — Standard-Parameter; nur falls FetchData keine macd-Spalte lieferte
+    if 'macd' not in ind:
+        try:
+            close   = df['Close'].dropna()
+            ema12   = close.ewm(span=12, adjust=False, min_periods=12).mean()
+            ema26   = close.ewm(span=26, adjust=False, min_periods=26).mean()
+            macd_l  = ema12 - ema26
+            signal  = macd_l.ewm(span=9, adjust=False, min_periods=9).mean()
+            hist    = macd_l - signal
+            m, s, h = float(macd_l.iloc[-1]), float(signal.iloc[-1]), float(hist.iloc[-1])
+            if not (pd.isna(m) or pd.isna(s) or pd.isna(h)):
+                ind['macd']        = round(m, 4)
+                ind['macd_signal'] = round(s, 4)
+                ind['macd_diff']   = round(h, 4)
         except Exception:
             pass
 
@@ -619,11 +643,25 @@ def _build_market_prompt(
     _regime = {0.0: 'Seitwärts', 1.0: 'Bullenmarkt', 2.0: 'Bärenmarkt'}
     inc     = sections or {}   # Abkürzung für bedingte Includes
 
+    # Anzahl der ausgewählten Märkte explizit an die KI übergeben, damit sie ALLE
+    # auswertet und nicht von einer angenommenen Zahl ausgeht / eigenständig begrenzt.
+    n_total = len(results)
+    n_data  = sum(1 for r in results if not r.get('error'))
+    # Mehrheits-Schwelle (echte Mehrheit der Assets MIT Daten) — ersetzt das frühere
+    # hartkodierte "5 von 8", damit die Schwelle mit der Auswahl mitskaliert.
+    n_majority = n_data // 2 + 1 if n_data else 0
+    count_line = f"Ausgewählte Märkte: {n_total}"
+    if n_data != n_total:
+        count_line += f" (davon {n_data} mit verfügbaren Daten, {n_total - n_data} mit FEHLER)"
+
     lines = [
         "Du bist ein quantitativer Multi-Asset-Analyst.",
         "Analysiere die folgenden Märkte STRIKT DATENBASIERT — keine narrative Vereinheitlichung.",
         f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
+        count_line,
         "Regeln:",
+        f"  • Werte ALLE {n_total} ausgewählten Märkte aus. Triff KEINE eigene Vorauswahl "
+        "und begrenze die Anzahl NICHT — die Auswahl ist bereits vom Nutzer getroffen.",
         "  • Verwende NUR die gelieferten Daten. Keine externen Annahmen.",
         '  • Widersprüchliche Indikatoren → als "KONFLIKT" markieren, NICHT auflösen.',
         "  • Hierarchie: [1-TREND] > [2-MOMENTUM] > [3-VOLATILITÄT] > [4-MAKRO] > [5-OPTIONAL]",
@@ -832,8 +870,18 @@ def _build_market_prompt(
         "ANALYSE-AUFGABE",
         "════════════════════════════════════════",
         "",
-        "Schreibe für JEDES der 8 Assets exakt dieses Format",
-        "(keine Abweichungen, keine zusätzlichen Abschnitte pro Asset):",
+        f"Schreibe für JEDES der {n_total} ausgewählten Assets exakt dieses Format",
+        "(keine Abweichungen, keine zusätzlichen Abschnitte pro Asset).",
+        "Assets mit FEHLER/ohne Daten: nur den ASSET-Kopf + 'keine Daten verfügbar' notieren,",
+        "nicht aus der Analyse streichen:",
+        "",
+        "Klassifikations-Schwellen (VERBINDLICH — nutze exakt diese Grenzen, erfinde keine eigenen):",
+        "  Trend:       bull = Kurs über SMA50 UND SMA200  |  bear = Kurs unter SMA50 UND SMA200  |",
+        "               sideways = gemischt (Kurs über die eine, unter die andere MA)",
+        "  Momentum (RSI 14):  stark = RSI ≥ 60  |  neutral = 40 ≤ RSI < 60  |  schwach = RSI < 40.",
+        "               MACD-Hist-Vorzeichen bestätigt (+ = bullisch, − = bearisch); widerspricht es",
+        "               der RSI-Einstufung → 'neutral' UND als KONFLIKT vermerken.",
+        "  Volatilität (ATR % des Kurses):  niedrig < 1.5%  |  normal 1.5–3.0%  |  hoch > 3.0%",
         "",
         "ASSET: [ticker | name]",
         "Trend:       [bull / bear / sideways] — Begründung: welche MAs bestätigen?",
@@ -852,8 +900,8 @@ def _build_market_prompt(
             "─────────────────────────────────────────",
             "GLOBAL SUMMARY",
             "─────────────────────────────────────────",
-            "Risk-Modus:    [risk-on / neutral / risk-off] — nur wenn MINDESTENS 5 von 8",
-            "               Assets dasselbe Regime zeigen. Sonst: 'gemischt'",
+            f"Risk-Modus:    [risk-on / neutral / risk-off]",
+            "               Assets (mit Daten) dasselbe Regime zeigen. Sonst: 'gemischt'",
             "Haupttreiber:  [max. 3 Faktoren aus den Daten — konkrete Werte nennen]",
             "Widersprüche:  [Asset-Kombinationen die gegenläufige Signale zeigen]",
             "Confidence:    [0–100] — 0=maximal widersprüchlich, 100=alle Signale konsistent",
