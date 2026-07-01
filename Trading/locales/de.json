@@ -501,6 +501,7 @@
   "tp.pos_open_header": "#### Offene Positionen",
   "tp.pos_load_error": "Positionen konnten nicht geladen werden: {error}",
   "tp.pos_no_open": "Keine offenen Positionen.",
+  "tp.pos_strategy_external": "extern",
   "tp.pos_dry_no_close": "Testbetrieb aktiv — Schließen nicht verfügbar.",
   "tp.pos_close_btn": "✕ Position schließen: {symbol}",
   "tp.pos_close_ok": "{symbol} Schließ-Order gesendet.",

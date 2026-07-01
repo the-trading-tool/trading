@@ -501,6 +501,7 @@
   "tp.pos_open_header": "#### Open Positions",
   "tp.pos_load_error": "Failed to load positions: {error}",
   "tp.pos_no_open": "No open positions.",
+  "tp.pos_strategy_external": "external",
   "tp.pos_dry_no_close": "Dry run active — closing not available.",
   "tp.pos_close_btn": "✕ Close position: {symbol}",
   "tp.pos_close_ok": "{symbol} close order submitted.",
