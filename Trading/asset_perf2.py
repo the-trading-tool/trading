@@ -1346,10 +1346,19 @@ if __name__ == "__main__":
 
     if simulate:
         if not index_name == '':
-            # /index:NAME wertet ausschließlich diesen einen Index aus. Das frühere
-            # pauschale Anhängen von NON_STOCK_GROUPS ist ein Relikt aus der Zeit vor
-            # /group und entfällt — Kategorie-Gruppen laufen jetzt über /group:NAME.
-            ticker_query = f'SELECT s.Ticker FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name = "{index_name}"'
+            # /index:NAME[,NAME2,...] wertet ausschließlich die genannten Indizes aus.
+            # Mehrere kommagetrennt (analog /group); Case egal (UPPER-Vergleich, die
+            # DB-Namen sind ohnehin uppercase: ^DJI/^SPX/^RUT/…). Das frühere pauschale
+            # Anhängen von NON_STOCK_GROUPS ist ein Relikt aus der Zeit vor /group und
+            # entfällt — Kategorie-Gruppen laufen über /group:NAME.
+            idx_names = [s.strip().upper() for s in index_name.split(',') if s.strip()]
+            idx_sql = '","'.join(idx_names)
+            ticker_query = (
+                'SELECT s.Ticker FROM stocks s '
+                'JOIN stock_indices si ON s.id = si.stock_id '
+                'JOIN indices i ON si.index_id = i.id '
+                f'WHERE UPPER(i.name) IN ("{idx_sql}")'
+            )
     if all:
         if group == ['ETP']:
             ticker_query = ('SELECT s.Ticker FROM stocks s '

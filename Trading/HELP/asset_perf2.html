@@ -30,6 +30,7 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <table>
 <tr><th>Parameter</th><th>Wirkung</th></tr>
 <tr><td><code>(ohne Filter)</code></td><td>Nur Mitglieder echter Börsen-Indizes (Gruppen mit <code>^</code>-Präfix).</td></tr>
+<tr><td><code>/index:^SPX</code></td><td>Nur die genannten Indizes; mehrere kommagetrennt, z.B. <code>/index:^DJI,^SPX,^RUT</code> (Groß-/Kleinschreibung egal).</td></tr>
 <tr><td><code>/group:ETP</code></td><td>Nur Mitglieder der genannten Gruppe(n); mehrere kommagetrennt, z.B. <code>/group:METALS,COMMODITIES</code>. Für eigene Läufe von ETP, CRYPTO, CURRENCIES usw.</td></tr>
 <tr><td><code>/inverse</code></td><td>Nur Ticker, die <b>keiner</b> Gruppe zugeordnet sind (Einzeltitel ohne Index-/Gruppen-Verknüpfung).</td></tr>
 <tr><td><code>/all</code></td><td>Alle Stocks und Indizes <b>außer ETP-Gruppe</b>; schreibt nach <code>asset_simulation_all.db</code>.</td></tr>
