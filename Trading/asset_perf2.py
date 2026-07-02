@@ -41,6 +41,9 @@ INDICATOR_BACKFILL_MAP: dict = {
     'relvol':  ['relvol_ratio'],
     'atc':     ['atc_top_high', 'atc_bot_low'],
     'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
+    # Raw OHLC values copied straight from local OHLCV (no indicator to run).
+    # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
+    'ohlc':    ['Open', 'High', 'Low'],
 }
 
 # Indicators that are additionally computed on higher timeframes during
@@ -324,7 +327,7 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
     log_vola   = col('logVola')
     pred_hi    = col('predictedHigh')
     pred_lo    = col('predictedLow')
-    day_low    = col('dayLow')
+    day_low    = col('Low')
     roa        = col('roa')
     pct_tgt    = col('pctTargetHighPrice')
 
@@ -811,8 +814,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
 
         pdict['predictedLow'] = getattr(ft.pre, 'pr_low', 0)
         pdict['predictedHigh'] = getattr(ft.pre, 'pr_high', 0)
-        pdict['dayHigh'] = DataUtils.safe_last(df, 'High', default=0)
-        pdict['dayLow'] = DataUtils.safe_last(df, 'Low', default=0)
+        pdict['High'] = DataUtils.safe_last(df, 'High', default=0)
+        pdict['Low'] = DataUtils.safe_last(df, 'Low', default=0)
+        pdict['Open'] = DataUtils.safe_last(df, 'Open', default=0)
 
         # determine trend direction using already-extracted safe values
         if pdict['adx'] > 25 and pdict['momentum'] > pdict['rsi_ema'] and pdict['momentum'] > 40:
