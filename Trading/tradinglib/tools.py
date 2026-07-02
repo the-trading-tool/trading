@@ -848,7 +848,12 @@ class BuySellSignalGenerator:
         try:
             buy_mask_global = compute_signal_mask(self.df, self.buy_condition)
         except Exception as e:
-            st.error(f"[BUY-ERROR] {e}")
+            logger.error("[BUY-ERROR] %s", e)
+            # UI-Feedback nur, wenn ein Streamlit-Kontext existiert (headless-safe).
+            try:
+                st.error(f"[BUY-ERROR] {e}")
+            except Exception:
+                pass
             buy_mask_global = pd.Series(False, index=self.df.index)
 
         # Kaufsignale + Delay: pro Ticker den Treffer um buy_delay_days nach
@@ -917,7 +922,11 @@ class BuySellSignalGenerator:
                         try:
                             cond = bool(eval(self.sell_condition, {}, context))
                         except Exception as e:
-                            st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
+                            logger.error("[SELL-ERROR] Row %s, Ticker %s: %s", i, ticker, e)
+                            try:
+                                st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
+                            except Exception:
+                                pass
                             cond = False
                 if cond:
                     buysell[i] = -1

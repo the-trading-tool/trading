@@ -131,28 +131,104 @@ def angle(df):
     return angle
 
 def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)', sell_query = '(zcr<0.7)|(ewo<ewo_ema)'):
-    """Evaluate buy/sell query expressions and attach signal columns."""
-    
+    """Attach buy_close/sell_close chart markers from the buy/sell queries.
+
+    Delegates to the position-aware BuySellSignalGenerator — the same engine
+    the Strategy Finder / Multi Strategies backtests use — so the chart markers
+    match the actually simulated trades. Because a sell is only emitted while a
+    position is open (and a buy only while flat), this structurally avoids the
+    old stateless conflation, where a buy condition turning *off* was drawn as a
+    sell (and vice versa).
+
+    On any failure it falls back to stateless per-condition edge detection so
+    the chart never loses all markers.
+    """
     df = df.copy()
-    evaluator = tools.ExpressionEvaluator(df,"df")
-    buy_assets_transformed = evaluator.validate_and_transform(buy_query)        
-    sell_assets_transformed = evaluator.validate_and_transform(sell_query)        
-    df['crosszero'] = 0
+    orig_index = df.index
+
+    # The generator groups on 'ticker' and sorts on 'Date'; the single-asset
+    # chart df has neither yet (timestamp index, no Date column). Inject both
+    # temporarily so apply_signals() runs, then restore the original index.
+    injected = []
+    if 'ticker' not in df.columns:
+        df['ticker'] = '__chart__'
+        injected.append('ticker')
+    if 'Date' not in df.columns:
+        df['Date'] = orig_index
+        injected.append('Date')
+
     try:
-        df['crosszero'] = np.where((eval(buy_assets_transformed)), 1,0)
+        gen = tools.BuySellSignalGenerator(
+            df, buy_condition=buy_query, sell_condition=sell_query, buy_delay_days=0)
+        out = gen.apply_signals()
+
+        # apply_signals() does reset_index(drop=True); restore the original
+        # timestamp index via the injected Date column so downstream plotting
+        # keeps its x-axis. set_index('Date') yields exactly orig_index values.
+        if 'Date' in injected and 'Date' in out.columns:
+            out = out.set_index('Date')
+            out.index = out.index.rename(orig_index.name)
+        elif len(out) == len(orig_index):
+            out.index = orig_index
+
+        # The engine marks buySell=1 on *every* bar the buy condition holds, but
+        # only exits (-1) are position-aware. For clean, alternating chart markers
+        # reconstruct the real trades: entry = first buy while flat, exit = sell
+        # while in a position. This matches the trades the engine actually takes.
+        buysell = out['buySell'].to_numpy() if 'buySell' in out.columns else np.zeros(len(out))
+        tickers = out['ticker'].to_numpy() if 'ticker' in out.columns else np.zeros(len(out))
+        entry = np.zeros(len(out), dtype=bool)
+        exit_ = np.zeros(len(out), dtype=bool)
+        in_pos = {}
+        for i in range(len(buysell)):
+            tk = tickers[i]
+            if buysell[i] == -1 and in_pos.get(tk):
+                exit_[i] = True
+                in_pos[tk] = False
+            elif buysell[i] == 1 and not in_pos.get(tk):
+                entry[i] = True
+                in_pos[tk] = True
+
+        out['buy_close'] = np.where(entry, out['Close'], np.nan)
+        out['sell_close'] = np.where(exit_, out['Close'], np.nan)
+        out['position'] = np.select([entry, exit_], [1, -1], default=0)
+
+        if 'ticker' in injected:
+            out = out.drop(columns=['ticker'], errors='ignore')
+        return out
+    except Exception:
+        clean = df.drop(columns=injected, errors='ignore')
+        return _buy_sell_stateless(clean, buy_query, sell_query)
+
+
+def _buy_sell_stateless(df: pd.DataFrame, buy_query: str, sell_query: str):
+    """Stateless fallback: mark the rising edge of each condition independently.
+
+    Not position-aware, but keeps buy and sell decoupled so a buy turning off is
+    never mistaken for a sell. Used only when BuySellSignalGenerator fails.
+    """
+    df = df.copy()
+    evaluator = tools.ExpressionEvaluator(df, "df")
+    buy_assets_transformed = evaluator.validate_and_transform(buy_query)
+    sell_assets_transformed = evaluator.validate_and_transform(sell_query)
+
+    buy_mask = pd.Series(False, index=df.index)
+    sell_mask = pd.Series(False, index=df.index)
+    try:
+        buy_mask = pd.Series(eval(buy_assets_transformed), index=df.index).fillna(False).astype(bool)
     except Exception:
         pass
-    df['position'] = df['crosszero'].diff()
-
-    df['crosszero'] = 0
     try:
-        df['crosszero'] = np.where((eval(sell_assets_transformed)), -1,0)
+        sell_mask = pd.Series(eval(sell_assets_transformed), index=df.index).fillna(False).astype(bool)
     except Exception:
         pass
-    df['position'] = df['position'] + df['crosszero'].diff()
 
-    df['buy_close'] =  np.where(df['position'] > 0,df['Close'],np.nan)
-    df['sell_close'] =  np.where(df['position'] < 0,df['Close'],np.nan)
+    buy_signal = buy_mask & ~buy_mask.shift(1, fill_value=False)
+    sell_signal = sell_mask & ~sell_mask.shift(1, fill_value=False)
+
+    df['position'] = np.select([buy_signal, sell_signal], [1, -1], default=0)
+    df['buy_close'] = np.where(buy_signal, df['Close'], np.nan)
+    df['sell_close'] = np.where(sell_signal, df['Close'], np.nan)
     return df
 
 
