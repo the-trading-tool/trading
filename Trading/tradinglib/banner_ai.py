@@ -38,7 +38,7 @@ _SIM_GROUPS = {
                     'ewo_wk', 'ewo_mo'],
     'Heikin Ashi': ['ha_close', 'ha_open', 'ha_ema_high', 'ha_ema_low'],
     'DEMA':        ['dema_ema_fast', 'dema_ema_slow', 'dema_buy', 'dema_sell'],
-    'Preis':       ['close', 'dayHigh', 'dayLow', 'ath', 'take_profit', 'stop_loss',
+    'Preis':       ['close', 'Open', 'High', 'Low', 'ath', 'take_profit', 'stop_loss',
                     'sup_resistance', 'sup_resistance_wk', 'sup_support', 'sup_support_wk',
                     'sma20', 'sma50', 'sma200', 'ema9', 'ema21', 'ema50',
                     'predictedLow', 'predictedHigh', 'pctTargetHighPrice'],

@@ -1,10 +1,17 @@
 import ast
 import os
+import re
 import streamlit as st
 import uuid
 from tradinglib.indicator import indicator
 
 class MultiCheckboxSelector:
+
+    # Bar-Budget: mehr Kerzen als das ueberfordert das Frontend (Plotly) und macht
+    # unsinnige Kombis wie 1m/10y erst gar nicht waehlbar. 800 ~= 3 Jahre
+    # Tagesdaten (3*252) + Puffer -> bei Intervall 1d ist damit 3y die groesste
+    # gueltige Periode.
+    MAX_BARS = 800
 
     indicators = indicator.IndicatorLoader(os.path.dirname(os.path.abspath(indicator.__file__)))
     lists = [
@@ -200,6 +207,81 @@ class MultiCheckboxSelector:
             rest.append(short)
         self.sys_conf.set_value(conf_key, rest)
 
+    # ------------------------------------------------------------------ #
+    # Interval x Period Guard: verhindert Overload-Kombinationen, indem   #
+    # zu grosse Perioden fuer das gewaehlte Intervall gesperrt werden und #
+    # die Auswahl auf die groesste gueltige Periode geklemmt wird.        #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _estimate_bars(interval: str, period: str) -> float:
+        """Grobe Anzahl Kerzen, die interval x period ergibt (Handelskalender-
+        Naeherung, gleiche Konstanten wie OHLCQueryPlanner: 480 min/Tag, 252
+        Handelstage/Jahr). Reine Schaetzung fuer die UI, kein exakter Zaehler."""
+        def _parse(s):
+            m = re.match(r"(\d+)([a-z]+)", s or "")
+            if not m:
+                return 1, (s or "")
+            return int(m.group(1)), m.group(2)
+
+        iv, iu = _parse(interval)
+        pv, pu = _parse(period)
+        if iv <= 0:
+            iv = 1
+        candles_per_day = {
+            'm':  480.0 / iv,        # 8h Handel = 480 Minuten
+            'h':  8.0 / iv,
+            'd':  1.0 / iv,
+            'wk': 1.0 / (5 * iv),
+            'mo': 1.0 / (21 * iv),
+        }.get(iu, 1.0)
+        trading_days = {
+            'd':  pv,
+            'wk': 5 * pv,
+            'mo': 21 * pv,
+            'y':  252 * pv,
+        }.get(pu, pv)
+        return trading_days * candles_per_day
+
+    def _options_for(self, list_id):
+        """Return the option list configured for list_id (or [])."""
+        return next((o for l, o in self.lists if l == list_id), [])
+
+    def _selected_single(self, list_id):
+        """Return the currently selected option for a radio-style list, or None."""
+        for o in self._options_for(list_id):
+            if st.session_state.get(f"{list_id}_{o}_{self.instance_id}", False):
+                return o
+        return None
+
+    def _invalid_periods(self, interval):
+        """Periods that would exceed MAX_BARS at the given interval."""
+        return {o for o in self._options_for('Period')
+                if self._estimate_bars(interval, o) > self.MAX_BARS}
+
+    def _apply_period_limit(self):
+        """Klemmt die Periodenauswahl auf die groesste gueltige Periode
+        (<= MAX_BARS Kerzen) fuer das aktuell gewaehlte Intervall.
+
+        Wird zu Beginn von render() aufgerufen -- also bevor die Widgets
+        instanziiert werden -- damit ein geklemmter Wert nie mit einem bereits
+        gerenderten (dann gesperrten) Widget kollidiert. Persistiert bewusst
+        NICHT nach config.db: die Auswahl ist deterministisch aus interval+period
+        reproduzierbar, und Schreiben beim reinen Laden meiden wir (vgl.
+        Overlay-Default-Korruption)."""
+        periods = self._options_for('Period')
+        if not periods:
+            return
+        interval = self._selected_single('Interval') or '1d'
+        valid = [o for o in periods if self._estimate_bars(interval, o) <= self.MAX_BARS]
+        if not valid:
+            valid = periods[:1]  # Fallback: kleinste Periode ist immer erlaubt
+        if self._selected_single('Period') in valid:
+            return
+        # Perioden-Liste ist aufsteigend sortiert -> letzte gueltige = groesste.
+        target = valid[-1]
+        for o in periods:
+            st.session_state[f"Period_{o}_{self.instance_id}"] = (o == target)
+
     def render(self):
         """Render all selector columns as checkboxes inside expanders with optional ⚙ config buttons."""
         st.markdown("""
@@ -227,6 +309,16 @@ class MultiCheckboxSelector:
         }
         </style>
         """, unsafe_allow_html=True)
+
+        # Interval x Period Guard: zuerst die Auswahl auf eine gueltige Periode
+        # klemmen (bevor Widgets erzeugt werden), dann die fuer das aktuelle
+        # Intervall zu grossen Perioden ermitteln -> werden unten disabled.
+        self._apply_period_limit()
+        current_interval = self._selected_single('Interval') or '1d'
+        invalid_periods = self._invalid_periods(current_interval)
+        valid_periods = [o for o in self._options_for('Period') if o not in invalid_periods]
+        max_valid_period = valid_periods[-1] if valid_periods else ''
+
         # Dynamische Spaltenanzahl: Maximal 3 pro Reihe für bessere Lesbarkeit
         num_columns = min(4, len(self.lists))
         col_row = self.region.empty()
@@ -238,6 +330,8 @@ class MultiCheckboxSelector:
 
             with col:
                 with st.expander(f"{list_id}:"):
+                    if list_id == 'Period' and max_valid_period:
+                        st.caption(f"max. {max_valid_period} · Intervall {current_interval}")
                     # Callback für Radio-Button-Verhalten (Interval / Period) + Config-Persistierung
                     def _make_single_select_cb(lid, opt, inst_id, opts, selector_self):
                         def _cb():
@@ -327,6 +421,15 @@ class MultiCheckboxSelector:
                                 c2.checkbox("Plot", key=plot_key,
                                             on_change=_make_plot_cb(list_id, option, plot_key, self))
                         else:
+                            # Perioden, die fuer das aktuelle Intervall > MAX_BARS
+                            # Kerzen ergeben, werden gesperrt (nicht waehlbar).
+                            is_over_budget = (list_id == 'Period' and option in invalid_periods)
+                            if is_over_budget:
+                                cb_kwargs['disabled'] = True
+                                cb_kwargs['help'] = (
+                                    f"> {self.MAX_BARS} Bars bei Intervall {current_interval} — "
+                                    f"kleinere Periode oder groesseres Intervall waehlen"
+                                )
                             checked = st.checkbox(option, key=unique_key, **cb_kwargs)
 
                         # Speichern der Auswahl nur bei Änderung
