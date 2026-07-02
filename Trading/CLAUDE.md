@@ -105,6 +105,17 @@ migriert (Daten bleiben erhalten):
 | `relVolRatio` | `relvol_ratio` | relvol (Tagesbasis) |
 | `wkRelVolRatio` | `relvol_ratio_wk` | relvol (Wochenbasis) |
 | `moRelVolRatio` | `relvol_ratio_mo` | relvol (Monatsbasis) |
+| `atc_high` | `atc_top_high` | atc (df-Spalte + Backfill-Map waren schon korrekt) |
+| `atc_low` | `atc_bot_low` | atc (df-Spalte + Backfill-Map waren schon korrekt) |
+
+`atc`-Migration (2026-07-02): Der Hauptlauf schrieb `atc_high`/`atc_low`, während
+`INDICATOR_BACKFILL_MAP`/`atc.py` schon `atc_top_high`/`atc_bot_low` verwendeten →
+8 der 9 `asset_simulation_*.db` hatten **beide** Paare. Migration: bestehende
+Backfill-Spalten `atc_top_high`/`atc_bot_low` gelöscht, dann `atc_high`/`atc_low`
+per `RENAME COLUMN` an ihre Stelle (Hauptlauf-Datenspur bleibt kanonisch). Hinweis:
+die beiden Spuren wichen inhaltlich ~92 % ab (Sim-vs-OHLC-Vintage). Der Backward-
+Compat-Alias in `atc.py` (`self.df['atc_high']=atc_top_high` u. `atc_low`) bleibt
+als reine Live-DF-Bequemlichkeit bestehen — er wird nicht mehr ins pdict/DB gelesen.
 
 Hinweis: `relvol_ratio_wk`/`relvol_ratio_mo` stammen bereits architektonisch aus
 `relvol.py` — `fetch_data.fetch_data()` instanziiert die `Relvol`-Klasse für jedes

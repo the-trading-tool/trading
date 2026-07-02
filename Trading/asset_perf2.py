@@ -749,8 +749,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         relVol = DataUtils.safe_last(df, 'relvol_ratio', default=0)
         wkRelVol = DataUtils.safe_last(df_weekly, 'relvol_ratio', default=0)
         moRelVol = DataUtils.safe_last(df_monthly, 'relvol_ratio', default=0)
-        atc_high = DataUtils.safe_last(df, 'atc_top_high', default=0)
-        atc_low = DataUtils.safe_last(df, 'atc_bot_low', default=0)
+        atc_top_high = DataUtils.safe_last(df, 'atc_top_high', default=0)
+        atc_bot_low = DataUtils.safe_last(df, 'atc_bot_low', default=0)
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
         cci = DataUtils.safe_last(df, 'cci', default=0)
         adx = DataUtils.safe_last(df, 'adx', default=0)
@@ -776,8 +776,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['sortino'] = indicator.sortino_ratio(df)
         pdict['semiVola'] = indicator.semi_volatility(df)
         pdict['close'] = close
-        pdict['atc_high'] = atc_high
-        pdict['atc_low'] = atc_low
+        pdict['atc_top_high'] = atc_top_high
+        pdict['atc_bot_low'] = atc_bot_low
         pdict['rsi'] = rsi
         pdict['cci'] = cci
         pdict['adx'] = adx
