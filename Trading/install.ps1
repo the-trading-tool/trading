@@ -243,6 +243,100 @@ if (Test-Path 'database\secret.key') {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 1F: Scheduler-Jobs seeden (Windows-Variante)
+# ---------------------------------------------------------------------------
+# Befuellt database/scheduler.db mit den Standard-Jobs, sofern die Tabelle noch
+# leer ist (idempotent -- eine bestehende Job-Liste wird NIE ueberschrieben).
+# Der Python-Pfad ergibt sich aus sys.executable (= diese .venv), die Skript-
+# Pfade aus dem aktuellen Installationsverzeichnis -- keine hartcodierten Pfade.
+# Bewusst NICHT geseedet: TradingDB-Env (nur Produktion), sowie die beiden
+# broker-/order-ausfuehrenden Jobs STOPLOSS_TRAILING und EXECUTE_ORDER.
+
+Write-Step "Phase 1F: Scheduler-Jobs seeden (database\scheduler.db)"
+
+$seedPy = @'
+import os, sys, sqlite3
+
+ROOT = os.getcwd()
+PY   = sys.executable                                    # = .venv-Python
+DB   = os.path.join(ROOT, "database", "scheduler.db")
+# Windows: Ruhezustand (nur diese Zeile unterscheidet sich von der Linux-Variante)
+STANDBY = r'"C:\Windows\System32\shutdown.exe" /h'
+
+os.makedirs(os.path.dirname(DB), exist_ok=True)
+conn = sqlite3.connect(DB)
+c = conn.cursor()
+c.execute("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY, time TEXT, command TEXT, "
+          "frequency TEXT, job_name TEXT, end_time TEXT, time_range TEXT, allowed_days TEXT, "
+          "enabled INTEGER DEFAULT 1, last_run TEXT)")
+c.execute("CREATE TABLE IF NOT EXISTS processes (id INTEGER PRIMARY KEY, task_id INTEGER, "
+          "pid INTEGER, job_name TEXT)")
+conn.commit()
+
+c.execute("SELECT COUNT(*) FROM jobs")
+if c.fetchone()[0] > 0:
+    print("   scheduler.db enthaelt bereits Jobs -- Seed uebersprungen")
+    sys.exit(0)
+
+WD  = "monday,tuesday,wednesday,thursday,friday"          # Handelstage Mo-Fr
+EU  = "^GDAXI,^MDAXI,^SDAXI,^SSMI,^IBEX,^FTSE,^STOXX50E"
+US  = "^SPX,^DJI,^NDX,^IXIC,^NYA"
+AS  = "^HSI,^N225"
+
+# (time, script, extra-args, frequency, job_name, end_time, time_range, allowed_days, enabled)
+JOBS = [
+    ("5",     "get_asset_data.py",     "1m:2d /group:"+EU,                    "minutes",        "YAHOO_M_DATA_MEMBER_EUROPE",  "",      "08:00-19:00", WD, 1),
+    ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:"+EU,            "hours",          "YAHOO_H_DATA_MEMBER_EUROPE",  "",      "08:00-19:00", WD, 1),
+    ("3",     "get_asset_data.py",     "1m:2d /index",                        "minutes",        "YAHOO_M_DATA_INDEX",          "",      "08:00-19:00", WD, 1),
+    ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /index",                "hours",          "YAHOO_H_DATA_INDEX",          "",      "08:00-19:00", WD, 1),
+    ("16:00", "asset_perf2.py",        "true /add_current /silent",           WD,               "ASSET_PERFORMACE",            "",      "",            "", 1),
+    ("19:52", "asset_perf2.py",        "true /all /silent",                   "monday,wednesday,friday", "ASSET_PERFORMACE_ALL", "",     "",            "", 1),
+    ("14:00", "get_asset_data.py",     "1m:7d 1d:2mo 60m:2mo 1mo:1y /all",    "saturday",       "YAHOO_PRICES",                "",      "",            "", 1),
+    ("09:00", "get_asset_info.py",     "",                                    "sunday",         "ASSET_INFO",                  "",      "",            "", 1),
+    ("08:00", "get_asset_data.py",     "60m:2d 1d:1mo /index_member",         WD,               "YAHOO_D_DATA_INDEX_MEMBER",   "",      "",            "", 1),
+    ("09:00", "get_asset_data.py",     "60m:2d 1d:1mo /index",                WD,               "YAHOO_D_DATA_INDEX",          "",      "",            "", 1),
+    ("10:00", "get_asset_data.py",     "1d:1mo /index_member",                WD,               "YAHOO_D_DATA_INDEX_MEMBER",   "",      "",            "", 1),
+    ("19:15", "get_asset_data.py",     "60m:2y 1d:2y /all",                   "saturday",       "YAHOO_ALL",                   "",      "",            "", 1),
+    ("11:05", "get_asset_data.py",     "60m:2mo 1d:2mo 1m:7d /inverse",       WD,               "YAHOO_ALL_INVERSE_",          "19:45", "",            "", 1),
+    ("22:30", None,                    "",                                    WD+",saturday",   "STANDBY",                     "22:45", "",            "", 0),
+    ("22:00", "asset_perf2.py",        "true /add_current /silent",           WD,               "ASSET_PERFORMANCE_2",         "",      "",            "", 1),
+    ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:CRYPTO,COMMODITIES,METALS,CURRENCIES", "hours",   "YAHOO_H_DATA_GROUP",  "",      "",            "", 1),
+    ("15",    "get_asset_data.py",     "1m:2d /group:CRYPTO,COMMODITIES,METALS,CURRENCIES",         "minutes", "YAHOO_M_DATA_GROUP",  "",      "",            "", 1),
+    ("1",     "get_asset_data.py",     "1m:2d 60m:2d /group:ETP /worker:4",   "hours",          "YAHOO_H_DATA_ETP",            "",      "",            "", 1),
+    ("22:00", "asset_perf2.py",        "/all /add_current /silent /group:ETP", WD+",saturday",  "ASSET_PERFORMANCE_ETP",       "",      "",            "", 1),
+    ("10:00", "get_asset_data.py",     "1m:5d 1mo:5y 60m:2y 1d:5y /all /group:ETP /worker:4",       "saturday", "YAHOO_W_ETP",        "",      "",            "", 1),
+    ("10:30", "warm_market_stress.py", "",                                    WD+",saturday,sunday", "WARM_MARKET_STRESS",     "",      "",            "", 1),
+    ("5",     "get_asset_data.py",     "1m:2d /group:"+US,                    "minutes",        "YAHOO_M_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
+    ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:"+US,            "hours",          "YAHOO_H_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
+    ("5",     "get_asset_data.py",     "1m:2d /group:"+AS,                    "minutes",        "YAHOO_M_DATA_MEMBER_ASIA",    "",      "22:00-08:00", WD, 1),
+    ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:"+AS,            "hours",          "YAHOO_H_DATA_MEMBER_ASIA",    "",      "22:00-08:00", WD, 1),
+]
+
+def build(script, extra):
+    cmd = '"%s" "%s"' % (PY, os.path.join(ROOT, script))
+    return cmd + (" " + extra if extra else "")
+
+for (t, script, extra, freq, name, end, rng, days, en) in JOBS:
+    command = STANDBY if script is None else build(script, extra)
+    c.execute("INSERT INTO jobs (time, command, frequency, job_name, end_time, time_range, "
+              "allowed_days, enabled, last_run) VALUES (?,?,?,?,?,?,?,?,NULL)",
+              (t, command, freq, name, end, rng, days, en))
+conn.commit()
+conn.close()
+print("   %d Scheduler-Jobs geseedet -> %s" % (len(JOBS), DB))
+'@
+
+$seedPy | & $PY -
+if ($LASTEXITCODE -ne 0) {
+    Write-Warn "Scheduler-Seed fehlgeschlagen -- die Jobs koennen spaeter in der App (Tab 'Scheduler') angelegt werden."
+} else {
+    Write-Ok "Scheduler-Jobs bereit"
+    Write-Info "Hinweis: Die order-ausfuehrenden Jobs STOPLOSS_TRAILING und EXECUTE_ORDER"
+    Write-Info "werden bewusst NICHT automatisch angelegt. Bei Bedarf im Scheduler-Tab"
+    Write-Info "manuell erganzen (Broker/Alpaca-Keys + gewuenschter --user noetig)."
+}
+
+# ---------------------------------------------------------------------------
 # Phase 2: config.yaml anlegen
 # ---------------------------------------------------------------------------
 
