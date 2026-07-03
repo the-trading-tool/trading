@@ -2068,9 +2068,9 @@ plotshape(ta.crossunder(mmm_cumd, mmm_cumd_sma), "MMM CD Bear", shape.triangledo
 def _t_mam(p: dict) -> str:
     """Return the Pine Script v5 Moving Average Momentum overlay template with configurable params."""
     _N            = 5
-    _defaults     = [('EMA', 20), ('EMA', 50), ('SMA', 200), ('EMA', 100), ('WMA', 300)]
-    _default_en   = [True, True, True, False, False]
-    _default_cols = ['color.orange', 'color.blue', 'color.red', 'color.lime', 'color.purple']
+    _defaults     = [('EMA', 9), ('EMA', 21), ('SMA', 50), ('SMA', 100), ('SMA', 200)]
+    _default_en   = [True, True, True, True, True]
+    _default_cols = ['color.orange', 'color.rgb(0, 191, 255)', 'color.black', 'color.gray', 'color.red']
     _pine_ma      = {'SMA': 'ta.sma', 'EMA': 'ta.ema', 'WMA': 'ta.wma'}
 
     # float width → Pine plot() integer linewidth (plot() only accepts int 1-4)
