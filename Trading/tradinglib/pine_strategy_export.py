@@ -90,6 +90,9 @@ _COL_DEFS: dict[str, dict] = {
         '[atc_l_anc, atc_l_cur, atc_lstd] = atc_reg(atc_llen)\n'
         'atc_bot_low = atc_l_cur - atc_dev * atc_lstd',
         'deps': [], 'helpers': ['atc_dev', 'atc_reg']},
+    # Aliase (atc.py: atc_low = atc_bot_low, atc_high = atc_top_high)
+    'atc_high': {'code': 'atc_high = atc_top_high', 'deps': ['atc_top_high'], 'helpers': []},
+    'atc_low':  {'code': 'atc_low = atc_bot_low',  'deps': ['atc_bot_low'],  'helpers': []},
 }
 
 # Query-Spalten, die (noch) nicht rein technisch abbildbar sind.
@@ -200,24 +203,43 @@ def export_from_config(transactions: dict) -> dict:
     return result
 
 
-def _load_transactions(username: str) -> dict:
-    """Read a user's `multi_transactions` from config.db (respects TradingDB env)."""
+def _config_value(username: str, key: str):
+    """Raw config.db value for '<username>:<key>' (respects TradingDB env), or None."""
     import sqlite3
-    import ast
     from tradinglib import tools
     path = tools.Tools().get_path(path='database', file_name='config.db')
     con = sqlite3.connect(path)
     try:
         row = con.execute("SELECT value FROM config WHERE key = ?",
-                          (f'{username}:multi_transactions',)).fetchone()
+                          (f'{username}:{key}',)).fetchone()
     finally:
         con.close()
-    if not row:
+    return row[0] if row else None
+
+
+def _load_transactions(username: str) -> dict:
+    """Read a user's `multi_transactions` from config.db."""
+    import ast
+    raw = _config_value(username, 'multi_transactions')
+    if not raw:
         return {}
-    d = ast.literal_eval(row[0])
+    d = ast.literal_eval(raw)
     if isinstance(d, str):      # config-DB speichert den dict teils doppelt-kodiert
         d = ast.literal_eval(d)
     return d
+
+
+def _load_query(username: str, key: str) -> str:
+    """Read a single buy/sell query string; strips surrounding JSON quotes."""
+    import ast
+    raw = _config_value(username, key)
+    if not raw:
+        return ''
+    try:                        # Werte sind i. d. R. als JSON-String ("...") abgelegt
+        val = ast.literal_eval(raw)
+        return val if isinstance(val, str) else str(raw)
+    except Exception:
+        return str(raw)
 
 
 def main(argv=None) -> int:
@@ -236,24 +258,34 @@ def main(argv=None) -> int:
         elif a.startswith('/out:'):
             out = a.split(':', 1)[1]
 
-    transactions = _load_transactions(user)
-    if not transactions:
-        print(f"Keine multi_transactions fuer User '{user}' in config.db gefunden.")
-        return 1
-
     os.makedirs(out, exist_ok=True)
     slug = lambda s: re.sub(r'[^A-Za-z0-9]+', '_', s).strip('_')
     ok = skipped = 0
-    for strat, res in export_from_config(transactions).items():
-        if 'pine' in res:
-            fn = os.path.join(out, slug(strat) + '.pine')
+
+    def _emit(name: str, pine: 'str | None', err: 'str | None'):
+        nonlocal ok, skipped
+        if pine is not None:
+            fn = os.path.join(out, slug(name) + '.pine')
             with open(fn, 'w', encoding='utf-8') as fh:
-                fh.write(res['pine'])
-            print(f"  OK        {strat:24} -> {fn}")
+                fh.write(pine)
+            print(f"  OK        {name:26} -> {fn}")
             ok += 1
         else:
-            print(f"  ABGELEHNT {strat:24}    {res['error']}")
+            print(f"  ABGELEHNT {name:26}    {err}")
             skipped += 1
+
+    # 1) Strategien aus multi_transactions
+    for strat, res in export_from_config(_load_transactions(user)).items():
+        _emit(strat, res.get('pine'), res.get('error'))
+
+    # 2) Eigenstaendige Einzel-Query in config.db (<user>:buy_query / :sell_query)
+    buy, sell = _load_query(user, 'buy_query'), _load_query(user, 'sell_query')
+    if buy or sell:
+        try:
+            _emit('buy_query', export_strategy('buy_query', buy, sell), None)
+        except StrategyExportError as e:
+            _emit('buy_query', None, str(e))
+
     print(f"\n{ok} exportiert, {skipped} abgelehnt (nach {out}/).")
     return 0
 
