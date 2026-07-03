@@ -20,49 +20,49 @@ class Mam(_indicator._Indicator):
 
     _MA_DEFAULTS = [
         # (enabled, type,  period, color)
-        (True,  'EMA', 20,  ''),
-        (True,  'EMA', 50,  ''),
-        (True,  'SMA', 200, ''),
-        (False, 'EMA', 100, ''),
-        (False, 'WMA', 300, ''),
+        (True,  'EMA', 9,  ''),
+        (True,  'EMA', 21,  ''),
+        (True,  'SMA', 50, ''),
+        (True, 'EMA', 100, ''),
+        (True, 'EMA', 200, ''),
     ]
     _WIDTH_OPTIONS = ['0.5', '1', '1.5', '2']
     _STYLE_OPTIONS = ['solid', 'dashed', 'dotted']
-    _COLORS        = ['orange', 'deepskyblue', 'tomato', 'limegreen', 'violet']
+    _COLORS        = ['orange', 'deepskyblue', 'black', 'grey', 'red']
 
     params = {
         # MA 1
         'ma1_enabled': {'type': 'bool',   'default': True,    'label': 'MA 1 enabled'},
         'ma1_type':    {'type': 'select', 'default': 'EMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 1 type'},
-        'ma1_period':  {'type': 'int',    'default': 20,      'min': 2, 'max': 500, 'label': 'MA 1 period'},
+        'ma1_period':  {'type': 'int',    'default': 9,      'min': 2, 'max': 500, 'label': 'MA 1 period'},
         'ma1_color':   {'type': 'color',  'default': '',      'label': 'MA 1 color'},
         'ma1_width':   {'type': 'select', 'default': '1.5',   'options': ['0.5', '1', '1.5', '2'],        'label': 'MA 1 width'},
         'ma1_style':   {'type': 'select', 'default': 'solid', 'options': ['solid', 'dashed', 'dotted'],   'label': 'MA 1 style'},
         # MA 2
         'ma2_enabled': {'type': 'bool',   'default': True,    'label': 'MA 2 enabled'},
         'ma2_type':    {'type': 'select', 'default': 'EMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 2 type'},
-        'ma2_period':  {'type': 'int',    'default': 50,      'min': 2, 'max': 500, 'label': 'MA 2 period'},
+        'ma2_period':  {'type': 'int',    'default': 21,      'min': 2, 'max': 500, 'label': 'MA 2 period'},
         'ma2_color':   {'type': 'color',  'default': '',      'label': 'MA 2 color'},
         'ma2_width':   {'type': 'select', 'default': '1.5',   'options': ['0.5', '1', '1.5', '2'],        'label': 'MA 2 width'},
         'ma2_style':   {'type': 'select', 'default': 'solid', 'options': ['solid', 'dashed', 'dotted'],   'label': 'MA 2 style'},
         # MA 3
         'ma3_enabled': {'type': 'bool',   'default': True,    'label': 'MA 3 enabled'},
         'ma3_type':    {'type': 'select', 'default': 'SMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 3 type'},
-        'ma3_period':  {'type': 'int',    'default': 200,     'min': 2, 'max': 500, 'label': 'MA 3 period'},
+        'ma3_period':  {'type': 'int',    'default': 50,     'min': 2, 'max': 500, 'label': 'MA 3 period'},
         'ma3_color':   {'type': 'color',  'default': '',      'label': 'MA 3 color'},
         'ma3_width':   {'type': 'select', 'default': '1.5',   'options': ['0.5', '1', '1.5', '2'],        'label': 'MA 3 width'},
         'ma3_style':   {'type': 'select', 'default': 'solid', 'options': ['solid', 'dashed', 'dotted'],   'label': 'MA 3 style'},
         # MA 4
-        'ma4_enabled': {'type': 'bool',   'default': False,   'label': 'MA 4 enabled'},
-        'ma4_type':    {'type': 'select', 'default': 'EMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 4 type'},
+        'ma4_enabled': {'type': 'bool',   'default': True,   'label': 'MA 4 enabled'},
+        'ma4_type':    {'type': 'select', 'default': 'SMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 4 type'},
         'ma4_period':  {'type': 'int',    'default': 100,     'min': 2, 'max': 500, 'label': 'MA 4 period'},
         'ma4_color':   {'type': 'color',  'default': '',      'label': 'MA 4 color'},
         'ma4_width':   {'type': 'select', 'default': '1.5',   'options': ['0.5', '1', '1.5', '2'],        'label': 'MA 4 width'},
         'ma4_style':   {'type': 'select', 'default': 'solid', 'options': ['solid', 'dashed', 'dotted'],   'label': 'MA 4 style'},
         # MA 5
-        'ma5_enabled': {'type': 'bool',   'default': False,   'label': 'MA 5 enabled'},
-        'ma5_type':    {'type': 'select', 'default': 'WMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 5 type'},
-        'ma5_period':  {'type': 'int',    'default': 300,     'min': 2, 'max': 500, 'label': 'MA 5 period'},
+        'ma5_enabled': {'type': 'bool',   'default': True,   'label': 'MA 5 enabled'},
+        'ma5_type':    {'type': 'select', 'default': 'SMA',   'options': ['SMA', 'EMA', 'WMA', 'DEMA'], 'label': 'MA 5 type'},
+        'ma5_period':  {'type': 'int',    'default': 200,     'min': 2, 'max': 500, 'label': 'MA 5 period'},
         'ma5_color':   {'type': 'color',  'default': '',      'label': 'MA 5 color'},
         'ma5_width':   {'type': 'select', 'default': '1.5',   'options': ['0.5', '1', '1.5', '2'],        'label': 'MA 5 width'},
         'ma5_style':   {'type': 'select', 'default': 'solid', 'options': ['solid', 'dashed', 'dotted'],   'label': 'MA 5 style'},
@@ -72,11 +72,11 @@ class Mam(_indicator._Indicator):
         self,
         df,
         symbol='',
-        ma1_enabled=True,  ma1_type='EMA', ma1_period=20,  ma1_width='1.5', ma1_style='solid',
-        ma2_enabled=True,  ma2_type='EMA', ma2_period=50,  ma2_width='1.5', ma2_style='solid',
-        ma3_enabled=True,  ma3_type='SMA', ma3_period=200, ma3_width='1.5', ma3_style='solid',
-        ma4_enabled=False, ma4_type='EMA', ma4_period=100, ma4_width='1.5', ma4_style='solid',
-        ma5_enabled=False, ma5_type='WMA', ma5_period=300, ma5_width='1.5', ma5_style='solid',
+        ma1_enabled=True,  ma1_type='EMA', ma1_period=8,  ma1_width='1.5', ma1_style='solid',
+        ma2_enabled=True,  ma2_type='EMA', ma2_period=21,  ma2_width='1.5', ma2_style='solid',
+        ma3_enabled=True,  ma3_type='SMA', ma3_period=50, ma3_width='1.5', ma3_style='solid',
+        ma4_enabled=False, ma4_type='SMA', ma4_period=100, ma4_width='1.5', ma4_style='solid',
+        ma5_enabled=False, ma5_type='SMA', ma5_period=200, ma5_width='1.5', ma5_style='solid',
     ):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
