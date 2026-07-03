@@ -1734,3 +1734,40 @@ class Admin():
             render_export_buttons(sel_ovl, sel_osc, _cfg)
         else:
             st.info("Bitte mindestens einen Overlay oder Oszillator auswählen.")
+
+        # ── Strategie-Export: Buy/Sell-Formeln → handelbares strategy() ──────
+        st.divider()
+        st.markdown("### 📥 Strategie-Export (Buy/Sell → `strategy()`)")
+        st.caption(
+            "Übersetzt die technischen Buy/Sell-Formeln aus deiner Config in ein "
+            "Pine-v5-`strategy()`-Skript. Strategien mit `overallValueTrend` "
+            "(Fundamental-Score) sind in TradingView nicht abbildbar."
+        )
+        try:
+            from tradinglib import pine_strategy_export as _pse
+            import re as _re2
+            _exp = _pse.export_from_config(_pse._load_transactions(self.username))
+            _bq = _pse._load_query(self.username, 'buy_query')
+            _sq = _pse._load_query(self.username, 'sell_query')
+            if _bq or _sq:
+                try:
+                    _exp['buy_query / sell_query'] = {'pine': _pse.export_strategy('buy_query', _bq, _sq)}
+                except _pse.StrategyExportError as _e:
+                    _exp['buy_query / sell_query'] = {'error': str(_e)}
+            if not _exp:
+                st.info("Keine Strategien/Queries in der Config gefunden.")
+            for _name, _res in _exp.items():
+                _slug = _re2.sub(r'[^A-Za-z0-9]+', '_', _name).strip('_')
+                if 'pine' in _res:
+                    st.download_button(
+                        f"⬇ {_name}.pine",
+                        data=_res['pine'],
+                        file_name=f'{_slug}.pine',
+                        mime='text/plain',
+                        key=f'pine_strat_dl_{_slug}',
+                        use_container_width=True,
+                    )
+                else:
+                    st.caption(f"⛔ {_name}: {_res['error']}")
+        except Exception as _sx:
+            st.error(f"Strategie-Export fehlgeschlagen: {_sx}")
