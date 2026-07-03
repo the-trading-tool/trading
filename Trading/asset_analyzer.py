@@ -799,7 +799,7 @@ class TradingApp:
                 if self.is_admin and parms.get('admin'):
                     self.set_page_config(t('page.admin'))
                     with st.spinner(t('page.admin') + " …"):
-                        admin.Admin(scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator=self.authenticator, section=parms.get('section'))
+                        admin.Admin(username=self.username, scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator=self.authenticator, section=parms.get('section'))
                 elif parms.get('live_chart'):
                     self.set_page_config(t('page.live_chart'))
                     with st.spinner(t('page.live_chart') + " …"):
