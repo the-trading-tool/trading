@@ -60,6 +60,7 @@
   "cfg.mp_details": "Details-Tab auf Hauptseite anzeigen:",
   "cfg.pine_export": "Pine-Script-Export anzeigen:",
   "cfg.require_isin": "Nur handelbare (ISIN erforderlich):",
+  "cfg.trailing_stop_enabled": "Trailing Stop (Live/Paper Trading) aktiviert:",
   "cfg.show_regime": "Regime-/Market-Stress-Banner anzeigen:",
   "cfg.buy_query": "Kauf-Bedingung:",
   "cfg.sell_query": "Verkauf-Bedingung:",

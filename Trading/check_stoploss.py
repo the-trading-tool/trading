@@ -49,6 +49,19 @@ def main():
         from tradinglib.premium.trading_bridge import OrderLog, BrokerFactory, StopLossMonitor
 
         cfg    = SystemConfig(username=args.user)
+
+        # Respect the global 'trailing_stop_enabled' setting (default: False).
+        # Even if --execute is passed on the CLI, it is silently suppressed when
+        # the setting is off — this prevents accidental live order execution.
+        trailing_enabled = cfg.get_value('trailing_stop_enabled', False)
+        if not trailing_enabled:
+            if args.execute:
+                logger.warning(
+                    'trailing_stop_enabled=False in settings — --execute suppressed. '
+                    'Enable Trailing Stop in the app settings (⚙) to allow automatic closes.'
+                )
+            args.execute = False
+
         log    = OrderLog()
         broker = BrokerFactory.create(args.broker, cfg)
 
