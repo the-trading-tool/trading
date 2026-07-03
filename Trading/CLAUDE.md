@@ -57,6 +57,25 @@ Streamlit-basierte lokale Trading-App (noch nicht produktiv).
 Regel: `{indikator_prefix}_{semantischer_name}` in `snake_case`.
 Gilt für: DataFrame-Spalten, pdict-Keys (= DB-Spalten), buy/sell-Queries.
 
+### OHLC in `asset_simulation` (2026-07, Commit `ddde705`)
+
+Roh-OHLC ist in `asset_simulation` als **`Open`/`High`/`Low`/`close`** verfügbar
+(Ausnahme von der snake_case-Regel — bewusst großgeschrieben `Open/High/Low`,
+damit kein Konflikt mit `asset_info.open/dayHigh/dayLow`, die es dort auch gibt).
+→ In Buy/Sell-Queries direkt nutzbar, z. B. `(close > Open) & (High > sup_resistance)`.
+
+- **Umbenannt:** `dayHigh → High`, `dayLow → Low` (in `asset_perf2.py` pdict +
+  `score_df: col('Low')`; alle 9 `asset_simulation_*.db` per `ALTER TABLE RENAME COLUMN`).
+- **Neu:** `Open` (pdict `safe_last(df,'Open')`; DB-Spalte per `ADD COLUMN`).
+- **Kein** rohes `open` (lowercase) — das wäre ein Kollisionsname zu `asset_info.open`.
+- Bestandsdaten via `python asset_perf2.py /backfill:ohlc /force` gefüllt
+  (Map-Eintrag `'ohlc': ['Open','High','Low']`; liest lokale OHLCV, kein Yahoo).
+  **Achtung Windows/Git-Bash:** `/force` wird von MSYS in einen Pfad gemangelt →
+  `MSYS2_ARG_CONV_EXCL='*'` voranstellen oder über PowerShell laufen lassen.
+- **Vintage-Hinweis:** Der Backfill lädt `Open/High/Low` frisch, `close` bleibt der
+  alte Sim-Wert → bei Split-/Adjust-Tickern passt `close` ggf. nicht zu `O/H/L`
+  (~0,2 % Zeilen). Heilt beim nächsten vollen `init`-Lauf (alle vier aus einem Fetch).
+
 | Alte(r) Name(n) | Neuer Name | Indikator |
 |---|---|---|
 | `RelVol_Ratio`, `RelVol_Current`, `RelVol_Past`, `AdjVolume` | `relvol_ratio`, `relvol_current`, `relvol_past`, `relvol_adj_vol` | relvol |
