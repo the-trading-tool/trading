@@ -424,7 +424,7 @@ class Performance(tt.TickerTools):
             return
 
         """
-        selection = self.dataframe_with_selections(combined_df[['Date','ticker','longName','sector','close','roa','rsi_ema','dayLow','dayHigh','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend']], region = self.ss_sidebar) #, sort_by='ticker')
+        selection = self.dataframe_with_selections(combined_df[['Date','ticker','longName','sector','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend']], region = self.ss_sidebar) #, sort_by='ticker')
         try:
             if not selection.empty:
                 self.chart(selection)

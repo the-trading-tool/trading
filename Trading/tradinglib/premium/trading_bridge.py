@@ -897,11 +897,6 @@ class SignalEvaluator(Tools):
                 else:
                     combined_df = combined_df.copy()
                     combined_df['close'] = 0.0
-            # Also map dayHigh / dayLow fallbacks used inside PortfolioSimulator
-            if 'dayHigh' not in combined_df.columns and 'High' in combined_df.columns:
-                combined_df['dayHigh'] = combined_df['High']
-            if 'dayLow'  not in combined_df.columns and 'Low'  in combined_df.columns:
-                combined_df['dayLow']  = combined_df['Low']
 
             # ── Sort exactly as multi_transaction.py does ────────────────
             # Date asc, then order_by desc so higher-scored tickers fill

@@ -426,7 +426,7 @@ class DataVisualizer(tt.TickerTools):
         (vormals Teil von generate_treemap, jetzt im Index-View-Expander)."""
         df_expander = st.expander(t('mm.underlying_data'), expanded=False)
         with df_expander:
-            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','dayLow','dayHigh','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
+            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
             try:
                 if not selection.empty:
                     self.overlay_chart(selection)
@@ -650,11 +650,11 @@ class DataVisualizer(tt.TickerTools):
         #Price range
         price_range = {
             'ANY': '',
-            '> 1000': 'ai.dayHigh >= 1000',
-            '>= 100 < 1000': 'ai.dayHigh >= 100 AND ai.dayHigh < 1000',
-            '>= 20 < 100': 'ai.dayHigh >= 20 AND ai.dayHigh < 100',
-            '>= 10 < 20': 'ai.dayHigh >= 10 AND ai.dayHigh < 20',
-            '< 10': 'ai.dayHigh < 10',            
+            '> 1000': 'ai.High >= 1000',
+            '>= 100 < 1000': 'ai.High >= 100 AND ai.High < 1000',
+            '>= 20 < 100': 'ai.High >= 20 AND ai.High < 100',
+            '>= 10 < 20': 'ai.High >= 10 AND ai.High < 20',
+            '< 10': 'ai.High < 10',            
         }
         p_range = self.sel_mprice.selectbox(
                 t('mm.price_range'),
