@@ -15,6 +15,14 @@ import re
 
 # ── Pine-Helper (Funktionen/Konstanten, einmalig oben im Skript) ─────────────
 _HELPERS: dict[str, str] = {
+    'ha_base': (
+        '// Heikin-Ashi-Basis (spiegelt heikin.py)\n'
+        'ha_close = (open + high + low + close) / 4\n'
+        'var float ha_open = na\n'
+        'ha_open := na(ha_open[1]) ? (open + close) / 2 : (ha_open[1] + ha_close[1]) / 2\n'
+        'ha_high = math.max(high, math.max(ha_open, ha_close))\n'
+        'ha_low  = math.min(low,  math.min(ha_open, ha_close))'
+    ),
     'atc_dev': 'atc_dev = input.float(2.0, "ATC Std-Abweichung", group="ATC")',
     'atc_reg': (
         '// ATC: manuelle OLS-Regression über die letzten `length` Bars.\n'
@@ -57,10 +65,21 @@ _COL_DEFS: dict[str, dict] = {
 
     'ewo':            {'code': 'ewo = ta.sma(close, 5) - ta.sma(close, 21)', 'deps': [], 'helpers': []},
     'ewo_ema':        {'code': 'ewo_ema = ta.ema(ewo, 9)', 'deps': ['ewo'], 'helpers': []},
+    'ewo_angle':      {'code': 'ewo_angle = math.todegrees(math.atan(ewo - ewo[1]))',
+                       'deps': ['ewo'], 'helpers': []},
     'sup_support':    {'code': 'sup_support = ta.lowest(low, 21)', 'deps': [], 'helpers': []},
     'sup_resistance': {'code': 'sup_resistance = ta.highest(high, 21)', 'deps': [], 'helpers': []},
+    'ema9':           {'code': 'ema9 = ta.ema(close, 9)', 'deps': [], 'helpers': []},
     'ema21':          {'code': 'ema21 = ta.ema(close, 21)', 'deps': [], 'helpers': []},
     'rsi':            {'code': 'rsi = ta.rsi(close, 8)', 'deps': [], 'helpers': []},
+    'rsi_ema':        {'code': 'rsi_ema = ta.sma(rsi, 14)', 'deps': ['rsi'], 'helpers': []},
+    'momentum':       {'code': 'momentum = ta.stoch(close, high, low, 14)', 'deps': [], 'helpers': []},
+
+    # ── Heikin Ashi (Basis via ha_base-Helper; EMA-Länge 21 wie heikin.py) ────
+    'ha_close':    {'code': None, 'deps': [], 'helpers': ['ha_base']},
+    'ha_open':     {'code': None, 'deps': [], 'helpers': ['ha_base']},
+    'ha_ema_high': {'code': 'ha_ema_high = ta.ema(ha_high, 21)', 'deps': [], 'helpers': ['ha_base']},
+    'ha_ema_low':  {'code': 'ha_ema_low = ta.ema(ha_low, 21)',  'deps': [], 'helpers': ['ha_base']},
 
     'dTrend':  {'code': 'dTrend = close != close[1] ? (close - close[1]) / close * 100 : 0.0',
                 'deps': [], 'helpers': []},
