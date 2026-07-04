@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Regime Flow – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.95em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px;font-size:.88em}
+</style>
+</head>
+<body>
+<h1>Regime Flow <small style="font-size:.6em;color:#888">regime_flow_page.py</small></h1>
+
+<p>Marktbreiten-Dashboard, das Hunderte von Assets gleichzeitig in drei Marktregimes einteilt
+(<b>Bull</b>, <b>Bear</b>, <b>Sideways</b>) und deren zeitliche Entwicklung, Kapitalflüsse
+und Sektorverschiebungen visualisiert.</p>
+
+<h2>Schnellüberblick – Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td><b>🌊 Tidal</b></td><td>Gestapeltes Flächendiagramm: prozentualer Anteil der Assets in Bull/Bear/Sideways über Zeit</td></tr>
+<tr><td><b>🔀 Capital Flow</b></td><td>Sankey-Diagramm der Regime-Übergänge + Mini-Sankeys je Sektor</td></tr>
+<tr><td><b>🗺 Migration</b></td><td>Bubble-Scatter: Sektorverschiebungen im Bull-vs.-Bear-Raum mit Pfeilen</td></tr>
+<tr><td><b>📊 Flow Table</b></td><td>Einzeltitel-Tabelle mit Flow Score, Rel. Volumen und EWO</td></tr>
+</table>
+
+<h2>Kopfbereich (oberhalb der Tabs)</h2>
+<p>Fünf Kennzahlen werden stets angezeigt:</p>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th></tr>
+<tr><td><b>Total assets</b></td><td>Anzahl der analysierten Ticker im gewählten Zeitraum</td></tr>
+<tr><td><b>▲ Bull</b></td><td>Anzahl und Anteil bullisher Assets; Delta (±pp) ggü. Vorperiode</td></tr>
+<tr><td><b>▼ Bear</b></td><td>Anzahl und Anteil bearisher Assets; Delta (±pp) ggü. Vorperiode</td></tr>
+<tr><td><b>─ Sideways</b></td><td>Anzahl und Anteil seitwärtslaufender Assets; Delta (±pp) ggü. Vorperiode</td></tr>
+<tr><td><b>As of</b></td><td>Datum des letzten Datenpunkts (YYYY-MM-DD)</td></tr>
+</table>
+
+<p>Darunter erscheint optional das <b>Marktstresspanel</b> (siehe Abschnitt <a href="#stress">Marktstresspanel</a>).</p>
+
+<h2>Steuerung</h2>
+<table>
+<tr><th>Einstellung</th><th>Beschreibung</th></tr>
+<tr><td><b>Datenquelle</b></td><td><em>Monitored Assets</em> – in den Einstellungen konfigurierte Watchlist; <em>Index</em> – alle Mitglieder eines Börsenindex aus yf_tickers.db</td></tr>
+<tr><td><b>Index wählen</b></td><td>Erscheint nur bei Datenquelle „Index" – Auswahl z.&nbsp;B. ^GDAXI, ^SPX</td></tr>
+<tr><td><b>Vergleichsintervall</b></td><td>Zeitspanne für die Regime-Berechnung und Übergangspfeile: 1&nbsp;Woche, 1/6 Monate, 1/2 Jahre</td></tr>
+</table>
+
+<h2>Tab 1 – 🌊 Tidal</h2>
+<p>Gestapeltes Flächendiagramm (100&nbsp;% = alle Assets).</p>
+<table>
+<tr><th>Element</th><th>Details</th></tr>
+<tr><td><b>X-Achse</b></td><td>Zeit (Tage/Wochen, je nach gewähltem Intervall)</td></tr>
+<tr><td><b>Y-Achse</b></td><td>Anteil der Assets in % (0–100)</td></tr>
+<tr><td><b>Grüne Fläche ▲</b></td><td>Bull-Anteil (#84BBA1)</td></tr>
+<tr><td><b>Rote Fläche ▼</b></td><td>Bear-Anteil (#C57F86)</td></tr>
+<tr><td><b>Graue Fläche ─</b></td><td>Sideways-Anteil (#A4ABB7)</td></tr>
+<tr><td><b>Hover</b></td><td>Exakte Prozentzahl je Regime und Datum</td></tr>
+</table>
+<div class="info">Ein deutlicher Rückgang der grünen Fläche bei gleichzeitigem Anstieg der roten zeigt früh eine Marktrotation an, bevor es Indizes spürbar trifft.</div>
+
+<h2>Tab 2 – 🔀 Capital Flow</h2>
+
+<h3>Haupt-Sankey</h3>
+<p>Zeigt, wie viele Assets das Regime gewechselt haben. Die <b>Knotenbreite</b> entspricht der Asset-Anzahl, die <b>Flussbreite</b> ist zusätzlich nach dem mittleren Relative-Volumen (<code>relvol_ratio</code>) gewichtet.</p>
+<table>
+<tr><th>Seite</th><th>Bedeutung</th></tr>
+<tr><td><b>Linke Knoten</b></td><td>Regime zu Beginn des Intervalls (Bull / Bear / Sideways)</td></tr>
+<tr><td><b>Rechte Knoten</b></td><td>Regime heute</td></tr>
+<tr><td><b>Flussfarbe</b></td><td>Farbe des <em>Quell</em>-Regimes (grün / rot / grau)</td></tr>
+</table>
+<p>Beispiel: Ein dicker grüner Fluss von <em>Bull → Bear</em> bedeutet, dass viele bullish gestartete Assets jetzt bärisch sind – und das bei überdurchschnittlichem Volumen.</p>
+
+<h3>Mini-Sankeys je Sektor</h3>
+<p>Dieselbe Übergangslogik, aber isoliert pro Sektor, im 2-spaltigen Grid. Ermöglicht den Vergleich: Welcher Sektor verliert stärker, welcher hält stand?</p>
+<div class="warn">Ist das Intervall zu kurz für Vergleichsdaten, zeigt das Dashboard nur die aktuelle Regime-Verteilung (ohne Übergangspfeile).</div>
+
+<h2>Tab 3 – 🗺 Migration</h2>
+<p>Bubble-Scatter-Plot mit einem Punkt pro Sektor.</p>
+<table>
+<tr><th>Element</th><th>Details</th></tr>
+<tr><td><b>X-Achse</b></td><td>Bull-Anteil des Sektors (0–100 %)</td></tr>
+<tr><td><b>Y-Achse</b></td><td>Bear-Anteil des Sektors (0–100 %)</td></tr>
+<tr><td><b>Bubble-Größe</b></td><td>√(Anzahl Assets im Sektor) – je mehr Titel, desto größer der Kreis</td></tr>
+<tr><td><b>Farbe</b></td><td>Sektor-ID (bis zu 10 distinkte Farben aus Plotly-Palette)</td></tr>
+<tr><td><b>Pfeile</b></td><td>Von Vorperiode → heute; erscheinen nur bei einer Verschiebung von &gt;1 Prozentpunkt</td></tr>
+<tr><td><b>Gestrichelte Linien</b></td><td>Dynamische Mediane (Bull-Median vertikal, Bear-Median horizontal) aus aktuellen Daten</td></tr>
+</table>
+
+<h3>Quadranten lesen</h3>
+<table>
+<tr><th>Quadrant</th><th>Label</th><th>Interpretation</th></tr>
+<tr><td>Rechts unten</td><td><b>Opportunity</b></td><td>Hoher Bull-Anteil, niedriger Bear-Anteil → stabiler Aufwärtstrend</td></tr>
+<tr><td>Rechts oben</td><td><b>Volatil</b></td><td>Gleichzeitig viele Bull- und Bear-Assets → uneinheitliches, nervöses Bild</td></tr>
+<tr><td>Links oben</td><td><b>Gefahr</b></td><td>Niedriger Bull-, hoher Bear-Anteil → Abwärtsdruck dominiert</td></tr>
+<tr><td>Links unten</td><td><b>Stagnation</b></td><td>Weder Bull noch Bear → Markt tritt auf der Stelle</td></tr>
+</table>
+<div class="info">Pfeile zeigen die Richtung der Verschiebung. Ein Sektor, dessen Pfeil von „Gefahr" nach „Opportunity" zeigt, ist im frühen Erholungsmodus.</div>
+
+<h2>Tab 4 – 📊 Flow Table</h2>
+<p>Einzeltitel-Tabelle, sortiert nach absolutem Flow Score (stärkste Bewegungen zuerst).</p>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><b>Sektor</b></td><td>Sektorgruppe des Titels (aus asset_info.db)</td></tr>
+<tr><td><b>Ticker</b></td><td>Börsensymbol</td></tr>
+<tr><td><b>Name</b></td><td>Langer Unternehmensname</td></tr>
+<tr><td><b>Regime</b></td><td>▲ Bull / ▼ Bear / ─ Sideways</td></tr>
+<tr><td><b>Flow Score</b></td><td>Kombinierter Strömungsindikator (positiv = Bull-Flow, negativ = Bear-Flow, 3 Dezimalstellen)</td></tr>
+<tr><td><b>Rel.Vol.</b></td><td>Relatives Volumen: aktuelles Volumen ÷ 20-Tage-Durchschnitt (Bereich 0,1–10,0)</td></tr>
+<tr><td><b>EWO %</b></td><td>Elliott Wave Oscillator in % des Schlusskurses: (EMA5 − EMA35) / Close × 100</td></tr>
+<tr><td><b>↕</b></td><td>EWO-Richtung: ↗ steigend / ↘ fallend / → neutral</td></tr>
+</table>
+
+<h2>Indikatoren im Detail</h2>
+
+<h3>Markov-Regime-Klassifikation</h3>
+<p>Basis für alle Regime-Zuweisungen. Berechnet wird der logarithmische 20-Bar-Return:</p>
+<table>
+<tr><th>Regime</th><th>Bedingung</th></tr>
+<tr><td>▲ Bull</td><td>log(Close / Close[–20]) &gt; +5 %</td></tr>
+<tr><td>▼ Bear</td><td>log(Close / Close[–20]) &lt; −5 %</td></tr>
+<tr><td>─ Sideways</td><td>–5 % ≤ Return ≤ +5 %</td></tr>
+</table>
+
+<h3>Flow Score</h3>
+<p>Bewertet die Stärke der Regime-Bewegung je Titel:</p>
+<p><code>Flow Score = Regime-Richtung × Rel.Vol.Ratio × (1 + |EWO-Winkel normiert|)</code></p>
+<table>
+<tr><th>Faktor</th><th>Wert</th></tr>
+<tr><td>Regime-Richtung</td><td>+1 (Bull), −1 (Bear), 0 (Sideways)</td></tr>
+<tr><td>Rel.Vol.Ratio</td><td>Volumen / 20-Tage-Ø, begrenzt auf [0,1 … 10,0]</td></tr>
+<tr><td>EWO-Winkel normiert</td><td>EWO (begrenzt auf [−10, +10]) ÷ 10, Absolutbetrag</td></tr>
+</table>
+<div class="info">Ein hoher positiver Flow Score bedeutet: der Titel ist bullisch <em>und</em> handelt bei überdurchschnittlichem Volumen mit positivem Momentum. Ein tiefer negativer Wert signalisiert unter Druck stehende Bären mit erhöhter Aktivität.</div>
+
+<h3>Relatives Volumen (Rel.Vol.)</h3>
+<p>Gibt an, ob ein Titel im Vergleich zum eigenen 20-Tage-Schnitt aktiv gehandelt wird.</p>
+<ul>
+  <li><b>&gt; 1,5:</b> deutlich erhöhtes Volumen – Institution oder News?</li>
+  <li><b>0,8–1,5:</b> Normalbereich</li>
+  <li><b>&lt; 0,8:</b> unterdurchschnittliche Aktivität – Signal weniger verlässlich</li>
+</ul>
+
+<h3>EWO (Elliott Wave Oscillator)</h3>
+<p>Misst Momentum als Abstand zweier EMAs:</p>
+<p><code>EWO % = (EMA5 − EMA35) / Close × 100</code></p>
+<ul>
+  <li><b>EWO &gt; 0 &amp; steigend (↗):</b> kurzfristiger Trend beschleunigt sich</li>
+  <li><b>EWO &gt; 0 &amp; fallend (↘):</b> Momentum-Divergenz – Vorsicht bei Longs</li>
+  <li><b>EWO &lt; 0 &amp; fallend (↘):</b> Abwärtsdruck nimmt zu</li>
+</ul>
+
+<h2 id="stress">Marktstresspanel</h2>
+<p>Das Banner unter den 5 Metriken bewertet die Gesamtmarktlage auf Basis eines 10-Tage-Rollfensters.</p>
+
+<h3>Stress-Komponenten</h3>
+<table>
+<tr><th>Komponente</th><th>Gewicht</th><th>Bedeutung</th></tr>
+<tr><td><b>bull_drop</b></td><td>28 %</td><td>Fallende Steigung des Bull-Anteils (pp/Tag)</td></tr>
+<tr><td><b>bear_rise</b></td><td>24 %</td><td>Steigende Steigung des Bear-Anteils (pp/Tag)</td></tr>
+<tr><td><b>divergence</b></td><td>20 %</td><td>Index stabil oder steigend, obwohl Bull-Breite fällt – stärkstes Warnsignal</td></tr>
+<tr><td><b>side_rise</b></td><td>14 %</td><td>Zunehmendes Seitwärtslaufen (Unentschlossenheit)</td></tr>
+<tr><td><b>relvol</b></td><td>14 %</td><td>Erhöhtes relatives Volumen quer über alle Titel (Nervosität)</td></tr>
+</table>
+
+<h3>Stressstufen</h3>
+<table>
+<tr><th>Score</th><th>Stufe</th><th>Handlungsempfehlung</th></tr>
+<tr><td>≥ 60</td><td>⚠️ Warning</td><td>Absicherungen prüfen, Positionsgrößen reduzieren</td></tr>
+<tr><td>33–59</td><td>🔶 Elevated</td><td>Erhöhte Wachsamkeit, neue Einstiege kritisch prüfen</td></tr>
+<tr><td>&lt; 33</td><td>🟢 Calm</td><td>Normales Marktumfeld</td></tr>
+</table>
+
+<h3>Recovery-Score (Gegenstück)</h3>
+<p>Signalisiert mögliche Bodenbildung nach einer Ausverkaufsphase:</p>
+<table>
+<tr><th>Komponente</th><th>Gewicht</th><th>Bedeutung</th></tr>
+<tr><td><b>bull_rise</b></td><td>45 %</td><td>Steigende Bull-Breite aus Tiefstständen</td></tr>
+<tr><td><b>bear_drop</b></td><td>30 %</td><td>Fallender Bear-Anteil – Verkaufsdruck lässt nach</td></tr>
+<tr><td><b>relvol</b></td><td>25 %</td><td>Erhöhtes Volumen auf der Käuferseite</td></tr>
+</table>
+<ul>
+  <li>Score ≥ 60: „Turning" – möglicher Boden</li>
+  <li>Score 33–59: „Building" – erste Erholungszeichen</li>
+</ul>
+
+<h2>Technischer Hintergrund</h2>
+<table>
+<tr><th>Aspekt</th><th>Details</th></tr>
+<tr><td><b>Datenquellen</b></td><td><code>yf_&lt;ticker&gt;.db</code> (OHLCV), <code>asset_info.db</code> (Sektorzuordnung), <code>yf_tickers.db</code> (Index-Mitglieder)</td></tr>
+<tr><td><b>Berechnungsfenster</b></td><td>2 × Intervall-Tage werden geladen (Vorperiode + aktuelle Periode)</td></tr>
+<tr><td><b>Parallelverarbeitung</b></td><td>Alle Ticker werden parallel geladen (<code>ThreadPoolExecutor</code>)</td></tr>
+<tr><td><b>Cache</b></td><td><code>@st.cache_data(ttl=3600)</code> – Daten werden 1 Stunde zwischengespeichert</td></tr>
+<tr><td><b>Stress-Rollfenster</b></td><td>10 Handelstage (<code>_STRESS_WINDOW = 10</code>)</td></tr>
+</table>
+
+<div class="info">Die Seite ist über den Menüpunkt <b>🌊 Regime Flow</b> in der linken Navigation erreichbar.</div>
+</body>
+</html>
