@@ -1,10 +1,10 @@
 """
-Upgrade-Teaser für die Scalable-Edition.
+Upgrade teaser for the Scalable edition.
 
-Wird vom Edition-Guard in asset_analyzer.render() aufgerufen, sobald ein Nutzer
-der Scalable-Edition eine Route öffnet, die nur im vollen Funktionsumfang
-("Upgrade") verfügbar ist. Stellt die freien Features der Scalable-Edition den
-Upgrade-Features gegenüber und bietet einen Call-to-Action.
+Called by the edition guard in asset_analyzer.render() as soon as a Scalable-edition
+user opens a route that is only available in the full feature set ("Upgrade").
+Contrasts the free Scalable features with the upgrade features and provides a
+call-to-action.
 """
 import logging
 
@@ -14,7 +14,7 @@ from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
 
-# Mapping: blockierte Route → i18n-Key des Feature-Namens (für die Überschrift).
+# Mapping: blocked route → i18n key of the feature name (for the heading).
 _ROUTE_LABELS = {
     'performance':     'nav.performance',
     'summary':         'nav.asset_summary',
@@ -31,7 +31,7 @@ def render_upgrade_teaser(region=st, route=None, username: str = ''):
     """Render the upgrade page for a blocked route in the Scalable edition."""
     r = region
 
-    # Feature-spezifischer Hinweis, falls bekannt
+    # Feature-specific notice if known
     feature_label = None
     if route and route in _ROUTE_LABELS:
         feature_label = _t(_ROUTE_LABELS[route])

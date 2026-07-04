@@ -273,16 +273,16 @@ class tiny_chart(gt.GraphTools):
                 rows = num_subplots+1,
                 cols = 1,
                 subplot_titles = titles,
-                horizontal_spacing=0.05,  # Minimaler horizontaler Abstand
-                vertical_spacing=0.05,     # Minimaler vertikaler Abstand
+                horizontal_spacing=0.05,  # Minimum horizontal spacing
+                vertical_spacing=0.05,     # Minimum vertical spacing
                 row_width=row_width
             )
         else:
             self.fig = make_subplots(
                 rows = 1,
                 cols = 1,
-                horizontal_spacing=0.03,  # Minimaler horizontaler Abstand
-                vertical_spacing=0.03,     # Minimaler vertikaler Abstand
+                horizontal_spacing=0.03,  # Minimum horizontal spacing
+                vertical_spacing=0.03,     # Minimum vertical spacing
                 subplot_titles = titles,
             )
             
@@ -712,8 +712,8 @@ class tiny_chart(gt.GraphTools):
             spikedash='solid'
             )
  
-#            dtick="M1",              # Jeder Monat (M1 = 1 Monat, M3 = jedes 3. Monat etc.)
-#            ticklabelmode="period"   # sorgt dafür, dass "1." als Startdatum genommen wird
+#            dtick="M1",              # Every month (M1 = 1 month, M3 = every 3rd month etc.)
+#            ticklabelmode="period"   # ensures "1." is used as the start date
 #        )
 #            # style of new shapes
 #            )

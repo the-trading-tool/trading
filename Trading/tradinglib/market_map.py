@@ -123,7 +123,7 @@ class DataVisualizer(tt.TickerTools):
                 lim = 500
             qry_ext = f' {qry_ext} LIMIT {lim}'
             
-        # SQL-Abfrage mit Prefixed-Tabellen
+        # SQL query with prefixed tables
         # Pass self.ticker_conn so PRAGMA table_info reads columns from the
         # attached performance_db (asset_simulation_.db) directly.
         query = mq.make_query('asset_simulation', self.index_column, index_filter,
@@ -258,22 +258,22 @@ class DataVisualizer(tt.TickerTools):
         """
         @st.dialog('info',width='large')
         def on_click(trace, points, state):
-            # Index des angeklickten Punktes
+            # Index of the clicked point
             idx = points.point_inds[0]
 
-            # Ticker aus dem angeklickten Punkt extrahieren
+            # Extract ticker from the clicked point
             ticker = combined_df['ticker'].iloc[idx]
-        
-            # Ausgabe oder Aktion
-            st.write(f"Kachel geklickt! Ticker: {ticker}")
-            # Hier könnten weitere Aktionen erfolgen, z. B. Datenabfragen oder Visualisierungen
+
+            # Output or action
+            st.write(f"Tile clicked! Ticker: {ticker}")
+            # Further actions could follow here, e.g. data queries or visualisations
         """
 
         # use central util for excel export
 
         tickers = combined_df["ticker"].tolist()
-        # asset_info-Spalten können als TEXT gespeichert sein (alte, via
-        # bulk_upsert_dicts angelegte DBs) — strings tolerant nach float wandeln
+        # asset_info columns may be stored as TEXT (older DBs created via
+        # bulk_upsert_dicts) — convert strings to float tolerantly
         for _num_col in ('marketCap', 'enterpriseValue', 'ebitdaMargins',
                          'totalDebt', 'totalRevenue'):
             combined_df[_num_col] = pd.to_numeric(combined_df[_num_col], errors='coerce')
@@ -397,9 +397,9 @@ class DataVisualizer(tt.TickerTools):
         return fig, combined_df, price_data
 
     def _render_index_winner_loser(self, df, trend_col, price_col):
-        """Gewinner-/Verlierer-Ticker-Listen nach dem aktuell gewählten Trend
-        (self.trend, siehe generate_treemap), klickbar via tiny_chart_overlay
-        (analog Performance data)."""
+        """Winner/loser ticker lists based on the currently selected trend
+        (self.trend, see generate_treemap), clickable via tiny_chart_overlay
+        (same pattern as Performance data)."""
         if trend_col not in df.columns:
             return
 
@@ -422,8 +422,8 @@ class DataVisualizer(tt.TickerTools):
             self._select_ticker_table(losers, key_suffix='idx_los')
 
     def _render_underlying_data(self, combined_df):
-        """Detailtabelle mit Auswahl/Chart-Overlay + Excel-Export
-        (vormals Teil von generate_treemap, jetzt im Index-View-Expander)."""
+        """Detail table with selection/chart overlay + Excel export
+        (formerly part of generate_treemap, now inside the index-view expander)."""
         df_expander = st.expander(t('mm.underlying_data'), expanded=False)
         with df_expander:
             selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
@@ -441,10 +441,10 @@ class DataVisualizer(tt.TickerTools):
                                 )
 
     def _render_markov_breadth(self, index_name: str):
-        """Kompaktes Breadth-Widget: Bull/Bär/Seitwärts-Verteilung aller Mitglieder
-        des aktuell gewählten Zielmarkts auf Tages-/Wochen-/Monatsbasis
-        (Markov-Regime, gecached über compute_index_breadth), plus daraus
-        abgeleiteter Gesamtzustand des Marktes (Score + Alignment-Hinweis).
+        """Compact breadth widget: bull/bear/sideways distribution of all members
+        of the currently selected target market across daily/weekly/monthly timeframes
+        (Markov regime, cached via compute_index_breadth), plus the derived
+        overall market state (score + alignment note).
         """
         from tradinglib.indicator.markov import Markov
         from tradinglib.regime_data_engine import compute_index_breadth, summarize_breadth
@@ -466,15 +466,15 @@ class DataVisualizer(tt.TickerTools):
             _colors   = {k: Markov._PALETTE[k]['solid'] for k in _order}
             _tf_label = {'day': t('mm.breadth_tf_day'), 'week': t('mm.breadth_tf_week'),
                          'month': t('mm.breadth_tf_month')}
-            # Tages-Historie (Tendenz): älteste zuerst, damit sie im Chart direkt
-            # unter der "Tag"-Zeile von unten nach oben Richtung heute läuft.
+            # Daily history (trend): oldest first so it runs bottom-to-top
+            # in the chart, directly below the "Day" row, towards today.
             for k in (4, 3, 2, 1):
                 if (summary.get(f'day_{k}') or {}).get('n'):
                     _tf_label[f'day_{k}'] = t('mm.breadth_tf_day_back', n=k)
 
-            # ── Stacked horizontal bars: eine Zeile je Zeitebene ──────────────────
+            # ── Stacked horizontal bars: one row per timeframe ────────────────────
             rows = [tf for tf in ('month', 'week', 'day_4', 'day_3', 'day_2', 'day_1', 'day')
-                    if tf in _tf_label]   # von unten nach oben: Monat → … → Tag
+                    if tf in _tf_label]   # bottom to top: month → … → day
             fig = go.Figure()
             n_rows = 0
             for tf in rows:
@@ -494,8 +494,8 @@ class DataVisualizer(tt.TickerTools):
                         hovertemplate=f"{_tf_label[tf]} · {_names[regime]}: %{{x:.0f}}%<extra></extra>",
                     ))
 
-            # Kompakte Höhe, damit Chart und Ticker-Listen nebeneinander auf einen
-            # Blick passen (kein Scrollen beim Öffnen des Expanders).
+            # Compact height so chart and ticker lists fit side by side
+            # at a glance (no scrolling when the expander opens).
             content_h = max(170, 60 + 26 * n_rows)
             fig.update_layout(
                 barmode='stack',
@@ -507,7 +507,7 @@ class DataVisualizer(tt.TickerTools):
                 paper_bgcolor='rgba(0,0,0,0)',
             )
 
-            # ── Abgeleiteter Gesamtzustand ────────────────────────────────────────
+            # ── Derived overall market state ─────────────────────────────────────
             score, state_code, aligned = summary['score'], summary['state'], summary['aligned']
             _state_label = {
                 'bull':    t('mm.breadth_state_bull'),
@@ -522,13 +522,12 @@ class DataVisualizer(tt.TickerTools):
                 score=score, n=len(df), align=align_txt,
             )
 
-            # ── Chart | Gewinner | Verlierer nebeneinander ────────────────────────
-            # st.columns hat flex-wrap aktiv und stapelt die Spalten automatisch
-            # untereinander, sobald der Container zu schmal wird — im Expander
-            # passiert das auf kleineren Bildschirmen früher als auf der freien
-            # Seite. Wir erzwingen das Nebeneinander per scoped CSS (nowrap) auf
-            # genau dieser Zeile; overflow-x sorgt für horizontales Scrollen statt
-            # Abschneiden, falls es wirklich eng wird.
+            # ── Chart | Winners | Losers side by side ────────────────────────────
+            # st.columns has flex-wrap active and will stack columns vertically
+            # once the container gets too narrow — inside an expander this happens
+            # on smaller screens sooner than on the free page. We force the side-by-
+            # side layout via scoped CSS (nowrap) on exactly this row; overflow-x
+            # provides horizontal scrolling instead of clipping when space is tight.
             st.markdown(
                 """
                 <style>
@@ -545,12 +544,12 @@ class DataVisualizer(tt.TickerTools):
                 with c_chart:
                     st.plotly_chart(fig, use_container_width=True)
                     st.caption(summary_txt)
-                # Tabellenhöhe an die Chart-Höhe angleichen → keine vertikale Überlänge.
+                # Align table height to chart height → no vertical overflow.
                 self._render_breadth_winner_loser(df, _names, c_win, c_los, table_height=content_h)
 
     def _render_breadth_winner_loser(self, df, regime_labels, col_w, col_l, table_height=None):
-        """Ticker-Listen für Mitglieder im heutigen Bull- bzw. Bär-Regime,
-        sortiert nach Übereinstimmung über Tag/Woche/Monat."""
+        """Ticker lists for members in today's bull or bear regime,
+        sorted by agreement across day/week/month."""
         tf_cols = ['day', 'week', 'month']
         work = df.copy()
         work['bull_count'] = (work[tf_cols] == 1).sum(axis=1)
@@ -685,12 +684,12 @@ class DataVisualizer(tt.TickerTools):
             st.error(t('mm.no_data'))
             return
 
-        # Market Map (Treemap) – ausserhalb der Expander, oben auf der Seite
+        # Market Map (Treemap) – outside the expanders, at the top of the page
         fig, treemap_df, price_col = self.generate_treemap(combined_df, order_by)
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
 
-        # Index View: Gewinner/Verlierer + Detaildaten der Indexmitglieder
+        # Index View: winners/losers + detail data of index members
         idx_label = self.index_column.lstrip('^') or self.index_column
         with st.expander(t('mm.index_view_title', index=idx_label), expanded=True):
             self._render_index_winner_loser(treemap_df, self.trend, price_col)

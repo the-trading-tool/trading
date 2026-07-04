@@ -1,13 +1,13 @@
 """
-On-Demand-Laden von Kurs- und Stammdaten für die Scalable-Edition.
+On-demand loading of price and master data for the Scalable edition.
 
-Nach dem Scalable-Import werden nur die tatsächlich hochgeladenen Ticker
-nachgeladen — kein Bulk-Lauf über tausende Titel. Geladen werden:
-  - OHLCV       → yf_<TICKER>.db   (via StockDataSaver, wie get_asset_data.py)
-  - Stammdaten  → asset_info.db    (via get_asset_info.fetch_info_for + Upsert + FTS)
+After a Scalable import only the actually uploaded tickers are loaded —
+no bulk run over thousands of instruments. Loaded:
+  - OHLCV       → yf_<TICKER>.db   (via StockDataSaver, like get_asset_data.py)
+  - Master data → asset_info.db    (via get_asset_info.fetch_info_for + upsert + FTS)
 
-Bewusst NICHT geladen: asset_simulation_* (Scoring/Signale) — das ist Teil des
-Upgrades auf die volle Trading-Plattform.
+Deliberately NOT loaded: asset_simulation_* (scoring/signals) — that is part of the
+upgrade to the full trading platform.
 """
 import logging
 import os
@@ -15,12 +15,11 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Dateien kleiner als das gelten als "leer/unvollständig" und werden neu geladen.
+# Files smaller than this are considered "empty/incomplete" and will be reloaded.
 _MIN_DB_BYTES = 8192
 
-# 2 Buchstaben (Ländercode) + 10 alphanumerische Zeichen = ISIN. Solche Werte
-# bedeuten, dass die ISIN→Ticker-Auflösung fehlschlug → kein Yahoo/FMP-Download
-# möglich, daher überspringen.
+# 2 letters (country code) + 10 alphanumeric characters = ISIN. Such values indicate
+# that ISIN→ticker resolution failed → no Yahoo/FMP download possible, skip them.
 _ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$')
 
 
@@ -29,7 +28,7 @@ def _looks_like_isin(symbol: str) -> bool:
 
 
 def _ohlc_present(ticker: str, db_path: str = 'database') -> bool:
-    """True, wenn yf_<ticker>.db existiert und nicht offensichtlich leer ist."""
+    """True when yf_<ticker>.db exists and is not obviously empty."""
     from tradinglib import tools
     path = tools.Tools().get_path(path=db_path, file_name=f'yf_{ticker}.db')
     try:
@@ -39,7 +38,7 @@ def _ohlc_present(ticker: str, db_path: str = 'database') -> bool:
 
 
 def _info_present(ticker: str, db_path: str = 'database') -> bool:
-    """True, wenn asset_info eine Zeile für diesen Ticker hat."""
+    """True when asset_info contains a row for this ticker."""
     from tradinglib import tools
     from tradinglib.tools import open_db
     path = tools.Tools().get_path(path=db_path, file_name='asset_info.db')
@@ -56,7 +55,7 @@ def _info_present(ticker: str, db_path: str = 'database') -> bool:
 
 
 def _load_ohlc(ticker: str, db_path: str = 'database') -> bool:
-    """OHLCV für einen Ticker laden und in yf_<ticker>.db speichern."""
+    """Load OHLCV data for a ticker and save it to yf_<ticker>.db."""
     from tradinglib import ticker_tools as tt
     t_tools = tt.TickerTools()
     saver = tt.StockDataSaver(ticker, db_path=db_path)
@@ -66,7 +65,7 @@ def _load_ohlc(ticker: str, db_path: str = 'database') -> bool:
             periods=tt_periods(t_tools),
             force_remote=True,
         )
-        # Mindestens ein Intervall erfolgreich = brauchbar
+        # At least one interval succeeded = usable
         return len(failed) < len(tt_intervals(t_tools))
     except Exception as e:
         logger.warning("On-demand OHLC load failed for %s: %s", ticker, e)
@@ -79,17 +78,17 @@ def _load_ohlc(ticker: str, db_path: str = 'database') -> bool:
 
 
 def tt_intervals(t_tools):
-    """Kanonische Intervalle (wie get_asset_data.py: TickerTools().intervals)."""
+    """Canonical intervals (as in get_asset_data.py: TickerTools().intervals)."""
     return getattr(t_tools, 'intervals', ['1m', '1h', '1d', '1wk', '1mo'])
 
 
 def tt_periods(t_tools):
-    """Kanonische Perioden (wie get_asset_data.py: TickerTools().periods)."""
+    """Canonical periods (as in get_asset_data.py: TickerTools().periods)."""
     return getattr(t_tools, 'periods', ['7d', '60d', 'max', 'max', 'max'])
 
 
 def _load_info(tickers: list, db_path: str = 'database') -> int:
-    """Stammdaten für die Ticker laden (Batch-Upsert in asset_info + FTS-Rebuild)."""
+    """Load master data for the tickers (batch upsert into asset_info + FTS rebuild)."""
     if not tickers:
         return 0
     import get_asset_info as gai
@@ -140,33 +139,32 @@ def _normalize_assets(assets):
 
 
 def ensure_assets_loaded(assets, db_path: str = 'database', progress=None) -> dict:
-    """Lade fehlende Kurs- und Stammdaten für die gegebenen Assets nach.
+    """Load missing price and master data for the given assets on demand.
 
-    Scalable liefert zu jeder Position die ISIN mit — diese ist der autoritative
-    Schlüssel. Ist der Ticker noch eine ISIN (Auflösung übersprungen/fehlgeschlagen),
-    wird hier über die ISIN aufgelöst (lokal → FMP → yfinance), statt die Position
-    stillschweigend zu verwerfen.
+    Scalable supplies the ISIN for each position — this is the authoritative key.
+    If the ticker is still an ISIN (resolution skipped/failed), it is resolved here
+    via the ISIN (local → FMP → yfinance) instead of silently discarding the position.
 
     Args:
-        assets:   Liste von Tickern (str) ODER von {ticker, isin}-Dicts/(ticker, isin)-Tupeln.
-        db_path:  Datenbankverzeichnis.
-        progress: optionales callable(done:int, total:int, label:str) für UI-Feedback.
+        assets:   List of ticker strings OR {ticker, isin} dicts / (ticker, isin) tuples.
+        db_path:  Database directory.
+        progress: Optional callable(done:int, total:int, label:str) for UI feedback.
 
     Returns:
-        dict mit Zählern: tickers, resolved_from_isin, unresolved,
+        dict with counters: tickers, resolved_from_isin, unresolved,
         ohlc_loaded, info_loaded, info_attempted.
     """
-    # ISIN-getriebene Auflösung + Dedupe
+    # ISIN-driven resolution + deduplication
     norm, seen = [], set()
     resolved_from_isin, unresolved = 0, 0
     pair_seen = set()
     for ticker, isin in _normalize_assets(assets):
-        # identische (ticker, isin)-Paare nicht doppelt auflösen/laden
+        # do not resolve/load identical (ticker, isin) pairs twice
         if (ticker, isin) in pair_seen:
             continue
         pair_seen.add((ticker, isin))
         tk = ticker
-        # Ticker fehlt oder ist noch eine ISIN → über die (immer vorhandene) ISIN auflösen
+        # Ticker missing or still an ISIN → resolve via the (always available) ISIN
         if (not tk or _looks_like_isin(tk)) and _looks_like_isin(isin):
             try:
                 from tradinglib.scalable_import import _resolve_isin_to_ticker

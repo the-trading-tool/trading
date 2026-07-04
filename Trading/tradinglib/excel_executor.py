@@ -10,12 +10,12 @@ class ExcelSQLExecutor:
     def __init__(self):
         self.config = {
             "commit_query_after_execution": True,
-            "replace_or_append": "append",  # Optionen: "replace" oder "append"
+            "replace_or_append": "append",  # Options: "replace" or "append"
         }
 
     def parse_parameter_tab(self, excel_data):
         """
-        Extrahiert die Parameter aus dem Parameter-Tab und aktualisiert die Konfiguration.
+        Extract parameters from the Parameter tab and update the configuration.
         """
         try:
             parameters = excel_data.parse("Parameter")
@@ -32,7 +32,7 @@ class ExcelSQLExecutor:
 
     def handle_database_paths(self, excel_data):
         """
-        Erstellt oder verbindet sich mit SQLite-Datenbanken basierend auf dem Paths-Tab.
+        Create or connect to SQLite databases based on the Paths tab.
         """
         try:
             paths_tab = excel_data.parse("Paths")
@@ -53,30 +53,30 @@ class ExcelSQLExecutor:
                 self.main.warning("No path found in 'Path' sheet.")
                 continue
 
-            db_name = os.path.basename(db_path).replace(".db", "")  # Tabellenname aus Dateiname ableiten
+            db_name = os.path.basename(db_path).replace(".db", "")  # Derive table name from filename
             if db_name in st.session_state["db_paths"]:
                 self.main.info(f"Database '{db_name}' already connected.")
                 continue
 
-            # Pfad speichern, Verbindung wird bei Bedarf erstellt
+            # Save path; connection is created on demand
             st.session_state["db_paths"][db_name] = db_path
             self.main.success(f"Database '{db_path}' registered.")
 
     def get_connection(self, db_name):
         """
-        Erstellt und gibt eine SQLite-Verbindung für die angegebene Datenbank zurück.
+        Create and return a SQLite connection for the specified database.
         """
         db_path = st.session_state["db_paths"].get(db_name)
         if not db_path:
             self.main.error(f"Error, no database '{db_name}'.")
             return None
 
-        # Verbindung erstellen
+        # Create connection
         return open_db(db_path, check_same_thread=False)
 
     def initialize_table_from_tab(self, excel_data, db_name, table_name):
         """
-        Erstellt oder aktualisiert eine Tabelle in der Datenbank basierend auf dem entsprechenden Excel-Tab.
+        Create or update a table in the database based on the corresponding Excel tab.
         """
         conn = self.get_connection(db_name)
         if not conn:
@@ -89,7 +89,7 @@ class ExcelSQLExecutor:
                 return
 
             cursor = conn.cursor()
-            # Prüfen, ob die Tabelle bereits existiert
+            # Check whether the table already exists
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
             table_exists = cursor.fetchone() is not None
 
@@ -99,7 +99,7 @@ class ExcelSQLExecutor:
                 self.main.subheader(f"Backup for: {table_name}")
                 self.main.dataframe(backup_data)
 
-                # Download-Button für das Backup
+                # Download button for the backup
                 buffer = DataUtils.get_bin_excel_data(backup_data)
                 self.main.download_button(
                     label=f"Download backup for {table_name}",
@@ -108,7 +108,7 @@ class ExcelSQLExecutor:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
-            # Tabelle initialisieren
+            # Initialise table
             data.to_sql(table_name, conn, if_exists=self.config["replace_or_append"], index=False)
             self.main.success(f"SQL table '{table_name}' successfully created.")
         except Exception as e:
@@ -118,13 +118,13 @@ class ExcelSQLExecutor:
 
     def initialize_table_with_index(self, excel_data, db_name, table_name, index_column):
         """
-        Erstellt oder aktualisiert eine SQLite-Tabelle mit einer Index-Spalte.
-    
+        Create or update a SQLite table with an index column.
+
         Parameters:
-            excel_data (ExcelFile): Geparste Excel-Daten.
-            db_name (str): Name der Datenbank (Pfad zur SQLite-Datei).
-            table_name (str): Name der Tabelle, die erstellt werden soll.
-            index_column (str): Name der Spalte, die als PRIMARY KEY verwendet wird.
+            excel_data (ExcelFile): Parsed Excel data.
+            db_name (str): Database name (path to the SQLite file).
+            table_name (str): Name of the table to create.
+            index_column (str): Name of the column to use as PRIMARY KEY.
         """
         conn = self.get_connection(db_name)
         if not conn:
@@ -133,22 +133,22 @@ class ExcelSQLExecutor:
 
         self.main.text(table_name)
         try:
-            # Excel-Tabelle in DataFrame umwandeln
+            # Convert Excel sheet to DataFrame
             data = excel_data.parse(table_name)
             if data.empty:
                 self.main.error(f"Sheet '{table_name}' is empty.")
                 return
 
-            # Prüfen, ob die Index-Spalte existiert
+            # Check whether the index column exists
             if index_column not in data.columns:
                 self.main.error(f"Index-Column '{index_column}' not found in data.")
                 return
 
-            # Tabelle erstellen mit PRIMARY KEY
+            # Create table with PRIMARY KEY
             cursor = conn.cursor()
-            cursor.execute(f"DROP TABLE IF EXISTS {table_name};")  # Alte Tabelle löschen (optional)
-        
-            # Dynamisches Schema basierend auf den Spalten erstellen
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name};")  # Drop old table (optional)
+
+            # Build dynamic schema based on columns
             columns = [f'"{col}" TEXT' for col in data.columns if col != index_column]
             create_table_sql = f"""
             CREATE TABLE {table_name} (
@@ -159,7 +159,7 @@ class ExcelSQLExecutor:
             cursor.execute(create_table_sql)
             conn.commit()
 
-            # Daten ohne Index-Spalte in die Tabelle einfügen
+            # Insert data without index column into the table
             data.to_sql(table_name, conn, if_exists="append", index=False)
             self.main.text(f"Sheet '{table_name}' succefully created using '{index_column}' as PRIMARY KEY.")
         except Exception as e:
@@ -171,7 +171,7 @@ class ExcelSQLExecutor:
 
     def execute_queries(self, excel_data):
         """
-        Führt die Queries aus dem Query-Tab auf den verknüpften Datenbanken aus.
+        Execute the queries from the Query tab against the connected databases.
         """
         if "db_paths" not in st.session_state or not st.session_state["db_paths"]:
             self.main.warning("No databases connected. Mind to enter them into the 'Path'-sheet.")
@@ -204,12 +204,12 @@ class ExcelSQLExecutor:
                 try:
                     cursor = conn.cursor()
                     cursor.execute(query_sql)
-                    if cursor.description:  # Nur bei SELECT und ähnlichen Befehlen
+                    if cursor.description:  # Only for SELECT and similar statements
                         results[query_name] = pd.DataFrame(cursor.fetchall(), columns=[desc[0] for desc in cursor.description])
                     else:
                         results[query_name] = f"Query '{query_name}' execution succeful."
 
-                    # Commit nach jeder Query (falls konfiguriert)
+                    # Commit after each query (if configured)
                     if self.config["commit_query_after_execution"]:
                         conn.commit()
                 except Exception as e:

@@ -32,30 +32,30 @@ def calculate_investment(asset_log_vola=0.20, target_avg=2000, ref_vola=0.1):
     Invests proportionally more when asset volatility is low, less when high.
     Capped at 3× target_avg to avoid concentration risk.
     """
-    # Skalierungsfaktor: Weniger investieren bei hoher Vola, mehr bei niedriger
+    # Scaling factor: invest less at high volatility, more at low volatility
     factor = ref_vola / asset_log_vola
-    
-    # Optional: Cap setzen, um Klumpenrisiken zu vermeiden (z.B. max. 3x Durchschnitt)
+
+    # Optional: cap to avoid concentration risk (e.g. max 3x average)
     final_amount = target_avg * min(factor, 3.0) 
     
     return round(final_amount, 2)
 
 class OHLCQueryPlanner:
     """
-    Plant, welche Tabelle und wie viele Zeilen geladen werden müssen,
-    um einen bestimmten Aggregationsintervall und Zeitraum abbilden zu können.
-    Handelszeiten (z. B. 480 min/Tag) werden berücksichtigt.
+    Plans which table and how many rows need to be loaded
+    to cover a given aggregation interval and time period.
+    Trading hours (e.g. 480 min/day) are taken into account.
     """
 
-    # Max. Handelswerte pro Tag je Datenquelle
+    # Max. trading values per day per data source
     DATA_RESOLUTION_PER_DAY = {
         "min": 480,     # 8h * 60min
-        "h60": 8,         # 8 Stunden pro Tag
-        "day": 1,          # 1 pro Handelstag
-        "month": 1 / 21,   # ca. 1 pro 21 Handelstage
+        "h60": 8,         # 8 hours per day
+        "day": 1,          # 1 per trading day
+        "month": 1 / 21,   # approx. 1 per 21 trading days
     }
 
-    # Mapping von Zielintervall zu Quelldatentyp
+    # Mapping from target interval to source data type
     INTERVAL_TO_SOURCE = [
         ("min", ["m"]),
         ("h60",   ["h"]),
@@ -63,14 +63,14 @@ class OHLCQueryPlanner:
         ("month",  ["mo", "y"]),
     ]
 
-    # Handelskalender: wie viele Handelstage pro Woche/Monat/Jahr
+    # Trading calendar: how many trading days per week/month/year
     PERIOD_TO_TRADING_DAYS = {
         "h": 1/8,
         "d": 1,
         "wk": 5,
         "mo": 21,
-        "y": 252,  # 21 Tage * 12 Monate
-        "max": 25*252,  # 21 Tage * 12 Monate
+        "y": 252,  # 21 days * 12 months
+        "max": 25*252,  # 21 days * 12 months
     }
 
     def __init__(self, interval: str, period: str):
@@ -137,7 +137,7 @@ class TickerTools(tools.Tools):
 
     def load_tradinglib_indicator_instances(self):
         """Dynamically import all indicator modules from the tradinglib.indicator package."""
-        # Dynamisch alle Module im indicator-Paket importieren, außer die mit "_"
+        # Dynamically import all modules in the indicator package, except those starting with "_"
         for loader, module_name, is_pkg in pkgutil.iter_modules(indicator_pkg.__path__):
             if not module_name.startswith("_"):
                 full_module_name = f"{indicator_pkg.__name__}.{module_name}"
@@ -402,33 +402,33 @@ CREATE TABLE IF NOT EXISTS stock_indices (
                 isin = row["isin"]
                 index_list = [i.strip() for i in str(row["indices"]).split(",") if i.strip()]
 
-                # Prüfen, ob Stock-Eintrag schon existiert (z. B. per Ticker + Date)
+                # Check if stock entry already exists (z. B. per Ticker + Date)
                 cursor.execute(f"""SELECT id FROM {table_name} WHERE Ticker = ?""", 
                                [ticker])
                 result = cursor.fetchone()
 
                 if result:
                     stock_id = result[0]
-                    # Optional: bestehende Daten aktualisieren
+                    # Optional: update existing data
                     cursor.execute(f"""
                         UPDATE {table_name} SET INVESTED = ?, ISIN = ? WHERE id = ?
                     """, (invested, isin, stock_id))
                 else:
-                    # Neu anlegen
+                    # Create new entry
                     cursor.execute(f"""
                         INSERT INTO {table_name} (Ticker, Date, INVESTED, ISIN)
                         VALUES (?, ?, ?, ?)
                     """, (ticker, date, invested, isin))
                     stock_id = cursor.lastrowid
 
-                # Indices behandeln
+                # Handle indices
                 for index_name in index_list:
-                    # Index sicherstellen
+                    # Ensure index
                     cursor.execute("INSERT OR IGNORE INTO indices (name) VALUES (?)", (index_name,))
                     cursor.execute("SELECT id FROM indices WHERE name = ?", (index_name,))
                     index_id = cursor.fetchone()[0]
 
-                    # Verknüpfung prüfen, nur einfügen wenn nicht vorhanden
+                    # Check link, insert only if not already present
                     cursor.execute(f"""
                         SELECT 1 FROM stock_indices
                         WHERE stock_id = ? AND index_id = ?
@@ -446,7 +446,7 @@ CREATE TABLE IF NOT EXISTS stock_indices (
                 rows = cursor.fetchall()
                 conn.close()
     
-                # In ein pandas DataFrame umwandeln
+                # Convert to a pandas DataFrame
                 df = pd.DataFrame(rows, columns=tbl_columns)
             else:
                 df = df.rename(columns={'symbol': 'Ticker'})
@@ -463,10 +463,10 @@ CREATE TABLE IF NOT EXISTS stock_indices (
         
         conn = open_db(db_assets)
 
-        # Zweite Datenbank anhängen
+        # Attach second database
         conn.execute("ATTACH DATABASE 'db_info' AS db2;")
 
-        # SQL-Abfrage ausführen, um die Tabellen zu verknüpfen
+        # Execute SQL query to join the tables
         cursor = conn.cursor()
         cursor.execute('''
             SELECT c.customer_name, o.order_id
@@ -474,12 +474,12 @@ CREATE TABLE IF NOT EXISTS stock_indices (
             JOIN db2.orders o ON c.customer_id = o.customer_id;
         ''')
 
-        # Ergebnisse abrufen und anzeigen
+        # Fetch and display results
         rows = cursor.fetchall()
         for row in rows:
             logger.debug("%s", row)
 
-        # Verbindung schließen
+        # Close connection
         conn.close()            
         
     def export_to_excel(self, data, button_label='Export', file_name='data.xlsx', region=st):

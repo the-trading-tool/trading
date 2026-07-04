@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# vader_lexicon herunterladen -- SSL-Bypass fuer eingeschraenkte Umgebungen
+# Download vader_lexicon -- SSL bypass for restricted environments
 try:
     import ssl
     ssl._create_default_https_context = ssl._create_unverified_context
@@ -65,7 +65,7 @@ class YahooNewsSentiment:
     def analyze_sentiment(self, articles, single=False):
         """Score sentiment with VADER; single=True returns a score dict for one text string."""
         if self.sia is None:
-            # Sentiment-Analyse nicht verfuegbar (vader_lexicon fehlt)
+            # Sentiment analysis not available (vader_lexicon missing)
             if single:
                 return {'neg': 0.0, 'neu': 1.0, 'pos': 0.0, 'compound': 0.0}
             return articles
@@ -88,7 +88,7 @@ class YahooNewsSentiment:
         analyzed_articles = self.analyze_sentiment(articles)
         df = pd.DataFrame(analyzed_articles)
         
-        #self.screen_region.write(f"### Sentiment Analyse für {self.ticker}")
+        #self.screen_region.write(f"### Sentiment analysis for {self.ticker}")
         # 
         try:        
             fig = px.bar(
@@ -123,7 +123,7 @@ class YahooNewsSentiment:
             try:
                 published_dt = datetime.strptime(article['published'], "%a, %d %b %Y %H:%M:%S %z")
             except ValueError:
-                published_dt = datetime.min  # Falls das Datum fehlt, nach hinten sortieren
+                published_dt = datetime.min  # If date is missing, sort to the back
 
             news_items.append({
                 'published_dt': published_dt,
@@ -134,7 +134,7 @@ class YahooNewsSentiment:
                 'Link': article['link'],
             })
 
-        # Neueste zuerst
+        # Newest first
         news_items.sort(key=lambda x: x['published_dt'], reverse=True)
 
         total_sentiment_score = sum(item['Score'] for item in news_items)

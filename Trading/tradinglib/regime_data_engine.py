@@ -31,7 +31,7 @@ _PERIOD_LADDER = [
     (9999, '2y'),
 ]
 
-# Yahoo Finance sector names → German display labels
+# Yahoo Finance sector names → display labels
 _SECTOR_DE = {
     'Technology':             'Technologie',
     'Financial Services':     'Finanzen',
@@ -545,19 +545,19 @@ def _index_change_pct(index_name: str, window: int) -> float:
         return 0.0
 
 
-# ── Persistente Tages-Cache für den Market-Stress-Score ───────────────────────
-# compute_market_stress() ist zwar @st.cache_data(ttl=1h), aber das lebt nur im
-# RAM des jeweiligen Streamlit-Prozesses: nach Restart, Cache-Eviction oder im
-# zweiten Worker wird die teure Berechnung (bis ~1900 Member via compute_regimes)
-# erneut fällig. Da der Score auf Tageskerzen beruht, genügt EINE Berechnung pro
-# Index und Kalendertag. Diese persistente Schicht (SQLite, WAL) sorgt dafür,
-# dass nur der allererste Aufruf des Tages rechnet; alle weiteren — prozess- und
-# neustartübergreifend — lesen das Ergebnis sofort.
+# ── Persistent daily cache for the market stress score ────────────────────────
+# compute_market_stress() is decorated with @st.cache_data(ttl=1h), but that only
+# lives in the RAM of the current Streamlit process: after a restart, cache eviction,
+# or in a second worker the expensive computation (up to ~1900 members via
+# compute_regimes) would run again. Since the score is based on daily bars, ONE
+# computation per index and calendar day is sufficient. This persistent layer
+# (SQLite, WAL) ensures that only the very first call of the day does the work;
+# all subsequent calls — across processes and restarts — read the result instantly.
 _STRESS_CACHE_DB = 'regime_cache.db'
 
 
 def _stress_cache_get(key: str):
-    """Heutiges gecachtes Stress-Dict für key zurückgeben, sonst None."""
+    """Return today's cached stress dict for key, or None if not found."""
     try:
         db = ts.Tools().get_path(path='database', file_name=_STRESS_CACHE_DB)
         with ts.open_db(db, readonly=True) as conn:
@@ -571,7 +571,7 @@ def _stress_cache_get(key: str):
 
 
 def _stress_cache_put(key: str, result: dict) -> None:
-    """Stress-Dict für key+heute persistieren (Best effort)."""
+    """Persist stress dict for key + today (best effort)."""
     try:
         db = ts.Tools().get_path(path='database', file_name=_STRESS_CACHE_DB)
         with ts.open_db(db) as conn:
@@ -622,7 +622,7 @@ def compute_market_stress(index_name: str) -> dict:
     if not index_name or not str(index_name).startswith('^'):
         return {}
 
-    # Persistenter Tages-Cache: nur der erste Aufruf des Tages rechnet.
+    # Persistent daily cache: only the first call of the day does the computation.
     cached = _stress_cache_get(index_name)
     if cached is not None:
         return cached
@@ -633,7 +633,7 @@ def compute_market_stress(index_name: str) -> dict:
 
     df = compute_regimes(members, _STRESS_INTERVAL_DAYS)
     result = _stress_core(df, index_name=index_name)
-    if result:                       # leere Ergebnisse nicht cachen → erneuter Versuch
+    if result:                       # do not cache empty results → allow retry
         _stress_cache_put(index_name, result)
     return result
 

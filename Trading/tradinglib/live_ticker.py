@@ -59,11 +59,10 @@ class LiveTicker(fetch_data.FetchData):
         self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
 
         if self.init:
-            # Datenbank erstellen, falls nicht vorhanden
+            # Create database if it does not exist
             self._initialize_db()
 
-        
-        # Datenbank laden
+        # Load database
         self.load_from_db(db_name=f"{db_table}.db")
     
     def _connect_db(self, db_name=''):
@@ -92,7 +91,7 @@ class LiveTicker(fetch_data.FetchData):
     def save_to_db(self):
         """Persist current tick data to SQLite using INSERT OR REPLACE to avoid duplicates."""
         conn = self._connect_db()
-        self.df = self.df[~self.df.index.duplicated(keep='last')]  # Entfernt doppelte Einträge
+        self.df = self.df[~self.df.index.duplicated(keep='last')]  # Remove duplicate entries
         for idx, row  in self.df.iterrows():
             timestamp = row["timestamp"]
             symbol = row["symbol"]
@@ -122,9 +121,9 @@ class LiveTicker(fetch_data.FetchData):
         full_timestamp_yesterday = datetime.strptime(f"{yesterday_str} {time_str}", "%Y-%m-%d %H:%M:%S")
         
         if full_timestamp_today < now:
-            return full_timestamp_today.strftime("%Y-%m-%d %H:%M:%S")  # Gehört zu heute
+            return full_timestamp_today.strftime("%Y-%m-%d %H:%M:%S")  # Belongs to today
         if full_timestamp_today >= now:
-            return full_timestamp_yesterday.strftime("%Y-%m-%d %H:%M:%S")  # Gehört zu gesten
+            return full_timestamp_yesterday.strftime("%Y-%m-%d %H:%M:%S")  # Belongs to yesterday
    
     def add_tick_data(self, time_str, symbol, price):
         """Append a new tick to self.df and persist it to the database without duplicates."""
@@ -157,7 +156,7 @@ class LiveTicker(fetch_data.FetchData):
         db_files = []
         base_name = os.path.basename(db_name)
         db_path = self.get_path(path=self.db_path)
-        # Startdatum bestimmen
+        # Determine start date
         if base_name == "ticker_data.db":
             start_datetime = datetime.now()
         else:
@@ -165,18 +164,18 @@ class LiveTicker(fetch_data.FetchData):
                 ts = base_name.replace("ticker_data_", "").replace(".db", "")
                 start_datetime = datetime.strptime(ts, "%Y-%m-%d %H-%M-%S")
             except ValueError as ve:
-                logger.warning("Ungültiges Start-Dateiformat: %s", db_name)
+                logger.warning("Invalid start file format: %s", db_name)
                 return
 
-        # Startdatei zuerst einfügen
+        # Insert start file first
         full_start_path = os.path.join(db_path, db_name)
         if os.path.exists(full_start_path):
             db_files.append((start_datetime, full_start_path))
         else:
-            logger.warning("Startdatei nicht gefunden: %s", full_start_path)
+            logger.warning("Start file not found: %s", full_start_path)
             return
 
-        # Rückwärts für n-1 weitere Tage
+        # Backwards for n-1 additional days
         for i in range(1, days):
             target_day = (start_datetime - timedelta(days=i)).date()
             pattern = os.path.join(db_path, f"ticker_data_{target_day.strftime('%Y-%m-%d')}*.db")
@@ -191,10 +190,10 @@ class LiveTicker(fetch_data.FetchData):
                 except ValueError:
                     continue
 
-        # Sortiere chronologisch
+        # Sort chronologically
         db_files.sort()
 
-        # Lade Daten
+        # Load data
         all_data = []
         for _, db_file in db_files:
             conn = self._connect_db(db_name=db_file)
@@ -202,11 +201,11 @@ class LiveTicker(fetch_data.FetchData):
                 df = pd.read_sql(f"SELECT * FROM {self.db_table}", conn)
                 all_data.append(df)
             except Exception as e:
-                logger.error("Fehler beim Laden von %s: %s", db_file, e)
+                logger.error("Error loading from %s: %s", db_file, e)
             finally:
                 conn.close()
 
-        # Zusammenführen
+        # Merge
         if all_data:
             self.df = pd.concat(all_data, ignore_index=True)
             self.df = self.df.sort_values(by=self.df.columns[0])
@@ -216,7 +215,7 @@ class LiveTicker(fetch_data.FetchData):
         self.get_symbol_list()
     
     def load_from_db(self, timestamp="", db_name = ''):
-        """Lädt gespeicherte Tick-Daten aus der SQLite-Datenbank."""
+        """Load stored tick data from the SQLite database."""
         where = ""
 #        if not timestamp == "" and db_name == "":
 #            where = f' WHERE timestamp > "{start_date}"'
@@ -252,7 +251,7 @@ class LiveTicker(fetch_data.FetchData):
         return price_line
 
     def aggregate_ohlc(self, interval="5min", symbol=''):
-        """Aggregiert die Tick-Daten zu OHLC-Werten für ein angegebenes Zeitintervall."""
+        """Aggregate tick data into OHLC values for a given time interval."""
         ohlc = pd.DataFrame()
 
         df_combined = self.df[self.df['symbol']==symbol].copy()
@@ -275,7 +274,7 @@ class LiveTicker(fetch_data.FetchData):
 
 
     def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False):
-        """Erstellt einen Plotly Candlestick Chart für ein Symbol."""
+        """Create a Plotly candlestick chart for a symbol."""
 
         ohlc_df = self.aggregate_ohlc(symbol=symbol, interval=interval)
         if symbol not in ohlc_df.index:
@@ -545,12 +544,12 @@ class LiveTicker(fetch_data.FetchData):
         databases.insert(0, "")
         limit_start = True
         if databases and not bare_mode:
-            # Dropdown zur Auswahl der Datenbank
+            # Dropdown to select the database
             selected_db = st.selectbox("Choose database:", databases)
 
             if selected_db and selected_db != "":
                 
-                # Daten aus der gewählten Datenbank laden
+                # Load data from the selected database
                 self.load_from_file_backwards(selected_db)
                 limit_start = False
 

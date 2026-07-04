@@ -1,26 +1,24 @@
 """
-broker_tradability.py — Broker-agnostische Handelbarkeitsprüfung.
+broker_tradability.py — Broker-agnostic tradability check.
 
-Beantwortet pro Ticker die Frage: *„Ist dieses Papier bei meinem Broker
-handelbar?"* — damit lassen sich generierte Signale auf die tatsächlich
-orderbaren Werte einschränken.
+Answers, per ticker, the question: *"Is this instrument tradable at my broker?"* —
+so that generated signals can be restricted to actually orderable instruments.
 
-Broker werden über einen Plugin-Mechanismus angebunden:
-  - scalable : Scalable Capital (gettex + Xetra + LS Exchange) — per-ISIN-Abfrage
-               über den lokalen Proxy ``unofficial-scalable-capital-api``
-               (``/securities/{isin}/tradability``, Default-Port 3141).
-  - alpaca   : Alpaca — ``/v2/assets``-Liste (US-Aktien), Symbol-basiert.
-  - ibkr     : Interactive Brokers — permissiv (SMART-Routing deckt faktisch
-               alle gelisteten US/EU-Titel), optionale Ausschlussliste.
-  - none     : kein Filter — alles handelbar (Default).
+Brokers are plugged in via a plugin mechanism:
+  - scalable : Scalable Capital (gettex + Xetra + LS Exchange) — per-ISIN query
+               via the local proxy ``unofficial-scalable-capital-api``
+               (``/securities/{isin}/tradability``, default port 3141).
+  - alpaca   : Alpaca — ``/v2/assets`` list (US equities), symbol-based.
+  - ibkr     : Interactive Brokers — permissive (SMART routing covers practically
+               all listed US/EU instruments), optional exclusion list.
+  - none     : no filter — everything tradable (default).
 
-Der aktive Broker steht in ``config.db`` unter ``'<user>:broker'``.
+The active broker is stored in ``config.db`` under ``'<user>:broker'``.
 
-Ergebnisse werden in ``asset_info.db`` (Tabelle ``broker_tradability_cache``)
-gecached und erst nach ``REFRESH_DAYS`` erneut online geprüft — also eine
-Abfrage pro ISIN, danach offline. ISINs kommen aus ``yf_tickers.db`` (Spalte
-``stocks.ISIN``); fehlende werden bei Bedarf per yfinance/FMP nachgeladen und
-zurückgeschrieben.
+Results are cached in ``asset_info.db`` (table ``broker_tradability_cache``) and
+re-checked online only after ``REFRESH_DAYS`` — one query per ISIN, then offline.
+ISINs come from ``yf_tickers.db`` (column ``stocks.ISIN``); missing ones are
+fetched via yfinance/FMP on demand and written back.
 
 CLI:
     python -m tradinglib.broker_tradability /index:^RUT
@@ -41,12 +39,12 @@ from tradinglib.tools import Tools, open_db
 
 logger = logging.getLogger(__name__)
 
-REFRESH_DAYS = 7          # nach wie vielen Tagen ein gecachtes Ergebnis neu geprüft wird
+REFRESH_DAYS = 7          # number of days after which a cached result is re-checked
 _DB_PATH = "database"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Datenmodell
+# Data model
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -54,8 +52,8 @@ class Tradability:
     ticker: str
     isin: Optional[str]
     broker: str
-    tradable: Optional[bool]      # True / False / None (= unbekannt, z.B. Broker offline)
-    venues: Optional[str]         # z.B. "gettex,xetra" — sofern der Broker es liefert
+    tradable: Optional[bool]      # True / False / None (= unknown, e.g. broker offline)
+    venues: Optional[str]         # e.g. "gettex,xetra" — if supplied by the broker
     source: str                   # 'cache' | 'scalable_proxy' | 'alpaca_assets' | ...
 
     def as_dict(self) -> dict:
@@ -63,17 +61,17 @@ class Tradability:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ISIN-Auflösung (yf_tickers.db → optional yfinance/FMP-Nachladen)
+# ISIN resolution (yf_tickers.db → optional yfinance/FMP fetch)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class IsinResolver(Tools):
-    """Liefert ISINs aus yf_tickers.db; lädt fehlende optional nach und schreibt sie zurück."""
+    """Return ISINs from yf_tickers.db; optionally fetch missing ones and write them back."""
 
     def __init__(self, db_path: str = _DB_PATH):
         self._db = self.get_path(path=db_path, file_name="yf_tickers.db")
 
     def get(self, ticker: str) -> Optional[str]:
-        """ISIN aus stocks.ISIN (None bei Index/FX oder fehlend)."""
+        """Return ISIN from stocks.ISIN (None for index/FX or when missing)."""
         try:
             with open_db(self._db, readonly=True) as conn:
                 row = conn.execute(
@@ -82,11 +80,11 @@ class IsinResolver(Tools):
             if row and row[0]:
                 return str(row[0]).strip().upper()
         except Exception as e:
-            logger.debug("ISIN-Lookup für %s fehlgeschlagen: %s", ticker, e)
+            logger.debug("ISIN lookup for %s failed: %s", ticker, e)
         return None
 
     def resolve(self, ticker: str, allow_network: bool = True) -> Optional[str]:
-        """ISIN holen; bei Fehlen optional per yfinance/FMP nachladen und persistieren."""
+        """Get ISIN; optionally fetch via yfinance/FMP when missing and persist it."""
         isin = self.get(ticker)
         if isin or not allow_network:
             return isin
@@ -96,14 +94,14 @@ class IsinResolver(Tools):
             from backfill_isin import fetch_isin
             isin = fetch_isin(ticker)
         except Exception as e:
-            logger.debug("ISIN-Nachladen für %s fehlgeschlagen: %s", ticker, e)
+            logger.debug("ISIN fetch for %s failed: %s", ticker, e)
             isin = None
         if isin:
             self._persist(ticker, isin)
         return isin
 
     def _persist(self, ticker: str, isin: str):
-        """ISIN in stocks zurückschreiben (Best effort)."""
+        """Write ISIN back to stocks (best effort)."""
         try:
             with open_db(self._db) as conn:
                 conn.execute(
@@ -112,15 +110,15 @@ class IsinResolver(Tools):
                 )
                 conn.commit()
         except Exception as e:
-            logger.debug("ISIN-Persist für %s fehlgeschlagen: %s", ticker, e)
+            logger.debug("ISIN persist for %s failed: %s", ticker, e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Broker-Checker (Plugin-Basis + Implementierungen)
+# Broker checker (plugin base + implementations)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class BrokerChecker:
-    """Basisklasse. Unterklassen implementieren ``_check(ticker, isin)``."""
+    """Base class. Subclasses implement ``_check(ticker, isin)``."""
 
     broker_id = "base"
     needs_isin = False
@@ -130,7 +128,7 @@ class BrokerChecker:
 
 
 class NoFilterChecker(BrokerChecker):
-    """Kein Filter — alles handelbar (für Nutzer ohne Broker-Einschränkung)."""
+    """No filter — everything tradable (for users without broker restrictions)."""
 
     broker_id = "none"
 
@@ -139,20 +137,19 @@ class NoFilterChecker(BrokerChecker):
 
 
 class ScalableChecker(BrokerChecker):
-    """Scalable Capital via lokalem Proxy (unofficial-scalable-capital-api).
+    """Scalable Capital via local proxy (unofficial-scalable-capital-api).
 
-    Abgefragt wird ``GET {base}/securities/{isin}/tradability`` (Handelbarkeit
-    über die Handelsplätze — passender als ``/buyable``, das die Kaufbarkeit in
-    den eigenen Portfolios prüft). Ist der Proxy nicht erreichbar oder fehlt die
-    ISIN, wird ``tradable=None`` (unbekannt) gemeldet — der Filter verliert dann
-    keine Signale durch eine Infrastruktur-Störung.
+    Queries ``GET {base}/securities/{isin}/tradability`` (tradability across venues —
+    more appropriate than ``/buyable``, which checks buyability within own portfolios).
+    If the proxy is unreachable or the ISIN is missing, ``tradable=None`` (unknown)
+    is reported — the filter does not lose signals due to an infrastructure outage.
 
-    Der Proxy läuft per Default auf Port 3141 (``http://127.0.0.1:3141``); abweichend
-    nur, wenn er mit ``--port`` gestartet wurde.
+    The proxy runs on port 3141 by default (``http://127.0.0.1:3141``); changed only
+    when started with ``--port``.
 
-    Konfiguration (config.db, je Nutzer):
-      - ``scalable_proxy_url``    Default ``http://localhost:3141``
-      - ``scalable_gateway_token`` optional → Header ``X-Gateway-Token``
+    Configuration (config.db, per user):
+      - ``scalable_proxy_url``     default ``http://localhost:3141``
+      - ``scalable_gateway_token`` optional → header ``X-Gateway-Token``
     """
 
     broker_id = "scalable"
@@ -176,23 +173,23 @@ class ScalableChecker(BrokerChecker):
                 f"{self._base}/securities/{isin}/tradability", headers=headers, timeout=10
             )
             if resp.status_code == 404:
-                # Proxy kennt das Papier nicht → bei Scalable nicht handelbar
+                # Proxy does not know the instrument → not tradable at Scalable
                 return Tradability(ticker, isin, self.broker_id, False, None, "scalable_proxy")
             resp.raise_for_status()
             tradable, venues = _parse_scalable_payload(resp.json())
             return Tradability(ticker, isin, self.broker_id, tradable, venues, "scalable_proxy")
         except Exception as e:
-            logger.debug("Scalable-Proxy für %s (%s) nicht erreichbar: %s", ticker, isin, e)
+            logger.debug("Scalable proxy for %s (%s) unreachable: %s", ticker, isin, e)
             return Tradability(ticker, isin, self.broker_id, None, None, "proxy_unreachable")
 
 
 class AlpacaChecker(BrokerChecker):
-    """Alpaca — Handelbarkeit über die ``/v2/assets``-Liste (US-Aktien).
+    """Alpaca — tradability via the ``/v2/assets`` list (US equities).
 
-    Lädt die aktiven, handelbaren Symbole einmal pro Lauf und prüft per
-    Symbol-Mitgliedschaft. Ohne API-Key wird ``tradable=None`` gemeldet.
+    Loads the active, tradable symbols once per run and checks via symbol membership.
+    Without an API key, ``tradable=None`` is reported.
 
-    Keys: KSP-Eintrag ``alpaca`` (user/password) oder Env
+    Keys: KSP entry ``alpaca`` (user/password) or env vars
     ``APCA_API_KEY_ID`` / ``APCA_API_SECRET_KEY``.
     """
 
@@ -223,7 +220,7 @@ class AlpacaChecker(BrokerChecker):
                 if a.get("tradable")
             }
         except Exception as e:
-            logger.debug("Alpaca-Assets-Abruf fehlgeschlagen: %s", e)
+            logger.debug("Alpaca assets fetch failed: %s", e)
             self._symbols = None
         return self._symbols
 
@@ -238,13 +235,12 @@ class AlpacaChecker(BrokerChecker):
 
 
 class IbkrChecker(BrokerChecker):
-    """Interactive Brokers — permissive Heuristik.
+    """Interactive Brokers — permissive heuristic.
 
-    IBKR deckt über SMART-Routing faktisch alle an Hauptbörsen gelisteten
-    US/EU-Titel ab. Ohne laufendes TWS/Gateway gibt es keine zuverlässige
-    Online-Kontraktprüfung, daher: handelbar = True, sofern eine ISIN existiert
-    oder es ein US-Symbol ist; per config.db ``ibkr_exclude`` (kommagetrennt)
-    lassen sich einzelne Ticker ausschließen.
+    IBKR covers practically all instruments listed on major exchanges via SMART
+    routing. Without a running TWS/Gateway there is no reliable online contract
+    check, so: tradable = True when an ISIN exists or the symbol is US; individual
+    tickers can be excluded via config.db ``ibkr_exclude`` (comma-separated).
     """
 
     broker_id = "ibkr"
@@ -261,24 +257,23 @@ class IbkrChecker(BrokerChecker):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Hilfsfunktionen für Checker
+# Helper functions for checkers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_scalable_payload(payload) -> tuple[Optional[bool], Optional[str]]:
-    """Robustes Parsen der /tradability- (bzw. /buyable-) Antwort → (tradable, venues).
+    """Robustly parse the /tradability (or /buyable) response → (tradable, venues).
 
-    Die Antwortstruktur des inoffiziellen Proxys ist nicht garantiert. Geprüft
-    werden, in dieser Reihenfolge:
-      1. direkter Bool,
-      2. eine Venue-Liste (Tradability über Handelsplätze) — handelbar = mindestens
-         ein Handelsplatz erlaubt den Kauf; die Venue-Namen werden gesammelt,
-      3. flache Bool-Felder (z.B. /buyable).
-    Bei unklarer Struktur → (None, None), sodass der Filter sauber degradiert.
+    The response structure of the unofficial proxy is not guaranteed. Checked in order:
+      1. direct bool,
+      2. a venue list (tradability across trading venues) — tradable = at least one
+         venue allows buying; venue names are collected,
+      3. flat bool fields (e.g. /buyable).
+    On ambiguous structure → (None, None) so the filter degrades cleanly.
     """
     if isinstance(payload, bool):
         return payload, None
 
-    # 2. Venue-Liste — direkt oder unter einem bekannten Schlüssel
+    # 2. Venue list — directly or under a known key
     venue_list = None
     if isinstance(payload, list):
         venue_list = payload
@@ -305,7 +300,7 @@ def _parse_scalable_payload(payload) -> tuple[Optional[bool], Optional[str]]:
                 buyable = False
         return buyable, (",".join(dict.fromkeys(names)) or None)
 
-    # 3. Flache Bool-Felder
+    # 3. Flat bool fields
     if isinstance(payload, dict):
         for key in ("buyable", "tradable", "isTradable", "isBuyable", "buy"):
             if isinstance(payload.get(key), bool):
@@ -317,7 +312,7 @@ def _parse_scalable_payload(payload) -> tuple[Optional[bool], Optional[str]]:
 
 
 def _alpaca_creds() -> tuple[str, str]:
-    """Alpaca-Zugangsdaten aus KSP (Eintrag 'alpaca') oder Env."""
+    """Return Alpaca credentials from KSP (entry 'alpaca') or env."""
     try:
         from tradinglib.ksplib import Ksp
         creds = Ksp(storage_path=_DB_PATH, secrets_path=_DB_PATH).get_ksp("alpaca")
@@ -327,28 +322,28 @@ def _alpaca_creds() -> tuple[str, str]:
             if key_id and secret:
                 return key_id, secret
     except Exception as e:
-        logger.debug("KSP-Lookup für Alpaca fehlgeschlagen: %s", e)
+        logger.debug("KSP lookup for Alpaca failed: %s", e)
     return (os.environ.get("APCA_API_KEY_ID", ""),
             os.environ.get("APCA_API_SECRET_KEY", ""))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Konfiguration / Factory
+# Configuration / factory
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _cfg(key: str, default=None, username: str = "admin"):
-    """Einzelnen Config-Wert lesen (ohne Streamlit-Abhängigkeit)."""
+    """Read a single config value (without Streamlit dependency)."""
     try:
         from tradinglib import system_config as sysconf
         return sysconf.SystemConfig(username=username, region=None,
                                     bare_mode=True).get_value(key, default)
     except Exception as e:
-        logger.debug("Config-Lookup '%s' fehlgeschlagen: %s", key, e)
+        logger.debug("Config lookup '%s' failed: %s", key, e)
         return default
 
 
 def get_checker(broker_id: Optional[str] = None, username: str = "admin") -> BrokerChecker:
-    """Checker für den (konfigurierten) Broker bauen."""
+    """Build a checker for the (configured) broker."""
     if broker_id is None:
         broker_id = (_cfg("broker", "none", username) or "none")
     broker_id = str(broker_id).strip().lower()
@@ -372,7 +367,7 @@ def get_checker(broker_id: Optional[str] = None, username: str = "admin") -> Bro
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _Cache(Tools):
-    """Persistenter Cache in asset_info.db (broker_tradability_cache)."""
+    """Persistent cache in asset_info.db (broker_tradability_cache)."""
 
     def __init__(self, db_path: str = _DB_PATH):
         self._db = self.get_path(path=db_path, file_name="asset_info.db")
@@ -386,7 +381,7 @@ class _Cache(Tools):
                         broker     TEXT,
                         ticker     TEXT,
                         isin       TEXT,
-                        tradable   INTEGER,   -- 1 / 0 / NULL
+                        tradable   INTEGER,   -- 1 / 0 / NULL (unknown)
                         venues     TEXT,
                         source     TEXT,
                         checked_at TEXT,
@@ -395,7 +390,7 @@ class _Cache(Tools):
                 """)
                 conn.commit()
         except Exception as e:
-            logger.debug("Cache-Setup übersprungen: %s", e)
+            logger.debug("Cache setup skipped: %s", e)
 
     def get(self, broker: str, ticker: str) -> Optional[Tradability]:
         try:
@@ -413,7 +408,7 @@ class _Cache(Tools):
             tradable = None if row[1] is None else bool(row[1])
             return Tradability(ticker, row[0], broker, tradable, row[2], "cache")
         except Exception as e:
-            logger.debug("Cache-Get %s/%s fehlgeschlagen: %s", broker, ticker, e)
+            logger.debug("Cache get %s/%s failed: %s", broker, ticker, e)
             return None
 
     def put(self, r: Tradability):
@@ -432,21 +427,20 @@ class _Cache(Tools):
                       r.venues, r.source, datetime.now().isoformat()))
                 conn.commit()
         except Exception as e:
-            logger.debug("Cache-Put %s/%s fehlgeschlagen: %s", r.broker, r.ticker, e)
+            logger.debug("Cache put %s/%s failed: %s", r.broker, r.ticker, e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Öffentliche API
+# Public API
 # ─────────────────────────────────────────────────────────────────────────────
 
 def check_tradable(tickers, broker_id: Optional[str] = None, *,
                    username: str = "admin", allow_network: bool = True,
                    use_cache: bool = True) -> dict[str, Tradability]:
-    """Handelbarkeit je Ticker bestimmen → {ticker: Tradability}.
+    """Determine tradability per ticker → {ticker: Tradability}.
 
-    Reihenfolge je Ticker: Cache (frisch) → ISIN auflösen → Broker abfragen →
-    Ergebnis cachen. Netzwerkfehler ergeben ``tradable=None`` (unbekannt),
-    brechen den Lauf aber nicht ab.
+    Order per ticker: cache (fresh) → resolve ISIN → query broker → cache result.
+    Network errors yield ``tradable=None`` (unknown) but do not abort the run.
     """
     if isinstance(tickers, str):
         tickers = [tickers]
@@ -464,8 +458,8 @@ def check_tradable(tickers, broker_id: Optional[str] = None, *,
             if hit is not None:
                 out[ticker] = hit
                 continue
-        # ISIN nur dort online nachladen, wo der Broker sie wirklich braucht
-        # (Scalable). Für none/ibkr/alpaca genügt die lokale ISIN -> kein Netz-Sturm.
+        # Only fetch ISIN online where the broker actually needs it
+        # (Scalable). For none/ibkr/alpaca the local ISIN suffices → no network storm.
         isin = resolver.resolve(ticker,
                                 allow_network=allow_network and checker.needs_isin)
         result = checker._check(ticker, isin)
@@ -478,11 +472,11 @@ def check_tradable(tickers, broker_id: Optional[str] = None, *,
 def filter_tradable(tickers, broker_id: Optional[str] = None, *,
                     username: str = "admin", allow_network: bool = True,
                     drop_unknown: bool = False) -> dict[str, list[str]]:
-    """Tickerliste in handelbar / nicht-handelbar / unbekannt aufteilen.
+    """Split a ticker list into tradable / not-tradable / unknown.
 
-    drop_unknown=False (Default): unbekannte (Broker offline o.ä.) kommen zu
-    ``tradable`` — kein Signalverlust bei Infrastrukturproblemen.
-    drop_unknown=True (strikt): nur eindeutig handelbare passieren.
+    drop_unknown=False (default): unknown results (broker offline etc.) go into
+    ``tradable`` — no signal loss on infrastructure problems.
+    drop_unknown=True (strict): only clearly tradable instruments pass.
 
     Returns: {'tradable': [...], 'not_tradable': [...], 'unknown': [...]}
     """
@@ -496,8 +490,8 @@ def filter_tradable(tickers, broker_id: Optional[str] = None, *,
             not_tradable.append(t)
         else:
             unknown.append(t)
-    # Unbekannte standardmäßig durchlassen (kein Signalverlust bei Broker-Ausfall);
-    # im strikten Modus bleiben sie draußen.
+    # Unknown results pass through by default (no signal loss on broker outage);
+    # in strict mode they are excluded.
     if not drop_unknown:
         tradable = tradable + unknown
     return {
@@ -512,7 +506,7 @@ def filter_tradable(tickers, broker_id: Optional[str] = None, *,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _load_index_members(index: str, db_path: str = _DB_PATH) -> list[str]:
-    """Mitglieder eines Index (z.B. '^RUT') aus yf_tickers.db."""
+    """Return members of an index (e.g. '^RUT') from yf_tickers.db."""
     db = Tools().get_path(path=db_path, file_name="yf_tickers.db")
     with open_db(db, readonly=True) as conn:
         rows = conn.execute("""
@@ -553,7 +547,7 @@ def _parse_cli(argv):
             opts["no_cache"] = True
         elif key == "log" and val:
             opts["log"] = val.upper()
-    # dedupe, Reihenfolge erhalten
+    # dedupe, preserve order
     seen, uniq = set(), []
     for t in opts["tickers"]:
         if t not in seen:
@@ -571,7 +565,7 @@ def main(argv=None):
 
     if not opts["tickers"]:
         print(__doc__)
-        print("Keine Ticker angegeben (/tickers:, /index: oder /file:).")
+        print("No tickers specified (/tickers:, /index: or /file:).")
         return
 
     broker = opts["broker"] or (_cfg("broker", "none") or "none")
@@ -588,13 +582,13 @@ def main(argv=None):
                   else "not_tradable" if r.tradable is False else "unknown")
         buckets[bucket].append(t)
 
-    print(f"  [+] handelbar     : {len(buckets['tradable'])}")
-    print(f"  [-] nicht handelbar: {len(buckets['not_tradable'])}")
-    print(f"  [?] unbekannt      : {len(buckets['unknown'])}")
+    print(f"  [+] tradable      : {len(buckets['tradable'])}")
+    print(f"  [-] not tradable  : {len(buckets['not_tradable'])}")
+    print(f"  [?] unknown       : {len(buckets['unknown'])}")
     if buckets["not_tradable"]:
-        print("  nicht handelbar:", ", ".join(sorted(buckets["not_tradable"])))
+        print("  not tradable:", ", ".join(sorted(buckets["not_tradable"])))
     if buckets["unknown"]:
-        print("  unbekannt:", ", ".join(sorted(buckets["unknown"])))
+        print("  unknown:", ", ".join(sorted(buckets["unknown"])))
 
     if opts["out"]:
         payload = {"broker": broker,
@@ -604,7 +598,7 @@ def main(argv=None):
                    "details": [results[t].as_dict() for t in opts["tickers"]]}
         with open(opts["out"], "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=1, ensure_ascii=False)
-        print(f"  -> Report geschrieben: {opts['out']}")
+        print(f"  -> Report written: {opts['out']}")
 
 
 if __name__ == "__main__":

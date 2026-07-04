@@ -20,11 +20,11 @@ class Ksp(tools.Tools):
         self.key_file = os.path.join(self.secrets_path, "secret.key") 
         self.data_file = os.path.join(self.storage_path, "credentials.json") 
 
-        # Schlüssel laden oder generieren
+        # Load or generate key
         self.key = self._load_or_create_key()
         self.fernet = Fernet(self.key)
 
-        # Zugangsdaten laden
+        # Load credentials
         self.credentials = self._load_credentials()
 
     def _load_or_create_key(self):
@@ -72,7 +72,7 @@ class Ksp(tools.Tools):
             del self.credentials[api]
             self._save_credentials()
 
-# Beispiel-Nutzung:
+# Example usage:
 if __name__ == "__main__":
 
     pass

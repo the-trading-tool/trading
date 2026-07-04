@@ -13,8 +13,8 @@ from tradinglib.indicator import _indicator
 
 class Cumd(_indicator._Indicator):
     """
-    Cumulative Delta auf Range-Bars Basis (anstatt Zeit-Candles).
-    Mit Reset je nach Einstellung (daily/monthly/auto/None).
+    Cumulative delta on range-bar basis (instead of time-based candles).
+    With reset depending on the setting (daily/monthly/auto/None).
     """
 
     is_oszilator = True
@@ -33,10 +33,10 @@ class Cumd(_indicator._Indicator):
     def __init__(self, df, symbol="", range_size=0.01, center_cumdelta=True,
                  reset_mode="monthly", impulse_factor=7, lookback=3):
         """
-        range_size: Preisbewegung pro Range-Bar in derselben Einheit wie Close (z.B. 0.01)
+        range_size: Price movement per range bar in the same unit as Close (e.g. 0.01)
         reset_mode: "auto" | "daily" | "monthly" | None
-        impulse_factor: Schwellenfaktor für Bullish/Bearish Impulse (z.B. 2, 3, 5)
-        lookback: Anzahl der letzten Kerzen für Vergleich
+        impulse_factor: Threshold factor for bullish/bearish impulses (e.g. 2, 3, 5)
+        lookback: Number of recent candles for comparison
         """
         super().__init__(df=df, symbol=symbol)
         self.range_size = range_size
@@ -106,7 +106,7 @@ class Cumd(_indicator._Indicator):
         """Aggregate tick data into range bars of a fixed price increment."""
         bars = []
         if 'Close' not in self.df.columns:
-            raise ValueError("DataFrame muss 'Close' Spalte enthalten")
+            raise ValueError("DataFrame must contain a 'Close' column")
 
         open_price = self.df['cumd_cum_delta'].iloc[0]
         high_price = open_price
@@ -152,13 +152,13 @@ class Cumd(_indicator._Indicator):
 
     def add_cvd_candles(self):
         """
-        Zeichnet die Cumulative Volume Delta Candles ähnlich zum Pine Script.
+        Draws the Cumulative Volume Delta candles similar to the Pine Script.
         """
         if "cumd_delta" not in self.df.columns:
             self.df = self.calculate_cumulative_delta(self.df)
 
-        # Hier: Pine Script berechnet open/max/min/last basierend auf Delta-Volumen
-        # Wir simulieren das mit CumDelta als "Price"
+        # Here: Pine Script computes open/max/min/last based on delta volume
+        # We simulate this using CumDelta as "Price"
         cvd_bars = []
         cum_vol = 0
 
@@ -180,7 +180,7 @@ class Cumd(_indicator._Indicator):
 
         cvd_df = pd.DataFrame(cvd_bars)
 
-        # Farbe: bullish = grün, bearish = rot
+        # Color: bullish = green, bearish = red
         self.fig.add_trace(go.Candlestick(
             x=cvd_df["Date"],
             open=cvd_df["open"],
@@ -193,7 +193,7 @@ class Cumd(_indicator._Indicator):
             name="CVD Candles"
         ))
 
-        # horizontale Linie bei 0 (wie im Pine Script hline(0))
+        # horizontal line at 0 (like hline(0) in Pine Script)
         self.fig.add_hline(y=0, line=dict(color="black", width=1, dash="dot"))
 
         return cvd_df
@@ -213,7 +213,7 @@ class Cumd(_indicator._Indicator):
             body = abs(curr['close'] - curr['open'])
             bullish = curr['close'] > curr['open']
 
-            # nur gleichfarbige Kerzen im Lookback berücksichtigen
+            # only consider same-direction candles within the lookback
             prev_bodies = []
             for j in range(i - self.lookback, i):
                 prev = self.range_bars.iloc[j]
@@ -248,12 +248,12 @@ class Cumd(_indicator._Indicator):
     def add_cvd_markers(self, cvd_df, impulse_factor=3, trend_change_only=True, 
                         bull_symbol="star", bear_symbol="x", bull_color="limegreen", bear_color="crimson"):
         """
-        Fügt Marker auf den CVD-Candles hinzu.
-        
-        impulse_factor: wie viel größer das Delta sein muss als vorherige Candle
-        trend_change_only: True = Marker nur bei Trendwechsel (bullish -> bearish oder umgekehrt)
-        bull_symbol/bear_symbol: Marker-Symbole für bull/bear Impulse
-        bull_color/bear_color: Marker-Farben für bull/bear Impulse
+        Adds markers on the CVD candles.
+
+        impulse_factor: how much larger the delta must be compared to the previous candle
+        trend_change_only: True = markers only on trend change (bullish -> bearish or vice versa)
+        bull_symbol/bear_symbol: marker symbols for bull/bear impulses
+        bull_color/bear_color: marker colors for bull/bear impulses
         """
         markers_x = []
         markers_y = []
@@ -270,11 +270,11 @@ class Cumd(_indicator._Indicator):
             bullish = body > 0
             prev_bullish = prev["body"] > 0
 
-            # Bedingung für Trendwechsel
+            # Condition for trend change
             if trend_change_only and (bullish == prev_bullish):
                 continue
 
-            # Impulsbedingung
+            # Impulse condition
             prev_body = abs(prev["body"])
             if prev_body > 0 and abs(body) > impulse_factor * prev_body:
                 markers_x.append(curr["Date"])
@@ -302,7 +302,7 @@ class Cumd(_indicator._Indicator):
         self.fig = go.Figure()
         self.add_cvd_candles()
         self.add_impulse_markers()
-        # nur Trendwechsel, mit Custom Symbolen
+        # trend changes only, with custom symbols
 #            cvd_df, 
 #        )               
         self.fig.add_hline(y=0, line=dict(color="black", width=1, dash="dot"))

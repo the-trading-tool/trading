@@ -1,9 +1,9 @@
 """
-Scalable Capital CSV-Import-Modul.
+Scalable Capital CSV import module.
 
-Herausgelöst aus own_trades_analysis.py.
-Öffentliche API:
-  parse_scalable_csv(df_raw)  → dict mit kategorisierten Sub-DataFrames
+Extracted from own_trades_analysis.py.
+Public API:
+  parse_scalable_csv(df_raw)  → dict with categorised sub-DataFrames
   render_scalable_import(region, db_path, system_currency)
 """
 import datetime as dt
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Konstanten
+# Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SCALABLE_COLS = {'date', 'time', 'status', 'reference', 'description',
@@ -43,7 +43,7 @@ _SCALABLE_ACTION_MAP = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helfer
+# Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _is_scalable_csv(df: pd.DataFrame) -> bool:
@@ -245,7 +245,7 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
     if pos.empty:
         return pos
 
-    # avg_price = Gesamtkaufwert / Gesamtkaufstückzahl (NICHT durch Netto-Restbestand teilen)
+    # avg_price = total purchase value / total purchase quantity (do NOT divide by net remaining shares)
     pos['avg_price'] = np.where(pos['buy_shares'] > 0, pos['buy_value'] / pos['buy_shares'], 0.0)
     pos = pos.drop(columns=['sold_shares', 'buy_shares'])
 
@@ -263,14 +263,14 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
 
     pos['current_price']  = pos['ticker'].map(prices).fillna(0.0)
     pos['current_value']  = pos['shares'] * pos['current_price']
-    # Unrealized P&L nur auf den offenen Restbestand (shares * avg_price als Einstandswert)
+    # Unrealized P&L on the open remaining position only (shares * avg_price as cost basis)
     pos['cost_basis']     = pos['shares'] * pos['avg_price']
     pos['unrealized_pnl'] = pos['current_value'] - pos['cost_basis']
     pos['pnl_pct'] = np.where(pos['avg_price'] > 0, (pos['current_price'] / pos['avg_price'] - 1) * 100, 0.0)
     total_value = pos['current_value'].sum()
     pos['weight_pct'] = np.where(total_value > 0, pos['current_value'] / total_value * 100, 0.0)
 
-    # FIFO-Reihenfolge: älteste Position zuerst
+    # FIFO order: oldest position first
     return pos.sort_values('first_buy', ascending=True).reset_index(drop=True)
 
 
@@ -302,22 +302,22 @@ def _overlay_price_chart(ticker: str, longname: str, lines: list, purchase_price
 
 def _migrate_trades_pk(dbt) -> bool:
     """
-    Entferne einen problematischen `timestamp`-PRIMARY-KEY aus der trades-Tabelle.
+    Remove a problematic `timestamp` PRIMARY KEY from the trades table.
 
-    Beim Rebalancing teilen sich viele Trades exakt denselben Timestamp
-    (z. B. mehrere Orders um 18:54:44). Ist `timestamp` der Primärschlüssel,
-    verwirft `INSERT` die kollidierenden Zeilen stillschweigend — aus 27 Zeilen
-    überleben dann nur die mit eindeutigem Timestamp. Diese Migration baut die
-    Tabelle ohne expliziten PK (rowid) neu auf, sodass jede Zeile eindeutig ist.
-    Gibt True zurück, wenn migriert wurde.
+    During rebalancing many trades share exactly the same timestamp
+    (e.g. multiple orders at 18:54:44). When `timestamp` is the primary key,
+    `INSERT` silently discards colliding rows — out of 27 rows only those with
+    a unique timestamp survive. This migration rebuilds the table without an
+    explicit PK (rowid) so that every row is unique.
+    Returns True if the migration was performed.
     """
     cur = dbt.cursor
     cols = cur.execute("PRAGMA table_info('trades')").fetchall()
     if not cols:
-        return False  # Tabelle existiert noch nicht
-    pk_cols = [c[1] for c in cols if c[5] > 0]  # c[5] = pk-Position (0 = kein PK)
+        return False  # table does not exist yet
+    pk_cols = [c[1] for c in cols if c[5] > 0]  # c[5] = pk position (0 = no PK)
     if pk_cols != ['timestamp']:
-        return False  # kein problematischer timestamp-PK
+        return False  # no problematic timestamp PK
     col_names = [c[1] for c in cols]
     col_defs  = ', '.join(f'"{c[1]}" {c[2] or "TEXT"}' for c in cols)
     col_list  = ', '.join(f'"{n}"' for n in col_names)
@@ -326,7 +326,7 @@ def _migrate_trades_pk(dbt) -> bool:
     cur.execute('DROP TABLE trades')
     cur.execute('ALTER TABLE trades_new RENAME TO trades')
     dbt.conn.commit()
-    logger.info('trades-Tabelle migriert: problematischer timestamp-PRIMARY-KEY entfernt.')
+    logger.info('trades table migrated: problematic timestamp PRIMARY KEY removed.')
     return True
 
 
@@ -335,12 +335,12 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
     inserted = 0
     try:
-        # Selbstheilung: alten timestamp-PK entfernen, sonst gehen Zeilen mit
-        # identischem Timestamp (Rebalancing) beim Insert verloren.
+        # Self-healing: remove old timestamp PK, otherwise rows with
+        # identical timestamps (rebalancing) are lost during insert.
         try:
             _migrate_trades_pk(dbt)
         except Exception as e:
-            logger.warning(f'Scalable import: trades-PK-Migration fehlgeschlagen: {e}')
+            logger.warning(f'Scalable import: trades PK migration failed: {e}')
 
         for _, row in df.iterrows():
             ts_val = row.get('timestamp')
@@ -370,8 +370,8 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
                     rd[k] = None if k not in ('uuid', 'action', 'currency', 'broker') else rd[k]
 
             try:
-                # primary_key=False: frische trades-DBs ohne expliziten PK anlegen
-                # (rowid) — verhindert denselben Zeilenverlust wie der alte timestamp-PK.
+                # primary_key=False: create fresh trades DBs without an explicit PK
+                # (rowid) — prevents the same row-loss as the old timestamp PK.
                 dbt.ensure_table_and_columns(
                     keys=list(rd.keys()), row_dict=rd, database_name='trades',
                     primary_key=False,
@@ -394,7 +394,7 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Parser
+# Parser / parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
 def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
@@ -458,7 +458,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
     # ── string columns ────────────────────────────────────────────────────
     df['_type']     = _s('type').astype(str).str.strip().str.lower()
     df['_action']   = df['_type'].map(_SCALABLE_ACTION_MAP).fillna('other')
-    # Fuzzy-Fallback: Typen die 'sell'/'buy' enthalten aber nicht exakt gemappt wurden
+    # Fuzzy fallback: types that contain 'sell'/'buy' but were not matched exactly
     _unmatched = df['_action'] == 'other'
     if _unmatched.any():
         df.loc[_unmatched & df['_type'].str.contains('sell', case=False, na=False), '_action'] = 'sell'
@@ -514,7 +514,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Render-Funktion
+# Render function
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_scalable_import(region=st, db_path: str = 'database', system_currency: str = 'EUR', username: str = ''):
@@ -588,10 +588,10 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             )
             st.dataframe(unknown_df, hide_index=True, use_container_width=True)
 
-    # ── Ticker-Auflösung ──────────────────────────────────────────────────
-    # In der Scalable-Edition ist die Auflösung verpflichtend: die ISIN liegt
-    # immer vor, und nur mit echtem Ticker sind die Positionen in trades.db
-    # später chart-/analysefähig. Die Checkbox entfällt dort.
+    # ── Ticker resolution ─────────────────────────────────────────────────
+    # In the Scalable edition resolution is mandatory: the ISIN is always
+    # present, and only with a real ticker are the positions in trades.db
+    # later accessible for charting/analysis. The checkbox is omitted there.
     try:
         from tradinglib import app_edition as _appedition
         _force_resolve = _appedition.IS_SCALABLE
@@ -618,7 +618,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             if not df_.empty and 'isin' in df_.columns:
                 df_['ticker'] = df_['isin']
 
-    # ── Offene Positionen (mit aktuellem Kurs) vorab berechnen ─────────────
+    # ── Pre-compute open positions (with current price) ────────────────────
     with st.spinner('Lade aktuelle Kurse für offene Positionen …'):
         open_pos_df = _compute_open_positions(trades_df, db_path)
 
@@ -763,7 +763,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             _show_scalable_df(transfers_df, _NUM_FMT)
             st.metric('Transfers gesamt', f'{transfers_df["amount"].sum():,.2f} {system_currency}')
 
-    # ── Cashflow-Zusammenfassung ──────────────────────────────────────────
+    # ── Cash-flow summary ─────────────────────────────────────────────────
     r.markdown('---')
     r.markdown('#### Cashflow-Übersicht')
     inv    = trades_df[trades_df['action'] == 'buy' ]['amount'].apply(abs).sum() if not trades_df.empty else 0
@@ -787,7 +787,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
     r.metric('Netto-Cashflow', f'{net_cash:+,.2f} {system_currency}',
              delta=f'{net_cash:+,.2f}')
 
-    # ── Import-Button ─────────────────────────────────────────────────────
+    # ── Import button ────────────────────────────────────────────────────
     r.markdown('---')
     import_dividends = r.checkbox(
         'Dividenden und Zinsen ebenfalls importieren',
@@ -816,14 +816,14 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         inserted = _insert_scalable_rows(all_rows, db_path=db_path)
         r.success(f'{inserted} Zeilen erfolgreich in trades.db importiert.')
 
-        # ── On-Demand: Kurs- und Stammdaten für die importierten Ticker nachladen ──
-        # Nur in der Scalable-Edition: dort gibt es keine vorbefüllte Bulk-Pipeline,
-        # also werden genau die hochgeladenen Titel bei Bedarf nachgeladen.
+        # ── On-demand: fetch price and master data for the imported tickers ────
+        # Scalable edition only: there is no pre-filled bulk pipeline there,
+        # so exactly the uploaded assets are loaded on demand.
         try:
             from tradinglib import app_edition as _appedition
             if _appedition.IS_SCALABLE:
-                # Scalable liefert die ISIN immer mit → (ticker, isin)-Paare übergeben,
-                # damit der Loader auch ohne vorab aufgelösten Ticker laden kann.
+                # Scalable always provides the ISIN → pass (ticker, isin) pairs
+                # so the loader can fetch even without a pre-resolved ticker.
                 cols = [c for c in ('ticker', 'isin') if c in all_rows.columns]
                 assets = (all_rows[cols].dropna(how='all').drop_duplicates()
                           .to_dict('records')) if cols else []
@@ -857,7 +857,7 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         except Exception as _e:
             logger.warning("On-demand asset load after Scalable import failed: %s", _e)
 
-    # ── Danger Zone: Trades löschen ─────────────────────────────────────────
+    # ── Danger Zone: delete trades ──────────────────────────────────────────
     r.markdown('---')
     with r.expander('⚠️ Trades löschen (z. B. doppelte Importe entfernen)'):
         r.caption(

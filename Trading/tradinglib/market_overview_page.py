@@ -1,10 +1,10 @@
 """
-market_overview_page.py — Globale Marktübersicht mit KI-Analyse.
+market_overview_page.py — Global market overview with AI analysis.
 
-Analysiert 8 globale Marktindikatoren via FetchData (dieselbe Pipeline wie in
-den Charts), liest die aktiven Indikatoren aus der Benutzer-Konfiguration
-(Overlays + Oszillatoren aus system_config) und sendet die berechneten Werte
-an Groq/Gemini für eine KI-Markteinschätzung.
+Analyses 8 global market indicators via FetchData (the same pipeline as in
+the charts), reads the active indicators from the user configuration
+(overlays + oscillators from system_config) and sends the computed values
+to Groq/Gemini for an AI market assessment.
 """
 import logging
 from datetime import datetime
@@ -17,10 +17,10 @@ from tradinglib import system_config as sysconf
 
 logger = logging.getLogger(__name__)
 
-# ── Symbole ────────────────────────────────────────────────────────────────────
-# (display_id, yf_ticker, langer_name, kategorie)
+# ── Symbols ────────────────────────────────────────────────────────────────────
+# (display_id, yf_ticker, long_name, category)
 
-# Standardauswahl (Fallback wenn DB nicht verfügbar oder nichts gespeichert)
+# Default selection (fallback when DB is unavailable or nothing has been saved)
 _SYMBOLS = [
     ('^VIX',    '^VIX',    'CBOE Volatility Index',  'Angstbarometer'),
     ('^TNX',    '^TNX',    '10Y US Treasury Yield',  'Zins USA'),
@@ -32,11 +32,11 @@ _SYMBOLS = [
     ('BTC-EUR', 'BTC-EUR', 'Bitcoin (EUR)',            'Krypto'),
 ]
 
-_SESSION_KEY = 'market_overview_result'   # State 3: AI-Antwort vorhanden
-_PREP_KEY    = 'market_overview_prep'      # State 2: Daten + Prompt bereit, wartet auf Senden
-_CFG_INSTRUMENTS_KEY = 'market_overview_instruments'  # gespeicherte Instrument-Auswahl
+_SESSION_KEY = 'market_overview_result'   # State 3: AI response available
+_PREP_KEY    = 'market_overview_prep'      # State 2: data + prompt ready, waiting to send
+_CFG_INSTRUMENTS_KEY = 'market_overview_instruments'  # saved instrument selection
 
-# Anzeigenamen für bekannte Indizes (display_id → (langer_name, kategorie))
+# Display names for known indices (display_id → (long_name, category))
 _INDEX_NAMES: dict[str, tuple[str, str]] = {
     '^GDAXI':   ('DAX 40',            'Europa'),
     '^MDAXI':   ('MDAX',              'Europa'),
@@ -89,40 +89,40 @@ _INDEX_NAMES: dict[str, tuple[str, str]] = {
     'USDCNY=X': ('USD/CNY',                  'Währung'),
 }
 
-# yfinance-Ticker weicht vom Display-Ticker ab
-# DX=F (US-Dollar-Index-Future) liefert über Yahoo keine Daten mehr (404/delisted);
-# der ICE-Spot-Index DX-Y.NYB liefert dieselbe Größe und funktioniert.
+# yfinance ticker differs from the display ticker
+# DX=F (US Dollar Index Future) no longer delivers data via Yahoo (404/delisted);
+# the ICE spot index DX-Y.NYB represents the same measure and works.
 _YF_TICKER_MAP: dict[str, str] = {'^SPX': '^GSPC', 'DX=F': 'DX-Y.NYB'}
 
-# Symbole die immer im Pool sind (unabhängig von yf_tickers.db)
+# Symbols that are always in the pool (regardless of yf_tickers.db)
 _EXTRA_SYMBOLS = [
-    # Angstbarometer / Zinsen
+    # Fear gauge / interest rates
     '^VIX', '^TNX',
-    # Metalle
+    # Metals
     'GC=F', 'SI=F', 'HG=F', 'PL=F', 'PA=F',
-    # Energie
+    # Energy
     'BZ=F', 'CL=F', 'NG=F', 'RB=F', 'HO=F',
-    # Agrar
+    # Agriculture
     'ZW=F', 'ZC=F', 'ZS=F', 'KC=F', 'CC=F', 'SB=F', 'CT=F',
-    # Krypto
+    # Crypto
     'BTC-EUR', 'ETH-EUR',
-    # Sonstiges
+    # Other
     'DX=F', 'LE=F',
-    # Währungen
+    # Currencies
     'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCHF=X',
     'AUDUSD=X', 'USDCAD=X', 'EURGBP=X', 'EURJPY=X', 'USDCNY=X',
 ]
 
-# Standard-Aktivierung beim ersten Aufruf
+# Default activation on first call
 _DEFAULT_INSTRUMENTS = ['^VIX', '^TNX', '^HSI', '^N225', '^GDAXI', '^SPX', 'GC=F', 'BTC-EUR']
 
 
 def _load_index_symbols() -> list[tuple[str, str, str, str]]:
-    """Liest die indices-Tabelle aus yf_tickers.db und gibt
-    [(display_id, yf_ticker, name, kategorie), ...] zurück.
+    """Read the indices table from yf_tickers.db and return
+    [(display_id, yf_ticker, name, category), ...].
 
-    Berücksichtigt die TradingDB-Umgebungsvariable für den DB-Pfad.
-    Gibt bei Fehlern eine leere Liste zurück.
+    Respects the TradingDB environment variable for the DB path.
+    Returns an empty list on errors.
     """
     import os
     from tradinglib.tools import open_db
@@ -146,7 +146,7 @@ def _load_index_symbols() -> list[tuple[str, str, str, str]]:
         yf_ticker  = _YF_TICKER_MAP.get(ticker, ticker)
         result.append((ticker, yf_ticker, name, cat))
 
-    # Extra-Symbole anhängen (GC=F, BTC-EUR, VIX, TNX) wenn noch nicht drin
+    # Append extra symbols (GC=F, BTC-EUR, VIX, TNX) if not already present
     existing = {r[0] for r in result}
     for sym in _EXTRA_SYMBOLS:
         if sym not in existing:
@@ -155,14 +155,14 @@ def _load_index_symbols() -> list[tuple[str, str, str, str]]:
 
     return result
 
-# Spalten, die nicht als Indikatoren gelten und aus dem Prompt rausgefiltert werden
+# Columns that are not considered indicators and are filtered out of the prompt
 _SKIP_COLS = frozenset({
     'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close',
     'buy_close', 'sell_close', 'crosszero', 'position',
     'daily_returns', 'log_return', 'index', 'level_0',
 })
 
-# Interpretation-Hinweise für den KI-Prompt
+# Interpretation hints for the AI prompt
 _INDICATOR_HINTS = {
     'markov_regime':      '(0=Seitwärts, 1=Bullenmarkt, 2=Bärenmarkt)',
     'markov_bull_prob':   '(Wahrscheinlichkeit Bullenmarkt-Regime, 0–1)',
@@ -197,7 +197,7 @@ _INDICATOR_HINTS = {
 def _get_active_indicators(sys_conf) -> tuple[str, str, list]:
     """Read interval, period, and indicator list from the user's system configuration."""
     interval, period, overlays, oscillators = sys_conf.get_selectors()
-    # 'bar' = reines Plotly-Rendering, erzeugt keine Datenspalten → weglassen
+    # 'bar' = pure Plotly rendering, produces no data columns → skip it
     all_inds = list(overlays) + list(oscillators)
     indicators = [i for i in all_inds if i != 'bar']
     return interval, period, indicators
@@ -218,9 +218,9 @@ def _extract_indicator_values(df: pd.DataFrame) -> dict[str, float]:
     return result
 
 
-# ── Trend-Snippets ─────────────────────────────────────────────────────────────
+# ── Trend snippets ─────────────────────────────────────────────────────────────
 
-# Kandidaten für numerische Trend-Snippets (in Prioritätsreihenfolge)
+# Candidates for numeric trend snippets (in priority order)
 _SNIPPET_NUM_COLS = ['markov_regime', 'macd_diff', 'ewo', 'ewo_angle', 'rsi', 'cci', 'adx']
 
 
@@ -243,7 +243,7 @@ def _compute_trend_snippets(df: pd.DataFrame, interval: str) -> dict[str, str]:
     if n < 12:
         return {}
 
-    # Perioden-Label für Prompt
+    # Period labels for the prompt
     is_daily = interval in ('1d', '3d', '1wk')
     lbl_10 = 'vor 10 HT' if is_daily else f'vor 10×{interval}'
     lbl_5  = 'vor 5 HT'  if is_daily else f'vor 5×{interval}'
@@ -254,7 +254,7 @@ def _compute_trend_snippets(df: pd.DataFrame, interval: str) -> dict[str, str]:
 
     snippets: dict[str, str] = {}
 
-    # 1. Numerische Schlüssel-Indikatoren
+    # 1. Numeric key indicators
     for col in _SNIPPET_NUM_COLS:
         if col not in df.columns:
             continue
@@ -278,7 +278,7 @@ def _compute_trend_snippets(df: pd.DataFrame, interval: str) -> dict[str, str]:
             flag = '  ⚠ Vorzeichenwechsel!' if sign_flip else ''
             snippets[col] = f"[{lbl_10}: {fmt(v10)} | {lbl_5}: {fmt(v5)} | heute: {fmt(v0)}]  {arrow}{flag}"
 
-    # 2. Heikin-Ashi Richtung (abgeleitet)
+    # 2. Heikin-Ashi direction (derived)
     if 'ha_close' in df.columns and 'ha_open' in df.columns:
         ha_labels = []
         for pt in (p10, p5, p0):
@@ -292,17 +292,17 @@ def _compute_trend_snippets(df: pd.DataFrame, interval: str) -> dict[str, str]:
             f"[{lbl_10}: {ha_labels[0]} | {lbl_5}: {ha_labels[1]} | heute: {ha_labels[2]}]{flag}"
         )
 
-    # 3. Pivot-Kompression über Zeit (nur wenn pvt-Werte dynamisch wären — pvt ist statisch,
-    #    daher überspringen; Kompression steht bereits im ind_values-Block)
+    # 3. Pivot compression over time (only relevant if pvt values were dynamic — pvt is static,
+    #    so skip here; compression is already covered in the ind_values block)
 
     return snippets
 
 
 def _compute_extended_snippets(df: pd.DataFrame, interval: str) -> dict[str, str]:
-    """Langzeit-Trend-Snippets: 200 Perioden → 50 Perioden → heute.
+    """Long-term trend snippets: 200 periods → 50 periods → today.
 
-    Erfordert ausreichend Datenpunkte (≥ 55 für 50P, ≥ 205 für 200P).
-    Bei unzureichenden Daten werden nur verfügbare Zeitpunkte gezeigt.
+    Requires sufficient data points (≥ 55 for 50P, ≥ 205 for 200P).
+    When data is insufficient, only the available time points are shown.
     """
     n = len(df)
     if n < 12:
@@ -312,12 +312,12 @@ def _compute_extended_snippets(df: pd.DataFrame, interval: str) -> dict[str, str
     lbl_200   = 'vor 200 HT' if is_daily else f'vor 200×{interval}'
     lbl_50    = 'vor 50 HT'  if is_daily else f'vor 50×{interval}'
 
-    # Verfügbare Zeitpunkte
+    # Available time points
     has_200 = n >= 205
     has_50  = n >= 55
 
     if not has_50:
-        return {}   # Zu wenig Daten
+        return {}   # Insufficient data
 
     pts: list[tuple[str, 'pd.Series']] = []
     if has_200:
@@ -352,7 +352,7 @@ def _compute_extended_snippets(df: pd.DataFrame, interval: str) -> dict[str, str
             parts = ' | '.join(f"{l}: {fmt(v)}" for l, v in vals)
             snippets[col] = f"[{parts}]  {arrow}{flag}"
 
-    # Heikin-Ashi Richtung
+    # Heikin-Ashi direction
     if 'ha_close' in df.columns and 'ha_open' in df.columns:
         ha_vals: list[tuple[str, str]] = []
         for lbl, row in pts:
@@ -385,7 +385,7 @@ def _compute_4weeks_snapshot(df: pd.DataFrame, interval: str, close_now: float) 
     Returns an empty dict when there is insufficient history.
     """
     bars_back = _bars_for_4weeks(interval)
-    # Mindestens bars_back + 5 Zeilen nötig; sonst kein sinnvoller Vergleich
+    # At least bars_back + 5 rows required; otherwise no meaningful comparison
     if len(df) < bars_back + 5:
         return {}
 

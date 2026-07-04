@@ -19,7 +19,7 @@ except ImportError:
 from tradinglib import tools
 from tradinglib import help_text
 from tradinglib import multi_select
-from tradinglib.indicator import indicator  # Die Basisklasse importieren
+from tradinglib.indicator import indicator  # Import the base class
 from tradinglib import logging_config as lgc
 from tradinglib import i18n
 
@@ -68,7 +68,7 @@ class SystemConfig(tools.Db_tools):
     
     def set_value(self, key: str, value: str):
         """saves a config value."""
-        value_str = json.dumps(value)  # Serialisieren
+        value_str = json.dumps(value)  # Serialise
         with open_db(self._db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -87,7 +87,7 @@ class SystemConfig(tools.Db_tools):
                 try:
                     return json.loads(result[0])
                 except json.JSONDecodeError:
-                    return result[0]  # Falls es ein einfacher String ist
+                    return result[0]  # Fall back if it is a plain string
             return default
     
     def delete_value(self, key: str):
@@ -276,7 +276,7 @@ class SystemConfig(tools.Db_tools):
                 _write_app("data_provider", new_provider)
 
                 if new_provider == "fmp":
-                    # API-Key wird über KSP verwaltet — Status anzeigen
+                    # API key is managed via KSP — show status
                     try:
                         from tradinglib.ksplib import Ksp as _Ksp
                         _ksp_creds = _Ksp(storage_path=self._db_path.replace('config.db', ''),
@@ -425,11 +425,11 @@ class SystemConfig(tools.Db_tools):
         new_params = {}
 
         for key, spec in params_schema.items():
-            # Expliziter Session-State-Key verhindert, dass Streamlit den Widget-Wert
-            # bei Dialog-Reruns auf den DB-Wert zurücksetzt (Bug bei auto-generierten Keys).
+            # Explicit session-state key prevents Streamlit from resetting the widget value
+            # to the DB value on dialog reruns (bug with auto-generated keys).
             wk = f"_plgparam_{plugin_name}_{key}"
 
-            # Beim ersten Öffnen des Dialogs: Session-State aus DB befüllen
+            # On first dialog open: populate session state from DB
             if wk not in st.session_state:
                 raw = current.get(key, spec['default'])
                 if spec['type'] == 'int':
@@ -473,8 +473,7 @@ class SystemConfig(tools.Db_tools):
 
         if st.button("Save"):
             self.set_plugin_params(plugin_name, new_params)
-            # Session-State-Keys löschen damit der nächste Dialog-Aufruf
-            # die frisch gespeicherten Werte aus der DB lädt
+            # Clear session-state keys so the next dialog open loads freshly saved values from DB
             for k in params_schema:
                 st.session_state.pop(f"_plgparam_{plugin_name}_{k}", None)
             st.rerun()
@@ -485,8 +484,8 @@ class SystemConfig(tools.Db_tools):
         if self.bare_mode:
             return
 
-        # Scalable-Edition: fokussierte Hilfe (Einstieg + freie Features), keine
-        # Premium-/Admin-/CLI-Tabs.
+        # Scalable edition: focused help (getting started + free features), no
+        # Premium/Admin/CLI tabs.
         try:
             from tradinglib import app_edition as appedition
             if appedition.IS_SCALABLE:

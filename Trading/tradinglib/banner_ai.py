@@ -1,14 +1,14 @@
 """
-banner_ai.py — Automatische Gemini-Analyse für das zuletzt empfohlene Asset.
+banner_ai.py — Automatic AI analysis for the most recently recommended asset.
 
-Ablauf:
-  1. Letzter Kauf aus trades{year}.db  → ticker, Strategy, stockIndex
-  2. Vollständige Simulationszeile aus asset_simulation_all.db (85 Spalten)
-  3. Passende Strategie-Bedingungen aus multi_transactions (sys_conf)
-  4. Metadaten aus asset_info.db
-  5. Letzte 20 OHLC-Zeilen aus yf_<ticker>.db
-  6. Gemini-Analyse generieren
-  7. Ergebnis in banner_notes.db speichern
+Workflow:
+  1. Latest purchase from trades{year}.db  → ticker, Strategy, stockIndex
+  2. Full simulation row from asset_simulation_all.db (85 columns)
+  3. Matching strategy conditions from multi_transactions (sys_conf)
+  4. Metadata from asset_info.db
+  5. Last 20 OHLC rows from yf_<ticker>.db
+  6. Generate AI analysis
+  7. Save result to banner_notes.db
 """
 import ast
 import datetime as dt
@@ -24,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 _DB_PATH = 'database'
 
-# Spalten aus asset_simulation die NICHT in den Prompt sollen (redundant/intern)
+# Columns from asset_simulation that should NOT go into the prompt (redundant/internal)
 _SIM_SKIP_COLS = {'ticker', 'Date', 'currency'}
 
-# Gruppen der Simulation-Kennzahlen für den Prompt
+# Groups of simulation metrics for the prompt
 _SIM_GROUPS = {
     'Trend':       ['overallValueTrend', 'overallTrend', 'dTrend', 'wkTrend', 'moTrend',
                     'trendDirection', 'buySell', 'ewo_trend_day', 'ewo_trend_wk', 'ewo_trend_mo',
@@ -59,14 +59,14 @@ class BannerAiGenerator:
     # ── public ───────────────────────────────────────────────────────────────
 
     def run(self, force: bool = False) -> tuple[str, str]:
-        """Analyse durchführen und in banner_notes.db speichern.
+        """Run the analysis and save it to banner_notes.db.
 
         Args:
-            force: Wenn True, auch dann neu analysieren wenn heute schon ein
-                   Eintrag für diesen Ticker existiert.
+            force: If True, re-analyse even when an entry for this ticker
+                   already exists for today.
 
         Returns:
-            (ticker, analyse_text)
+            (ticker, analysis_text)
         """
         trade_row = self._get_latest_trade()
         if not trade_row:
@@ -78,7 +78,7 @@ class BannerAiGenerator:
         if not force:
             existing = self._get_existing_note(ticker)
             if existing:
-                logger.info("BannerAiGenerator: %s bereits heute analysiert — übersprungen", ticker)
+                logger.info("BannerAiGenerator: %s already analysed today — skipping", ticker)
                 return ticker, existing
 
         context = self._build_context(ticker, trade_row)
@@ -88,11 +88,11 @@ class BannerAiGenerator:
         return ticker, text
 
     def build_debug_info(self) -> dict:
-        """Alle Daten sammeln und Prompt bauen — ohne API-Call.
+        """Collect all data and build the prompt — without making an API call.
 
         Returns:
-            dict mit: ticker, trade_row, sim_row, strategy_ctx, asset_info,
-                      ohlc_df, context, prompt, existing_note, token_estimate
+            dict with: ticker, trade_row, sim_row, strategy_ctx, asset_info,
+                       ohlc_df, context, prompt, existing_note, token_estimate
         """
         trade_row = self._get_latest_trade()
         if not trade_row:
@@ -125,13 +125,13 @@ class BannerAiGenerator:
     # ── context builder ───────────────────────────────────────────────────────
 
     def _build_context(self, ticker: str, trade_row: dict) -> dict:
-        """Vollständigen Kontext-Dict für GeminiApi.analyze_asset() zusammenbauen."""
+        """Build the full context dict for AiClient.analyze_asset()."""
         sim_row    = self._load_sim_row(ticker)
         strat_ctx  = self._get_strategy_context(trade_row.get('stockIndex', ''))
         asset_info = self._load_asset_info(ticker)
         ohlc_df    = self._load_recent_ohlc(ticker)
 
-        # Simulation-Spalten gruppiert aufbereiten
+        # Prepare simulation columns in groups
         sim_grouped = {}
         for group, cols in _SIM_GROUPS.items():
             entries = {}
@@ -148,7 +148,7 @@ class BannerAiGenerator:
         )
 
         return {
-            # Basis-Infos
+            # Base info
             **asset_info,
             'ticker':       ticker,
             'stockIndex':   trade_row.get('stockIndex', ''),
@@ -156,27 +156,27 @@ class BannerAiGenerator:
             'buy_date':     trade_row.get('buyDate', ''),
             'buy_price':    trade_row.get('buyPrice', ''),
 
-            # Strategie-Bedingungen
+            # Strategy conditions
             'buy_query':    strat_ctx.get('buy', self.sys_conf.get_value('buy_query', '')),
             'sell_query':   strat_ctx.get('sell', ''),
 
-            # Simulationsdaten (gruppiert)
+            # Simulation data (grouped)
             'sim_grouped':  sim_grouped,
 
-            # Rohe Sortino/Sharpe für Kompatibilität mit _build_asset_prompt
+            # Raw sortino/sharpe for compatibility with _build_asset_prompt
             'sortino':      sim_row.get('sortino'),
             'sharpe':       sim_row.get('sharpe'),
             'overallValueTrend': sim_row.get('overallValueTrend'),
 
             # OHLC
             'recent_ohlc':  ohlc_display,
-            'indicator_values': pd.DataFrame(),   # aus sim_grouped abgelöst
+            'indicator_values': pd.DataFrame(),   # replaced by sim_grouped
         }
 
     # ── data helpers ─────────────────────────────────────────────────────────
 
     def _get_latest_trade(self) -> dict | None:
-        """Letzten Kauf aus trades{year}.db zurückgeben."""
+        """Return the latest purchase from trades{year}.db."""
         year = dt.datetime.now().year
         db = tools.Db_tools(db_path=_DB_PATH, database_name=f'trades{year}.db')
         try:
@@ -199,7 +199,7 @@ class BannerAiGenerator:
         return df.iloc[0].to_dict()
 
     def _load_sim_row(self, ticker: str) -> dict:
-        """Vollständige Simulationszeile für ticker aus asset_simulation_all.db."""
+        """Return the full simulation row for ticker from asset_simulation_all.db."""
         db = tools.Db_tools(db_path=_DB_PATH, database_name='asset_simulation_all.db')
         try:
             df = pd.read_sql_query(
@@ -218,15 +218,15 @@ class BannerAiGenerator:
         return {k: v for k, v in df.iloc[0].to_dict().items() if k not in _SIM_SKIP_COLS}
 
     def _get_strategy_context(self, stock_index: str) -> dict:
-        """Buy/Sell-Bedingungen für stock_index aus multi_transactions."""
+        """Return buy/sell conditions for stock_index from multi_transactions."""
         try:
             raw = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
             transactions = ast.literal_eval(raw) if isinstance(raw, str) else raw
-            # stock_index z.B. "^MDAXI" → key "MDAXI"
+            # stock_index e.g. "^MDAXI" → key "MDAXI"
             key = stock_index.lstrip('^')
             if key in transactions:
                 return transactions[key]
-            # Fallback: partieller Match
+            # Fallback: partial match
             for k, v in transactions.items():
                 if k in stock_index or stock_index in k:
                     return v
@@ -235,11 +235,11 @@ class BannerAiGenerator:
         return {}
 
     def _get_existing_note(self, ticker: str) -> str:
-        """Vorhandenen Text zurückgeben wenn ticker heute schon analysiert wurde."""
+        """Return existing text if ticker has already been analysed today."""
         today = dt.datetime.now().strftime('%Y-%m-%d')
         db = tools.Db_tools(db_path=_DB_PATH, database_name='banner_notes.db')
         try:
-            # buyDate könnte fehlen wenn Tabelle mit alter Schema angelegt wurde
+            # buyDate might be missing if the table was created with an old schema
             try:
                 df = pd.read_sql_query(
                     "SELECT text, buyDate FROM banner_notes WHERE ticker = ? ORDER BY id DESC LIMIT 1",
@@ -248,7 +248,7 @@ class BannerAiGenerator:
                 if not df.empty and str(df.iloc[0].get('buyDate', '')).startswith(today):
                     return str(df.iloc[0]['text'])
             except Exception:
-                # Fallback ohne buyDate — kein Heute-Check möglich
+                # Fallback without buyDate — today-check not possible
                 df = pd.read_sql_query(
                     "SELECT text FROM banner_notes WHERE ticker = ? ORDER BY id DESC LIMIT 1",
                     db.conn, params=(ticker,),
@@ -316,11 +316,11 @@ class BannerAiGenerator:
                     ticker TEXT, text TEXT, buyDate TEXT
                 )
             """)
-            # Spalte buyDate nachrüsten falls Tabelle ohne sie angelegt wurde
+            # Add buyDate column if the table was created without it
             try:
                 db.conn.execute(f"ALTER TABLE {db_table} ADD COLUMN buyDate TEXT")
                 db.conn.commit()
-                logger.info("banner_notes: buyDate-Spalte ergänzt")
+                logger.info("banner_notes: buyDate column added")
             except Exception:
                 pass  # Spalte existiert bereits → ignorieren
             db.conn.execute(f"DELETE FROM {db_table} WHERE ticker = ?", (ticker,))

@@ -25,7 +25,7 @@ class Scheduler:
         """
         self.database = ts.Tools().get_path(path="database", file_name=database)
         self.conn = self.init_db()
-        self.lock = RLock()  # RLock erlaubt rekursive Akquisition vom selben Thread
+        self.lock = RLock()  # RLock allows recursive acquisition from the same thread
         self.enable_logging = enable_logging
         self.run_in_browser = run_in_browser
         self.logger = None
@@ -398,20 +398,20 @@ class Scheduler:
         processes = []
 
         def add_process_and_children(proc, is_child=False, level=0):
-            """Fügt einen Prozess und seine Subprozesse rekursiv der Prozessliste hinzu."""
+            """Recursively add a process and its children to the process list."""
             try:
                 processes.append({
                     'PID': proc.pid,
-                    'Parent PID': proc.ppid(),  # Übergeordnete PID
-                    'Is Child': is_child,  # Kennzeichnung, ob es sich um einen Subprozess handelt
+                    'Parent PID': proc.ppid(),  # Parent process ID
+                    'Is Child': is_child,  # Flag indicating whether this is a child process
                     'Name': proc.name(),
                     'User': proc.username(),
-                    'Level': level,  # Tiefe in der Prozesshierarchie
-                    'Command Line': ' '.join(proc.cmdline())  # Aufrufende Kommandozeile
+                    'Level': level,  # Depth in the process hierarchy
+                    'Command Line': ' '.join(proc.cmdline())  # Invoking command line
                 })
 
                 if level <= 2:            
-                    # Rekursiv alle Subprozesse dieses Prozesses hinzufügen
+                    # Recursively add all child processes of this process
                     children = proc.children()
                     for child in children:
                         add_process_and_children(child, is_child=True, level=level + 1)
@@ -419,7 +419,7 @@ class Scheduler:
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 pass
     
-        # Starten mit allen Hauptprozessen
+        # Start with all top-level processes
         for proc in psutil.process_iter(['pid', 'name', 'username']):
             add_process_and_children(proc, is_child=False, level=0)
         

@@ -193,7 +193,7 @@ class SQLiteEditor(tt.TickerTools):
                     f"LIMIT 100;"
                 )
 
-        # Simulation-DBs in attached → cross-sim-Abfragen
+        # Simulation DBs in attached → cross-sim queries
         sim_aliases = [a for a in attached if "simulation" in a or a.startswith("sim_")]
         for sim_alias in sim_aliases[:1]:
             sim_schema = attached_schemas.get(sim_alias, {})
@@ -223,7 +223,7 @@ class SQLiteEditor(tt.TickerTools):
                         f"LIMIT 50;"
                     )
 
-        # Generische Templates für unbekannte attached DBs (nicht asset_info/yf_tickers/sim)
+        # Generic templates for unknown attached DBs (not asset_info/yf_tickers/sim)
         for alias in sorted(attached - known - set(sim_aliases)):
             schema = attached_schemas.get(alias, {})
             for tname in list(schema.keys())[:3]:
@@ -241,7 +241,7 @@ class SQLiteEditor(tt.TickerTools):
         frame = st.empty()
         (self.sb, _, self.main) = frame.columns([1, 0.1, 4])
 
-        # --- Primäre Datenbank ---
+        # --- Primary database ---
         db_path_input = self.main.text_input("Primäre SQLite-Datenbank:", value=self.db_path)
         if db_path_input != self.db_path:
             self.set_database(db_path_input)
@@ -254,7 +254,7 @@ class SQLiteEditor(tt.TickerTools):
                 columns = self.list_columns(selected_table)
                 self.sb.caption(", ".join(columns))
 
-        # --- Weitere DBs einbinden ---
+        # --- Attach additional DBs ---
         self.sb.divider()
         self.sb.markdown("**Weitere DBs einbinden**")
         known_dbs = self._discover_dbs()
@@ -268,20 +268,20 @@ class SQLiteEditor(tt.TickerTools):
             for lbl in chosen_labels
         }
 
-        # Schema aller eingebundenen DBs einmal laden
+        # Load schema of all attached DBs once
         attached_schemas = {
             alias: self._schema_attached(alias, path)
             for alias, path in attached_dbs.items()
         }
 
-        # Sidebar: Tabellen + Spalten je attached DB
+        # Sidebar: tables + columns per attached DB
         for alias, schema in attached_schemas.items():
             with self.sb.expander(f"[{alias}]", expanded=False):
                 for tname, cols in schema.items():
                     st.markdown(f"**{tname}**")
                     st.caption(", ".join(cols) if cols else "–")
 
-        # --- Session State ---
+        # --- Session state ---
         if 'recent_queries' not in st.session_state:
             st.session_state['recent_queries'] = []
         if 'query_result' not in st.session_state:
@@ -293,7 +293,7 @@ class SQLiteEditor(tt.TickerTools):
                 if len(st.session_state['recent_queries']) > 10:
                     st.session_state['recent_queries'].pop()
 
-        # --- Query-Templates (nur wenn DBs eingebunden) ---
+        # --- Query templates (only when DBs are attached) ---
         default_query = f"SELECT * FROM {selected_table} LIMIT 20;" if selected_table else ""
         if attached_dbs:
             templates = self._query_templates(selected_table, attached_dbs, attached_schemas)
@@ -303,14 +303,14 @@ class SQLiteEditor(tt.TickerTools):
                 if chosen != "– Eigene Abfrage –":
                     default_query = templates[chosen]
 
-        # --- Letzte Abfragen ---
+        # --- Recent queries ---
         selected_query = self.main.selectbox(
             "Letzte Abfragen:",
             options=[""] + st.session_state['recent_queries'],
             format_func=lambda x: "Abfrage auswählen …" if x == "" else x,
         )
 
-        # --- Query-Eingabe ---
+        # --- Query input ---
         query = self.main.text_area(
             "SQL-Abfrage:",
             value=selected_query or default_query,
@@ -323,7 +323,7 @@ class SQLiteEditor(tt.TickerTools):
             if data is not None:
                 st.session_state['query_result'] = data
 
-        # --- Ergebnis ---
+        # --- Result ---
         if st.session_state['query_result'] is not None:
             self.main.write("Ergebnis:")
             edited_data = self.main.data_editor(

@@ -449,9 +449,9 @@ class DataUtils():
     def _infer_column_type(rows: list[dict], col: str) -> str:
         """Return the SQLite column type for col based on the first non-None value.
 
-        TEXT-Affinität würde Zahlen als Strings speichern — pd.read_sql liefert
-        dann object-dtype und Arithmetik (z.B. div) crasht mit 'str'/'int'.
-        Deshalb numerische Werte als REAL anlegen.
+        TEXT affinity would store numbers as strings — pd.read_sql then returns
+        object dtype and arithmetic (e.g. div) crashes with 'str'/'int'.
+        Therefore create numeric values as REAL.
         """
         for r in rows:
             v = r.get(col)
@@ -491,8 +491,8 @@ class DataUtils():
         cur.execute(f"PRAGMA table_info('{table_name}')")
         existing = {row[1] for row in cur.fetchall()}
         if not existing:
-            # Erster Key wird als UNIQUE PRIMARY KEY angelegt damit
-            # INSERT OR REPLACE echtes Upsert-Verhalten zeigt (keine Duplikate).
+            # First key is set as UNIQUE PRIMARY KEY so that
+            # INSERT OR REPLACE shows true upsert behaviour (no duplicates).
             first_col = superset_cols[0] if superset_cols else None
             cols_def_parts = []
             for c in superset_cols:

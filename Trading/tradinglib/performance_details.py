@@ -116,8 +116,8 @@ def _duckdb_fetch_years(
             {filter_clause} {order_clause}
         """
     else:
-        # Simulation: alle Zeilen (Zeitreihe), doppelte (Date,ticker) entfernen.
-        # INNER JOIN auf stocks+indices → nur Ticker im gewählten Index (wie q=3).
+        # Simulation: all rows (time series), remove duplicates (Date, ticker).
+        # INNER JOIN on stocks+indices → only tickers in the selected index (like q=3).
         date_cutoff = f"AND ap.Date <= '{reference_date}'" if reference_date else ""
         index_where = f"AND idx.name LIKE '{index_column}'" if index_column else ""
         query = f"""
@@ -160,14 +160,14 @@ class Performance(tt.TickerTools):
         """Return a list of the captured groups from filenames in directory that match pattern."""
         extracted_parts = []
     
-        # Durchsucht das Verzeichnis
+        # Scan the directory
         for filename in os.listdir(self.get_path(directory)):
-            # Überprüfen, ob die Datei zum Muster passt
+            # Check whether the file matches the pattern
             match = re.match(pattern, filename)
             if match:
-                # Den dynamischen Teil extrahieren
+                # Extract the dynamic part
                 dynamic_part = match.group(1)
-                if dynamic_part:  # Leere Strings ausschließen
+                if dynamic_part:  # Exclude empty strings
                     extracted_parts.append(dynamic_part)
     
         return extracted_parts
@@ -269,7 +269,7 @@ class Performance(tt.TickerTools):
         else:
             df_with_selections = df.copy()
         
-        # Prüfen, ob vorherige Selektionen existieren
+        # Check whether previous selections exist
         if session_key in st.session_state:
             selected_indices = st.session_state[session_key]
         else:
@@ -297,9 +297,9 @@ class Performance(tt.TickerTools):
                     for i in range(preselect_count, len(df)):
                         df_with_selections.loc[i, 'Select'] = False
 
-        # Wiederherstellen der Selektion aus Session State
+        # Restore selection from session state
         for i in selected_indices:
-            if i < len(df_with_selections):  # Falls sich die Datenlänge ändert
+            if i < len(df_with_selections):  # Guard against data length changes
                 df_with_selections.loc[i, "Select"] = True
 
         edited_df = region.data_editor(

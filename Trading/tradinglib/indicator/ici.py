@@ -51,7 +51,7 @@ class Ici(_indicator._Indicator):
 		).shift(26)
 		self.df['chikou_span'] = self.df['Close'].shift(-26)
 
-		# Oberkante / Unterkante der projizierten Kumo-Cloud
+		# Upper / lower edge of the projected Kumo cloud
 		self.df['cloud_top']    = self.df[['senkou_span_a', 'senkou_span_b']].max(axis=1)
 		self.df['cloud_bottom'] = self.df[['senkou_span_a', 'senkou_span_b']].min(axis=1)
 
@@ -98,8 +98,8 @@ class Ici(_indicator._Indicator):
 
 		# =========================================================
 		# ICHIMOKU CLOUD (SEGMENT-BASED POLYGON VERSION)
-		# Jeden zusammenhängenden Bull/Bear-Abschnitt als eigenes
-		# Polygon zeichnen, damit keine Überlappungen entstehen.
+		# Draw each contiguous bull/bear section as its own polygon
+		# to avoid overlapping fills.
 		# =========================================================
 
 		x = self.df['Date']
@@ -108,7 +108,7 @@ class Ici(_indicator._Indicator):
 
 		valid = span_a.notna() & span_b.notna()
 		bull_int = (span_a >= span_b).astype(int)
-		# NaN-Zeilen → -1, damit sie nicht das erste echte Segment kontaminieren
+		# NaN rows → -1 so they don't contaminate the first real segment
 		bull_int = bull_int.where(valid, -1)
 
 		segment_ids = (bull_int != bull_int.shift()).cumsum()
@@ -143,14 +143,14 @@ class Ici(_indicator._Indicator):
 			a_list = list(a_arr[positions])
 			b_list = list(b_arr[positions])
 
-			# Schnittpunkt am Anfang einfügen (Übergang vom vorigen Segment)
+			# Insert intersection at the start (transition from the previous segment)
 			if first_pos > 0 and valid_arr[first_pos - 1]:
 				yc = _cross_y(first_pos - 1, first_pos)
 				x_list.insert(0, x_arr[first_pos])
 				a_list.insert(0, yc)
 				b_list.insert(0, yc)
 
-			# Schnittpunkt am Ende einfügen (Übergang zum nächsten Segment)
+			# Insert intersection at the end (transition to the next segment)
 			if last_pos + 1 < n and valid_arr[last_pos + 1]:
 				yc = _cross_y(last_pos, last_pos + 1)
 				x_list.append(x_arr[last_pos + 1])

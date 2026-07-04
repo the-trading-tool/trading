@@ -47,9 +47,9 @@ class Macd(_indicator._Indicator):
 		self.df['macd_diff'] = macd.macd_diff()
 		self.df['macd_signal'] = macd.macd_signal()
 
-		# Trend-Score: +/-0.5 je nachdem ob macd_diff steigt/fällt, und
-		# +/-0.5 je nachdem ob macd über/unter macd_signal liegt (Range -1..+1).
-		# Wird u.a. für macd_trend/_wk/_mo (asset_perf2) genutzt.
+		# Trend score: +/-0.5 depending on whether macd_diff is rising/falling, and
+		# +/-0.5 depending on whether macd is above/below macd_signal (range -1..+1).
+		# Used e.g. for macd_trend/_wk/_mo (asset_perf2).
 		diff_dir = np.where(self.df['macd_diff'].diff() > 0, 0.5, -0.5)
 		signal_dir = np.where(self.df['macd'] > self.df['macd_signal'], 0.5, -0.5)
 		self.df['macd_trend'] = diff_dir + signal_dir

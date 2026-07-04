@@ -25,9 +25,9 @@ class WebTools(tools.Tools):
     chromeOptions.add_argument('--ignore-certificate-errors')
     chromeOptions.add_argument("--window-size=1280,1024")
     chromeOptions.add_argument("--start-maximized")
-    chromeOptions.add_argument("--disable-gpu")  # GPU deaktivieren (optional)
-    chromeOptions.add_argument("--no-sandbox")  # Für root-Umgebungen notwendig
-    chromeOptions.add_argument("--disable-dev-shm-usage")  # Shared Memory-Probleme vermeiden
+    chromeOptions.add_argument("--disable-gpu")  # Disable GPU (optional)
+    chromeOptions.add_argument("--no-sandbox")  # Required for root environments
+    chromeOptions.add_argument("--disable-dev-shm-usage")  # Avoid shared memory issues
     chromeOptions.add_argument("--enable-unsafe-swiftshader")
     chromeOptions.add_argument('--ignore-certificate-errors-spki-list')
     chromeOptions.add_argument('--ignore-ssl-errors')    

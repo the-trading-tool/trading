@@ -6,7 +6,7 @@ from typing import List, Optional, Union, Tuple
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
-from alpaca.trading.client import TradingClient  # optional für Order etc.
+from alpaca.trading.client import TradingClient  # optional for order management etc.
 import logging
 
 class AlpacaData:
@@ -16,7 +16,7 @@ class AlpacaData:
         self.symbol = symbol.upper()
         self.api_key = api_key or os.getenv("APCA_API_KEY_ID")
         self.secret_key = secret_key or os.getenv("APCA_API_SECRET_KEY")
-        self.base_url = base_url or os.getenv("APCA_API_BASE_URL")  # z.B. paper vs live
+        self.base_url = base_url or os.getenv("APCA_API_BASE_URL")  # e.g. paper vs live
         self.data_url = data_url or os.getenv("APCA_API_DATA_URL")
         if not (self.api_key and self.secret_key):
             raise ValueError("Bitte API Key und Secret für Alpaca angeben oder in Umgebung setzen.")
@@ -51,7 +51,7 @@ class AlpacaData:
             start = datetime(now.year, 1, 1, tzinfo=timezone.utc)
             return start, now
         elif period == "max":
-            return None  # später handled das download()
+            return None  # handled later by download()
 
         end = datetime.now(timezone.utc) - timedelta(days=1)
         start = end - period_map[period]
@@ -60,7 +60,7 @@ class AlpacaData:
 
     def _aggregate_bars(self, df: pd.DataFrame, target_interval: str) -> pd.DataFrame:
         """Resample fine-grained Alpaca bars (e.g. 1m → 15m, 1h, 1d) using standard OHLCV rules."""
-        # Mapping von Zeitintervall zu Pandas-Frequenz
+        # Mapping from time interval to pandas frequency
         freq_map = {
             "1m": "1T",
             "5m": "5T",
@@ -75,11 +75,11 @@ class AlpacaData:
 
         rule = freq_map[target_interval]
 
-        # Sicherstellen, dass der Index datetime ist
+        # Ensure the index is datetime
         if not pd.api.types.is_datetime64_any_dtype(df.index):
             df.index = pd.to_datetime(df.index)
 
-        # Resampling und Aggregation (klassische OHLCV-Aggregation)
+        # Resampling and aggregation (standard OHLCV aggregation)
         agg = {
             "Open": "first",
             "High": "max",
@@ -97,21 +97,21 @@ class AlpacaData:
                  period: Optional[str] = None,
                  interval: str = "1d") -> pd.DataFrame:
         """Download historical OHLCV bars from Alpaca with a yfinance-compatible signature."""
-        # Period‐Handling
+        # Period handling
         if period and not start:
             start_dt, end_dt = self._resolve_period(period)
             start = start_dt
             end = end_dt
-        # Umwandlung falls Strings
+        # Convert if strings
         if isinstance(start, str):
             start = pd.to_datetime(start)
         if isinstance(end, str):
             end = pd.to_datetime(end)
 
-        # Interval → TimeFrame Mapping
+        # Interval → TimeFrame mapping
         tf_map = {
             "1m": TimeFrame.Minute,
-            "5m": TimeFrame.Minute,  # eventuell eigene Logik für 5m
+            "5m": TimeFrame.Minute,  # potentially needs custom logic for 5m
             "15m": TimeFrame.Minute,
             "1h": TimeFrame.Hour,
             "1d": TimeFrame.Day,
@@ -129,12 +129,12 @@ class AlpacaData:
             end=end
         )
         bars = self.data_client.get_stock_bars(req)
-        df = bars.df  # liefert DataFrame mit MultiIndex wenn mehrere Symbole
+        df = bars.df  # returns DataFrame with MultiIndex when multiple symbols
         df = df.droplevel("symbol") if "symbol" in df.index.names else df
 
         df.index = df.index.tz_convert("Europe/Berlin")
 
-        # Wenn nur ein Symbol, kolonnenbereinigung:
+        # If only one symbol, clean up columns:
 #        if self.symbol in df.columns.get_level_values(0):
         # Optionally: Rename columns etc.
         # z. B. df.columns = ['open', 'high', 'low', 'close', 'volume']
@@ -147,7 +147,7 @@ class AlpacaData:
         }, errors="ignore")
 
 
-        # ✅ Automatische Aggregation
+        # Automatic aggregation
         if interval not in ["1m", "1Min", "minute"]:
             df = self._aggregate_bars(df, target_interval=interval)
         return df
@@ -222,7 +222,7 @@ class AlpacaTickers:
                              data_url=self.data_url)
             df = ad.download(start=start, end=end, period=period, interval=interval)
             results[t] = df
-        # MultiIndex DataFrame erstellen
+        # Build MultiIndex DataFrame
         combined = pd.concat(results, axis=1)
         return combined
 

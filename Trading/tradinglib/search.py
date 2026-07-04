@@ -31,7 +31,7 @@ class FullTextSearch(tools.Db_tools):
     def get_connection(self):
         """Open and return a SQLite connection with row_factory set to sqlite3.Row."""
         conn = open_db(self.db_path)
-        conn.row_factory = sqlite3.Row  # Zugriff auf Spalten per Namen
+        conn.row_factory = sqlite3.Row  # Access columns by name
         return conn
 
     def update_fts_table(self):
@@ -39,16 +39,16 @@ class FullTextSearch(tools.Db_tools):
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Lösche die bestehende FTS-Tabelle
+        # Drop the existing FTS table
         cursor.execute(f"DROP TABLE IF EXISTS {self.fts_table_name};")
 
-        # Erstelle die FTS-Tabelle erneut
+        # Recreate the FTS table
         cursor.execute(f"""
         CREATE VIRTUAL TABLE {self.fts_table_name}
         USING fts5(ticker, longName);
         """)
 
-        # Daten aus der Originaltabelle erneut einfügen
+        # Re-insert data from the original table
         cursor.execute(f"""
         INSERT INTO {self.fts_table_name} (ticker, longName)
         SELECT ticker, longName FROM {self.table_name};
@@ -62,16 +62,16 @@ class FullTextSearch(tools.Db_tools):
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Erstelle FTS-Tabelle mit zwei Spalten (ticker und longName)
+        # Create FTS table with two columns (ticker and longName)
         cursor.execute(f"""
         CREATE VIRTUAL TABLE IF NOT EXISTS {self.fts_table_name}
         USING fts5(ticker, longName);
         """)
 
-        # Überprüfen, ob bereits Daten vorhanden sind
+        # Check if data already exists
         cursor.execute(f"SELECT COUNT(*) FROM {self.fts_table_name};")
         if cursor.fetchone()[0] == 0:
-            # Pruefen ob Quell-Tabelle die benoetigten Spalten hat
+            # Check if the source table has the required columns
             cursor.execute(f"PRAGMA table_info({self.table_name})")
             existing_cols = {row[1] for row in cursor.fetchall()}
             if 'ticker' in existing_cols and 'longName' in existing_cols:
@@ -79,8 +79,8 @@ class FullTextSearch(tools.Db_tools):
                 INSERT INTO {self.fts_table_name} (ticker, longName)
                 SELECT DISTINCT ticker, longName FROM {self.table_name};
                 """)
-            # Wenn Spalten fehlen (noch kein get_asset_info.py gelaufen),
-            # bleibt die FTS-Tabelle leer -- Suche liefert dann keine Treffer.
+            # If columns are missing (get_asset_info.py has not run yet),
+            # the FTS table stays empty — searches will return no results.
 
         conn.commit()
         conn.close()
@@ -234,13 +234,13 @@ class FullTextSearch(tools.Db_tools):
                 results = self.search(search_query)
 
                 if results:
-                    # Eine Liste von Ergebnissen für die Auswahl bereitstellen.
-                    # Hinweis: Früher wurde hier bei `search_ticker_only` auf
-                    # `row['ticker'] == self.symbol` gefiltert. Das sabotierte die
-                    # freie Volltextsuche — sobald der aktuelle Ticker (z.B. nach
-                    # einem Rerun-Default) zur Eingabe passte, blieb nur dieser eine
-                    # Treffer übrig und man konnte nichts anderes mehr auswählen.
-                    # Die getippte Suche zeigt jetzt immer alle Treffer.
+                    # Provide a list of results for the selection.
+                    # Note: Previously, when `search_ticker_only` was set, results
+                    # were filtered to `row['ticker'] == self.symbol`. This sabotaged
+                    # the free full-text search — as soon as the current ticker
+                    # (e.g. from a rerun default) matched the input, only that one
+                    # result remained and nothing else could be selected.
+                    # The typed search now always shows all matches.
                     ticker_list = []
                     for row in results:
                         longname = row['longName']
@@ -322,8 +322,8 @@ class MarketSearch(tools.Db_tools):
         try:
             self.df = pd.read_sql_query(query, db.conn)
         except Exception:
-            # asset_info.db hat noch keine ticker-Spalte (get_asset_info.py
-            # noch nicht gelaufen) -- leeren DataFrame zurueckgeben
+            # asset_info.db has no ticker column yet (get_asset_info.py
+            # has not run yet) — return empty DataFrame
             self.df = pd.DataFrame()
 
     def get_index_list(self):

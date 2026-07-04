@@ -91,15 +91,15 @@ class FetchData(tt.TickerTools):
         self.indicators = indicators
         self.database_name = database_name
         self.database = self.get_path(path = database_path, file_name=database_name)
-        # sys_conf von außen übernehmen (z.B. von tiny_chart) damit Username-konsistenz
-        # mit dem speichernden Dialog gewährleistet ist. Fallback: eigene Instanz.
+        # Accept sys_conf from outside (e.g. from tiny_chart) to keep username
+        # consistent with the saving dialog. Fall back to own instance.
         if sys_conf is not None:
             self.sys_conf = sys_conf
             self.config = sys_conf
         else:
             self.config = sysconf.SystemConfig()
             self.sys_conf = self.config
-        # tz_info immer aus der Config lesen (Default = übergebener/Konstruktor-Wert)
+        # Always read tz_info from config (default = passed/constructor value)
         self.tz_info = self.sys_conf.get_value("tz_info", default=tz_info)
         self.system_currency = self.sys_conf.get_value("system_currency", "EUR")
         self.buy_query = buy_query
@@ -112,13 +112,13 @@ class FetchData(tt.TickerTools):
         persists the result so subsequent calls hit the local cache.
         Returns an empty DataFrame when both sources fail.
         """
-        # Verbindung zur SQLite-Datenbank herstellen
+        # Connect to the SQLite database
         asset_db = self.get_path(path = self.database_path, file_name='asset_info.db')
         conn = open_db(asset_db, readonly=True)
 
-        # Funktion, um die Daten für ein bestimmtes Tickersymbol in einen DataFrame zu laden
+        # Function to load data for a specific ticker symbol into a DataFrame
         def load_data_into_dataframe(conn, symbol):
-            # Parametrisierte Abfragen — kein f-String mit Nutzerwerten (SQL-Injection-Schutz)
+            # Parameterised queries — no f-string with user values (SQL injection guard)
             if symbol == '':
                 df = pd.read_sql_query("SELECT ticker FROM asset_info", conn)
             else:
@@ -126,19 +126,19 @@ class FetchData(tt.TickerTools):
                     "SELECT * FROM asset_info WHERE ticker = ?", conn, params=(symbol,)
                 )
 
-            # JSON-Spalten (Listen) zurück in Listen konvertieren
+            # Convert JSON columns (lists) back to lists
             for col in df.columns:
-                if df[col].dtype == 'object':  # Nur Textspalten prüfen
+                if df[col].dtype == 'object':  # Check text columns only
                     try:
                         df[col] = df[col].apply(json.loads)
                     except Exception:
-                        pass  # Ignoriere Spalten, die keine JSON-Daten enthalten
+                        pass  # Ignore columns that contain no JSON data
 
             return pd.DataFrame(df)
 
         df = load_data_into_dataframe(conn, symbol)
 
-        # Fallback: Ticker-Info von Yahoo holen und lokal speichern wenn nicht vorhanden
+        # Fallback: fetch ticker info from Yahoo and store locally when not found
         if symbol != '' and df.empty:
             try:
                 self.logger.info("load_ticker_data: %s nicht in asset_info.db -- lade von Yahoo", symbol)
@@ -173,9 +173,9 @@ class FetchData(tt.TickerTools):
         """
         # (value_i,unit_i) = self.split_interval(interval)
 
-        # Funktion, um die Daten für ein bestimmtes Tickersymbol in einen DataFrame zu laden
+        # Function to load data for a specific ticker symbol into a DataFrame
         def load_data_into_dataframe(conn, price_tbl, limit):
-            # SQL-Abfrage zum Abrufen aller Daten aus der entsprechenden Tabelle
+            # SQL query to retrieve all data from the corresponding table
             query = f"SELECT * FROM {price_tbl} GROUP BY Date ORDER BY Date DESC LIMIT {limit}"
             try:
                 df = pd.read_sql_query(query, conn)
@@ -210,8 +210,8 @@ class FetchData(tt.TickerTools):
                 df = df.set_index('Date')
                 df.index = pd.to_datetime(df.index, format='mixed')
 
-                # Gespeicherte Zeitstempel sind tz-naive UTC -> auf konfigurierte
-                # Anzeige-Zeitzone (z.B. Europe/Berlin) umrechnen
+                # Stored timestamps are tz-naive UTC -> convert to configured
+                # display timezone (e.g. Europe/Berlin)
                 df.index = DataUtils.convert_utc_naive_to_tz(df.index, tz=self.tz_info)
 
                 df.index = df.index.strftime(self.ftime_str)
@@ -230,8 +230,8 @@ class FetchData(tt.TickerTools):
 
         Returns an empty DataFrame when no simulation data is available.
         """
-        # Datenbankname — liest direkt aus asset_simulation_.db (WAL erlaubt
-        # gleichzeitige Schreib- und Lesezugriffe ohne Lock-Konflikt)
+        # Database name — reads directly from asset_simulation_.db (WAL allows
+        # concurrent reads and writes without lock conflicts)
         table = "asset_simulation"
         db_name = self.get_path(path = 'database', file_name=f"{table}_.db")
 
@@ -240,7 +240,7 @@ class FetchData(tt.TickerTools):
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sim_ticker_date ON asset_simulation (ticker, Date)")
         except Exception:
             pass
-        # Ticker-Wert via ? übergeben — kein f-String (SQL-Injection-Schutz)
+        # Pass ticker value via ? — no f-string (SQL injection guard)
         query = f"""
         SELECT p1.* FROM {table} p1
             INNER JOIN (

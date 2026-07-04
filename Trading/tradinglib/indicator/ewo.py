@@ -40,26 +40,26 @@ class Ewo(_indicator._Indicator):
 		lows = []
 	
 		for i in range(window, len(series) - window):
-			local_window = series[i - window : i + window + 1]  # Lokaler Ausschnitt
-		
-			if series[i] == max(local_window):  # Höchster Wert im Fenster → High
+			local_window = series[i - window : i + window + 1]  # local slice
+
+			if series[i] == max(local_window):  # highest value in window → High
 				highs.append(i)
-			elif series[i] == min(local_window):  # Niedrigster Wert im Fenster → Low
+			elif series[i] == min(local_window):  # lowest value in window → Low
 				lows.append(i)
 	
 		return np.array(highs), np.array(lows)	
 
 	def compute_ewo(self, df, short_window=5, long_window=21):
 		"""
-		Berechnet den Elliott Wave Oscillator (EWO).
-	
-		Parameter:
-			df (pd.DataFrame): DataFrame mit 'Close'-Preisen.
-			short_window (int): Zeitraum für den kurzen SMA (Standard: 5).
-			long_window (int): Zeitraum für den langen SMA (Standard: 34).
-	
-		Rückgabe:
-			pd.Series: Werte des EWO.
+		Computes the Elliott Wave Oscillator (EWO).
+
+		Parameters:
+			df (pd.DataFrame): DataFrame with 'Close' prices.
+			short_window (int): Period for the short SMA (default: 5).
+			long_window (int): Period for the long SMA (default: 34).
+
+		Returns:
+			pd.Series: EWO values.
 		"""
 		short_sma = df['Close'].rolling(window=short_window).mean()
 		long_sma = df['Close'].rolling(window=long_window).mean()
@@ -68,7 +68,7 @@ class Ewo(_indicator._Indicator):
 
 	def filter_alternating_signals(self,angle=0.01):
 		"""Ensure buy/sell signals strictly alternate."""
-		state = "NEUTRAL"  # Initialzustand
+		state = "NEUTRAL"  # initial state
 		buy_signals = []
 		sell_signals = []
 		self.df['ewo_buy_signal'] = np.where((self.df['ewo_angle']>angle),self.df['ewo'],np.nan)
@@ -102,8 +102,8 @@ class Ewo(_indicator._Indicator):
 		self.df['ewo_ema'] = self.df['ewo'].transform(lambda x: x.ewm(span=self.ema_span, adjust=False).mean())
 		self.df['ewo_diff'] = self.df['ewo_ema'].diff()
 		self.df['ewo_angle'] = indicator.angle(self.df['ewo'])
-		# Richtung des EWO ggü. dem Vortageswert (+1 steigend, -1 fallend);
-		# wird u.a. für ewo_trend_day/wk/mo (asset_perf2) genutzt
+		# Direction of EWO relative to the previous day's value (+1 rising, -1 falling);
+		# used e.g. for ewo_trend_day/wk/mo (asset_perf2)
 		self.df['ewo_trend'] = np.where(self.df['ewo'].diff() > 0, 1, -1)
 		self.filter_alternating_signals(self.angle)
 

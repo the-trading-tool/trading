@@ -67,11 +67,11 @@ def render_logo(region=st, max_width: str = "220px", margin_bottom: str = "1.5re
 
 
 def _get_invest(transactions: dict, group_key: str) -> float:
-    """Gibt den Investitionsbetrag für eine Strategie-Gruppe zurück."""
+    """Return the investment amount for a strategy group."""
     inner = transactions.get(group_key, {})
     if isinstance(inner, dict) and 'invest' in inner:
         return inner.get('invest', 0)
-    # 3-stufig: erstes Sub-Element nehmen
+    # 3-level: take the first sub-element
     for pos in inner.values():
         if isinstance(pos, dict) and 'invest' in pos:
             return pos.get('invest', 0)
@@ -95,21 +95,21 @@ class BannerPage():
         self.system_currency = self.sys_conf.get_value('system_currency', 'EUR')
         self.render()
 
-    # ── Strategie-Analyse ─────────────────────────────────────────────────────
+    # ── Strategy analysis ─────────────────────────────────────────────────────
 
     def _render_strategy_analysis(self, df: pd.DataFrame):
         """Render per-strategy KPI block (profit factor, win rate, best/worst trades)."""
         from tradinglib.backtest_widgets import render_strategy_analysis
         render_strategy_analysis(df, region=self.region, system_currency=self.system_currency)
 
-    # ── Portfolio-Overlap ─────────────────────────────────────────────────────
+    # ── Portfolio overlap ─────────────────────────────────────────────────────
 
     def _render_portfolio_overlap(self, df: pd.DataFrame):
         """Render a warning section when the same ticker appears in multiple open positions."""
         from tradinglib.backtest_widgets import render_portfolio_overlap
         render_portfolio_overlap(df, region=self.region)
 
-    # ── Monatliche Heatmap ────────────────────────────────────────────────────
+    # ── Monthly heatmap ───────────────────────────────────────────────────────
 
     def _render_per_strategy_heatmaps(self, df: pd.DataFrame):
         """Render individual monthly return heatmaps, one column per strategy."""
@@ -136,7 +136,7 @@ class BannerPage():
     def render(self):
             """Render the full dashboard: language selector, KPIs, AI tip, trades table, charts, and analysis."""
 
-            # ── Sprachauswahl (ganz oben, Deutsch als Voreinstellung) ─────
+            # ── Language selector (top of page, German as default) ───────
             _lang_options = list(SUPPORTED_LANGUAGES.keys())   # ['en', 'de']
             _lang_labels  = list(SUPPORTED_LANGUAGES.values()) # ['English', 'Deutsch']
             _current_lang = self.sys_conf.get_value('language', 'de') or 'de'
@@ -144,7 +144,7 @@ class BannerPage():
                 _current_lang = 'de'
             _i18n.init_from_session(self.sys_conf)
 
-            # ── Header-Zeile: Login (eingeklappt) links | Sprachauswahl rechts ──
+            # ── Header row: login (collapsed) left | language selector right ──
             _login_col, _, _lang_col = st.columns([2, 5, 1])
 
             if self.authenticator:
@@ -184,26 +184,26 @@ class BannerPage():
             df = pd.read_sql('select * from trades', db.conn)
             db.conn.close()
 
-            # ── Transaktionen parsen ──────────────────────────────────────
+            # ── Parse transactions ────────────────────────────────────────
             self.total_invest = 0
             _raw_transactions = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
             transactions = ast.literal_eval(_raw_transactions) if isinstance(_raw_transactions, str) else _raw_transactions
 
-            # Strategie-Namen (äußere Keys bei 3-stufig) und
-            # Index-Map {index_name: max_num_assets über alle Strategien}
+            # Strategy names (outer keys for 3-level) and
+            # index map {index_name: max_num_assets across all strategies}
             _strategy_names: list[str]           = []
             _index_max_assets: dict[str, int]    = {}   # {index: max(num_assets)}
             _strategy_detail: dict[str, dict]    = {}   # {strategy: {index: num_assets}}
 
             for outer_key, inner in transactions.items():
                 if isinstance(inner, dict) and 'num_assets' in inner:
-                    # 2-stufig: outer_key IST der Index-Name
+                    # 2-level: outer_key IS the index name
                     na  = int(inner.get('num_assets', 0))
                     inv = inner.get('invest', 0)
                     _index_max_assets[outer_key] = max(_index_max_assets.get(outer_key, 0), na)
                     self.total_invest += inv
                 else:
-                    # 3-stufig: outer_key = Strategie-Name, inner.keys() = Indizes
+                    # 3-level: outer_key = strategy name, inner.keys() = indices
                     _strategy_names.append(outer_key)
                     _strategy_detail[outer_key] = {}
                     for index_name, pos in inner.items():
@@ -211,7 +211,7 @@ class BannerPage():
                             continue
                         na  = int(pos.get('num_assets', 0))
                         inv = pos.get('invest', 0)
-                        # Max pro Index über alle Strategien
+                        # Max per index across all strategies
                         _index_max_assets[index_name] = max(
                             _index_max_assets.get(index_name, 0), na
                         )
@@ -224,7 +224,7 @@ class BannerPage():
             _indices_display   = '  ·  '.join(_fmt_index(k) for k in _index_max_assets)
             _strategies_display = '  ·  '.join(_strategy_names) if _strategy_names else '—'
 
-            # ── Gain berechnen ────────────────────────────────────────────
+            # ── Calculate gain ────────────────────────────────────────────
             gain = 0
             for _, row in df.iterrows():
                 try:
@@ -236,7 +236,7 @@ class BannerPage():
             portfolio_value = round(gain + self.total_invest, 2)
             pct_gain = round((gain / self.total_invest) * 100, 1) if self.total_invest else 0
 
-            # ── Metriken-Zeile ────────────────────────────────────────────
+            # ── Metrics row ───────────────────────────────────────────────
             _c1, _c2, _c3, _c4 = self.region.columns(4)
             _c1.metric(t('banner.metric_invest', year=year),
                        f"{self.total_invest:,.0f} {self.system_currency}")
@@ -247,7 +247,7 @@ class BannerPage():
                        f"{pct_gain} %", delta=f"{pct_gain:+.1f} %")
             _c4.metric(t('banner.metric_positions'), self.num_assets)
 
-            # ── Strategien & Indizes ──────────────────────────────────────
+            # ── Strategies & indices ──────────────────────────────────────
             if _strategy_names:
                 self.region.markdown(
                     f"**{t('banner.strategies_label')}:** &nbsp; `{_strategies_display}`  &nbsp;|&nbsp;"
@@ -260,7 +260,7 @@ class BannerPage():
                     unsafe_allow_html=True,
                 )
 
-            # ── Strategie-Erklärung (Expander) ────────────────────────────
+            # ── Strategy explanation (expander) ───────────────────────────
             n_strat  = len(_strategy_names) if _strategy_names else 1
             n_idx    = len(_index_max_assets)
             sw       = t('banner.strategy_word_one') if n_strat == 1 else t('banner.strategy_word_many')
@@ -276,7 +276,7 @@ class BannerPage():
                 st.info(t('banner.strategy_advantage'))
                 st.markdown("")
 
-                # Detail-Tabelle: Strategie × Index × num_assets
+                # Detail table: strategy × index × num_assets
                 if _strategy_detail:
                     _rows = []
                     for sname, idx_dict in _strategy_detail.items():
@@ -352,7 +352,7 @@ class BannerPage():
                     use_container_width=True,
                 )
 
-            # ── Analyse-Sektion (Heatmaps + KPIs + Overlap) ──────────────
+            # ── Analysis section (heatmaps + KPIs + overlap) ─────────────
             with st.spinner(t('banner.spinner_analysis')):
                 self._render_per_strategy_heatmaps(df)   # einzeln, nebeneinander
                 self._render_monthly_heatmap(df)          # zusammengefasst darunter
@@ -365,19 +365,19 @@ class BannerPage():
 
 class WelcomePage:
     """
-    Onboarding-Seite für Erstinstallationen.
+    Onboarding page for first-time installations.
 
-    Zeigt den Feature-Umfang je Lizenz-Tier und erklärt den Login-Prozess.
-    Konsistent mit dem Setup-Wizard in first_run.py — verwendet hardcoded
-    Text, da die Spracheinstellung beim ersten Start noch nicht bekannt ist.
+    Shows the feature set per license tier and explains the login process.
+    Consistent with the setup wizard in first_run.py — uses hardcoded text
+    because the language setting is not yet known on first start.
 
-    Verwendung:
+    Usage:
         from tradinglib.banner_page import WelcomePage
         WelcomePage()
         WelcomePage(show_start_button=True, on_start=lambda: st.rerun())
     """
 
-    # Feature-Listen je Tier: (Name, Kurzbeschreibung)
+    # Feature lists per tier: (name, short description)
     _FREE: list = [
         ("Asset Viewer",           "Charts, Kurs-Overlays, 36 Indikatoren"),
         ("Marktsuche",             "Ticker-Suche, Volltext, Live-Ticker"),
@@ -509,11 +509,11 @@ class WelcomePage:
 }
 </style>""", unsafe_allow_html=True)
 
-    # ── Öffentliche API ───────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def render(self):
         """Render the full welcome page: hero, tier comparison, getting-started steps, license status."""
-        # ── Login-Header (oben rechts, eingeklappt) ───────────────────────
+        # ── Login header (top right, collapsed) ───────────────────────────
         if self.authenticator:
             _, _login_col = st.columns([5, 2])
             with _login_col:
@@ -614,7 +614,7 @@ class WelcomePage:
         """Render the step-by-step getting-started section with default login credentials."""
         st.subheader("🚀 Erste Schritte")
 
-        # Schritt-Boxen über die volle Breite
+        # Step boxes across the full width
         st.markdown(
             '<div class="wlc-step-box">'
             '<span class="wlc-step-num">1</span> App im Browser öffnen — '

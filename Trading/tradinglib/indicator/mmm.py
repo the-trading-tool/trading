@@ -145,14 +145,14 @@ class Mmm(_indicator._Indicator):
                     to_current=False,
                     to_extreme=False):
         """
-        Zeichnet Fibonacci-Retracements.
+        Draw Fibonacci retracements.
 
-        - n: Swing-Punkt oder Swing-Paar Index (0 = letztes)
-        - order: Fenstergröße für Swing-Erkennung
-        - direction: "low_to_high", "high_to_low" oder "auto"
-        - extend_to_end: Linien bis Chartende verlängern
-        - to_current: vom Swing bis zum letzten Kurs
-        - to_extreme: vom Swing bis zum letzten Extremum (höchstes Hoch oder tiefstes Low seit Swing)
+        - n: swing point or swing-pair index (0 = most recent)
+        - order: window size for swing detection
+        - direction: "low_to_high", "high_to_low" or "auto"
+        - extend_to_end: extend lines to the end of the chart
+        - to_current: from the swing to the last price
+        - to_extreme: from the swing to the last extremum (highest high or lowest low since swing)
         """
 
         if levels is None:
@@ -165,7 +165,7 @@ class Mmm(_indicator._Indicator):
         if colors is None:
             colors = default_colors
 
-        # --- Swing bestimmen ---
+        # --- Determine swing point ---
         highs, lows = self.detect_local_extrema(order=order)
         events = []
         for idx in highs:
@@ -184,13 +184,13 @@ class Mmm(_indicator._Indicator):
         start_date = self.df.index[swing['idx']]
         start_price = swing['price']
 
-        # --- Ziel bestimmen ---
+        # --- Determine target ---
         if to_current:
             end_date = self.df.index[-1]
             end_price = float(self.df['Close'].iloc[-1])
         elif to_extreme:
             if swing['type'] == 'L':
-                # vom Tief bis zum höchsten High danach
+                # from the low to the highest high afterwards
                 idx_range = range(swing['idx'], len(self.df))
                 sub_df = self.df.iloc[idx_range]
                 end_idx = sub_df['High'].idxmax()
@@ -199,7 +199,7 @@ class Mmm(_indicator._Indicator):
                 if direction == "auto":
                     direction = "low_to_high"
             else:
-                # vom Hoch bis zum tiefsten Low danach
+                # from the high to the lowest low afterwards
                 idx_range = range(swing['idx'], len(self.df))
                 sub_df = self.df.iloc[idx_range]
                 end_idx = sub_df['Low'].idxmin()
@@ -208,7 +208,7 @@ class Mmm(_indicator._Indicator):
                 if direction == "auto":
                     direction = "high_to_low"
         else:
-            # fallback: normales Swing-Paar
+            # fallback: normal swing pair
             pairs = self.get_alternating_pairs(order=order)
             if not pairs:
                 return
@@ -224,7 +224,7 @@ class Mmm(_indicator._Indicator):
                 else:
                     direction = "high_to_low"
 
-        # --- Preisberechnung wie gehabt ---
+        # --- Price calculation as before ---
         if direction == "low_to_high":
             low_price, high_price = min(start_price, end_price), max(start_price, end_price)
             price_func = lambda lvl: low_price + (high_price - low_price) * lvl
@@ -239,7 +239,7 @@ class Mmm(_indicator._Indicator):
             price_level = float(price_func(lvl))
             color = colors[i % len(colors)]
 
-            # Linie ggf. verkürzen, wenn Annotation links stehen soll
+            # Optionally shorten the line when the annotation should appear on the left
             line_start = start_date
             line_end = end_date
             if annotation_side == "left":
@@ -299,11 +299,11 @@ class Mmm(_indicator._Indicator):
             )
 
     # -----------------------------
-    # CumDelta Berechnung + Candles
+    # CumDelta calculation + candles
     # -----------------------------
     def calculate_cumulative_delta(self, df):
         """
-        Einfacher CumDelta: Close-Vergleich mit Vortag.
+        Simple CumDelta: compare close to the previous day.
         """
         delta = []
         for i in range(len(df)):
@@ -311,9 +311,9 @@ class Mmm(_indicator._Indicator):
                 delta.append(0)
             else:
                 if df['Close'].iloc[i] > df['Close'].iloc[i-1]:
-                    delta.append(df['Volume'].iloc[i])   # Kaufvolumen
+                    delta.append(df['Volume'].iloc[i])   # buy volume
                 elif df['Close'].iloc[i] < df['Close'].iloc[i-1]:
-                    delta.append(-df['Volume'].iloc[i])  # Verkaufsvolumen
+                    delta.append(-df['Volume'].iloc[i])  # sell volume
                 else:
                     delta.append(0)
         df['mmm_delta'] = delta
@@ -322,7 +322,7 @@ class Mmm(_indicator._Indicator):
 
     def calculate_cumdelta_price_scaled(self, rule="5T"):
         """
-        Aggregiert CumDelta in OHLC-Form und skaliert es auf die Price-Candles.
+        Aggregate CumDelta into OHLC form and scale it to the price candles.
         """
         if 'mmm_cum_delta' not in self.df.columns:
             self.df = self.calculate_cumulative_delta(self.df.reset_index())
@@ -332,7 +332,7 @@ class Mmm(_indicator._Indicator):
 
         # CumDelta OHLC
         cd_ohlc = df['mmm_cum_delta'].resample(rule).ohlc().dropna()
-        # Preis OHLC für denselben Zeitraum
+        # Price OHLC for the same period
         price_ohlc = df[['Open', 'High', 'Low', 'Close']].resample(rule).ohlc().dropna()
 
         scaled = []
@@ -341,7 +341,7 @@ class Mmm(_indicator._Indicator):
             pr = price_ohlc.loc[idx]
 
             cd_min, cd_max = cd[['low', 'high']].min(), cd[['low', 'high']].max()
-            pr_min, pr_max = pr['low']['Low'], pr['high']['High']  # Preisrange
+            pr_min, pr_max = pr['low']['Low'], pr['high']['High']  # price range
 
             if cd_max == cd_min:  # Edge case: Flat CumDelta
                 scale = 0
@@ -364,7 +364,7 @@ class Mmm(_indicator._Indicator):
 
     def add_cumdelta_candles_scaled(self, rule="5T"):
         """
-        Fügt CumDelta-Candles überlagert und auf Preis skaliert ein.
+        Add CumDelta candles overlaid and scaled to the price axis.
         """
         ohlc = self.calculate_cumdelta_price_scaled(rule=rule)
         if ohlc.empty:

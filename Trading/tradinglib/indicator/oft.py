@@ -39,7 +39,7 @@ class Oft(_indicator._Indicator):
 
         self.df = self.df.ffill()
 
-        # 1. Order Flow Volumen
+        # 1. Order flow volume
         self.df['oft_price_change'] = self.df['Close'].diff()
         self.df['oft_buy_vol'] = self.df['Volume'].where(self.df['oft_price_change'] > 0, 0)
         self.df['oft_sell_vol'] = self.df['Volume'].where(self.df['oft_price_change'] < 0, 0)
@@ -47,7 +47,7 @@ class Oft(_indicator._Indicator):
         # 2. Rolling Order Flow Imbalance
         self.df['oft_flow_imbalance'] = (self.df['oft_buy_vol'] - self.df['oft_sell_vol']).rolling(self.period).sum()
 
-        # Optional: Glättung
+        # Optional: smoothing
         self.df['oft_flow_smoothed'] = self.df['oft_flow_imbalance'].ewm(span=5).mean()
 
         # 3. Support/Resistance
@@ -70,7 +70,7 @@ class Oft(_indicator._Indicator):
 
         support_levels, resistance_levels = find_levels(window=21, min_distance=0.5)
 
-        # 4. Signal-Logik (vectorisiert)
+        # 4. Signal logic (vectorised)
         price_range_pct = 0.01
         self.df['oft_buy'] = False
         self.df['oft_sell'] = False
@@ -79,7 +79,7 @@ class Oft(_indicator._Indicator):
             mask = (
                 (self.df['Close'] >= s * (1 - price_range_pct)) &
                 (self.df['Close'] <= s * (1 + price_range_pct)) &
-                (self.df['oft_flow_imbalance'] < 0)  # Kontra-Trend Logik
+                (self.df['oft_flow_imbalance'] < 0)  # counter-trend logic
             )
             self.df.loc[mask, 'oft_buy'] = self.df['Close']
 
@@ -87,7 +87,7 @@ class Oft(_indicator._Indicator):
             mask = (
                 (self.df['Close'] >= r * (1 - price_range_pct)) &
                 (self.df['Close'] <= r * (1 + price_range_pct)) &
-                (self.df['oft_flow_imbalance'] > 0)  # Kontra-Trend Logik
+                (self.df['oft_flow_imbalance'] > 0)  # counter-trend logic
             )
             self.df.loc[mask, 'oft_sell'] = self.df['Close']
 
@@ -107,7 +107,7 @@ class Oft(_indicator._Indicator):
                     continue
 
                 # === Bullish OB ===
-                if close_ob < open_ob:  # rote Kerze
+                if close_ob < open_ob:  # red candle
                     up_seq = all(
                         self.df['Close'].iloc[ob_candle + j] > self.df['Open'].iloc[ob_candle + j]
                         for j in range(1, self.ob_periods + 1)
@@ -118,7 +118,7 @@ class Oft(_indicator._Indicator):
                         self.df.at[self.df.index[ob_candle], 'oft_ob_bull'] = (high + low) / 2
 
                 # === Bearish OB ===
-                if close_ob > open_ob:  # grüne Kerze
+                if close_ob > open_ob:  # green candle
                     down_seq = all(
                         self.df['Close'].iloc[ob_candle + j] < self.df['Open'].iloc[ob_candle + j]
                         for j in range(1, self.ob_periods + 1)
@@ -193,21 +193,21 @@ class Oft(_indicator._Indicator):
                 )
             )
     
-            # Helper für X-Länge (z.B. 10 Balken entspricht etwa 20 Pips visuell)
-            bar_limit = self.ob_periods * 2  # anpassbar: wie viele Kerzen breit soll die Linie gehen?
+            # Helper for x-length (e.g. 10 bars corresponds to ~20 pips visually)
+            bar_limit = self.ob_periods * 2  # configurable: how many candles wide should the line extend?
 
-            # === Letzter Bullish OB ===
+            # === Last Bullish OB ===
             bullish_obs = self.df['oft_ob_bull'].dropna()
             if not bullish_obs.empty:
                 for i in range(0,len(bullish_obs.index)):
                     last_idx = bullish_obs.index[i]
                     last_val = bullish_obs.iloc[i]
 
-                    # Zeitachse begrenzen auf bar_limit
+                    # Limit time axis to bar_limit
                     end_idx = min(last_idx + bar_limit, len(self.df) - 1)
                     x_vals = [self.df['Date'].iloc[last_idx], self.df['Date'].iloc[end_idx]]
 
-                    # Optional: vertikaler Preisbereich ±20 Pips (visuell hilfreich)
+                    # Optional: vertical price range ±20 pips (visually helpful)
                     y_vals = [last_val, last_val]
 
                     self.fig.add_trace(
@@ -221,7 +221,7 @@ class Oft(_indicator._Indicator):
                         )
                     )
 
-            # === Letzter Bearish OB ===
+            # === Last Bearish OB ===
             bearish_obs = self.df['oft_ob_bear'].dropna()
             if not bearish_obs.empty:
                 for i in range(0,len(bearish_obs.index)):

@@ -7,10 +7,10 @@ from tradinglib.indicator import indicator
 
 class MultiCheckboxSelector:
 
-    # Bar-Budget: mehr Kerzen als das ueberfordert das Frontend (Plotly) und macht
-    # unsinnige Kombis wie 1m/10y erst gar nicht waehlbar. 800 ~= 3 Jahre
-    # Tagesdaten (3*252) + Puffer -> bei Intervall 1d ist damit 3y die groesste
-    # gueltige Periode.
+    # Bar budget: more candles than this overloads the frontend (Plotly) and makes
+    # nonsensical combinations like 1m/10y unselectable in the first place. 800 ~= 3 years
+    # of daily data (3*252) + buffer -> at interval 1d, 3y is therefore the largest
+    # valid period.
     MAX_BARS = 800
 
     indicators = indicator.IndicatorLoader(os.path.dirname(os.path.abspath(indicator.__file__)))
@@ -32,10 +32,10 @@ class MultiCheckboxSelector:
             self.lists = list_data
 
         self.region = region
-        self.instance_name = instance_name  # Eindeutiger Name für die Session
+        self.instance_name = instance_name  # Unique name for the session
         self.sys_conf = sys_conf
 
-        # UUID einmalig in der Session speichern
+        # Store UUID once per session
         if f"{self.instance_name}_uuid" not in st.session_state:
             st.session_state[f"{self.instance_name}_uuid"] = uuid.uuid4().hex[:8]
 
@@ -81,13 +81,13 @@ class MultiCheckboxSelector:
         defaults_oszilator = _resolve_list('oszilator',  _FALLBACK_OSZILATOR)
         defaults           = defaults_overlay | defaults_oszilator   # combined for the init loop
 
-        # Persistierte "kein Plot"-Sets aus config.db laden
+        # Load persisted "no plot" sets from config.db
         _no_plot_sets = {
             'overlay_no_plot':   _resolve_list('overlay_no_plot',   []),
             'oszilator_no_plot': _resolve_list('oszilator_no_plot', []),
         }
 
-        # Defaults für Interval und Period aus sys_conf lesen.
+        # Read defaults for Interval and Period from sys_conf.
         # Use `or fallback` so an empty string stored in the DB never wins.
         default_interval = (sys_conf.get_value('interval', '1d') or '1d') if sys_conf else '1d'
         default_period   = (sys_conf.get_value('period',   '1mo') or '1mo') if sys_conf else '1mo'
@@ -122,7 +122,7 @@ class MultiCheckboxSelector:
                         st.session_state[key] = (list_id in ('Overlay', 'Oszilator')
                                                  and short in defaults)
 
-                # "Plot"-Flag für Overlay/Oszilator: aus config.db lesen, default True
+                # "Plot" flag for Overlay/Oszilator: read from config.db, default True
                 if list_id in ('Overlay', 'Oszilator'):
                     plot_key = f"plot_{list_id}_{option}_{self.instance_id}"
                     if plot_key not in st.session_state or force_defaults:
@@ -214,9 +214,9 @@ class MultiCheckboxSelector:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _estimate_bars(interval: str, period: str) -> float:
-        """Grobe Anzahl Kerzen, die interval x period ergibt (Handelskalender-
-        Naeherung, gleiche Konstanten wie OHLCQueryPlanner: 480 min/Tag, 252
-        Handelstage/Jahr). Reine Schaetzung fuer die UI, kein exakter Zaehler."""
+        """Rough number of candles that interval x period produces (trading-calendar
+        approximation, same constants as OHLCQueryPlanner: 480 min/day, 252
+        trading days/year). Pure estimate for the UI, not an exact counter."""
         def _parse(s):
             m = re.match(r"(\d+)([a-z]+)", s or "")
             if not m:
@@ -228,7 +228,7 @@ class MultiCheckboxSelector:
         if iv <= 0:
             iv = 1
         candles_per_day = {
-            'm':  480.0 / iv,        # 8h Handel = 480 Minuten
+            'm':  480.0 / iv,        # 8h trading = 480 minutes
             'h':  8.0 / iv,
             'd':  1.0 / iv,
             'wk': 1.0 / (5 * iv),
@@ -259,25 +259,24 @@ class MultiCheckboxSelector:
                 if self._estimate_bars(interval, o) > self.MAX_BARS}
 
     def _apply_period_limit(self):
-        """Klemmt die Periodenauswahl auf die groesste gueltige Periode
-        (<= MAX_BARS Kerzen) fuer das aktuell gewaehlte Intervall.
+        """Clamp the period selection to the largest valid period
+        (<= MAX_BARS candles) for the currently selected interval.
 
-        Wird zu Beginn von render() aufgerufen -- also bevor die Widgets
-        instanziiert werden -- damit ein geklemmter Wert nie mit einem bereits
-        gerenderten (dann gesperrten) Widget kollidiert. Persistiert bewusst
-        NICHT nach config.db: die Auswahl ist deterministisch aus interval+period
-        reproduzierbar, und Schreiben beim reinen Laden meiden wir (vgl.
-        Overlay-Default-Korruption)."""
+        Called at the start of render() -- before widgets are instantiated --
+        so a clamped value never collides with an already rendered (then locked)
+        widget. Deliberately does NOT persist to config.db: the selection is
+        deterministically reproducible from interval+period, and we avoid writes
+        during a pure load (cf. Overlay-Default-Korruption)."""
         periods = self._options_for('Period')
         if not periods:
             return
         interval = self._selected_single('Interval') or '1d'
         valid = [o for o in periods if self._estimate_bars(interval, o) <= self.MAX_BARS]
         if not valid:
-            valid = periods[:1]  # Fallback: kleinste Periode ist immer erlaubt
+            valid = periods[:1]  # Fallback: smallest period is always allowed
         if self._selected_single('Period') in valid:
             return
-        # Perioden-Liste ist aufsteigend sortiert -> letzte gueltige = groesste.
+        # Period list is sorted ascending -> last valid = largest.
         target = valid[-1]
         for o in periods:
             st.session_state[f"Period_{o}_{self.instance_id}"] = (o == target)
@@ -310,29 +309,29 @@ class MultiCheckboxSelector:
         </style>
         """, unsafe_allow_html=True)
 
-        # Interval x Period Guard: zuerst die Auswahl auf eine gueltige Periode
-        # klemmen (bevor Widgets erzeugt werden), dann die fuer das aktuelle
-        # Intervall zu grossen Perioden ermitteln -> werden unten disabled.
+        # Interval x Period Guard: first clamp the selection to a valid period
+        # (before widgets are created), then determine the periods that are too
+        # large for the current interval -> these are disabled below.
         self._apply_period_limit()
         current_interval = self._selected_single('Interval') or '1d'
         invalid_periods = self._invalid_periods(current_interval)
         valid_periods = [o for o in self._options_for('Period') if o not in invalid_periods]
         max_valid_period = valid_periods[-1] if valid_periods else ''
 
-        # Dynamische Spaltenanzahl: Maximal 3 pro Reihe für bessere Lesbarkeit
+        # Dynamic column count: maximum 3 per row for better readability
         num_columns = min(4, len(self.lists))
         col_row = self.region.empty()
         columns = col_row.columns(num_columns, gap='small')
 
-        # Durch jede Liste iterieren und Checkboxen innerhalb von Expandern generieren
+        # Iterate over each list and generate checkboxes inside expanders
         for index, (list_id, options) in enumerate(self.lists):
-            col = columns[index % num_columns]  # Spalten dynamisch zuweisen
+            col = columns[index % num_columns]  # Assign columns dynamically
 
             with col:
                 with st.expander(f"{list_id}:"):
                     if list_id == 'Period' and max_valid_period:
                         st.caption(f"max. {max_valid_period} · Intervall {current_interval}")
-                    # Callback für Radio-Button-Verhalten (Interval / Period) + Config-Persistierung
+                    # Callback for radio-button behaviour (Interval / Period) + config persistence
                     def _make_single_select_cb(lid, opt, inst_id, opts, selector_self):
                         def _cb():
                             st.session_state[selector_self._touched_key] = True
@@ -368,7 +367,7 @@ class MultiCheckboxSelector:
 
                     selected_options = []
                     for option in options:
-                        # Einzigartige Keys mit Instanz-ID
+                        # Unique keys with instance ID
                         unique_key = f"{list_id}_{option}_{self.instance_id}"
                         short_name = option.split(' - ')[0]
 
@@ -421,18 +420,18 @@ class MultiCheckboxSelector:
                                 c2.checkbox("Plot", key=plot_key,
                                             on_change=_make_plot_cb(list_id, option, plot_key, self))
                         else:
-                            # Perioden, die fuer das aktuelle Intervall > MAX_BARS
-                            # Kerzen ergeben, werden gesperrt (nicht waehlbar).
+                            # Periods that would exceed MAX_BARS candles for the
+                            # current interval are locked (not selectable).
                             is_over_budget = (list_id == 'Period' and option in invalid_periods)
                             if is_over_budget:
                                 cb_kwargs['disabled'] = True
                                 cb_kwargs['help'] = (
-                                    f"> {self.MAX_BARS} Bars bei Intervall {current_interval} — "
-                                    f"kleinere Periode oder groesseres Intervall waehlen"
+                                    f"> {self.MAX_BARS} bars at interval {current_interval} — "
+                                    f"choose a smaller period or a larger interval"
                                 )
                             checked = st.checkbox(option, key=unique_key, **cb_kwargs)
 
-                        # Speichern der Auswahl nur bei Änderung
+                        # Save selection only on change
                         if checked and not st.session_state[unique_key]:
                             st.session_state[unique_key] = True
                         elif not checked and st.session_state[unique_key]:
@@ -441,7 +440,7 @@ class MultiCheckboxSelector:
                         if st.session_state[unique_key]:
                             selected_options.append(option)
                         
-    #                st.write(f"Ausgewählte Optionen ({list_id}): {', '.join(selected_options) or 'Keine'}")
+    #                st.write(f"Selected options ({list_id}): {', '.join(selected_options) or 'None'}")
 
     def get_selected_options(self, list_id=None):
         """

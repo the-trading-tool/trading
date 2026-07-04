@@ -15,8 +15,8 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# yf.download() ist nicht threadsafe (modul-globales yfinance.shared._DFS) —
-# parallele Aufrufe müssen serialisiert werden (siehe auch yahoo_provider.py).
+# yf.download() is not thread-safe (module-global yfinance.shared._DFS) —
+# concurrent calls must be serialised (see also yahoo_provider.py).
 _YF_DOWNLOAD_LOCK = threading.Lock()
 
 # Maximum number of tickers kept in each metadata cache.

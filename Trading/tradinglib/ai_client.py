@@ -1,20 +1,20 @@
 """
-ai_client.py — Unified AI Client mit Provider-Fallback.
+ai_client.py — Unified AI Client with provider fallback.
 
-Unterstützte Provider:
+Supported providers:
   gemini  — Google Gemini API  (google-genai)   → ksp key: 'gapi'
   groq    — Groq Cloud API     (groq package)   → ksp key: 'groq'
-  ollama  — Lokale Ollama-Instanz (kein Key)    → ksp key: 'ollama' (url/model)
-  auto    — Reihenfolge: Groq → Gemini → Ollama (je nach vorhandenen Keys)
+  ollama  — Local Ollama instance (no key)      → ksp key: 'ollama' (url/model)
+  auto    — Order: Groq → Gemini → Ollama (depending on available keys)
 
-Provider-Auswahl:
+Provider selection:
   sys_conf key 'ai_provider'  (config.db)
-  oder explizit: AiClient(provider='groq')
+  or explicitly: AiClient(provider='groq')
 
-API-Keys (ksplib/credentials.json):
-  'gapi'   → user = Gemini-API-Key
-  'groq'   → user = Groq-API-Key
-  'ollama' → user = Modellname (z.B. llama3.2), url = Ollama-URL
+API keys (ksplib/credentials.json):
+  'gapi'   → user = Gemini API key
+  'groq'   → user = Groq API key
+  'ollama' → user = model name (e.g. llama3.2), url = Ollama URL
 """
 
 import logging
@@ -27,19 +27,19 @@ logger = logging.getLogger(__name__)
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
 class AiRateLimitError(Exception):
-    """Alle konfigurierten Provider sind rate-limited oder quota-erschöpft."""
+    """All configured providers are rate-limited or quota-exhausted."""
 
 class AiProviderError(Exception):
-    """Provider-Konfigurationsfehler oder nicht erreichbar."""
+    """Provider configuration error or unreachable."""
 
-# Alias für Rückwärtskompatibilität mit gemini_api.py
+# Alias for backward compatibility with gemini_api.py
 GeminiRateLimitError = AiRateLimitError
 
 
-# ── Hilfsfunktion ─────────────────────────────────────────────────────────────
+# ── Helper function ───────────────────────────────────────────────────────────
 
 def _parse_retry_delay(error_text: str, default: int = 65) -> int:
-    """Extrahiert retryDelay-Sekunden aus einem API-Fehlertext."""
+    """Extract retryDelay seconds from an API error text."""
     match = re.search(r"retryDelay['\"]:\s*['\"](\d+)s", error_text)
     if match:
         return int(match.group(1))
@@ -56,7 +56,7 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def generate(self, prompt: str, max_tokens: int = 1024) -> tuple[str, str]:
-        """Generiert Text.  Gibt (text, modell_name) zurück."""
+        """Generate text.  Returns (text, model_name)."""
 
     def is_available(self) -> bool:
         """Return True when the provider can accept requests (override for connectivity checks)."""
@@ -68,7 +68,7 @@ class BaseProvider(ABC):
 _GEMINI_MODELS      = ['gemini-2.0-flash-lite', 'gemini-2.5-flash-lite',
                        'gemini-2.5-flash', 'gemini-2.0-flash']
 _GEMINI_MAX_RETRIES = 3
-_GEMINI_MAX_WAIT    = 70   # s — länger = Tagesquote, nicht RPM
+_GEMINI_MAX_WAIT    = 70   # s — longer = daily quota, not RPM
 
 
 class GeminiProvider(BaseProvider):
@@ -311,20 +311,20 @@ class OllamaProvider(BaseProvider):
             return []
 
 
-# ── AiClient (einheitlicher Einstiegspunkt) ───────────────────────────────────
+# ── AiClient (unified entry point) ───────────────────────────────────────────
 
 class AiClient:
-    """Unified AI Client mit Provider-Fallback zur Laufzeit.
+    """Unified AI Client with runtime provider fallback.
 
-    Verwendung:
-        client = AiClient()                        # auto aus config.db
-        client = AiClient(provider='groq')         # explizit
+    Usage:
+        client = AiClient()                        # auto from config.db
+        client = AiClient(provider='groq')         # explicit
         text   = client.analyze_asset(ticker, ctx)
         text   = client.run_question("...")
 
-    Im 'auto'-Modus werden alle verfügbaren Provider (Groq → Gemini → Ollama)
-    als Liste gespeichert.  run_question() versucht jeden der Reihe nach —
-    erst wenn alle mit AiRateLimitError scheitern, wird der Fehler propagiert.
+    In 'auto' mode all available providers (Groq → Gemini → Ollama) are stored
+    as a list. run_question() tries each in order — the error is only propagated
+    after all fail with AiRateLimitError.
     """
 
     def __init__(self, provider: str = 'auto', username: str = 'admin'):
@@ -362,27 +362,27 @@ class AiClient:
                 return text
             except AiRateLimitError as exc:
                 err_short = str(exc)[:120]
-                logger.warning("AiClient: %s erschöpft — versuche nächsten Provider", prov.name)
+                logger.warning("AiClient: %s exhausted — trying next provider", prov.name)
                 errors.append(f"{prov.name}: {exc}")
                 self.provider_log.append({
                     'provider': prov.name, 'model': None,
                     'status': 'failed', 'error': err_short,
                 })
-            # AiProviderError (Konfig-Fehler) wird direkt propagiert — kein Fallback
+            # AiProviderError (config error) is propagated directly — no fallback
         raise AiRateLimitError(
             "Alle Provider erschöpft.\n\n" + "\n".join(errors)
         )
 
     def analyze_asset(self, ticker: str, context: dict) -> str:
-        """Prompt aus lokalem Kontext-Dict bauen und KI-Analyse zurückgeben."""
+        """Build a prompt from the local context dict and return the AI analysis."""
         prompt = _build_asset_prompt(ticker, context)
         return self.run_question(prompt)
 
 
-# ── Provider-Auflösung ────────────────────────────────────────────────────────
+# ── Provider resolution ───────────────────────────────────────────────────────
 
 def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
-    """Instanziiert den gewünschten Provider; 'auto' probiert Reihenfolge."""
+    """Instantiate the requested provider; 'auto' tries in order."""
     from tradinglib import ksplib
     from tradinglib import system_config as sysconf
 
@@ -456,13 +456,13 @@ def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
 
 
 def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseProvider]:
-    """Gibt eine geordnete Liste aller verfügbaren Provider zurück.
+    """Return an ordered list of all available providers.
 
-    Im 'auto'-Modus enthält die Liste alle konfigurierten Provider
-    (Groq → GitHub Models → Gemini → Ollama), sodass AiClient.run_question()
-    sie der Reihe nach versuchen kann.
-    Für explizite Provider ('groq', 'github', 'gemini', 'ollama') wird
-    eine einelementige Liste zurückgegeben.
+    In 'auto' mode the list contains all configured providers
+    (Groq → GitHub Models → Gemini → Ollama) so that AiClient.run_question()
+    can try each in order.
+    For explicit providers ('groq', 'github', 'gemini', 'ollama') a
+    single-element list is returned.
     """
     from tradinglib import ksplib
     from tradinglib import system_config as sysconf
@@ -481,7 +481,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         creds = ksp.get_ksp(name)
         return (creds.get('url', '') if isinstance(creds, dict) else '') or default
 
-    # ── Explizite Einzel-Provider ─────────────────────────────────────────────
+    # ── Explicit single providers ─────────────────────────────────────────────
     if provider == 'groq':
         key = _get_key('groq')
         if not key:
@@ -513,23 +513,23 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         model = _get_key('ollama') or _OLLAMA_DEFAULT_MODEL
         return [OllamaProvider(url=url, model=model)]
 
-    # ── auto: Provider in konfigurierter Reihenfolge sammeln ────────────────
-    # Standard: groq → github → gemini → ollama
-    # Überschreibbar via config.db-Key 'ai_provider_order' (Liste von Namen)
+    # ── auto: collect providers in configured order ──────────────────────────
+    # Default: groq → github → gemini → ollama
+    # Overridable via config.db key 'ai_provider_order' (list of names)
     _DEFAULT_ORDER = ['groq', 'github', 'gemini', 'ollama']
     cfg_order = sysconf.SystemConfig(username=username).get_value(
         'ai_provider_order', _DEFAULT_ORDER
     )
     if not isinstance(cfg_order, list) or not cfg_order:
         cfg_order = _DEFAULT_ORDER
-    # Sicherstellen dass alle bekannten Provider berücksichtigt werden
-    # (nicht in der Liste = ans Ende)
+    # Ensure all known providers are considered
+    # (not in the list = appended at the end)
     for p in _DEFAULT_ORDER:
         if p not in cfg_order:
             cfg_order.append(p)
 
     def _build_provider(name: str) -> BaseProvider | None:
-        """Instanziiert einen Provider anhand seines Namens; None wenn Key fehlt/unavailable."""
+        """Instantiate a provider by name; returns None if key is missing or unavailable."""
         try:
             if name == 'groq':
                 key = _get_key('groq')
@@ -546,7 +546,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
                 prov  = OllamaProvider(url=url, model=model)
                 return prov if prov.is_available() else None
         except AiProviderError as exc:
-            logger.warning("%s nicht verfügbar: %s", name, exc)
+            logger.warning("%s not available: %s", name, exc)
         return None
 
     providers: list[BaseProvider] = []
@@ -568,7 +568,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
     return providers
 
 
-# ── Prompt-Builder (shared, kein Provider-State nötig) ───────────────────────
+# ── Prompt builder (shared, no provider state needed) ────────────────────────
 
 def _build_asset_prompt(ticker: str, ctx: dict) -> str:
     """Build the structured German-language analysis prompt from the asset context dict.

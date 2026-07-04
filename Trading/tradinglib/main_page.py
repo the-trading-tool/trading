@@ -84,11 +84,11 @@ class render_mainpage(fetch_data.FetchData):
         # otherwise it blocks the interactive market-search widget every rerun.
         self._symbol_from_url = bool(symbol)
         if not self.symbol:
-            # Startansicht: der konfigurierte Default-Ticker (⚙-Dialog, key
-            # 'default_ticker', Vorgabe ^GDAXI) hat Vorrang, damit ein bewusst
-            # gesetzter Default beim Neuaufruf wirklich angezogen wird. Nur wenn
-            # kein Default konfiguriert ist, wird auf den zuletzt gewählten Ticker
-            # zurückgegriffen, damit der Chart nie leer startet.
+            # Start view: the configured default ticker (⚙ dialog, key
+            # 'default_ticker', default ^GDAXI) takes priority so that a deliberately
+            # set default is actually applied on re-open. Only when no default is
+            # configured do we fall back to the last selected ticker, so the chart
+            # never starts empty.
             self.symbol = (self.sys_conf.get_value('default_ticker', '')
                            or self.sys_conf.get_value('last_ticker', '')
                            or '^GDAXI')
@@ -473,8 +473,8 @@ class render_mainpage(fetch_data.FetchData):
 #        (pp_left, pp_right) = panel_pos.columns([0.01,.99],gap='small')
         pp_right = st
 
-        # Kompaktere Abstände im Hauptbereich (Headlines, Selectoren, Slider, Tabs),
-        # damit der Chart vollständig sichtbar ist statt am unteren Rand abgeschnitten.
+        # Tighter spacing in the main area (headlines, selectors, slider, tabs)
+        # so the chart is fully visible instead of being cut off at the bottom.
         st.markdown(
             '<style>'
             '[data-testid="stMain"] .block-container{padding-top:2rem;padding-bottom:1rem;}'
@@ -638,10 +638,10 @@ class render_mainpage(fetch_data.FetchData):
             st.info(t('main.search_hint'))
             return
 
-        # Indexzugehörigkeit für den final gewählten Ticker auflösen — unabhängig
-        # davon, ob er aus FTS, URL-Auto-Resolve oder Market-Search kam. fts.index_name
-        # wurde sonst nur beim FTS-Box-Pick (render) gesetzt und blieb sonst leer
-        # (z.B. AAMI/^RUT), obwohl die Membership in yf_tickers.db vorliegt.
+        # Resolve index membership for the finally selected ticker — regardless of
+        # whether it came from FTS, URL auto-resolve, or market search. fts.index_name
+        # was otherwise only set during the FTS-box pick (render) and remained empty
+        # otherwise (e.g. AAMI/^RUT), even though membership exists in yf_tickers.db.
         fts.resolve_index_name(ticker_selected)
 
         if refresh:

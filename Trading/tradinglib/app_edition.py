@@ -1,21 +1,21 @@
 """
-App-Edition-Schalter für die Trading-App.
+App edition switch for the trading app.
 
-Zwei Editionen aus *derselben* Codebasis:
+Two editions from the *same* codebase:
 
-  'full'      — die vollständige Trading-App (Default; Verhalten unverändert)
-  'scalable'  — schlanke Consumer-Edition für Scalable-Capital-Nutzer:
-                Einstieg auf "Own Transactions", nur ausgewählte Routen sind frei,
-                alle übrigen Features sind ein Upgrade.
+  'full'      — the full trading app (default; behaviour unchanged)
+  'scalable'  — slim consumer edition for Scalable Capital users:
+                entry point is "Own Transactions", only selected routes are free,
+                all other features require an upgrade.
 
-Die Edition wird beim Import bestimmt aus (in dieser Reihenfolge):
-  1. ENV   TRADING_EDITION                      (primär — für das Deployment)
-  2. config.db  key  '_app:app_edition'         (App-weiter Fallback)
+The edition is determined at import time from (in this order):
+  1. ENV   TRADING_EDITION                      (primary — for deployment)
+  2. config.db  key  '_app:app_edition'         (app-wide fallback)
   3. Default 'full'
 
-Wichtig: In der 'full'-Edition sind alle Guard-Funktionen ein No-Op
-(`is_route_allowed()` liefert immer True) — die bestehende App verhält sich
-damit absolut identisch zu vorher.
+Important: In the 'full' edition all guard functions are a no-op
+(`is_route_allowed()` always returns True) — the existing app behaves
+absolutely identically to before.
 """
 import logging
 import os
@@ -24,20 +24,20 @@ logger = logging.getLogger(__name__)
 
 _VALID_EDITIONS = ('full', 'scalable')
 
-# Pseudo-Identität für den App-weiten (nicht pro-User genamespacten) Config-Slot.
-# SystemConfig namespaced jeden Key als '<username>:<key>'; mit diesem festen
-# Namen ist die Edition unabhängig vom eingeloggten Nutzer lesbar.
+# Pseudo-identity for the app-wide (not per-user namespaced) config slot.
+# SystemConfig namespaces every key as '<username>:<key>'; with this fixed
+# name the edition is readable regardless of the logged-in user.
 _APP_SCOPE_USER = '_app'
 
 
 def _read_edition() -> str:
-    """Bestimme die aktive Edition aus ENV → config.db → Default 'full'."""
+    """Determine the active edition from ENV → config.db → default 'full'."""
     # 1. ENV
     env = (os.environ.get('TRADING_EDITION') or '').strip().lower()
     if env in _VALID_EDITIONS:
         return env
 
-    # 2. config.db (App-weiter Slot '_app:app_edition')
+    # 2. config.db (app-wide slot '_app:app_edition')
     try:
         from tradinglib import system_config as sysconf
         val = sysconf.SystemConfig(username=_APP_SCOPE_USER, bare_mode=True).get_value('app_edition', None)
@@ -61,38 +61,38 @@ logger.info("app_edition: running '%s' edition", EDITION)
 # Routen
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Routen, die in der Scalable-Edition frei sind. Der Routen-Key ist der
-# bestimmende query-param; None = Default-Route (Asset Viewer).
+# Routes that are free in the Scalable edition. The route key is the
+# determining query param; None = default route (Asset Viewer).
 SCALABLE_FREE_ROUTES = frozenset({
-    None,               # Asset Viewer (Default-Route)
-    'own_trades',       # Einstieg / Landing
+    None,               # Asset Viewer (default route)
+    'own_trades',       # entry / landing
     'marketmap',        # Market Map
     'rotation',         # Sector Rotation
     'market_overview',  # Market View
     'compound',         # Lump Sum Investment
 })
 
-# Alle Routen-bestimmenden query-params in Prüf-Reihenfolge. Spiegelt die
-# if/elif-Kette in asset_analyzer.AssetAnalyzer.render() wider.
-# 'upgrade' ist eine virtuelle Route (kein elif-Zweig): sie ist nie in
-# SCALABLE_FREE_ROUTES und wird daher vom Guard immer auf die Upgrade-Seite
-# geleitet — genutzt vom Upgrade-CTA in der Sidebar.
+# All route-determining query params in check order. Mirrors the
+# if/elif chain in asset_analyzer.AssetAnalyzer.render().
+# 'upgrade' is a virtual route (no elif branch): it is never in
+# SCALABLE_FREE_ROUTES and is therefore always directed by the guard
+# to the upgrade page — used by the upgrade CTA in the sidebar.
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
     'strategy_finder', 'trading', 'rotation', 'market_overview',
     'compound', 'marketmap', 'summary', 'option_calc', 'upgrade',
 )
 
-# Routen/Endpunkte, die unabhängig von der Edition immer durchlaufen
-# (Infrastruktur — werden in render() ohnehin vor dem Login behandelt).
+# Routes/endpoints that are always allowed regardless of edition
+# (infrastructure — handled in render() before login anyway).
 _ALWAYS_ALLOWED = frozenset({'stream', 'download'})
 
 
 def active_route(parms: dict):
-    """Bestimme den Routen-Key aus den query-params.
+    """Determine the route key from the query params.
 
-    Liefert den ersten gesetzten Routen-Param (Reihenfolge = elif-Kette) oder
-    None für die Default-Route (Asset Viewer).
+    Returns the first set route param (order = elif chain) or
+    None for the default route (Asset Viewer).
     """
     if parms:
         for key in _ROUTE_PARAMS:
@@ -102,10 +102,10 @@ def active_route(parms: dict):
 
 
 def is_route_allowed(route) -> bool:
-    """True, wenn *route* in der aktiven Edition gerendert werden darf.
+    """True if *route* may be rendered in the active edition.
 
-    In der 'full'-Edition immer True (No-Op). In der Scalable-Edition nur für
-    die freigeschalteten bzw. Infrastruktur-Routen.
+    In the 'full' edition always True (no-op). In the Scalable edition only for
+    the unlocked or infrastructure routes.
     """
     if IS_FULL:
         return True

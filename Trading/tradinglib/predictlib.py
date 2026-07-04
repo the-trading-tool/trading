@@ -84,7 +84,7 @@ class predict():
             # Train model
             self.train_model(X_train, y_train)
 
-            # Evaluieren des Modells
+            # Evaluate the model
             self.evaluate_model(X_test, y_test)            
             
             # predict prices

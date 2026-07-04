@@ -18,9 +18,9 @@ import numpy as np
 ftime_str = '%Y-%m-%d %H:%M:%S'
 BASE_URL = "https://trading.cloogidoo.com"
 
-# Asset-Klassen-Gruppen in yf_tickers.db (Tabelle indices), die keine Aktien
-# enthalten. Sie werden von der Performance-Simulation und vom Aktien-Download
-# (/index_member) ausgeschlossen. ETP (handelbare ETFs/ETCs) zählt NICHT dazu.
+# Asset class groups in yf_tickers.db (table indices) that contain no stocks.
+# They are excluded from the performance simulation and the stock download
+# (/index_member). ETP (tradeable ETFs/ETCs) does NOT belong to this list.
 NON_STOCK_GROUPS = ('INDEX', 'COMMODITIES', 'METALS', 'CURRENCIES', 'CRYPTO')
 
 
@@ -105,7 +105,7 @@ class Tools:
         a custom directory (e.g. production databases). Falls back to
         <project_root>/database/ when the variable is not set.
         """
-        # Pfad für die SQLite-Datenbank-Datei
+        # Path for the SQLite database file
         try:
             if file_name  == '':
                 file_name = self.file_name
@@ -130,14 +130,14 @@ class Tools:
         
         else:
             
-            # Immer relativ zu tools.py selbst (tradinglib/ → parent = Projektroot)
-            # sys.argv[0] würde unter Streamlit auf den Launcher zeigen, nicht auf das Projekt
+            # Always relative to tools.py itself (tradinglib/ → parent = project root)
+            # sys.argv[0] would point to the Streamlit launcher under Streamlit, not the project
             caller_directory = Path(__file__).resolve().parent.parent
 
-            # Der Pfad zum 'database' Verzeichnis im Verzeichnis des aufrufenden Skripts
+            # Path to the 'database' directory inside the calling script's directory
             sub_directory = caller_directory / path
 
-            # Falls das 'database' Verzeichnis noch nicht existiert, erstellen
+            # Create the 'database' directory if it does not yet exist
             sub_directory.mkdir(exist_ok=True)
         
             return os.path.join(sub_directory,file_name)
@@ -449,13 +449,13 @@ class Db_tools(Tools):
             keys = row_dict.keys()
             
         for key in keys:
-            # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
+            # Check whether the key starts with a digit
             if key[0].isdigit():
                 column_name = f"_{key}"
             else:
                 column_name = key
-        
-            # Typ des ersten nicht-None Wertes bestimmen
+
+            # Determine the type of the first non-None value
             value = row_dict.get(key, None)
             if value is None:
                 column_type = "REAL"
@@ -464,9 +464,9 @@ class Db_tools(Tools):
             elif isinstance(value, (int, float)):
                 column_type = "REAL"
             elif isinstance(value, list):
-                column_type = "TEXT"  # Listen werden als JSON-Strings gespeichert
+                column_type = "TEXT"  # Lists are stored as JSON strings
             else:
-                column_type = "TEXT"  # Fallback zu TEXT, wenn der Typ nicht klar ist
+                column_type = "TEXT"  # Fallback to TEXT when type is unclear
 
             if not primary:
                 if primary_key:
@@ -493,17 +493,17 @@ class Db_tools(Tools):
         if keys == []:
             keys = row_dict.keys()
             
-        # Prüfe, ob die datenbank existiert
+        # Check whether the table exists
         self.cursor.execute(f"PRAGMA table_info('{database_name}')")
         fetched = [row[1] for row in self.cursor.fetchall()]
-        existing_columns = {col for col in fetched}  # Set von existierenden Spaltennamen (original case)
+        existing_columns = {col for col in fetched}  # Set of existing column names (original case)
         existing_columns_lc = {col.lower().strip() for col in fetched}
         if len(existing_columns) == 0:
-            # Sicherstellen, dass die Tabelle existiert
+            # Make sure the table exists
             self.create_table(keys, row_dict, database_name, primary_key=primary_key)
         else:
             for key in keys:
-                # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
+                # Check whether the key starts with a digit
                 if key[0].isdigit():
                     column_name = f"_{key}"
                 else:
@@ -518,9 +518,9 @@ class Db_tools(Tools):
                     elif isinstance(value, (int, float)):
                         column_type = "REAL"
                     elif isinstance(value, list):
-                        column_type = "TEXT"  # Listen werden als JSON-Strings gespeichert
+                        column_type = "TEXT"  # Lists are stored as JSON strings
                     else:
-                        column_type = "TEXT"  # Fallback zu TEXT, wenn der Typ nicht klar ist
+                        column_type = "TEXT"  # Fallback to TEXT when type is unclear
 
                     self.cursor.execute(f"ALTER TABLE {database_name} ADD COLUMN {column_name} {column_type}")
 
@@ -539,25 +539,25 @@ class Db_tools(Tools):
             keys = row_dict.keys()
             
         for key in keys:
-            # Überprüfen, ob der Schlüssel mit einer Zahl beginnt
+            # Check whether the key starts with a digit
             if key[0].isdigit():
                 column_name = f"_{key}"
             else:
                 column_name = key
-        
+
             column_names.append(column_name)
-        
+
             try:
-                value = row_dict.get(key, None)  # Abrufen des Werts für den Schlüssel
+                value = row_dict.get(key, None)  # Retrieve the value for the key
                 if isinstance(value, list):
-                    value = json.dumps(value)  # Listen in JSON-Strings umwandeln
+                    value = json.dumps(value)  # Convert lists to JSON strings
             except Exception as e:
-                logger.warning("Fehler beim Abrufen des Werts fuer %s: %s", key, e)
-                value = None  # Setze den Wert auf None, falls ein Fehler auftritt
-        
+                logger.warning("Error retrieving value for %s: %s", key, e)
+                value = None  # Set value to None if an error occurs
+
             values.append(value)
-    
-        placeholders = ', '.join(['?'] * (len(values)))  # +1 für den timestamp
+
+        placeholders = ', '.join(['?'] * (len(values)))  # +1 for the timestamp
 
         or_rep = ''
         if replace:
@@ -674,7 +674,7 @@ class ExpressionEvaluator():
             col = match.group(1)
             chain = match.group(2)
             if col not in self.column_names:
-                raise ValueError(f"Unbekannte Spalte: {col}")
+                raise ValueError(f"Unknown column: {col}")
             return f"{self.dataframe_name}['{col}']{chain}"
 
         expression = method_pattern.sub(replace_method_chain, expression)
@@ -844,20 +844,20 @@ class BuySellSignalGenerator:
             pass
         delayed_signals = []
 
-        # Schritt 1: Kaufbedingung gruppenweise auswerten (geteilte Schicht).
+        # Step 1: Evaluate buy condition group-wise (shared layer).
         try:
             buy_mask_global = compute_signal_mask(self.df, self.buy_condition)
         except Exception as e:
             logger.error("[BUY-ERROR] %s", e)
-            # UI-Feedback nur, wenn ein Streamlit-Kontext existiert (headless-safe).
+            # UI feedback only when a Streamlit context exists (headless-safe).
             try:
                 st.error(f"[BUY-ERROR] {e}")
             except Exception:
                 pass
             buy_mask_global = pd.Series(False, index=self.df.index)
 
-        # Kaufsignale + Delay: pro Ticker den Treffer um buy_delay_days nach
-        # vorne schieben (Position innerhalb der Gruppe), dann globalen Index merken.
+        # Buy signals + delay: shift each match forward by buy_delay_days within
+        # the ticker group, then record the global index.
         for _tk, _g in self.df.groupby('ticker'):
             gidx = _g.index.to_numpy()
             hits = np.nonzero(buy_mask_global.loc[gidx].to_numpy())[0]
@@ -866,33 +866,33 @@ class BuySellSignalGenerator:
                 if dpos < len(gidx):
                     delayed_signals.append(gidx[dpos])
 
-        # Schritt 2: Kaufmarkierungen setzen
+        # Step 2: Set buy markers
         self.df.loc[delayed_signals, 'buySell'] = 1
 
-        # Schritt 3: Verkaufslogik
+        # Step 3: Sell logic
         #
-        # Fast-Pfad (vektorisiert): Die Sell-Bedingung wird EINMAL pro Ticker-
-        # Gruppe ausgewertet (analog zur Kaufseite oben) statt pro Zeile einen
-        # frischen ExpressionEvaluator + Single-Row-DataFrame zu bauen. Das
-        # Ergebnis ist eine Bool-Serie, ausgerichtet auf self.df.index; die
-        # stateful Open/Close-Schleife darunter liest nur noch daraus — die
-        # Semantik (offene Position, Tie-Bars, buy_delay) bleibt unverändert.
+        # Fast path (vectorised): the sell condition is evaluated ONCE per ticker
+        # group (analogous to the buy side above) instead of building a fresh
+        # ExpressionEvaluator + single-row DataFrame for every row. The result is
+        # a bool Series aligned to self.df.index; the stateful open/close loop
+        # below only reads from it — semantics (open position, tie bars, buy_delay)
+        # remain unchanged.
         #
-        # Fallback (per Zeile): sobald die Sell-Bedingung entry-relative tp/sl
-        # referenziert, ist der Wahrheitswert positionsabhängig und kann nicht
-        # vorberechnet werden -> dann greift exakt die bisherige Pro-Zeilen-Logik.
+        # Fallback (per row): as soon as the sell condition references entry-relative
+        # tp/sl, the truth value is position-dependent and cannot be pre-computed
+        # -> the existing per-row logic applies exactly.
         uses_entry_state = bool(re.search(r'(?<![\w])(tp|sl)(?![\w])', self.sell_condition or ''))
         sell_mask_global = None
         if not uses_entry_state:
             try:
                 sell_mask_global = compute_signal_mask(self.df, self.sell_condition)
             except Exception:
-                # Bei jedem Problem komplett auf den Pro-Zeilen-Fallback zurueck.
+                # On any problem fall back completely to the per-row path.
                 sell_mask_global = None
 
-        # Stateful Open/Close-Pass ueber numpy-Arrays statt df.iterrows()/df.at —
-        # bei ~228k Zeilen (^RUT) ist der reine Python-Loop ueber Arrays um ein
-        # Vielfaches schneller als der pandas-Pro-Zeilen-Zugriff. Semantik identisch.
+        # Stateful open/close pass over numpy arrays instead of df.iterrows()/df.at —
+        # for ~228k rows (^RUT) the pure Python loop over arrays is many times faster
+        # than per-row pandas access. Semantics are identical.
         tickers = self.df['ticker'].to_numpy()
         buysell = self.df['buySell'].to_numpy().copy()
         n = len(buysell)
@@ -904,13 +904,13 @@ class BuySellSignalGenerator:
         for i in range(n):
             ticker = tickers[i]
 
-            # Verkauf bei offener Position
+            # Sell when position is open
             if ticker in open_positions:
                 if sell_arr is not None:
-                    # Fast-Pfad: vorberechneten Bool nur noch lesen.
+                    # Fast path: just read the pre-computed bool.
                     cond = bool(sell_arr[i])
                 else:
-                    # Fallback: Pro-Zeilen-Auswertung (z.B. tp/sl referenziert).
+                    # Fallback: per-row evaluation (e.g. tp/sl referenced).
                     tp, sl = open_positions[ticker]
                     row = self.df.iloc[i]
                     context = {**row.to_dict(), 'tp': tp, 'sl': sl}

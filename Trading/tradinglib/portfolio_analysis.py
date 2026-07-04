@@ -1,8 +1,8 @@
 """
-Portfolio-Analyse-Modul: Helfer und UI für Closed Trades und offene Positionen.
+Portfolio analysis module: helpers and UI for closed trades and open positions.
 
-Herausgelöst aus own_trades_analysis.py.
-Öffentliche API:
+Extracted from own_trades_analysis.py.
+Public API:
   render_portfolio_analysis(region, db_path, username, system_currency)
 """
 import datetime as dt
@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Preis-Helfer (werden auch von render_risk_management importiert)
+# Price helpers (also imported by render_risk_management)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch_close_series_for_portfolio(ticker: str, db_path: str = 'database') -> pd.Series:
-    """Close-Preise für einen Ticker aus der lokalen DB laden, Fallback auf Netzwerk."""
+    """Load close prices for a ticker from the local DB, falling back to network."""
     try:
         from tradinglib.fetch_data import FetchData
         fd = FetchData(database_path=db_path)
@@ -51,7 +51,7 @@ def _fetch_close_series_for_portfolio(ticker: str, db_path: str = 'database') ->
 
 
 def _get_current_price(ticker: str, db_path: str = 'database') -> float:
-    """Letzten bekannten Schlusskurs für einen Ticker ermitteln."""
+    """Retrieve the last known closing price for a ticker."""
     s = _fetch_close_series_for_portfolio(ticker, db_path)
     if s is not None and not s.empty:
         return float(s.iloc[-1])
@@ -59,7 +59,7 @@ def _get_current_price(ticker: str, db_path: str = 'database') -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Chart-Helfer
+# Chart helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start_date: str = None) -> go.Figure:
@@ -166,8 +166,8 @@ def _build_since_buy_figs(series_dict: dict, buy_dates: dict, label_map: dict = 
 
 def _compute_parity_weights(series_dict: dict, window: int = 30) -> pd.Series:
     """
-    Inverse-Volatility Gewichte auf Basis der letzten `window` Tagesdaten.
-    Gibt pd.Series mit Ticker-Index und Gewichten (Summe=1) zurück.
+    Inverse-volatility weights based on the last `window` daily data points.
+    Returns a pd.Series with ticker index and weights (sum=1).
     """
     vols = {}
     for ticker, s in series_dict.items():
@@ -247,11 +247,11 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
 
 def _fetch_fx_daily(currency: str, system_currency: str, daily: pd.DatetimeIndex,
                     db_path: str = 'database') -> pd.Series:
-    """Tagesgenaue FX-Reihe (Einheiten *currency* je 1 *system_currency*) auf *daily*.
+    """Daily FX series (units of *currency* per 1 *system_currency*) aligned to *daily*.
 
-    Nutzt den Yahoo-FX-Ticker ``{SYS}{CUR}=X`` (gleiche Konvention wie
-    DataUtils.get_exchange_rate). Umrechnung nativer Betrag → System: betrag / rate.
-    Fällt auf 1.0 zurück, wenn keine FX-Daten verfügbar sind (keine Umrechnung).
+    Uses the Yahoo FX ticker ``{SYS}{CUR}=X`` (same convention as
+    DataUtils.get_exchange_rate). Conversion of native amount to system: amount / rate.
+    Falls back to 1.0 when no FX data is available (no conversion applied).
     """
     if not currency or currency == system_currency:
         return pd.Series(1.0, index=daily)
@@ -269,27 +269,27 @@ def _fetch_fx_daily(currency: str, system_currency: str, daily: pd.DatetimeIndex
 def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
                              system_currency: str = 'EUR',
                              currency_map: dict = None) -> pd.DataFrame:
-    """Tatsächlicher Portfolioverlauf aus den Transaktionen (trades.db).
+    """Actual portfolio history reconstructed from transactions (trades.db).
 
-    Im Gegensatz zur reinen Kurshistorie eines Titels rekonstruiert dies die
-    tatsächlich GEHALTENEN Stückzahlen über die Zeit (kumulierte Käufe − Verkäufe)
-    und bewertet sie täglich mit dem Schlusskurs. Die Kurve startet damit am ersten
-    Trade — nicht am Beginn der (viel älteren) Kurshistorie.
+    Unlike a plain price history for a single ticker, this reconstructs the
+    actually HELD share counts over time (cumulative buys minus sells) and
+    values them daily at the closing price. The curve therefore starts at the
+    first trade — not at the beginning of the (much older) price history.
 
-    Beträge werden tagesgenau in die System-Währung umgerechnet (historische
-    FX-Reihe je Fremdwährung).
+    Amounts are converted to the system currency on a daily basis using a
+    historical FX series per foreign currency.
 
     Args:
-        events: DataFrame mit Spalten
+        events: DataFrame with columns
                 _ts  (datetime), _ticker,
-                _signed_sh  (Käufe +, Verkäufe −),
-                _signed_val (eingesetztes Kapital: Kauf +, Verkauf −),
-                _cur (Trade-Währung, optional).
-        currency_map: {ticker: Währung} für die Kurs-Umrechnung.
+                _signed_sh  (buys +, sells −),
+                _signed_val (capital deployed: buy +, sell −),
+                _cur (trade currency, optional).
+        currency_map: {ticker: currency} for price conversion.
     Returns:
-        DataFrame, index=Tagesdatum, Spalten:
-          'value'    – Marktwert der gehaltenen Stücke (System-Währung)
-          'invested' – kumuliertes Netto-Kapital (System-Währung)
+        DataFrame, index=daily date, columns:
+          'value'    – market value of held shares (system currency)
+          'invested' – cumulative net capital deployed (system currency)
     """
     if events is None or events.empty:
         return pd.DataFrame()
@@ -316,7 +316,7 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
 
     tickers = sorted([t for t in ev['_ticker'].dropna().unique().tolist() if t])
 
-    # Kurse je Ticker laden (lokal → Netz-Fallback)
+    # Load prices per ticker (local → network fallback)
     series_map: dict = {}
     if tickers:
         with ThreadPoolExecutor(max_workers=min(8, len(tickers))) as exr:
@@ -332,7 +332,7 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
                     s.index = pd.to_datetime(s.index, errors='coerce').normalize()
                     series_map[t] = s.astype(float)
 
-    # FX-Tagesreihen je benötigter Fremdwährung (CUR pro SYS)
+    # Daily FX series per required foreign currency (CUR per SYS)
     needed = {currency_map.get(t, sys_cur) for t in tickers} | set(ev['_cur'].unique())
     fx_daily = {cur: _fetch_fx_daily(cur, sys_cur, daily, db_path)
                 for cur in needed if cur and cur != sys_cur}
@@ -343,11 +343,11 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
         rate = fx_daily.get(cur)
         return series / rate if rate is not None else series
 
-    # ── Marktwert: gehaltene Stücke × Kurs, in System-Währung ──────────────
+    # ── Market value: held shares × price, in system currency ───────────────
     value_total = pd.Series(0.0, index=daily)
     for t in tickers:
         delta = ev[ev['_ticker'] == t].groupby('_date')['_signed_sh'].sum()
-        held = delta.reindex(daily, fill_value=0.0).cumsum().clip(lower=0)  # Rundungsreste
+        held = delta.reindex(daily, fill_value=0.0).cumsum().clip(lower=0)  # rounding residuals
         s = series_map.get(t)
         if s is None:
             continue
@@ -356,7 +356,7 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
         val_sys = _to_sys(native_val, currency_map.get(t, sys_cur)).fillna(0.0)
         value_total = value_total.add(val_sys, fill_value=0.0)
 
-    # ── Eingesetztes Kapital: je Trade zum Trade-Tag-FX umrechnen ──────────
+    # ── Capital deployed: convert each trade using the trade-date FX rate ───
     def _val_sys(row) -> float:
         cur = row['_cur']
         v = float(row['_signed_val'])
@@ -377,22 +377,22 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
 
     out = pd.DataFrame({'value': value_total, 'invested': invested})
 
-    # ── Reiner Gesamttrend (zeitgewichtet, ohne Ein-/Auszahlungen) ─────────
-    # TWR: Tagesrendite bezogen auf das zu Tagesbeginn investierte Kapital
-    # (V_t-1 + Cashflow_t), damit Zukäufe/Verkäufe keine Scheingewinne erzeugen.
+    # ── Pure total trend (time-weighted, excluding cash flows) ─────────────
+    # TWR: daily return relative to capital at the start of day
+    # (V_t-1 + Cashflow_t), so purchases/sales do not create phantom gains.
     v_prev = value_total.shift(1)
     base = v_prev + daily_cf
     r = (value_total / base) - 1.0
     r = r.where(base > 0, 0.0).replace([np.inf, -np.inf], 0.0).fillna(0.0)
     if len(r) > 0:
-        r.iloc[0] = 0.0  # erster Tag = Basis (Index 100)
+        r.iloc[0] = 0.0  # first day = base (index 100)
     out['trend_index'] = 100.0 * (1.0 + r).cumprod()
 
     return out[out.index >= start]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Haupt-Render-Funktion
+# Main render function
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_portfolio_analysis(region=st, db_path: str = 'database', username: str = '', system_currency: str = 'EUR'):
@@ -403,8 +403,8 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     """
     r = region
 
-    # ── Rohdaten direkt aus trades.db lesen (TradeProcessor wird nicht verwendet,
-    #    da Spaltennamen in der DB case-sensitiv abweichen können) ─────────────
+    # ── Read raw data directly from trades.db (TradeProcessor is not used
+    #    because column names in the DB may differ in case) ───────────────────
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
     raw = pd.DataFrame()
     try:
@@ -435,7 +435,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
         r.info(_t('ota.no_trades_db'))
         return
 
-    # Spaltennamen normalisieren (case-insensitive Lookup)
+    # Normalise column names (case-insensitive lookup)
     raw.columns = [c.strip() for c in raw.columns]
     _col = {c.lower(): c for c in raw.columns}   # lower → Originalname
 
@@ -455,14 +455,14 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 return df[c]
         return pd.Series([None] * len(df), index=df.index)
 
-    # action-Spalte normalisieren
+    # Normalise the action column
     act_col = _col.get('action', 'action')
     if act_col not in raw.columns:
         r.error(_t('ota.no_action_col'))
         return
     raw[act_col] = raw[act_col].astype(str).str.lower().str.strip()
 
-    # shares / price / value normalisieren
+    # Normalise shares / price / value
     for col_alias, std in [('shares', '_shares'), ('price', '_price'), ('value', '_value'),
                             ('ticker', '_ticker'), ('timestamp', '_ts'),
                             ('longname', '_longname'), ('isin', '_isin'),
@@ -482,8 +482,8 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     buy_raw  = raw[raw[act_col] == 'buy'].copy()
     sell_raw = raw[raw[act_col] == 'sell'].copy()
 
-    # ── Offene vs. geschlossene Positionen bestimmen ──────────────────────
-    # Netto-Shares pro Ticker: open = buy_shares - sell_shares > 0
+    # ── Determine open vs. closed positions ───────────────────────────────
+    # Net shares per ticker: open = buy_shares - sell_shares > 0
     buy_agg  = buy_raw.groupby('_ticker', as_index=False)['_shares'].sum().rename(columns={'_shares': '_buy_sh'})
     sell_agg = sell_raw.groupby('_ticker', as_index=False)['_shares'].sum().rename(columns={'_shares': '_sell_sh'})
     net      = buy_agg.merge(sell_agg, on='_ticker', how='left')
@@ -497,28 +497,28 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
 
     r.markdown(_t('ota.trades_loaded', total=len(raw), open=len(open_tickers), closed=len(closed_tickers)))
 
-    # Anzeige-Reihenfolge der Expander (unabhängig von der Code-Reihenfolge):
-    #   A) Offene Positionen, B) History, C) Abgeschlossene Trades
+    # Display order of expanders (independent of code order):
+    #   A) Open positions, B) History, C) Closed trades
     _sec_open    = r.container()
     _sec_history = r.container()
     _sec_closed  = r.container()
 
     # ══════════════════════════════════════════════════════════════════════════
-    # C) ABGESCHLOSSENE TRADES – Normierter Kursverlauf
+    # C) CLOSED TRADES – Normalised price history
     # ══════════════════════════════════════════════════════════════════════════
     with _sec_closed.expander(_t('ota.section_closed'), expanded=False):
 
         if closed_df.empty:
             st.info(_t('ota.no_closed_trades'))
         else:
-            # Für jeden Sell-Trade die früheste passende Buy-Transaktion ermitteln
+            # Find the earliest matching buy transaction for each sell trade
             closed_display = []
             for _, sell_row in closed_df.iterrows():
                 t = sell_row['_ticker']
                 sell_ts = sell_row['_ts']
                 sell_price = sell_row['_price']
                 sell_shares = sell_row['_shares']
-                # Passenden Kauf suchen (gleicher Ticker, gleiche Stückzahl vor dem Verkauf)
+                # Look for a matching buy (same ticker, same share count before the sell)
                 matching_buys = buy_raw[
                     (buy_raw['_ticker'] == t) &
                     (buy_raw['_shares'] == sell_shares) &
@@ -529,7 +529,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     buy_ts    = buy_row_m['_ts']
                     buy_price = buy_row_m['_price']
                 else:
-                    # Kein exakter Match → frühester Kauf des Tickers
+                    # No exact match → earliest buy for the ticker
                     earliest = buy_raw[buy_raw['_ticker'] == t]
                     buy_ts    = earliest['_ts'].min() if not earliest.empty else pd.NaT
                     buy_price = earliest['_price'].iloc[0] if not earliest.empty else 0.0
@@ -625,14 +625,14 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 pass
 
     # ══════════════════════════════════════════════════════════════════════════
-    # A) OFFENE POSITIONEN – Rebalancing & Paritäts-Analyse
+    # A) OPEN POSITIONS – Rebalancing & parity analysis
     # ══════════════════════════════════════════════════════════════════════════
     with _sec_open.expander(_t('ota.section_open'), expanded=True):
 
         if open_df.empty:
             st.info(_t('ota.no_open_positions'))
         else:
-            # Mehrere Lots desselben Tickers aggregieren (normierte Spalten _ticker, _shares, _value, …)
+            # Aggregate multiple lots for the same ticker (normalised columns _ticker, _shares, _value, …)
             agg = open_df.groupby('_ticker', as_index=False).agg(
                 longName   = ('_longname', 'first'),
                 isin       = ('_isin',     'first'),
@@ -641,20 +641,20 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 buy_value  = ('_value',    lambda x: abs(x).sum()),
                 buy_ts     = ('_ts',       'min'),
             ).rename(columns={'_ticker': 'ticker'})
-            # Durchschnittlicher Kaufkurs über ALLE Käufe (nicht durch Netto-Restbestand teilen)
+            # Average buy price across ALL purchases (not divided by the net remaining shares)
             agg['avg_price'] = np.where(agg['buy_shares'] > 0, agg['buy_value'] / agg['buy_shares'], 0.0)
-            # Netto-offene Stückzahl = Käufe − Verkäufe (aus dem oben berechneten net-DataFrame)
+            # Net open share count = buys − sells (from the net DataFrame computed above)
             agg = agg.merge(
                 net[['_ticker', '_open_sh']].rename(columns={'_ticker': 'ticker', '_open_sh': 'shares'}),
                 on='ticker', how='left',
             )
             agg['shares'] = agg['shares'].fillna(agg['buy_shares'])
-            # Einstandswert (Cost Basis) nur auf den offenen Restbestand
+            # Cost basis applied only to the open remaining shares
             agg['buy_value'] = agg['shares'] * agg['avg_price']
 
             tickers_open = agg['ticker'].tolist()
 
-            # ── Metadaten aus asset_info.db ergänzen (longName + Kurs-Fallback) ──
+            # ── Enrich metadata from asset_info.db (longName + price fallback) ──
             info_map = _lookup_asset_info(tickers_open, db_path)
             for i, row_i in agg.iterrows():
                 t = row_i['ticker']
@@ -679,7 +679,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 t: (float(s.iloc[-1]) if s is not None and not s.empty else 0.0)
                 for t, s in open_series.items()
             }
-            # Fallback: currentPrice aus asset_info.db wenn OHLC-Daten fehlen
+            # Fallback: currentPrice from asset_info.db when OHLC data is missing
             for t in tickers_open:
                 if current_prices.get(t, 0.0) == 0.0:
                     fb = info_map.get(t, {}).get('currentPrice', 0.0)
@@ -723,7 +723,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             total_invest = agg['buy_value'].sum()
             total_gain   = agg['unrealized_pnl'].sum()
             gain_pct     = (total_gain / total_invest * 100) if total_invest > 0 else 0.0
-            # Investitionsgewichtung (Basis: Einstands-Kapital, nicht Marktwert)
+            # Investment weight (basis: cost basis, not market value)
             agg['invest_pct'] = np.where(
                 total_invest > 0, (agg['buy_value'] / total_invest * 100).round(2), 0.0
             )
@@ -771,7 +771,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             trend_fig = _build_normalized_trend_fig(filtered_series, label_map=label_map, start_date=start_date)
             st.plotly_chart(trend_fig, use_container_width=True)
 
-            # ── Seit-Kauf-Charts (B: Kalender, C: Haltedauer) ─────────────
+            # ── Since-buy charts (B: calendar, C: holding period) ─────────
             st.markdown(_t('ota.norm_chart_since_buy'))
             st.caption(_t('ota.norm_chart_since_buy_caption'))
             buy_dates = {
@@ -864,7 +864,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     st.info(_t('ota.balanced'))
 
     # ══════════════════════════════════════════════════════════════════════════
-    # B) HISTORY – Tatsächlicher Portfolioverlauf aus den Transaktionen
+    # B) HISTORY – Actual portfolio history reconstructed from transactions
     # ══════════════════════════════════════════════════════════════════════════
     with _sec_history.expander(_t('ota.section_history'), expanded=False):
         st.caption(_t('ota.history_caption'))
@@ -875,7 +875,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             '_signed_sh':  np.where(raw[act_col] == 'buy',  raw['_shares'],      -raw['_shares']),
             '_signed_val': np.where(raw[act_col] == 'buy',  raw['_value'].abs(), -raw['_value'].abs()),
         })
-        # Währung je Ticker (erste belastbare Trade-Währung) für die Kurs-Umrechnung
+        # Currency per ticker (first reliable trade currency) for price conversion
         def _first_currency(s):
             for x in s:
                 xs = str(x).upper().strip()
@@ -928,7 +928,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             h3.metric(_t('ota.history_metric_pnl'),      f'{pnl:+,.2f} {system_currency}', delta=f'{pnl_pct:+.1f}%')
             st.caption(_t('ota.history_fx_note'))
 
-            # ── Reiner Gesamttrend (zeitgewichtet, ohne Ein-/Auszahlungen) ──
+            # ── Pure total trend (time-weighted, excluding cash flows) ──────
             if 'trend_index' in hist.columns and hist['trend_index'].notna().any():
                 st.markdown(f"**{_t('ota.history_trend_header')}**")
                 st.caption(_t('ota.history_trend_caption'))

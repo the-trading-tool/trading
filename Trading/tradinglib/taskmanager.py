@@ -3,12 +3,12 @@ import time
 import sqlite3
 import subprocess
 import streamlit as st
-import psutil  # Neu hinzugefügt für saubere Prozessverwaltung
+import psutil  # Added for clean process management
 from multiprocessing import Process
 from tradinglib.tools import open_db
 
 DB_PATH = "tasks.db"
-CLEANUP_INTERVAL = 60  # Sekunden, nach denen alte Tasks aus der DB gelöscht werden
+CLEANUP_INTERVAL = 60  # Seconds after which old tasks are deleted from the DB
 
 class TaskManager:
     def __init__(self):
@@ -36,11 +36,11 @@ class TaskManager:
         if running_task:
             return f"Task {script_path} läuft bereits mit PID {running_task[2]}."
 
-        # Starte das Skript als unabhängigen Prozess
+        # Start the script as an independent process
         process = subprocess.Popen(["/home/cloogidoo/.venv/bin/python3", script_path], 
                                    stdout=subprocess.DEVNULL, 
                                    stderr=subprocess.DEVNULL,
-                                   start_new_session=True)  # Trennt Kindprozess vom Elternprozess
+                                   start_new_session=True)  # Detaches child process from parent
 
         with open_db(DB_PATH) as conn:
             c = conn.cursor()
@@ -82,7 +82,7 @@ class TaskManager:
         if running_task:
             pid = running_task[2]
             try:
-                os.kill(pid, 9)  # Sofortiges Beenden des Prozesses
+                os.kill(pid, 9)  # Immediately terminate the process
                 with open_db(DB_PATH) as conn:
                     c = conn.cursor()
                     c.execute("UPDATE tasks SET status = 'stopped' WHERE script = ?", (script_path,))
@@ -106,16 +106,16 @@ class TaskManager:
             c.execute("SELECT script, pid, status FROM tasks")
             return c.fetchall()
 
-# Hintergrund-Überwachung starten
+# Start background monitoring
 def start_watcher():
     """Run the task monitoring loop: checks and restarts tasks every 10 seconds indefinitely."""
     manager = TaskManager()
     while True:
         manager.check_and_restart_tasks()
-        manager.cleanup_old_tasks()  # Bereinige alte Tasks regelmäßig
-        time.sleep(10)  # Alle 10 Sekunden prüfen
+        manager.cleanup_old_tasks()  # Clean up old tasks regularly
+        time.sleep(10)  # Check every 10 seconds
 
-# Startet den Watcher-Prozess
+# Start the watcher process
 def start_background_watcher():
     """Start start_watcher as a daemon background process and return the Process object."""
     watcher = Process(target=start_watcher, daemon=True)

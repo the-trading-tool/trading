@@ -1,12 +1,12 @@
-"""Einmalinvestition-Simulation mit Zinseszins und Inflationsbereinigung.
+"""Lump-sum investment simulation with compound interest and inflation adjustment.
 
-Zwei Modi:
-  Prognose   — konstante Raten (heutiger ^TNX + aktuelle YoY-CPI)
-  Historisch — tatsächliche monatliche ^TNX- und CPI-Werte der letzten N Jahre
+Two modes:
+  Forecast   — constant rates (today's ^TNX + current YoY CPI)
+  Historical — actual monthly ^TNX and CPI values over the last N years
 
-Datenquellen:
-  ^TNX       — tagesbasierter Cache (aktueller Wert) + 24h-Cache (Historie)
-  CPI FRED   — 24h-Cache; CPIAUCSL monatlich
+Data sources:
+  ^TNX       — day-level cache (current value) + 24 h cache (history)
+  CPI FRED   — 24 h cache; CPIAUCSL monthly
 """
 import datetime as dt
 import logging
@@ -160,13 +160,13 @@ def _cpi_fallback() -> pd.Series:
             all_months.append(pd.Timestamp(year=y0, month=1, day=1)
                               + pd.DateOffset(months=m))
             all_vals.append(v0 + (v1 - v0) * m / n)
-    # letzten Ankerpunkt anhängen
+    # append the last anchor point
     all_months.append(pd.Timestamp(year=years[-1], month=1, day=1))
     all_vals.append(anchors[years[-1]])
     s = pd.Series(all_vals, index=pd.DatetimeIndex(all_months))
     s.index = s.index.to_period("M").to_timestamp()
     s.index.freq = None
-    logger.warning("CPI: nutze eingebettete Näherungswerte (FRED offline)")
+    logger.warning("CPI: using embedded approximate values (FRED offline)")
     return s
 
 
@@ -258,7 +258,7 @@ def _build_historical(principal: float,
 
     real = nom / cpi_deflator
 
-    # Durchschnittswerte für Anzeige
+    # Average values for display
     avg_rate  = float(np.mean(tnx_w.values))
     avg_infl  = float(
         (cpi_w.values[-1] / cpi_w.values[0]) ** (12 / max(len(idx) - 1, 1)) - 1
