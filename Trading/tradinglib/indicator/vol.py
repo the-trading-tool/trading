@@ -21,10 +21,12 @@ class Vol(_indicator._Indicator):
 		'color_bear':  {'type': 'color', 'default': '',    'label': 'Bear bar color'},
 	}
 
-	def __init__(self, df, symbol = "", cumd=False):
+	def __init__(self, df, symbol = "", cumd=False, color_bull='', color_bear=''):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		super().__init__(df=df, symbol=symbol)
 		self.cumd = cumd
+		self.color_bull = color_bull or 'green'
+		self.color_bear = color_bear or 'red'
 		
 		self.data()
 		
@@ -96,8 +98,8 @@ class Vol(_indicator._Indicator):
 			pass
 
 		# Plot volume trace
-		colors = ['green' if row['Open'] - row['Close'] <= 0 
-		  else 'red' for index, row in self.df.iterrows()]
+		colors = [self.color_bull if row['Open'] - row['Close'] <= 0
+		  else self.color_bear for index, row in self.df.iterrows()]
 
 		self.fig.add_trace(go.Bar(x=self.df['Date'], 
 			y=self.df['Volume'],

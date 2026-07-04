@@ -33,7 +33,8 @@ class Relvol(_indicator._Indicator):
                  relvol_length=21,
                  relvol_mode = "Regular",
                  relvol_ratio = 1,
-                 relvol_adjust_unconfirmed=True):
+                 relvol_adjust_unconfirmed=True,
+                 color_bull='', color_bear=''):
         """
         range_size: Preisbewegung pro Range-Bar
         relvol_mode: "cumulative" oder "regular"
@@ -46,6 +47,8 @@ class Relvol(_indicator._Indicator):
         self.relvol_mode = relvol_mode
         self.relvol_length = relvol_length
         self.relvol_adjust_unconfirmed = relvol_adjust_unconfirmed
+        self.color_bull = color_bull or 'green'
+        self.color_bear = color_bear or 'red'
         self.df = self.calculate_relative_volume(df)
 
 
@@ -98,7 +101,7 @@ class Relvol(_indicator._Indicator):
         df = self.df.copy()
         
         # Erstellen der Farbliste basierend auf der Bedingung
-        color = ['red' if self.df['Close'][i] < self.df['Open'][i] else 'green' for i in range(len(self.df))]
+        color = [self.color_bear if self.df['Close'][i] < self.df['Open'][i] else self.color_bull for i in range(len(self.df))]
 #        color = ['black' if self.df['RelVol_Ratio'][i] >= self.relvol_ratio or self.df['RelVol_Ratio'][i] == 0 else 'grey' for i in range(len(self.df))]
         df['bar_size'] = self.df['relvol_ratio'] - self.relvol_ratio 
         df['bar_size'] = np.where((self.df['Volume']==0),0,df['bar_size'])

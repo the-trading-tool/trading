@@ -17,11 +17,14 @@ class Wml(_indicator._Indicator):
         'color_month':  {'type': 'color', 'default': '',    'label': 'Month levels color'},
     }
 
-    def __init__(self, df, symbol='', show_week=True, show_month=True):
+    def __init__(self, df, symbol='', show_week=True, show_month=True,
+                 color_week='', color_month=''):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
-        self.show_week  = show_week
-        self.show_month = show_month
+        self.show_week   = show_week
+        self.show_month  = show_month
+        self.color_week  = color_week  or 'darkorange'
+        self.color_month = color_month or 'crimson'
         self.data()
 
     def data(self):
@@ -57,7 +60,7 @@ class Wml(_indicator._Indicator):
                 self.fig.add_trace(go.Scatter(
                     x=x, y=self.df[col],
                     name=label,
-                    line=dict(color='darkorange', width=1, dash='dot'),
+                    line=dict(color=self.color_week, width=1, dash='dot'),
                     showlegend=False,
                 ))
 
@@ -66,6 +69,6 @@ class Wml(_indicator._Indicator):
                 self.fig.add_trace(go.Scatter(
                     x=x, y=self.df[col],
                     name=label,
-                    line=dict(color='crimson', width=1, dash='dash'),
+                    line=dict(color=self.color_month, width=1, dash='dash'),
                     showlegend=False,
                 ))

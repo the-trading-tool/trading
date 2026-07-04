@@ -24,12 +24,15 @@ class Macd(_indicator._Indicator):
 		'color_signal':   {'type': 'color', 'default': '',             'label': 'Signal line color'},
 	}
 
-	def __init__(self, df, symbol = "", window_sign=9, window_fast=12, window_slow=26, down_level=25):
+	def __init__(self, df, symbol = "", window_sign=9, window_fast=12, window_slow=26, down_level=25,
+				 color_macd='', color_signal=''):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.window = window_sign
 		self.window_fast = window_fast
 		self.window_slow = window_slow
 		self.down_level = down_level
+		self.color_macd   = color_macd   or 'black'
+		self.color_signal = color_signal or 'blue'
 		super().__init__(df=df, symbol=symbol)
 		
 		self.data()
@@ -77,13 +80,13 @@ class Macd(_indicator._Indicator):
 					y=self.df['macd'],
 					name = f'MACD',
 					showlegend = False,
-					line=dict(color='black', width=2)
+					line=dict(color=self.color_macd, width=2)
 					))
 
 		self.fig.add_trace(go.Scatter(x=self.df['Date'],
 					y=self.df['macd_signal'],
 					name = f'MACD signal',
-					line=dict(color='blue', width=2),
+					line=dict(color=self.color_signal, width=2),
 					showlegend = False,
 					))
 """		

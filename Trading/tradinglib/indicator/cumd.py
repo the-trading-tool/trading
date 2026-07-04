@@ -31,7 +31,8 @@ class Cumd(_indicator._Indicator):
     }
 
     def __init__(self, df, symbol="", range_size=0.01, center_cumdelta=True,
-                 reset_mode="monthly", impulse_factor=7, lookback=3):
+                 reset_mode="monthly", impulse_factor=7, lookback=3,
+                 color_bull='', color_bear=''):
         """
         range_size: Price movement per range bar in the same unit as Close (e.g. 0.01)
         reset_mode: "auto" | "daily" | "monthly" | None
@@ -44,6 +45,8 @@ class Cumd(_indicator._Indicator):
         self.reset_mode = reset_mode
         self.impulse_factor = impulse_factor
         self.lookback = lookback
+        self.color_bull = color_bull or 'limegreen'
+        self.color_bear = color_bear or 'crimson'
 
         self.df = self.calculate_cumulative_delta(df)
         if center_cumdelta:
@@ -143,8 +146,8 @@ class Cumd(_indicator._Indicator):
             high=self.range_bars['high'],
             low=self.range_bars['low'],
             close=self.range_bars['close'],
-            increasing_line_color="limegreen",
-            decreasing_line_color="crimson",
+            increasing_line_color=self.color_bull,
+            decreasing_line_color=self.color_bear,
             showlegend=False,
             opacity=0.8,
             name=f"CumDelta RangeBars ({self.range_size})"
@@ -187,8 +190,8 @@ class Cumd(_indicator._Indicator):
             high=cvd_df["high"],
             low=cvd_df["low"],
             close=cvd_df["close"],
-            increasing_line_color="teal",
-            decreasing_line_color="crimson",
+            increasing_line_color=self.color_bull,
+            decreasing_line_color=self.color_bear,
             showlegend=False,
             name="CVD Candles"
         ))

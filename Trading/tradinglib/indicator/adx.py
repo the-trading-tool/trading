@@ -32,13 +32,17 @@ class Adx(macd.Macd):
 		'color_minus_di':  {'type': 'color', 'default': '',             'label': '-DI line color'},
 	}
 
-	def __init__(self, df, symbol = "", window=14, window_fast=12, window_slow=26, down_level=25):
+	def __init__(self, df, symbol = "", window=14, window_fast=12, window_slow=26, down_level=25,
+				 color_adx='', color_plus_di='', color_minus_di=''):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		self.window = window
 		self.window_fast = window_fast
 		self.window_slow = window_slow
 		self.down_level = down_level
+		self.color_adx      = color_adx      or 'blue'
+		self.color_plus_di  = color_plus_di  or 'green'
+		self.color_minus_di = color_minus_di or 'red'
 		#Init		
 		self.df = macd.Macd(df, window_fast=window_fast, window_slow=window_slow, window_sign=window).df
 		super().__init__(df=self.df, symbol=symbol)
@@ -122,27 +126,27 @@ class Adx(macd.Macd):
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['adx'],
-					line_color = 'blue',
+					line_color = self.color_adx,
 					name = f'adx',
 					showlegend = False,
 					)
 	        )
-					
+
 		# Plot plus di trace on nth row
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['adx_plus'],
-					line_color = 'green',
+					line_color = self.color_plus_di,
 					name = f'adx plus',
 					showlegend = False,
 					)
   			)
-					
+
 		# Plot minus di trace on nth row
 		self.fig.add_trace(
 			go.Scatter(x=self.df['Date'],
 					y=self.df['adx_minus'],
-					line_color = 'red',
+					line_color = self.color_minus_di,
 					name = f'adx minus',
 					showlegend = False,
 					)

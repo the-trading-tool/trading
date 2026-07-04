@@ -20,15 +20,26 @@ class Ici(_indicator._Indicator):
 		'color_kijun':        {'type': 'color', 'default': '',  'label': 'Kijun-sen color'},
 		'color_chikou':       {'type': 'color', 'default': '',  'label': 'Chikou span color'},
 		'color_ema':          {'type': 'color', 'default': '',  'label': 'EMA color'},
+		'fill_cloud':         {'type': 'bool',  'default': True, 'label': 'Fill Kumo cloud'},
 		'color_cloud_bull':   {'type': 'color', 'default': '',  'label': 'Bullish cloud color'},
 		'color_cloud_bear':   {'type': 'color', 'default': '',  'label': 'Bearish cloud color'},
 	}
 
-	def __init__(self, df, symbol = "", window=14):
+	def __init__(self, df, symbol = "", window=14,
+				 fill_cloud=True,
+				 color_tenkan='', color_kijun='', color_chikou='', color_ema='',
+				 color_cloud_bull='', color_cloud_bear=''):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		super().__init__(df=df, symbol=symbol)
 		self.window = window
+		self.fill_cloud       = fill_cloud
+		self.color_tenkan     = color_tenkan     or 'deepskyblue'
+		self.color_kijun      = color_kijun      or 'orange'
+		self.color_chikou     = color_chikou     or 'gray'
+		self.color_ema        = color_ema        or 'yellow'
+		self.color_cloud_bull = color_cloud_bull or 'rgba(0,255,0,0.22)'
+		self.color_cloud_bear = color_cloud_bear or 'rgba(255,0,0,0.22)'
 
 		self.data()
 		
@@ -161,15 +172,15 @@ class Ici(_indicator._Indicator):
 			a_seg = np.array(a_list)
 			b_seg = np.array(b_list)
 
-			fill_color = 'rgba(0,255,0,0.22)' if is_bull else 'rgba(255,0,0,0.22)'
+			fill_color = self.color_cloud_bull if is_bull else self.color_cloud_bear
 			cloud_name = 'Bullish Cloud' if is_bull else 'Bearish Cloud'
 
 			self.fig.add_trace(
 				go.Scatter(
 					x=np.concatenate([x_seg, x_seg[::-1]]),
 					y=np.concatenate([a_seg, b_seg[::-1]]),
-					fill='toself',
-					fillcolor=fill_color,
+					fill='toself' if self.fill_cloud else 'none',
+					fillcolor=fill_color if self.fill_cloud else None,
 					line=dict(color='rgba(0,0,0,0)'),
 					showlegend=False,
 					hoverinfo='skip',
@@ -205,7 +216,7 @@ class Ici(_indicator._Indicator):
 				y=self.df['tenkan_sen'],
 				mode='lines',
 				showlegend=False,
-				line=dict(color='deepskyblue', width=1),
+				line=dict(color=self.color_tenkan, width=1),
 				name='Tenkan Sen'
 			)
 		)
@@ -220,7 +231,7 @@ class Ici(_indicator._Indicator):
 				y=self.df['kijun_sen'],
 				mode='lines',
 				showlegend=False,
-				line=dict(color='orange', width=1),
+				line=dict(color=self.color_kijun, width=1),
 				name='Kijun Sen'
 			)
 		)
@@ -235,7 +246,7 @@ class Ici(_indicator._Indicator):
 				y=self.df[f'ema{self.window}'],
 				mode='lines',
 				line=dict(
-					color='yellow',
+					color=self.color_ema,
 					width=1,
 					dash='dash'
 				),
@@ -254,7 +265,7 @@ class Ici(_indicator._Indicator):
 				y=self.df['chikou_span'],
 				mode='lines',
 				line=dict(
-					color='gray',
+					color=self.color_chikou,
 					width=1
 				),
 				showlegend=False,

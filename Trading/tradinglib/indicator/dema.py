@@ -21,16 +21,21 @@ class Dema(_indicator._Indicator):
         'slow_length': {'type': 'int',   'default': 21,  'min': 2, 'max': 200, 'label': 'Slow EMA length'},
         'window':      {'type': 'int',   'default': 14,  'min': 2, 'max': 100, 'label': 'RSI window'},
         'show_cross':  {'type': 'bool',  'default': True,           'label': 'Show crossover signals'},
+        'fill_band':   {'type': 'bool',  'default': True,           'label': 'Fill EMA band'},
         'color_slow':  {'type': 'color', 'default': '',             'label': 'Slow EMA color'},
         'color_fast':  {'type': 'color', 'default': '',             'label': 'Fast EMA color'},
     }
 
-    def __init__(self, df, symbol="", fast_length=8, slow_length=21, show_cross=True, window=14):
+    def __init__(self, df, symbol="", fast_length=8, slow_length=21, show_cross=True, window=14,
+                 fill_band=True, color_slow='', color_fast=''):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         self.fast_length = fast_length
         self.slow_length = slow_length
         self.show_cross = show_cross
         self.window = window
+        self.fill_band  = fill_band
+        self.color_slow = color_slow or 'green'
+        self.color_fast = color_fast or 'red'
         super().__init__(df=df, symbol=symbol)
         self.data()
 
@@ -102,13 +107,13 @@ class Dema(_indicator._Indicator):
         self.fig.add_trace(go.Scatter(
             x=df['Date'], y=df['dema_ema_slow'],
             showlegend=False,
-            name='EMA Slow', line=dict(color='green', width=2)
+            name='EMA Slow', line=dict(color=self.color_slow, width=2)
         ))
 
         self.fig.add_trace(go.Scatter(
             x=df['Date'], y=df['dema_ema_fast'],
             showlegend=False,
-            name='EMA Fast', line=dict(color='red', width=2)
+            name='EMA Fast', line=dict(color=self.color_fast, width=2)
         ))
 
         # ---------- Schwarze Mittellinie (v3) ----------
@@ -127,8 +132,8 @@ class Dema(_indicator._Indicator):
             self.fig.add_trace(go.Scatter(
                 x=pd.concat([seg['Date'], seg['Date'][::-1]]),
                 y=pd.concat([seg['dema_ema_fast'], seg['dema_ema_slow'][::-1]]),
-                fill='toself',
-                fillcolor=color,
+                fill='toself' if self.fill_band else 'none',
+                fillcolor=color if self.fill_band else None,
                 line=dict(color='rgba(0,0,0,0)'),
                 hoverinfo='skip',
                 showlegend=False,

@@ -35,12 +35,14 @@ class Bos(_indicator._Indicator):
 		'color_bear':  {'type': 'color', 'default': '',    'label': 'Bearish breakout line color'},
 	}
 
-	def __init__(self, df, symbol = "", ignore_pips = 1):
+	def __init__(self, df, symbol = "", ignore_pips = 1, color_bull='', color_bear=''):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 
 		super().__init__(df=df, symbol=symbol)
 		self.break_points = []
 		self.ignore_pips = ignore_pips
+		self.color_bull = color_bull or 'green'
+		self.color_bear = color_bear or 'red'
 		self.data()
 
 	
@@ -103,9 +105,9 @@ class Bos(_indicator._Indicator):
 				x=[prev_date, current_date],
 				y=[value, value],
 				mode='lines',
-				line=dict(dash='dot', color='green' if trend_type == 'Up' else 'red'),
+				line=dict(dash='dot', color=self.color_bull if trend_type == 'Up' else self.color_bear),
 				name=f"{trend_type} Break",
-				showlegend=False  # Vermeidet mehrfachen Legenden-Eintrag
+				showlegend=False
 			))
 		
 

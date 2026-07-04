@@ -24,9 +24,11 @@ class Sup(_indicator._Indicator):
         'color_resistance':  {'type': 'color', 'default': '',  'label': 'Resistance line color'},
     }
 
-    def __init__(self, df, symbol = ""):
+    def __init__(self, df, symbol = "", color_support='', color_resistance=''):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
+        self.color_support    = color_support    or 'green'
+        self.color_resistance = color_resistance or 'red'
         self.data()
                 
     def data(self):
@@ -58,7 +60,7 @@ class Sup(_indicator._Indicator):
             self._add_hline_outside(
                 y=self.df['sup_support'].iloc[-1],
                 text=f"Support: {round(self.df['sup_support'].iloc[-1], round_by)}",
-                line_color='green',
+                line_color=self.color_support,
                 line_dash='dash',
             )
 
@@ -66,7 +68,7 @@ class Sup(_indicator._Indicator):
             self._add_hline_outside(
                 y=self.df['sup_resistance'].iloc[-1],
                 text=f"Resistance: {round(self.df['sup_resistance'].iloc[-1], round_by)}",
-                line_color='red',
+                line_color=self.color_resistance,
                 line_dash='dash',
             )
 

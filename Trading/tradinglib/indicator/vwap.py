@@ -23,12 +23,15 @@ class Vwap(_indicator._Indicator):
         'color_prevwap': {'type': 'color',  'default': '',    'label': 'Prev VWAP color'},
     }
 
-    def __init__(self, df, symbol="", timeframe = "M", show_prevwap=True, show_bcolors=False):
+    def __init__(self, df, symbol="", timeframe = "M", show_prevwap=True, show_bcolors=False,
+                 color_vwap='', color_prevwap=''):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.timeframe = timeframe
         self.show_prevwap = show_prevwap
         self.show_bcolors = show_bcolors
+        self.color_vwap    = color_vwap    or 'blue'
+        self.color_prevwap = color_prevwap or 'orange'
         self.data()
 
     def data(self):
@@ -89,7 +92,7 @@ class Vwap(_indicator._Indicator):
                 mode='lines',
                 name='VWAP',
 		        showlegend = False,
-                line=dict(color='blue', width=2, dash='dot')
+                line=dict(color=self.color_vwap, width=2, dash='dot')
             ))
         except Exception:
             pass
@@ -102,7 +105,7 @@ class Vwap(_indicator._Indicator):
                     mode="lines",
                     name="Prev VWAP",
 		            showlegend = False,
-                    line=dict(color="orange", width=1, dash="dash")
+                    line=dict(color=self.color_prevwap, width=1, dash="dash")
                 ))
             except Exception:
                 pass

@@ -72,24 +72,24 @@ class Mam(_indicator._Indicator):
         self,
         df,
         symbol='',
-        ma1_enabled=True,  ma1_type='EMA', ma1_period=8,  ma1_width='1.5', ma1_style='solid',
-        ma2_enabled=True,  ma2_type='EMA', ma2_period=21,  ma2_width='1.5', ma2_style='solid',
-        ma3_enabled=True,  ma3_type='SMA', ma3_period=50, ma3_width='1.5', ma3_style='solid',
-        ma4_enabled=False, ma4_type='SMA', ma4_period=100, ma4_width='1.5', ma4_style='solid',
-        ma5_enabled=False, ma5_type='SMA', ma5_period=200, ma5_width='1.5', ma5_style='solid',
+        ma1_enabled=True,  ma1_type='EMA', ma1_period=8,  ma1_width='1.5', ma1_style='solid', ma1_color='',
+        ma2_enabled=True,  ma2_type='EMA', ma2_period=21,  ma2_width='1.5', ma2_style='solid', ma2_color='',
+        ma3_enabled=True,  ma3_type='SMA', ma3_period=50, ma3_width='1.5', ma3_style='solid', ma3_color='',
+        ma4_enabled=False, ma4_type='SMA', ma4_period=100, ma4_width='1.5', ma4_style='solid', ma4_color='',
+        ma5_enabled=False, ma5_type='SMA', ma5_period=200, ma5_width='1.5', ma5_style='solid', ma5_color='',
     ):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.ma1_enabled = ma1_enabled; self.ma1_type = ma1_type; self.ma1_period = ma1_period
-        self.ma1_width   = ma1_width;   self.ma1_style = ma1_style
+        self.ma1_width   = ma1_width;   self.ma1_style = ma1_style; self.ma1_color = ma1_color or self._COLORS[0]
         self.ma2_enabled = ma2_enabled; self.ma2_type = ma2_type; self.ma2_period = ma2_period
-        self.ma2_width   = ma2_width;   self.ma2_style = ma2_style
+        self.ma2_width   = ma2_width;   self.ma2_style = ma2_style; self.ma2_color = ma2_color or self._COLORS[1]
         self.ma3_enabled = ma3_enabled; self.ma3_type = ma3_type; self.ma3_period = ma3_period
-        self.ma3_width   = ma3_width;   self.ma3_style = ma3_style
+        self.ma3_width   = ma3_width;   self.ma3_style = ma3_style; self.ma3_color = ma3_color or self._COLORS[2]
         self.ma4_enabled = ma4_enabled; self.ma4_type = ma4_type; self.ma4_period = ma4_period
-        self.ma4_width   = ma4_width;   self.ma4_style = ma4_style
+        self.ma4_width   = ma4_width;   self.ma4_style = ma4_style; self.ma4_color = ma4_color or self._COLORS[3]
         self.ma5_enabled = ma5_enabled; self.ma5_type = ma5_type; self.ma5_period = ma5_period
-        self.ma5_width   = ma5_width;   self.ma5_style = ma5_style
+        self.ma5_width   = ma5_width;   self.ma5_style = ma5_style; self.ma5_color = ma5_color or self._COLORS[4]
         self.data()
 
     def _calc_ma(self, series, length: int, ma_type: str):
@@ -113,11 +113,11 @@ class Mam(_indicator._Indicator):
     def _ma_configs(self):
         """Return the list of moving-average configurations."""
         return [
-            (self.ma1_enabled, self.ma1_type, self.ma1_period, 'ma1', self._COLORS[0], self.ma1_width, self.ma1_style),
-            (self.ma2_enabled, self.ma2_type, self.ma2_period, 'ma2', self._COLORS[1], self.ma2_width, self.ma2_style),
-            (self.ma3_enabled, self.ma3_type, self.ma3_period, 'ma3', self._COLORS[2], self.ma3_width, self.ma3_style),
-            (self.ma4_enabled, self.ma4_type, self.ma4_period, 'ma4', self._COLORS[3], self.ma4_width, self.ma4_style),
-            (self.ma5_enabled, self.ma5_type, self.ma5_period, 'ma5', self._COLORS[4], self.ma5_width, self.ma5_style),
+            (self.ma1_enabled, self.ma1_type, self.ma1_period, 'ma1', self.ma1_color, self.ma1_width, self.ma1_style),
+            (self.ma2_enabled, self.ma2_type, self.ma2_period, 'ma2', self.ma2_color, self.ma2_width, self.ma2_style),
+            (self.ma3_enabled, self.ma3_type, self.ma3_period, 'ma3', self.ma3_color, self.ma3_width, self.ma3_style),
+            (self.ma4_enabled, self.ma4_type, self.ma4_period, 'ma4', self.ma4_color, self.ma4_width, self.ma4_style),
+            (self.ma5_enabled, self.ma5_type, self.ma5_period, 'ma5', self.ma5_color, self.ma5_width, self.ma5_style),
         ]
 
     def data(self):

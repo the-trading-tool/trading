@@ -136,6 +136,17 @@ class BannerPage():
     def render(self):
             """Render the full dashboard: language selector, KPIs, AI tip, trades table, charts, and analysis."""
 
+            st.markdown("""
+<style>
+div[data-testid="stMetric"] {
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(49,51,63,.1);
+    padding: 12px 14px;
+    border-radius: 8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
             # ── Language selector (top of page, German as default) ───────
             _lang_options = list(SUPPORTED_LANGUAGES.keys())   # ['en', 'de']
             _lang_labels  = list(SUPPORTED_LANGUAGES.values()) # ['English', 'Deutsch']
