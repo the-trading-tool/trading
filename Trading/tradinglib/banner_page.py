@@ -603,7 +603,11 @@ div[data-testid="stMetric"] {
                 _bn_enabled = _bn_enabled.lower() not in ('false', '0', 'no')
 
             # ── Scalable Transactions section ─────────────────────────────
-            self.region.divider()
+            # Top divider only when the view header is shown (config.db
+            # 'show_view_header', default off) — same switch as the sidebar header
+            _show_hdr = str(self.sys_conf.get_value('show_view_header', False)).lower() in ('true', '1', 'yes', 'on')
+            if _show_hdr:
+                self.region.divider()
             self.region.markdown("## 💼 Scalable Transactions")
             self._render_scalable_dashboard()
 

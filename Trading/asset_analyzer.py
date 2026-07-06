@@ -48,6 +48,33 @@ from tradinglib.i18n import t
 lgc.enable_logging(to_console=False, level='DEBUG')
 
 
+# Theme palettes for the ☀️/🌙 sidebar toggle. Applied at runtime via
+# streamlit config.set_option — no server restart, no config.toml rewrite.
+_THEMES = {
+    'dark': {
+        'theme.base': 'dark',
+        'theme.primaryColor': '#60a5fa',
+        'theme.backgroundColor': '#0f172a',
+        'theme.secondaryBackgroundColor': '#1e293b',
+        'theme.textColor': '#e2e8f0',
+    },
+    'light': {
+        'theme.base': 'light',
+        'theme.primaryColor': '#3b82f6',
+        'theme.backgroundColor': '#ffffff',
+        'theme.secondaryBackgroundColor': '#eaf2fd',
+        'theme.textColor': '#1e293b',
+    },
+}
+
+
+def _apply_theme(mode: str) -> None:
+    """Set the Streamlit theme options at runtime; takes effect on the next rerun."""
+    from streamlit import config as _st_config
+    for key, value in _THEMES.get(mode, _THEMES['dark']).items():
+        _st_config.set_option(key, value)
+
+
 def _tab_overlay(label: str) -> str:
     """Full-viewport loading overlay for use with st.empty() outside tab context.
     Must be placed in a placeholder that lives OUTSIDE any `with tab_X:` block so
@@ -366,7 +393,8 @@ class TradingApp:
             st.session_state['title'] = title
         if icon:
             st.session_state['icon'] = icon
-        self.sidebar_header.markdown(f"""<h2>{t('page.selected_view', title=title)}</h2>""", unsafe_allow_html=True)
+        if getattr(self, 'sidebar_header', None) is not None:
+            self.sidebar_header.markdown(f"""<h2>{t('page.selected_view', title=title)}</h2>""", unsafe_allow_html=True)
 #        self.sidebar_header.write(f"{title}\n")    
         
     def set_page_config(self, title):
@@ -583,9 +611,15 @@ class TradingApp:
             unsafe_allow_html=True,
         )
 
-        self.sidebar_header = st.sidebar.empty()
+        # 'Selected view: …' header + divider — hidden by default, opt-in via
+        # config.db key 'show_view_header'
+        _show_hdr = str(self.sys_config.get_value('show_view_header', False)).lower() in ('true', '1', 'yes', 'on')
+        if _show_hdr:
+            self.sidebar_header = st.sidebar.empty()
+            st.sidebar.markdown("---")
+        else:
+            self.sidebar_header = None
 
-        st.sidebar.markdown("---")
         bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="0.5rem")
         st.sidebar.markdown("---")
 
@@ -593,13 +627,27 @@ class TradingApp:
         # Moved here from the top search row (main_page.py): both open an
         # @st.dialog overlay, so the trigger button can live anywhere. Icon-only
         # side by side; the localized label is the hover tooltip (help=).
-        _cfg_col, _help_col, _dash_col = st.sidebar.columns(3, gap="small")
+
+        # ── Theme toggle ─────────────────────────────────────────────────────
+        _theme_mode = self.sys_config.get_value('theme_mode', 'dark')
+        _is_dark = _theme_mode != 'light'
+        # Re-apply on every run so the saved preference survives server restarts
+        _apply_theme(_theme_mode if _theme_mode in ('dark', 'light') else 'dark')
+
+        _cfg_col, _help_col, _dash_col, _theme_col = st.sidebar.columns(4, gap="small")
         if _cfg_col.button("⚙", use_container_width=True, key='_nav_settings', help=t('nav.settings')):
             self.sys_config.render()
         if _help_col.button("❓", use_container_width=True, key='_nav_help', help=t('nav.help')):
             self.sys_config.render_help()
         if _dash_col.button("🏠", use_container_width=True, key='_nav_dashboard', help=t('nav.dashboard')):
             st.session_state['_nav_params'] = {'dashboard': 'true'}
+            st.rerun()
+        _theme_icon = "☀️" if _is_dark else "🌙"
+        _theme_help = "Zu Light Mode wechseln" if _is_dark else "Zu Dark Mode wechseln"
+        if _theme_col.button(_theme_icon, use_container_width=True, key='_nav_theme', help=_theme_help):
+            _new_mode = 'light' if _is_dark else 'dark'
+            self.sys_config.set_value('theme_mode', _new_mode)
+            _apply_theme(_new_mode)
             st.rerun()
 
         def _nav(label, locked=False, **params):

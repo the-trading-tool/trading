@@ -99,26 +99,39 @@ For better structuring, the following table provides an overview of these indica
 
 import os as _os
 
+# Overrides the hardcoded light-mode styles inside the HELP/*.html files.
+# Injected AFTER the page's own <style> block would load, and uses !important,
+# so it wins regardless of source order. Toggled deterministically from Python
+# via set_dark_mode() — no browser-side theme guessing.
 _DARK_MODE_CSS = """<style>
-@media (prefers-color-scheme: dark) {
-  body { background: #0e1117 !important; color: #e0e0e0 !important; }
-  h1 { color: #5ba4f5 !important; border-bottom-color: #5ba4f5 !important; }
-  h2 { color: #5ba4f5 !important; }
-  h3 { color: #aaa !important; }
-  a  { color: #5ba4f5 !important; }
-  code, pre { background: #1e2535 !important; border-color: #3a4258 !important; color: #e0e0e0 !important; }
-  table { color: #e0e0e0 !important; }
-  th { background: #1a3050 !important; color: #90bef5 !important; }
-  td { border-color: #3a4258 !important; }
-  tr:nth-child(even) td { background: #131926 !important; }
-  .info { background: #0d2a1a !important; color: #c8e6c9 !important; }
-  .warn { background: #2a2210 !important; color: #fff3cd !important; }
-  .hero { background: linear-gradient(135deg,#0d1e3a 0%,#0a1525 100%) !important; border-color: #2a4a7f !important; color: #e0e0e0 !important; }
-  .step { background: #111827 !important; border-color: #2a3a5c !important; }
-  .step b { color: #5ba4f5 !important; }
-  .tag { background: #1a2a4a !important; border-color: #3a5aaa !important; color: #90bef5 !important; }
-}
+body { background: transparent !important; color: #d6dbe4 !important; }
+h1 { color: #6fb1ff !important; border-bottom-color: #6fb1ff !important; }
+h2 { color: #6fb1ff !important; }
+h3 { color: #b8bfc9 !important; }
+a  { color: #6fb1ff !important; }
+b, strong { color: #f0f3f7 !important; }
+code, pre { background: #1c2433 !important; border-color: #3a4560 !important; color: #d8e2f0 !important; }
+table { color: #d6dbe4 !important; }
+th { background: #1c3252 !important; color: #a8c8f0 !important; border-color: #3a4560 !important; }
+td { border-color: #3a4560 !important; background: transparent !important; }
+tr:nth-child(even) td { background: #161d2b !important; }
+.info { background: #12291b !important; border-left-color: #34a853 !important; color: #c8e6c9 !important; }
+.warn { background: #2e2612 !important; border-left-color: #fbbc04 !important; color: #f5e9c0 !important; }
+.hero { background: linear-gradient(135deg,#14263f 0%,#0f1c30 100%) !important; border-color: #2a4a7f !important; color: #d6dbe4 !important; }
+.step { background: #151c2a !important; border-color: #2e3c58 !important; color: #d6dbe4 !important; }
+.step b { color: #6fb1ff !important; }
+.tag { background: #1c2c4a !important; border-color: #4a6aba !important; color: #a8c8f0 !important; }
 </style>"""
+
+# Module-level flag, set once per render pass (e.g. in system_config.render_help)
+# before the load_help calls. Defaults to dark since that is the app default.
+DARK_MODE = True
+
+
+def set_dark_mode(enabled: bool) -> None:
+    """Set whether load_help() prepends the dark-mode override CSS."""
+    global DARK_MODE
+    DARK_MODE = bool(enabled)
 
 
 def load_help(module_name: str) -> str:
@@ -127,6 +140,7 @@ def load_help(module_name: str) -> str:
     path = _os.path.join(_help_dir, f'{module_name}.html')
     try:
         with open(path, encoding='utf-8') as _f:
-            return _DARK_MODE_CSS + _f.read()
+            content = _f.read()
     except FileNotFoundError:
         return f'<p style="color:#888">Keine Hilfe verfügbar für: <code>{module_name}</code></p>'
+    return (_DARK_MODE_CSS + content) if DARK_MODE else content

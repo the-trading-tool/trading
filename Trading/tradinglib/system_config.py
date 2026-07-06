@@ -484,6 +484,12 @@ class SystemConfig(tools.Db_tools):
         if self.bare_mode:
             return
 
+        # Sync the help-page styling with the app theme (☀️/🌙 sidebar toggle)
+        try:
+            help_text.set_dark_mode(self.get_value('theme_mode', 'dark') != 'light')
+        except Exception:
+            pass
+
         # Scalable edition: focused help (getting started + free features), no
         # Premium/Admin/CLI tabs.
         try:
