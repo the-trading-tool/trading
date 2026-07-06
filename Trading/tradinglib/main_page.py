@@ -477,7 +477,7 @@ class render_mainpage(fetch_data.FetchData):
         # so the chart is fully visible instead of being cut off at the bottom.
         st.markdown(
             '<style>'
-            '[data-testid="stMain"] .block-container{padding-top:2rem;padding-bottom:1rem;}'
+            '[data-testid="stMain"] .block-container{padding-top:0.5rem !important;padding-bottom:1rem;}'
             '[data-testid="stMain"] [data-testid="stVerticalBlock"]{gap:0.4rem;}'
             '[data-testid="stMain"] div[data-testid="stSlider"]{padding-top:0.1rem;padding-bottom:0.1rem;}'
             '[data-testid="stMain"] div[data-testid="stMetric"]{padding:0;}'

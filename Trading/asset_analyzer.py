@@ -271,7 +271,17 @@ class TradingApp:
                     }
 
                    .block-container {
-                        padding-top: 2rem;
+                        padding-top: 0.5rem !important;
+                    }
+                    /* Pull sidebar logo to top — remove Streamlit's default gap */
+                    section[data-testid="stSidebar"] > div:first-child {
+                        padding-top: 0 !important;
+                    }
+                    [data-testid="stSidebarContent"] {
+                        padding-top: 0 !important;
+                    }
+                    [data-testid="stSidebarUserContent"] {
+                        padding-top: 0.75rem !important;
                     }
 
                     /* Large full-screen spinner overlay */
@@ -620,7 +630,7 @@ class TradingApp:
         else:
             self.sidebar_header = None
 
-        bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="0.5rem")
+        bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="1.3rem")
         st.sidebar.markdown("---")
 
         # ── Settings & Help ─────────────────────────────────────────────────
