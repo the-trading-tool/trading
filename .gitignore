@@ -4,3 +4,6 @@ building-a-trading-app-article.md
 # Lokale Backups und Bilder (nicht versionieren)
 Backup_V1/
 images/
+
+# Claude Code lokale Settings & Agent-Worktrees (nicht versionieren)
+.claude/
