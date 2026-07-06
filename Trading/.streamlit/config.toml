@@ -14,7 +14,6 @@ secondaryBackgroundColor = "#eaf2fd"
 textColor = "#1e293b"
 font = "sans serif"
 
-[theme]
 base = "dark"
 primaryColor = "#60a5fa"
 backgroundColor = "#0f172a"

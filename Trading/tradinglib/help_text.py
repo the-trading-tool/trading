@@ -99,12 +99,34 @@ For better structuring, the following table provides an overview of these indica
 
 import os as _os
 
+_DARK_MODE_CSS = """<style>
+@media (prefers-color-scheme: dark) {
+  body { background: #0e1117 !important; color: #e0e0e0 !important; }
+  h1 { color: #5ba4f5 !important; border-bottom-color: #5ba4f5 !important; }
+  h2 { color: #5ba4f5 !important; }
+  h3 { color: #aaa !important; }
+  a  { color: #5ba4f5 !important; }
+  code, pre { background: #1e2535 !important; border-color: #3a4258 !important; color: #e0e0e0 !important; }
+  table { color: #e0e0e0 !important; }
+  th { background: #1a3050 !important; color: #90bef5 !important; }
+  td { border-color: #3a4258 !important; }
+  tr:nth-child(even) td { background: #131926 !important; }
+  .info { background: #0d2a1a !important; color: #c8e6c9 !important; }
+  .warn { background: #2a2210 !important; color: #fff3cd !important; }
+  .hero { background: linear-gradient(135deg,#0d1e3a 0%,#0a1525 100%) !important; border-color: #2a4a7f !important; color: #e0e0e0 !important; }
+  .step { background: #111827 !important; border-color: #2a3a5c !important; }
+  .step b { color: #5ba4f5 !important; }
+  .tag { background: #1a2a4a !important; border-color: #3a5aaa !important; color: #90bef5 !important; }
+}
+</style>"""
+
+
 def load_help(module_name: str) -> str:
     """Load a help HTML file from the HELP/ folder next to the Trading root."""
     _help_dir = _os.path.join(_os.path.dirname(__file__), '..', 'HELP')
     path = _os.path.join(_help_dir, f'{module_name}.html')
     try:
         with open(path, encoding='utf-8') as _f:
-            return _f.read()
+            return _DARK_MODE_CSS + _f.read()
     except FileNotFoundError:
         return f'<p style="color:#888">Keine Hilfe verfügbar für: <code>{module_name}</code></p>'

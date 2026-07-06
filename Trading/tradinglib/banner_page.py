@@ -142,6 +142,343 @@ class BannerPage():
         with self.region.expander(t('banner.disclaimer_header'), expanded=False):
             st.markdown(t('banner.disclaimer_text'))
 
+    # ── Scalable transactions dashboard ──────────────────────────────────────
+
+    def _render_scalable_dashboard(self):
+        """Render a summary dashboard for Scalable Capital own-transactions (trades.db)."""
+        import sqlite3
+        from tradinglib.tools import Tools
+        from tradinglib.scalable_import import _compute_open_positions
+
+        db_file = Tools().get_path(path=self.db_path, file_name='trades.db')
+        try:
+            with sqlite3.connect(db_file) as conn:
+                raw = pd.read_sql_query("SELECT * FROM trades ORDER BY timestamp ASC", conn)
+        except Exception:
+            raw = pd.DataFrame()
+
+        if raw is None or raw.empty:
+            self.region.info("Keine eigenen Transaktionen vorhanden. Daten über 'Scalable Transactions' importieren.")
+            return
+
+        raw.columns = [c.strip() for c in raw.columns]
+        col_lower = {c.lower(): c for c in raw.columns}
+
+        def _col(name):
+            return col_lower.get(name.lower(), name)
+
+        act_col   = _col('action')
+        price_col = _col('price')
+        shares_col = _col('shares')
+        value_col  = _col('value')
+        ts_col     = _col('timestamp')
+
+        if act_col in raw.columns:
+            raw[act_col] = raw[act_col].astype(str).str.lower().str.strip()
+
+        # ── Build a trades_df compatible with _compute_open_positions ─────
+        trades_df = pd.DataFrame()
+        if act_col in raw.columns:
+            trade_mask = raw[act_col].isin(['buy', 'sell'])
+            trades_df = raw[trade_mask].copy()
+            # rename to match _compute_open_positions expectations
+            rename_map = {}
+            for src, dst in [('action', 'action'), ('ticker', 'ticker'), ('isin', 'isin'),
+                              ('longname', 'longname'), ('shares', 'shares'),
+                              ('price', 'price'), ('value', 'amount'), ('currency', 'currency'),
+                              ('timestamp', 'timestamp')]:
+                orig = col_lower.get(src)
+                if orig and orig != dst:
+                    rename_map[orig] = dst
+                elif col_lower.get('longname') is None and col_lower.get('longName'):
+                    rename_map[col_lower['longName']] = 'longname'
+            if rename_map:
+                trades_df = trades_df.rename(columns=rename_map)
+            # normalise longname column name (could be 'longName')
+            for candidate in ('longName', 'longname', 'description'):
+                if candidate in trades_df.columns and 'longname' not in trades_df.columns:
+                    trades_df = trades_df.rename(columns={candidate: 'longname'})
+            if 'longname' not in trades_df.columns:
+                trades_df['longname'] = ''
+            # amount column must be numeric with buy negative / sell positive
+            if 'amount' in trades_df.columns:
+                trades_df['amount'] = pd.to_numeric(trades_df['amount'], errors='coerce').fillna(0.0)
+                buy_mask = trades_df['action'] == 'buy'
+                trades_df.loc[buy_mask, 'amount'] = -trades_df.loc[buy_mask, 'amount'].abs()
+            if 'shares' in trades_df.columns:
+                trades_df['shares'] = pd.to_numeric(trades_df['shares'], errors='coerce').fillna(0.0)
+            if 'timestamp' in trades_df.columns:
+                trades_df['timestamp'] = pd.to_datetime(trades_df['timestamp'], errors='coerce')
+
+        # ── Compute metrics ───────────────────────────────────────────────
+        total_invested = 0.0
+        total_proceeds = 0.0
+        if not trades_df.empty and 'amount' in trades_df.columns:
+            buy_rows  = trades_df[trades_df['action'] == 'buy']
+            sell_rows = trades_df[trades_df['action'] == 'sell']
+            total_invested = buy_rows['amount'].abs().sum()
+            total_proceeds = sell_rows['amount'].abs().sum()
+
+        open_pos_df = pd.DataFrame()
+        try:
+            with st.spinner('Lade aktuelle Kurse …'):
+                open_pos_df = _compute_open_positions(trades_df, self.db_path)
+        except Exception:
+            pass
+
+        current_value   = open_pos_df['current_value'].sum()  if not open_pos_df.empty else 0.0
+        cost_basis_open = open_pos_df['cost_basis'].sum()      if not open_pos_df.empty else 0.0
+        unrealized_pnl  = open_pos_df['unrealized_pnl'].sum()  if not open_pos_df.empty else 0.0
+        realized_pnl    = total_proceeds - (total_invested - cost_basis_open) if total_invested else 0.0
+        total_pnl       = unrealized_pnl + (realized_pnl if realized_pnl > -total_invested else 0.0)
+        pnl_pct         = (total_pnl / total_invested * 100) if total_invested else 0.0
+        n_open          = len(open_pos_df)
+
+        _c1, _c2, _c3, _c4 = self.region.columns(4)
+        _c1.metric("Investiert gesamt", f"{total_invested:,.2f} {self.system_currency}")
+        _c2.metric("Marktwert (offen)", f"{current_value:,.2f} {self.system_currency}",
+                   delta=f"{unrealized_pnl:+,.2f} {self.system_currency}")
+        _c3.metric("Unreal. G/V", f"{unrealized_pnl:+,.2f} {self.system_currency}",
+                   delta=f"{(unrealized_pnl / cost_basis_open * 100) if cost_basis_open else 0.0:+.1f} %")
+        _c4.metric("Offene Positionen", n_open)
+
+        # ── Trades table ──────────────────────────────────────────────────
+        disp = raw.copy()
+        longname_col = col_lower.get('longname') or col_lower.get('longName', '')
+        disp_cols = [c for c in [ts_col, act_col, _col('ticker'), _col('isin'),
+                                  longname_col, shares_col, price_col, value_col,
+                                  col_lower.get('fee', ''), col_lower.get('tax', ''),
+                                  col_lower.get('currency', '')]
+                     if c and c in disp.columns]
+        disp = disp.sort_values(ts_col, ascending=False) if ts_col in disp.columns else disp
+        self.region.dataframe(disp[disp_cols] if disp_cols else disp,
+                              use_container_width=True, hide_index=True)
+
+        # ── Portfolio value over time ──────────────────────────────────────
+        if not trades_df.empty and 'timestamp' in trades_df.columns:
+            try:
+                from tradinglib.portfolio_analysis import _fetch_close_series_for_portfolio
+                from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+
+                # Build daily net-shares per ticker from trade history
+                tdf_sorted = trades_df.dropna(subset=['timestamp']).copy()
+                tdf_sorted['timestamp'] = pd.to_datetime(tdf_sorted['timestamp'], errors='coerce')
+                tdf_sorted = tdf_sorted.dropna(subset=['timestamp']).sort_values('timestamp')
+                tdf_sorted['shares_num'] = pd.to_numeric(tdf_sorted.get('shares', pd.Series(dtype=float)), errors='coerce').fillna(0)
+                tdf_sorted['signed_shares'] = tdf_sorted.apply(
+                    lambda r: r['shares_num'] if r['action'] == 'buy' else -r['shares_num'], axis=1
+                )
+
+                all_tickers = [t for t in tdf_sorted['ticker'].dropna().unique() if t and len(str(t)) > 1]
+                first_date = tdf_sorted['timestamp'].min().normalize()
+                today      = pd.Timestamp.now().normalize()
+                date_range = pd.date_range(first_date, today, freq='D')
+
+                # Fetch price series for all tickers in parallel
+                with st.spinner('Lade Kursdaten für Portfolio-Chart …'):
+                    price_map = {}
+                    with ThreadPoolExecutor(max_workers=min(8, len(all_tickers))) as ex:
+                        futs = {ex.submit(_fetch_close_series_for_portfolio, t, self.db_path): t for t in all_tickers}
+                        for fut in _as_completed(futs):
+                            tk = futs[fut]
+                            try:
+                                s = fut.result()
+                                if s is not None and not s.empty:
+                                    s.index = pd.to_datetime(s.index, errors='coerce').normalize()
+                                    price_map[tk] = s.groupby(level=0).last()
+                            except Exception:
+                                pass
+
+                # Precompute daily portfolio state: shares held + cost basis per ticker
+                # Process trades chronologically once; snapshot state per calendar day.
+                has_price_col = 'price' in tdf_sorted.columns
+                daily_states = {}   # date → {ticker: (shares, cost_basis)}
+                state = {}          # {ticker: [shares, cost_basis]}  (mutable)
+                prev_day = None
+
+                for _, row in tdf_sorted.iterrows():
+                    day = row['timestamp'].normalize()
+                    # Snapshot at start of each new day (before today's trades)
+                    if prev_day is not None and day != prev_day:
+                        daily_states[prev_day] = {tk: (v[0], v[1]) for tk, v in state.items() if v[0] > 0.0001}
+                    prev_day = day
+
+                    tk  = row.get('ticker', '')
+                    sh  = abs(float(row.get('shares_num', 0) or 0))
+                    px_ = abs(float(row.get('price', 0) or 0)) if has_price_col else 0.0
+
+                    if tk not in state:
+                        state[tk] = [0.0, 0.0]
+
+                    if row['action'] == 'buy' and sh > 0:
+                        state[tk][0] += sh
+                        state[tk][1] += sh * px_
+                    elif row['action'] == 'sell' and sh > 0 and state[tk][0] > 0.0001:
+                        sell_frac = min(sh / state[tk][0], 1.0)
+                        state[tk][1] -= state[tk][1] * sell_frac
+                        state[tk][0] = max(state[tk][0] - sh, 0.0)
+
+                # Snapshot the final day
+                if prev_day is not None:
+                    daily_states[prev_day] = {tk: (v[0], v[1]) for tk, v in state.items() if v[0] > 0.0001}
+
+                # Fill forward: carry last known state to each calendar day
+                value_rows = []
+                last_state = {}
+                for day in date_range:
+                    if day in daily_states:
+                        last_state = daily_states[day]
+                    if not last_state:
+                        continue
+                    day_value   = 0.0
+                    day_invested = 0.0
+                    for tk, (sh, cost) in last_state.items():
+                        ps = price_map.get(tk)
+                        if ps is None or ps.empty:
+                            continue
+                        past = ps[ps.index <= day]
+                        if past.empty:
+                            continue
+                        day_value    += sh * float(past.iloc[-1])
+                        day_invested += cost   # cost already = shares × avg_buy_price
+                    if day_value > 0:
+                        value_rows.append({'date': day,
+                                           'Portfoliowert': round(day_value, 2),
+                                           'Investiert':    round(day_invested, 2)})
+
+                if value_rows:
+                    import plotly.graph_objects as go
+                    from plotly.subplots import make_subplots
+
+                    vdf = pd.DataFrame(value_rows)
+                    vdf['Gewinn'] = vdf['Portfoliowert'] - vdf['Investiert']
+
+                    fig_sc = make_subplots(
+                        rows=2, cols=1,
+                        shared_xaxes=True,
+                        row_heights=[0.65, 0.35],
+                        vertical_spacing=0.06,
+                        subplot_titles=('Portfolio-Entwicklung', 'Unrealisierter Gewinn / Verlust'),
+                    )
+
+                    # Upper panel: portfolio value + invested with fill between
+                    fig_sc.add_trace(go.Scatter(
+                        x=vdf['date'], y=vdf['Investiert'],
+                        name='Investiert', line=dict(dash='dash', color='grey', width=1),
+                        fill=None,
+                    ), row=1, col=1)
+                    fig_sc.add_trace(go.Scatter(
+                        x=vdf['date'], y=vdf['Portfoliowert'],
+                        name='Portfoliowert', line=dict(color='#4da6ff', width=2),
+                        fill='tonexty',
+                        fillcolor='rgba(77,166,255,0.15)',
+                    ), row=1, col=1)
+
+                    # Lower panel: gain/loss bar
+                    colors = ['#2ecc71' if g >= 0 else '#e74c3c' for g in vdf['Gewinn']]
+                    fig_sc.add_trace(go.Bar(
+                        x=vdf['date'], y=vdf['Gewinn'],
+                        name='G/V', marker_color=colors, showlegend=False,
+                    ), row=2, col=1)
+                    fig_sc.add_hline(y=0, line_dash='solid', line_color='grey', line_width=1, row=2, col=1)
+
+                    fig_sc.update_layout(
+                        height=480,
+                        title_text='Portfolio-Entwicklung (Scalable Transactions)',
+                        hovermode='x unified',
+                        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+                        margin=dict(t=60, b=40),
+                    )
+                    fig_sc.update_yaxes(title_text=self.system_currency, row=1, col=1)
+                    fig_sc.update_yaxes(title_text=f'G/V ({self.system_currency})', row=2, col=1)
+                    self.region.plotly_chart(fig_sc, use_container_width=True)
+
+                    # ── Monthly performance heatmap ───────────────────────
+                    try:
+                        import plotly.graph_objects as _go_hm
+                        _MONTH_ABBR = ['Jan','Feb','Mär','Apr','Mai','Jun',
+                                       'Jul','Aug','Sep','Okt','Nov','Dez']
+                        # Use Gewinn (unrealized G/V) delta per month — unaffected by new deposits
+                        vdf_m = vdf.set_index('date')['Gewinn']
+                        try:
+                            monthly_end = vdf_m.resample('ME').last()
+                        except Exception:
+                            monthly_end = vdf_m.resample('M').last()
+                        monthly_delta = monthly_end.diff()
+                        monthly_delta = monthly_delta.dropna()
+                        if not monthly_delta.empty:
+                            ret_df = monthly_delta.reset_index()
+                            ret_df.columns = ['date', 'gain']
+                            ret_df['year']  = ret_df['date'].dt.year
+                            ret_df['month'] = ret_df['date'].dt.month
+                            pivot = (ret_df.groupby(['year', 'month'])['gain']
+                                     .sum()
+                                     .reset_index()
+                                     .pivot(index='year', columns='month', values='gain'))
+                            # Fill all 12 months (empty future months stay NaN)
+                            for m in range(1, 13):
+                                if m not in pivot.columns:
+                                    pivot[m] = float('nan')
+                            pivot = pivot[sorted(pivot.columns)]
+                            col_labels = _MONTH_ABBR
+                            row_labels  = [str(y) for y in pivot.index]
+                            z_vals = pivot.values.tolist()
+                            text_vals = [
+                                [f'{v:+.0f}' if v == v else '' for v in row]
+                                for row in z_vals
+                            ]
+                            fig_hm = _go_hm.Figure(_go_hm.Heatmap(
+                                z=z_vals,
+                                x=col_labels,
+                                y=row_labels,
+                                text=text_vals,
+                                texttemplate='%{text}',
+                                colorscale='RdYlGn',
+                                zmid=0,
+                                colorbar=dict(title=self.system_currency),
+                                showscale=True,
+                            ))
+                            fig_hm.update_layout(
+                                title=f'Monatliche Performance (Scalable Transactions, {self.system_currency})',
+                                xaxis_title=None,
+                                yaxis_title=None,
+                                height=max(200, 100 + 80 * len(pivot)),
+                                margin=dict(t=50, b=30),
+                            )
+                            self.region.plotly_chart(fig_hm, use_container_width=True)
+                    except Exception as _hm_err:
+                        st.warning(f'Heatmap-Fehler: {_hm_err}')
+                        logger.debug('Scalable heatmap failed', exc_info=True)
+
+            except Exception:
+                logger.debug('Scalable portfolio chart failed', exc_info=True)
+
+        # ── Open positions table ──────────────────────────────────────────
+        if not open_pos_df.empty:
+            self.region.markdown("#### Offene Positionen")
+            disp_cols_op = [c for c in ['first_buy', 'ticker', 'longname', 'shares',
+                                         'avg_price', 'current_price', 'pnl_pct',
+                                         'cost_basis', 'current_value', 'unrealized_pnl',
+                                         'weight_pct']
+                            if c in open_pos_df.columns]
+            _OPEN_FMT = dict(
+                first_buy      = st.column_config.DatetimeColumn('Kauf ab', format='YYYY-MM-DD'),
+                shares         = st.column_config.NumberColumn('Stück', format='%.4f'),
+                avg_price      = st.column_config.NumberColumn('Ø Kaufkurs', format='%.4f'),
+                current_price  = st.column_config.NumberColumn('Akt. Kurs', format='%.4f'),
+                pnl_pct        = st.column_config.NumberColumn('Perf. %', format='%+.2f'),
+                cost_basis     = st.column_config.NumberColumn(f'Einstand', format='%.2f'),
+                current_value  = st.column_config.NumberColumn(f'Marktwert', format='%.2f'),
+                unrealized_pnl = st.column_config.NumberColumn(f'G/V', format='%+.2f'),
+                weight_pct     = st.column_config.NumberColumn('Gewicht %', format='%.1f'),
+            )
+            self.region.dataframe(
+                open_pos_df[disp_cols_op],
+                hide_index=True,
+                use_container_width=True,
+                column_config=_OPEN_FMT,
+            )
+
     # ── render ────────────────────────────────────────────────────────────────
 
     def render(self):
@@ -260,7 +597,21 @@ div[data-testid="stMetric"] {
             portfolio_value = round(gain + self.total_invest, 2)
             pct_gain = round((gain / self.total_invest) * 100, 1) if self.total_invest else 0
 
-            # ── Metrics row ───────────────────────────────────────────────
+            # ── Banner note toggle ────────────────────────────────────────
+            _bn_enabled = self.sys_conf.get_value('banner_note_enabled', True)
+            if isinstance(_bn_enabled, str):
+                _bn_enabled = _bn_enabled.lower() not in ('false', '0', 'no')
+
+            # ── Scalable Transactions section ─────────────────────────────
+            self.region.divider()
+            self.region.markdown("## 💼 Scalable Transactions")
+            self._render_scalable_dashboard()
+
+            # ── Multi Strategies section ──────────────────────────────────
+            self.region.divider()
+            self.region.markdown("## 📈 Multi Strategies")
+
+            # Metrics row — belongs to Multi Strategies
             _c1, _c2, _c3, _c4 = self.region.columns(4)
             _c1.metric(t('banner.metric_invest', year=year),
                        f"{self.total_invest:,.0f} {self.system_currency}")
@@ -271,7 +622,7 @@ div[data-testid="stMetric"] {
                        f"{pct_gain} %", delta=f"{pct_gain:+.1f} %")
             _c4.metric(t('banner.metric_positions'), self.num_assets)
 
-            # ── Strategies & indices ──────────────────────────────────────
+            # Strategies & indices label
             if _strategy_names:
                 self.region.markdown(
                     f"**{t('banner.strategies_label')}:** &nbsp; `{_strategies_display}`  &nbsp;|&nbsp;"
@@ -284,12 +635,7 @@ div[data-testid="stMetric"] {
                     unsafe_allow_html=True,
                 )
 
-            # ── Banner note toggle (read once, controls expander + note) ──────
-            _bn_enabled = self.sys_conf.get_value('banner_note_enabled', True)
-            if isinstance(_bn_enabled, str):
-                _bn_enabled = _bn_enabled.lower() not in ('false', '0', 'no')
-
-            # ── Strategy explanation (expander) ───────────────────────────
+            # Strategy explanation expander
             n_strat  = len(_strategy_names) if _strategy_names else 1
             n_idx    = len(_index_max_assets)
             sw       = t('banner.strategy_word_one') if n_strat == 1 else t('banner.strategy_word_many')
@@ -306,7 +652,6 @@ div[data-testid="stMetric"] {
                     st.info(t('banner.strategy_advantage'))
                     st.markdown("")
 
-                    # Detail table: strategy × index × num_assets
                     if _strategy_detail:
                         _rows = []
                         for sname, idx_dict in _strategy_detail.items():
@@ -332,6 +677,7 @@ div[data-testid="stMetric"] {
                         ]
                         st.dataframe(_rows, use_container_width=True, hide_index=True)
 
+            # AI tip
             if _bn_enabled:
                 db_table = 'banner_notes'
                 db = tools.Db_tools(db_path=self.db_path, database_name=f"{db_table}.db")
@@ -366,7 +712,8 @@ div[data-testid="stMetric"] {
                         self.region.info(text)
                 except Exception:
                     pass
-            self.region.html(f"<h3>{t('banner.trades_since', year=year)}</h3>")
+
+            self.region.markdown(f"**{t('banner.trades_since', year=year)}**")
             df = df.sort_values(['sellDate','ticker'], ascending=[False,False])
             self.region.dataframe(df)
             
