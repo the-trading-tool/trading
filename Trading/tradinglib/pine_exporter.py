@@ -62,7 +62,7 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'heikin': 'Traditional Japanese candlestick technique — Heikin Ashi',
     'ici':    'Inner Circle Trader (ICT) concept — custom implementation',
     'lqz':    'ICT / Smart Money Concepts community — Liquidity Zone',
-    'mam':    'Moving Average Momentum — custom implementation',
+    'mam':    'MA Multi — custom implementation',
     'mmm':    'Market Mood Meter — custom implementation',
     'nsdt':   'NSDT (TradingView community) — Hama Candles concept',
     'oft':    'Order Flow Tools — custom implementation',
@@ -2066,7 +2066,7 @@ plotshape(ta.crossunder(mmm_cumd, mmm_cumd_sma), "MMM CD Bear", shape.triangledo
 
 
 def _t_mam(p: dict) -> str:
-    """Return the Pine Script v5 Moving Average Momentum overlay template with configurable params."""
+    """Return the Pine Script v5 MA Multi overlay template with configurable params."""
     _N            = 5
     _defaults     = [('EMA', 9), ('EMA', 21), ('SMA', 50), ('SMA', 100), ('SMA', 200)]
     _default_en   = [True, True, True, True, True]
