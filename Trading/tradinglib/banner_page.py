@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 ARBOR_LOGO_SVG = """
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img">
-  <title>Trading Tool</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 195" role="img">
+  <title>Arbor, your growth tool.</title>
   <desc>Baum-Logo mit Balkendiagrammen</desc>
 
   <!-- Transparenter Hintergrund mit grauem Rahmen -->
@@ -46,6 +46,12 @@ ARBOR_LOGO_SVG = """
   <rect x="146" y="110" width="7" height="30" fill="#666" rx="1"/>
   <rect x="157" y="102" width="7" height="38" fill="#888" rx="1"/>
   <line x1="133" y1="140" x2="166" y2="140" stroke="#555" stroke-width="0.5"/>
+
+  <!-- Tagline -->
+  <text x="100" y="163" text-anchor="middle" font-family="Georgia, serif"
+        font-size="16" fill="#aaa" letter-spacing="0.5">Arbor,</text>
+  <text x="100" y="182" text-anchor="middle" font-family="Georgia, serif"
+        font-size="14" fill="#888" letter-spacing="0.5">the growth tool.</text>
 </svg>
 """
 
@@ -85,12 +91,17 @@ class BannerPage():
         """Return the localised page title string."""
         return t('banner.title')
 
-    def __init__(self, username='admin', region=st, authenticator=None):
-        """Initialize the dashboard page and immediately render it into region."""
+    def __init__(self, username='admin', region=st, authenticator=None, dashboard_mode=False):
+        """Initialize the dashboard page and immediately render it into region.
+
+        dashboard_mode=True: skip login dialog and language selector (for use as
+        the logged-in main page). False (default): full login-page layout.
+        """
         self.db_path = 'database'
         self.username = username
         self.region = region
         self.authenticator = authenticator
+        self.dashboard_mode = dashboard_mode
         self.sys_conf = sysconf.SystemConfig(username=self.username)
         self.system_currency = self.sys_conf.get_value('system_currency', 'EUR')
         self.render()
@@ -147,7 +158,7 @@ div[data-testid="stMetric"] {
 </style>
 """, unsafe_allow_html=True)
 
-            # ── Language selector (top of page, German as default) ───────
+            # ── Language init ────────────────────────────────────────────
             _lang_options = list(SUPPORTED_LANGUAGES.keys())   # ['en', 'de']
             _lang_labels  = list(SUPPORTED_LANGUAGES.values()) # ['English', 'Deutsch']
             _current_lang = self.sys_conf.get_value('language', 'de') or 'de'
@@ -155,31 +166,33 @@ div[data-testid="stMetric"] {
                 _current_lang = 'de'
             _i18n.init_from_session(self.sys_conf)
 
-            # ── Header row: login (collapsed) left | language selector right ──
-            _login_col, _, _lang_col = st.columns([2, 5, 1])
+            if not self.dashboard_mode:
+                # ── Header row: login (collapsed) left | language selector right ──
+                _login_col, _, _lang_col = st.columns([2, 5, 1])
 
-            if self.authenticator:
-                with _login_col:
-                    with st.expander("🔐 Anmelden", expanded=False):
-                        try:
-                            self.authenticator.login()
-                        except Exception as _exc:
-                            logger.warning("Login render error: %s", _exc)
+                if self.authenticator:
+                    with _login_col:
+                        with st.expander("🔐 Anmelden", expanded=False):
+                            try:
+                                self.authenticator.login()
+                            except Exception as _exc:
+                                logger.warning("Login render error: %s", _exc)
 
-            _sel_label = _lang_col.selectbox(
-                "🌐",
-                options=_lang_labels,
-                index=_lang_options.index(_current_lang),
-                key="banner_lang_sel",
-                label_visibility="collapsed",
-            )
-            _sel_code = _lang_options[_lang_labels.index(_sel_label)]
-            if _sel_code != _current_lang:
-                self.sys_conf.set_value('language', _sel_code)
-                _i18n.load_language(_sel_code)
-                st.rerun()
+                _sel_label = _lang_col.selectbox(
+                    "🌐",
+                    options=_lang_labels,
+                    index=_lang_options.index(_current_lang),
+                    key="banner_lang_sel",
+                    label_visibility="collapsed",
+                )
+                _sel_code = _lang_options[_lang_labels.index(_sel_label)]
+                if _sel_code != _current_lang:
+                    self.sys_conf.set_value('language', _sel_code)
+                    _i18n.load_language(_sel_code)
+                    st.rerun()
 
-            st.title(self.ttl)
+            if not self.dashboard_mode:
+                st.title(self.ttl)
 
             year = dt.datetime.now().year
 
@@ -271,81 +284,88 @@ div[data-testid="stMetric"] {
                     unsafe_allow_html=True,
                 )
 
+            # ── Banner note toggle (read once, controls expander + note) ──────
+            _bn_enabled = self.sys_conf.get_value('banner_note_enabled', True)
+            if isinstance(_bn_enabled, str):
+                _bn_enabled = _bn_enabled.lower() not in ('false', '0', 'no')
+
             # ── Strategy explanation (expander) ───────────────────────────
             n_strat  = len(_strategy_names) if _strategy_names else 1
             n_idx    = len(_index_max_assets)
             sw       = t('banner.strategy_word_one') if n_strat == 1 else t('banner.strategy_word_many')
 
-            with self.region.expander(t('banner.strategy_expander'), expanded=False):
-                st.markdown(t('banner.strategy_how',
-                              n_strategies=n_strat, strategy_word=sw, n_indices=n_idx))
-                st.markdown("")
-                for step_key in ('banner.strategy_step1', 'banner.strategy_step2',
-                                 'banner.strategy_step3', 'banner.strategy_step4'):
-                    st.markdown(t(step_key))
-                st.markdown("")
-                st.info(t('banner.strategy_advantage'))
-                st.markdown("")
+            if _bn_enabled:
+                with self.region.expander(t('banner.strategy_expander'), expanded=False):
+                    st.markdown(t('banner.strategy_how',
+                                  n_strategies=n_strat, strategy_word=sw, n_indices=n_idx))
+                    st.markdown("")
+                    for step_key in ('banner.strategy_step1', 'banner.strategy_step2',
+                                     'banner.strategy_step3', 'banner.strategy_step4'):
+                        st.markdown(t(step_key))
+                    st.markdown("")
+                    st.info(t('banner.strategy_advantage'))
+                    st.markdown("")
 
-                # Detail table: strategy × index × num_assets
-                if _strategy_detail:
-                    _rows = []
-                    for sname, idx_dict in _strategy_detail.items():
-                        for iname, na in idx_dict.items():
-                            inv = 0
-                            try:
-                                inv = transactions[sname][iname].get('invest', 0)
-                            except Exception:
-                                pass
-                            _rows.append({
-                                t('banner.strategy_col_strategy'): sname,
-                                t('banner.strategy_col_index'):    _fmt_index(iname),
-                                t('banner.strategy_col_max_assets'): na,
-                                t('banner.strategy_col_invest'):   f"{inv:,.0f} {self.system_currency}",
-                            })
-                    st.dataframe(_rows, use_container_width=True, hide_index=True)
-                else:
-                    _rows = [
-                        {t('banner.strategy_col_index'):    _fmt_index(k),
-                         t('banner.strategy_col_max_assets'): v,
-                         t('banner.strategy_col_invest'):   f"{_get_invest(transactions, k):,.0f} {self.system_currency}"}
-                        for k, v in _index_max_assets.items()
-                    ]
-                    st.dataframe(_rows, use_container_width=True, hide_index=True)
+                    # Detail table: strategy × index × num_assets
+                    if _strategy_detail:
+                        _rows = []
+                        for sname, idx_dict in _strategy_detail.items():
+                            for iname, na in idx_dict.items():
+                                inv = 0
+                                try:
+                                    inv = transactions[sname][iname].get('invest', 0)
+                                except Exception:
+                                    pass
+                                _rows.append({
+                                    t('banner.strategy_col_strategy'): sname,
+                                    t('banner.strategy_col_index'):    _fmt_index(iname),
+                                    t('banner.strategy_col_max_assets'): na,
+                                    t('banner.strategy_col_invest'):   f"{inv:,.0f} {self.system_currency}",
+                                })
+                        st.dataframe(_rows, use_container_width=True, hide_index=True)
+                    else:
+                        _rows = [
+                            {t('banner.strategy_col_index'):    _fmt_index(k),
+                             t('banner.strategy_col_max_assets'): v,
+                             t('banner.strategy_col_invest'):   f"{_get_invest(transactions, k):,.0f} {self.system_currency}"}
+                            for k, v in _index_max_assets.items()
+                        ]
+                        st.dataframe(_rows, use_container_width=True, hide_index=True)
 
-            db_table = 'banner_notes'
-            db = tools.Db_tools(db_path=self.db_path, database_name=f"{db_table}.db")
-            db.conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {db_table} (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ticker TEXT,
-                    text TEXT,
-                    buyDate TEXT
-                )
-            """)
-            db.conn.commit()
-            b_df = pd.read_sql(f'select * from {db_table}', db.conn)
-            db.conn.close()
-            try:
-                ticker   = b_df.iloc[-1]['ticker']
-                text     = b_df[b_df['ticker'] == ticker]['text'].iloc[0]
-                longname = ticker
-                date     = ''
+            if _bn_enabled:
+                db_table = 'banner_notes'
+                db = tools.Db_tools(db_path=self.db_path, database_name=f"{db_table}.db")
+                db.conn.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {db_table} (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ticker TEXT,
+                        text TEXT,
+                        buyDate TEXT
+                    )
+                """)
+                db.conn.commit()
+                b_df = pd.read_sql(f'select * from {db_table}', db.conn)
+                db.conn.close()
                 try:
-                    longname = df[df['ticker'] == ticker]['longName'].iloc[0]
-                    date     = str(df[df['ticker'] == ticker]['buyDate'].iloc[-1])[:10]
+                    ticker   = b_df.iloc[-1]['ticker']
+                    text     = b_df[b_df['ticker'] == ticker]['text'].iloc[0]
+                    longname = ticker
+                    date     = ''
+                    try:
+                        longname = df[df['ticker'] == ticker]['longName'].iloc[0]
+                        date     = str(df[df['ticker'] == ticker]['buyDate'].iloc[-1])[:10]
+                    except Exception:
+                        pass
+                    if text:
+                        self.region.divider()
+                        self.region.markdown(
+                            f"### {t('banner.trading_tip', name=longname)}"
+                            + (f"  <small style='color:grey'>({date})</small>" if date else ""),
+                            unsafe_allow_html=True,
+                        )
+                        self.region.info(text)
                 except Exception:
                     pass
-                if text:
-                    self.region.divider()
-                    self.region.markdown(
-                        f"### {t('banner.trading_tip', name=longname)}"
-                        + (f"  <small style='color:grey'>({date})</small>" if date else ""),
-                        unsafe_allow_html=True,
-                    )
-                    self.region.info(text)
-            except Exception:
-                pass
             self.region.html(f"<h3>{t('banner.trades_since', year=year)}</h3>")
             df = df.sort_values(['sellDate','ticker'], ascending=[False,False])
             self.region.dataframe(df)
@@ -553,7 +573,7 @@ class WelcomePage:
         render_logo(region=st, max_width="200px", margin_bottom="0.8rem")
         st.markdown("""
 <div class="wlc-hero">
-  <p class="wlc-hero-title">📈 Trading Tools</p>
+  <p class="wlc-hero-title">📈 Arbor, your growth tool.</p>
   <p class="wlc-hero-sub">Ihr persönliches Analyse-Werkzeug für den Kapitalmarkt</p>
   <p class="wlc-hero-tag">Offline &nbsp;·&nbsp; Lokal &nbsp;·&nbsp; Self-hosted</p>
 </div>""", unsafe_allow_html=True)

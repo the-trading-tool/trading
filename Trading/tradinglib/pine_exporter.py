@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pine Script v5 exporter for TradingView.
 
 Reads the active overlay / oscillator selection from MultiCheckboxSelector,
@@ -23,7 +23,7 @@ _UNSUPPORTED: set[str] = {'pre', 'bar', 'candle'}
 # ── License block prepended to every generated Pine Script ────────────────────
 # Pine Script convention: "// ©" marks the copyright line (shown in TradingView).
 _PINE_LICENSE = (
-    "// © Trading Tools — https://github.com/the-trading-tool/trading\n"
+    "// © Arbor, your growth tool. — https://github.com/the-trading-tool/trading\n"
     "// For private, non-commercial use only. No financial advice.\n"
     "// Use at your own risk. Data accuracy depends on third-party providers.\n"
     "// Technical indicators implement published algorithms; see per-indicator\n"

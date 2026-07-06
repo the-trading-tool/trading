@@ -1354,6 +1354,21 @@ class Admin():
         banner_notes_expander = st.expander('Banner note', expanded=False)
         with banner_notes_expander:
             _spin.markdown(_tab_overlay("Banner note"), unsafe_allow_html=True)
+
+            _bn_cfg = sysconf.SystemConfig(db_path=self.db_path, username='admin')
+            _bn_enabled = _bn_cfg.get_value('banner_note_enabled', True)
+            if isinstance(_bn_enabled, str):
+                _bn_enabled = _bn_enabled.lower() not in ('false', '0', 'no')
+            _bn_toggle = st.toggle(
+                'Show banner note on login page',
+                value=bool(_bn_enabled),
+                key='bn_enabled_toggle',
+            )
+            if bool(_bn_toggle) != bool(_bn_enabled):
+                _bn_cfg.set_value('banner_note_enabled', str(_bn_toggle))
+                st.toast('Banner note ' + ('enabled' if _bn_toggle else 'disabled'))
+
+            st.divider()
             st.markdown(t('admin.ai_analysis_title'))
 
             _provider_opts = {

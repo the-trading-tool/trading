@@ -219,7 +219,7 @@ class TradingApp:
 
     def __init__(self):
         """Configure Streamlit page layout, load config.yaml, and initialize the authenticator."""
-        self.title = "The Trading Tools"
+        self.title = "Arbor, your growth tool."
         if 'title' not in st.session_state:
             st.set_page_config(self.title, initial_sidebar_state='collapsed', layout="wide" )
         else:
@@ -593,13 +593,14 @@ class TradingApp:
         # Moved here from the top search row (main_page.py): both open an
         # @st.dialog overlay, so the trigger button can live anywhere. Icon-only
         # side by side; the localized label is the hover tooltip (help=).
-        _cfg_col, _help_col = st.sidebar.columns(2, gap="small")
+        _cfg_col, _help_col, _dash_col = st.sidebar.columns(3, gap="small")
         if _cfg_col.button("⚙", use_container_width=True, key='_nav_settings', help=t('nav.settings')):
             self.sys_config.render()
         if _help_col.button("❓", use_container_width=True, key='_nav_help', help=t('nav.help')):
             self.sys_config.render_help()
-
-#        st.sidebar.markdown("---")
+        if _dash_col.button("🏠", use_container_width=True, key='_nav_dashboard', help=t('nav.dashboard')):
+            st.session_state['_nav_params'] = {'dashboard': 'true'}
+            st.rerun()
 
         def _nav(label, locked=False, **params):
             """Navigate within the same tab in one click via session state.
@@ -618,6 +619,7 @@ class TradingApp:
             if st.button(disp, use_container_width=True, key=_key):
                 st.session_state['_nav_params'] = params
                 st.rerun()
+        st.sidebar.markdown("---")
 
         if appedition.IS_SCALABLE:
             # ── Scalable-Edition: schlanke Navigation ───────────────────────
@@ -627,7 +629,7 @@ class TradingApp:
                 _nav(t('nav.own_transactions'), own_trades='true')
 
             with st.sidebar.expander(t('nav.group_assets'), expanded=False):
-                _nav(t('nav.asset_viewer'))
+                _nav(t('nav.asset_viewer'), asset='true')
                 _nav(t('nav.compound_simulation'), compound='true')
                 _nav(t('nav.performance'), locked=True, performance='true')
                 _nav(t('nav.asset_summary'), locked=True, summary='true')
@@ -658,7 +660,7 @@ class TradingApp:
 
             # ── Assets & Performance ────────────────────────────────────────────
             with st.sidebar.expander(t('nav.group_assets'), expanded=True):
-                _nav(t('nav.asset_viewer'))
+                _nav(t('nav.asset_viewer'), asset='true')
                 _nav(t('nav.asset_summary'), summary='true')
                 _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
                 _nav(t('nav.performance'), performance='true')
@@ -762,7 +764,7 @@ class TradingApp:
             fp.FileProvider()
         else:
 
-            with st.spinner("Trading Tools"):
+            with st.spinner("Arbor, your growth tool."):
                 self.login_overlay()
 
                 # i18n init happens here — AFTER login_overlay() so the real username
@@ -945,6 +947,9 @@ class TradingApp:
                     self.set_page_config(t('page.option_price'))
                     with st.spinner(t('page.option_price') + " …"):
                         op.OptionCalculator()
+                elif parms.get('dashboard') or not parms:
+                    self.set_page_config(t('page.dashboard'))
+                    bp.BannerPage(username=self.username, dashboard_mode=True)
                 else:
                     self.set_page_config(t('page.asset_details'))
                     tab_details = False

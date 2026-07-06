@@ -192,7 +192,7 @@ _STEPS = [
 
 def _step_welcome(col):
     """Render the welcome/disclaimer step of the setup wizard."""
-    col.title("🚀 Willkommen bei Trading Tools")
+    col.title("🚀 Willkommen bei Arbor, your growth tool.")
     col.markdown("""
 Diese App benötigt beim ersten Start eine kurze Einrichtung:
 
