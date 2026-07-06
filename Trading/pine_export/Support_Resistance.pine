@@ -1,0 +1,28 @@
+//@version=5
+strategy("Support/Resistance", overlay=true, default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100, calc_on_every_tick=false)
+
+// ── Helfer ───────────────────────────────────────────────────────────────────
+// ── Indikatoren (aus den App-Formeln abgeleitet) ─────────────────────────────
+dTrend = close != close[1] ? (close - close[1]) / close * 100 : 0.0
+
+ewo = ta.sma(close, 5) - ta.sma(close, 21)
+
+ewo_ema = ta.ema(ewo, 9)
+
+sup_resistance = ta.highest(high, 21)
+
+sup_support = ta.lowest(low, 21)
+
+_wk_close = request.security(syminfo.tickerid, "W", close, lookahead=barmerge.lookahead_off)
+
+wkTrend = _wk_close != _wk_close[1] ? (_wk_close - _wk_close[1]) / _wk_close * 100 : 0.0
+
+// ── Bedingungen ──────────────────────────────────────────────────────────────
+longCond = (close<=sup_support) and (ewo>ewo_ema ) and (dTrend>0 ) and ( wkTrend>0)
+exitCond = (ewo < ewo_ema) or (close>=sup_resistance)
+
+if longCond and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+if exitCond and strategy.position_size > 0
+    strategy.close("Long")

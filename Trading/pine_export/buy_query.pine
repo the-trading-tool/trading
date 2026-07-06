@@ -1,0 +1,79 @@
+//@version=5
+strategy("buy_query", overlay=true, default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100, calc_on_every_tick=false)
+
+// ── Helfer ───────────────────────────────────────────────────────────────────
+atc_dev = input.float(2.0, "ATC Std-Abweichung", group="ATC")
+
+// ATC: manuelle OLS-Regression über die letzten `length` Bars.
+// Rueckgabe [Ankerwert, aktueller Wert, Residual-Stdev].
+atc_reg(length) =>
+    float n   = float(length)
+    float sx  = 0.0
+    float sy  = 0.0
+    float sxx = 0.0
+    float sxy = 0.0
+    for i = 0 to length - 1
+        float xi = float(i)
+        float yi = close[length - 1 - i]
+        sx  += xi
+        sy  += yi
+        sxx += xi * xi
+        sxy += xi * yi
+    float denom = n * sxx - sx * sx
+    float b     = denom != 0.0 ? (n * sxy - sx * sy) / denom : 0.0
+    float a     = (sy - b * sx) / n
+    float ssr   = 0.0
+    for i = 0 to length - 1
+        float err = close[length - 1 - i] - (a + b * float(i))
+        ssr += err * err
+    [a, a + b * (n - 1.0), math.sqrt(ssr / n)]
+
+// Heikin-Ashi-Basis (spiegelt heikin.py)
+ha_close = (open + high + low + close) / 4
+var float ha_open = na
+ha_open := na(ha_open[1]) ? (open + close) / 2 : (ha_open[1] + ha_close[1]) / 2
+ha_high = math.max(high, math.max(ha_open, ha_close))
+ha_low  = math.min(low,  math.min(ha_open, ha_close))
+
+// ── Indikatoren (aus den App-Formeln abgeleitet) ─────────────────────────────
+int atc_l_off = 0
+for i = 1 to math.min(499, bar_index)
+    if low[i] < low[atc_l_off]
+        atc_l_off := i
+atc_llen = math.max(2, atc_l_off + 1)
+[atc_l_anc, atc_l_cur, atc_lstd] = atc_reg(atc_llen)
+atc_bot_low = atc_l_cur - atc_dev * atc_lstd
+
+int atc_h_off = 0
+for i = 1 to math.min(499, bar_index)
+    if high[i] > high[atc_h_off]
+        atc_h_off := i
+atc_hlen = math.max(2, atc_h_off + 1)
+[atc_h_anc, atc_h_cur, atc_hstd] = atc_reg(atc_hlen)
+atc_top_high = atc_h_cur + atc_dev * atc_hstd
+
+ema9 = ta.ema(close, 9)
+
+ewo = ta.sma(close, 5) - ta.sma(close, 21)
+
+ewo_angle = math.todegrees(math.atan(ewo - ewo[1]))
+
+ewo_ema = ta.ema(ewo, 9)
+
+ha_ema_low = ta.ema(ha_low, 21)
+
+momentum = ta.stoch(close, high, low, 14)
+
+rsi = ta.rsi(close, 8)
+
+rsi_ema = ta.sma(rsi, 14)
+
+// ── Bedingungen ──────────────────────────────────────────────────────────────
+longCond = ((low<=atc_bot_low) and (ewo>=ewo_ema)) or ((ha_ema_low>high) and (high>=ema9) and (ewo_angle>0) and (momentum>rsi_ema))
+exitCond = (high>=atc_top_high) and (rsi>=70) and (ewo>0)
+
+if longCond and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+if exitCond and strategy.position_size > 0
+    strategy.close("Long")

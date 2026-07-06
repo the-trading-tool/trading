@@ -1,0 +1,28 @@
+//@version=5
+strategy("EWO Trend", overlay=true, default_qty_type=strategy.percent_of_equity,
+     default_qty_value=100, calc_on_every_tick=false)
+
+// ── Helfer ───────────────────────────────────────────────────────────────────
+// ── Indikatoren (aus den App-Formeln abgeleitet) ─────────────────────────────
+ema21 = ta.ema(close, 21)
+
+ewo = ta.sma(close, 5) - ta.sma(close, 21)
+
+ewo_ema = ta.ema(ewo, 9)
+
+sup_resistance = ta.highest(high, 21)
+
+sup_support = ta.lowest(low, 21)
+
+_wk_close = request.security(syminfo.tickerid, "W", close, lookahead=barmerge.lookahead_off)
+
+wkTrend = _wk_close != _wk_close[1] ? (_wk_close - _wk_close[1]) / _wk_close * 100 : 0.0
+
+// ── Bedingungen ──────────────────────────────────────────────────────────────
+longCond = (ewo>ewo_ema) and (close<sup_support*1.008) and (wkTrend>=1) and (sup_resistance/sup_support>1.03)
+exitCond = (close<ema21*0.95) or (ewo<ewo_ema*0.8)
+
+if longCond and strategy.position_size == 0
+    strategy.entry("Long", strategy.long)
+if exitCond and strategy.position_size > 0
+    strategy.close("Long")
