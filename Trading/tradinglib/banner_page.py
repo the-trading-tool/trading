@@ -158,14 +158,7 @@ class BannerPage():
             raw = pd.DataFrame()
 
         if raw is None or raw.empty:
-            self.region.info(
-                "**Keine Transaktionsdaten vorhanden.**\n\n"
-                "Um das Scalable-Transactions-Dashboard zu nutzen, lade bitte einen "
-                "Portfolio-Auszug hoch:\n\n"
-                "1. Öffne die Seite **Scalable Transactions** in der Seitenleiste.\n"
-                "2. Lade dort deinen CSV-Auszug aus dem Scalable Capital Kundenkonto hoch.\n"
-                "3. Das Dashboard wird anschließend automatisch befüllt."
-            )
+            self.region.info(f"**{t('banner.scalable_no_data_title')}**\n\n{t('banner.scalable_no_data_body')}")
             return
 
         raw.columns = [c.strip() for c in raw.columns]
@@ -623,13 +616,7 @@ div[data-testid="stMetric"] {
             self.region.markdown("## 📈 Multi Strategies")
 
             if not _index_max_assets and df.empty:
-                self.region.info(
-                    "**Keine Strategie konfiguriert.**\n\n"
-                    "Um das Multi-Strategies-Dashboard zu nutzen:\n\n"
-                    "1. Öffne **Admin → Einstellungen** in der Seitenleiste.\n"
-                    "2. Hinterlege dort mindestens eine Strategie mit Index und Invest-Betrag.\n"
-                    "3. Starte anschließend eine Simulation über **Asset Performance**."
-                )
+                self.region.info(f"**{t('banner.multi_no_strategy_title')}**\n\n{t('banner.multi_no_strategy_body')}")
                 self._render_disclaimer()
                 return
 
