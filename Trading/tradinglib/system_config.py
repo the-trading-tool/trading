@@ -189,6 +189,10 @@ class SystemConfig(tools.Db_tools):
         b_select = [True, False]
         s_select =[1,2,3,5]
         sr_select =[0.01,0.1,1,10,100,1000]
+        # Entry page on a fresh load (mobile always overrides this with the Asset
+        # Viewer). Keys mirror _START_PAGE_ROUTES in asset_analyzer.py.
+        start_pages = ['dashboard', 'asset', 'summary', 'performance',
+                       'own_trades', 'market_overview', 'marketmap', 'rotation']
 
         idx_b_select = self.get_idx_selected(b_select, 'logging',1)
         idx_rt_select = self.get_idx_selected(b_select, 'rt_prices',1)
@@ -201,6 +205,7 @@ class SystemConfig(tools.Db_tools):
         idx_trailing_stop_enabled = self.get_idx_selected(b_select, 'trailing_stop_enabled', 1)
         idx_show_regime = self.get_idx_selected(b_select, 'show_regime', 1)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
+        idx_start_page = self.get_idx_selected(start_pages, 'start_page', 0)
         self.region.write(i18n.t("cfg.user", username=self.username))
 
         # --- Language switcher ---
@@ -358,6 +363,11 @@ class SystemConfig(tools.Db_tools):
         self.set_value('default_ticker', st.text_input(i18n.t("cfg.default_ticker"), self.get_value('default_ticker', '^GDAXI')) or '^GDAXI')
         self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
         self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
+        self.set_value('start_page', st.selectbox(
+            i18n.t("cfg.start_page"), start_pages, idx_start_page,
+            format_func=lambda k: i18n.t(f"cfg.start_page_opt.{k}"),
+            help=i18n.t("cfg.start_page_help"),
+        ))
         def _coerce_names(raw, fallback):
             """Normalise a config value / user text into a clean list[str] of
             indicator short-names. Accepts a real list, a JSON or Python-repr

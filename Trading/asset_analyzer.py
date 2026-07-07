@@ -1,4 +1,5 @@
 import os
+import re
 import streamlit as st
 import datetime as dt
 import yaml
@@ -73,6 +74,35 @@ def _apply_theme(mode: str) -> None:
     from streamlit import config as _st_config
     for key, value in _THEMES.get(mode, _THEMES['dark']).items():
         _st_config.set_option(key, value)
+
+
+# Entry-page routing: maps the user-facing 'start_page' config value (config.db)
+# to the query-param route dict the router in TradingApp.render() understands.
+# Keys double as the option list of the ⚙-config selectbox.
+_START_PAGE_ROUTES = {
+    'dashboard':       {'dashboard': 'true'},
+    'asset':           {'asset': 'true'},
+    'summary':         {'summary': 'true'},
+    'performance':     {'performance': 'true'},
+    'own_trades':      {'own_trades': 'true'},
+    'market_overview': {'market_overview': 'true'},
+    'marketmap':       {'marketmap': 'true'},
+    'rotation':        {'rotation': 'true'},
+}
+
+# Server-side mobile detection via the request User-Agent. Not 100 % (recent
+# iPadOS reports as desktop Safari), but dependency-free and good enough to send
+# phones to the compact Asset Viewer on first load.
+_MOBILE_UA_RE = re.compile(r'Android|iPhone|iPad|iPod|IEMobile|Opera Mini|Windows Phone', re.I)
+
+
+def _is_mobile_client() -> bool:
+    """True when the request User-Agent looks like a phone/tablet browser."""
+    try:
+        ua = st.context.headers.get('User-Agent', '') or ''
+    except Exception:
+        ua = ''
+    return bool(_MOBILE_UA_RE.search(ua))
 
 
 def _tab_overlay(label: str) -> str:
@@ -773,6 +803,18 @@ class TradingApp:
 #        self.lt.render()
 
 
+    def _resolve_entry_route(self):
+        """Pick the entry page for a fresh load without an explicit route.
+
+        Mobile clients always land on the Asset Viewer (compact, touch-first);
+        otherwise the user-configured 'start_page' (config.db) decides, falling
+        back to the Dashboard. Requires self.sys_config, so call only after login.
+        """
+        if _is_mobile_client():
+            return {'asset': 'true'}
+        start = str(self.sys_config.get_value('start_page', 'dashboard')).strip()
+        return dict(_START_PAGE_ROUTES.get(start, {'dashboard': 'true'}))
+
     def render(self):
         """Route the request to the correct page based on URL query parameters.
 
@@ -796,7 +838,12 @@ class TradingApp:
             # ist _nav_params bereits gesetzt und dieser Zweig greift nicht mehr.)
             if appedition.IS_SCALABLE and not parms:
                 parms = {'own_trades': 'true'}
-            st.session_state['_nav_params'] = parms
+            # Nicht-Scalable + leere Route: die Einstiegsseite wird erst NACH dem
+            # Login aufgelöst (_resolve_entry_route braucht self.sys_config für
+            # die konfigurierbare 'start_page' + Mobile-Erkennung). Ein leeres
+            # Dict hier NICHT persistieren, sonst läuft der Resolver nie.
+            if parms:
+                st.session_state['_nav_params'] = parms
         if parms.get('stream') == "api":
                 data = json.loads(parms.get('data'))
                 api_key = data["api_key"]
@@ -844,6 +891,14 @@ class TradingApp:
                 
                 self.is_admin= self.config['credentials']['usernames'].get(self.username, {}).get('admin', False)
                 self.show_navigation_links()
+
+                # Fresh load without an explicit route: resolve the entry page now
+                # that self.sys_config exists (mobile → Asset Viewer, else the
+                # configured 'start_page'). Persist it so the choice sticks across
+                # reruns; a later sidebar click overwrites _nav_params as usual.
+                if not parms:
+                    parms = self._resolve_entry_route()
+                    st.session_state['_nav_params'] = parms
 
                 # Edition-Guard: In der Scalable-Edition sind nur ausgewählte Routen
                 # frei; alle übrigen Features sind ein Upgrade. In der 'full'-Edition
