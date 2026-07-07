@@ -74,6 +74,8 @@
   "cfg.require_isin": "Nur handelbare (ISIN erforderlich):",
   "cfg.trailing_stop_enabled": "Trailing Stop (Live/Paper Trading) aktiviert:",
   "cfg.show_regime": "Regime-/Market-Stress-Banner anzeigen:",
+  "cfg.mark_nontrading_times": "Handelsfreie Zeiten in Bändern markieren:",
+  "cfg.mark_nontrading_times_help": "Ja: gefüllte Bänder (Bollinger, Heikin-EMA, G-FRAMA, DEMA, Ichimoku) werden an Wochenenden/Bankfeiertagen unterbrochen – die Lücken markieren handelsfreie Zeiten. Nein: durchgehende Füllung (glatter); bei Werten mit Handel an sonst geschlossenen Tagen (z. B. Futures) kann die Füllung an Übergängen ungenau werden.",
   "cfg.buy_query": "Kauf-Bedingung:",
   "cfg.sell_query": "Verkauf-Bedingung:",
   "cfg.data_provider_header": "Datenprovider",

@@ -28,7 +28,11 @@ class Mam(_indicator._Indicator):
     ]
     _WIDTH_OPTIONS = ['0.5', '1', '1.5', '2']
     _STYLE_OPTIONS = ['solid', 'dashed', 'dotted']
-    _COLORS        = ['orange', 'deepskyblue', 'black', 'grey', 'red']
+    # Distinct, theme-neutral defaults (visible on light AND dark). Avoids the
+    # old 'black' (invisible on dark) / 'grey' (weak, collides with band fills)
+    # and keeps all five MAs clearly separable. Still overridable per config.
+    _COLORS        = ['#E8890C', '#2E86DE', '#16A085', '#8E44AD', '#C0392B']
+    #                  orange     blue       teal       violet     red
 
     params = {
         # MA 1

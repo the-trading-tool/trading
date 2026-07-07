@@ -128,12 +128,20 @@ class Dema(_indicator._Indicator):
 
         for _, seg in df.groupby(trend_changes):
             color = 'rgba(0,255,0,0.15)' if seg['trend_color'].iloc[0] == 'green' else 'rgba(255,0,0,0.15)'
-            
+
+            if not self.fill_band:
+                continue
+
+            # Split each trend run further at time gaps so no fill polygon spans
+            # an x-axis rangebreak (weekend/holiday), which Plotly balloons into a
+            # wedge — see _Indicator.segmented_band. (A trend run can easily cover
+            # several weeks, so the per-trend segmentation alone is not enough.)
+            xs, ys = self.segmented_band(seg['Date'], seg['dema_ema_fast'], seg['dema_ema_slow'])
             self.fig.add_trace(go.Scatter(
-                x=pd.concat([seg['Date'], seg['Date'][::-1]]),
-                y=pd.concat([seg['dema_ema_fast'], seg['dema_ema_slow'][::-1]]),
-                fill='toself' if self.fill_band else 'none',
-                fillcolor=color if self.fill_band else None,
+                x=xs,
+                y=ys,
+                fill='toself',
+                fillcolor=color,
                 line=dict(color='rgba(0,0,0,0)'),
                 hoverinfo='skip',
                 showlegend=False,

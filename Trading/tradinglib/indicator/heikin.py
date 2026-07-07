@@ -215,8 +215,30 @@ class Heikin(_indicator._Indicator):
 
         # === EMA Lines ===
         if self.show_emas:
-            ema_high_color = self.color_ema_high if self.color_ema_high else 'orange'
-            ema_low_color  = self.color_ema_low  if self.color_ema_low  else 'deepskyblue'
+            # Magenta family: an unused hue so the HA-EMA band stays clearly
+            # distinct from mam's MA lines (orange/blue/...) and bol's blue/amber
+            # bands. Was orange/deepskyblue, which collided with mam MA1/MA2.
+            ema_high_color = self.color_ema_high if self.color_ema_high else '#E84393'
+            ema_low_color  = self.color_ema_low  if self.color_ema_low  else '#AD3F73'
+
+            # Filled EMA band as rangebreak-safe polygons (split at time gaps).
+            # A plain 'tonexty' fill balloons into a wedge wherever an x-axis
+            # rangebreak (weekend/holiday) collapses a bar — see segmented_band.
+            if self.fill_ema_band:
+                xs, ys = self.segmented_band(df['Date'], df['EMA_HA_High'], df['EMA_HA_Low'])
+                self.fig.add_trace(
+                    go.Scatter(
+                        x=xs, y=ys,
+                        fill='toself',
+                        # Magenta tint (matches the EMA lines) instead of neutral
+                        # grey, which collided with other grey band fills (bol).
+                        fillcolor='rgba(232, 67, 147, 0.12)',
+                        line=dict(width=0),
+                        hoverinfo='skip',
+                        showlegend=False,
+                        name='HA EMA band',
+                    )
+                )
 
             self.fig.add_trace(
                 go.Scatter(
@@ -237,7 +259,5 @@ class Heikin(_indicator._Indicator):
                     mode='lines',
                     name=f'EMA HA Low ({self.ema_low_length})',
                     line=dict(color=ema_low_color, width=1.5),
-                    fill='tonexty' if self.fill_ema_band else 'none',
-                    fillcolor='rgba(128, 128, 128, 0.15)' if self.fill_ema_band else None,
                 )
             )

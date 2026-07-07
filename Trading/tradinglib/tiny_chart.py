@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from tradinglib import ticker_tools as tt
 from tradinglib import graph_tools as gt
 from tradinglib.indicator import indicator
+from tradinglib.indicator import _indicator
 from tradinglib import fetch_data as ft
 from tradinglib import system_config as sysconf
 from tradinglib.utils import DataUtils, get_display_name
@@ -68,6 +69,11 @@ class tiny_chart(gt.GraphTools):
             self.longname = longname #(" ".join(re.findall(r"[A-Za-z0-9üäöÜÄÖß]*", longname))).replace("  "," ")
             self.sys_conf = sysconf.SystemConfig(username=self.username)
             self.tz_info = self.sys_conf.get_value("tz_info",default="Europe/Berlin")
+            # Whether filled band overlays break over non-trading periods
+            # (weekends/holidays). Applied globally to all indicators for this
+            # render via the _Indicator class attribute; see segmented_band().
+            _indicator._Indicator.mark_nontrading_gaps = bool(
+                self.sys_conf.get_value("mark_nontrading_times", True))
             self.buy_query = self.sys_conf.get_value("buy_query", default="(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)")
             self.sell_query = self.sys_conf.get_value("sell_query", default="(ha_close < ha_open) & (Close < ha_ema_low)")
             self.period = period

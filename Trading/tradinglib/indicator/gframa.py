@@ -231,14 +231,6 @@ class Gframa(_indicator._Indicator):
 
         # ── ATR bands (drawn first, beneath the FRAMA line) ───────────────
         if self.show_bands:
-            self.fig.add_trace(go.Scatter(
-                x=x, y=upr,
-                mode='lines',
-                name='G-FRAMA Upper',
-                showlegend=False,
-                line=dict(color='rgba(200,200,200,0.30)', width=1),
-            ))
-
             # Fill colour follows the last known signal
             valid_mask = ~np.isnan(fra)
             last_qb = int(qb[valid_mask][-1]) if valid_mask.any() else 0
@@ -247,14 +239,35 @@ class Gframa(_indicator._Indicator):
                 0.12,
             )
 
+            # Filled band as rangebreak-safe polygons (split at time gaps): a
+            # plain 'tonexty' fill balloons into a wedge wherever an x-axis
+            # rangebreak collapses a bar — see _Indicator.segmented_band.
+            if self.fill_bands:
+                xs, ys = self.segmented_band(x, upr, lwr)
+                self.fig.add_trace(go.Scatter(
+                    x=xs, y=ys,
+                    fill='toself',
+                    fillcolor=fill_col,
+                    line=dict(width=0),
+                    hoverinfo='skip',
+                    showlegend=False,
+                    name='G-FRAMA band',
+                ))
+
+            self.fig.add_trace(go.Scatter(
+                x=x, y=upr,
+                mode='lines',
+                name='G-FRAMA Upper',
+                showlegend=False,
+                line=dict(color='rgba(200,200,200,0.30)', width=1),
+            ))
+
             self.fig.add_trace(go.Scatter(
                 x=x, y=lwr,
                 mode='lines',
                 name='G-FRAMA Lower',
                 showlegend=False,
                 line=dict(color='rgba(200,200,200,0.30)', width=1),
-                fill='tonexty' if self.fill_bands else 'none',
-                fillcolor=fill_col if self.fill_bands else None,
             ))
 
         # ── FRAMA line in three coloured segments ─────────────────────────

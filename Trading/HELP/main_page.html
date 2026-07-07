@@ -57,6 +57,34 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 
 <div class="info">Der Chart lädt Daten zunächst aus der lokalen SQLite-Datenbank; fehlen neuere Kurse, wird automatisch Yahoo Finance als Fallback abgefragt.</div>
 
+<h2>Band-Overlays &amp; handelsfreie Zeiten</h2>
+<p>Mehrere Overlays zeichnen <b>gefüllte Bänder oder Wolken</b> um den Kurs, z.&nbsp;B.:</p>
+<ul>
+  <li><b>Bollinger Bands</b> (langsames + schnelles Band)</li>
+  <li><b>Heikin-Ashi</b> EMA-High/Low-Band</li>
+  <li><b>G-FRAMA</b> ATR-Band</li>
+  <li><b>DEMA</b> Trend-Füllung (grün/rot)</li>
+  <li><b>Ichimoku (ICI)</b> Kumo-Wolke (bullisch/bärisch)</li>
+</ul>
+<p>Die x-Achse blendet <b>handelsfreie Zeiten</b> aus (Wochenenden, Bankfeiertage und –
+bei Intraday – die Nacht-Sessions), damit keine leeren Kurslücken den Chart strecken.
+Da sich die Handelszeiten je Anlageklasse unterscheiden (Aktien, Devisen, Anleihen,
+Fonds, Krypto), werden die <b>gefüllten Bänder an genau diesen Lücken unterbrochen</b>.</p>
+<div class="info">
+  <b>Die schmalen senkrechten Linien / Unterbrechungen in den Bändern sind kein
+  Darstellungsfehler</b> – sie markieren <b>handelsfreie Zeiten, Wochenenden oder
+  Bankfeiertage</b>, an denen für das jeweilige Asset keine Kurse vorliegen. Die
+  <b>Rand- und Mittellinien</b> der Bänder laufen dabei durch. Durchgehend handelbare
+  Werte (z.&nbsp;B. Krypto, 24/7) zeigen entsprechend ein <b>lückenloses</b> Band.
+</div>
+<p>In den <b>⚙ Einstellungen</b> lässt sich dies über <b>„Handelsfreie Zeiten in
+Bändern markieren"</b> (<code>mark_nontrading_times</code>) umschalten:</p>
+<ul>
+  <li><b>Ja</b> (Standard) – Bänder werden an handelsfreien Zeiten unterbrochen
+      (Lücken als Marker). Immer korrekt dargestellt.</li>
+  <li><b>Nein</b> – durchgehende, glattere Füllung ohne Marker.</li>
+</ul>
+
 <h2>Kauf-/Verkaufssignale im Chart</h2>
 <ul>
   <li><b>▲ grün</b> – Kaufsignal (overallValueTrend überschreitet Schwellwert)</li>

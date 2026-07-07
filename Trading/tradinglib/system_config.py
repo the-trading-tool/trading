@@ -204,6 +204,7 @@ class SystemConfig(tools.Db_tools):
         idx_require_isin = self.get_idx_selected(b_select, 'require_isin', 1)
         idx_trailing_stop_enabled = self.get_idx_selected(b_select, 'trailing_stop_enabled', 1)
         idx_show_regime = self.get_idx_selected(b_select, 'show_regime', 1)
+        idx_mark_nontrading = self.get_idx_selected(b_select, 'mark_nontrading_times', 0)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
         idx_start_page = self.get_idx_selected(start_pages, 'start_page', 0)
         self.region.write(i18n.t("cfg.user", username=self.username))
@@ -412,6 +413,7 @@ class SystemConfig(tools.Db_tools):
         self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
         self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
         self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
+        self.set_value('mark_nontrading_times', st.selectbox(i18n.t("cfg.mark_nontrading_times"), b_select, idx_mark_nontrading, help=i18n.t("cfg.mark_nontrading_times_help")))
         self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
         self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
 

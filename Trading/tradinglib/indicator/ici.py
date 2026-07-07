@@ -175,12 +175,19 @@ class Ici(_indicator._Indicator):
 			fill_color = self.color_cloud_bull if is_bull else self.color_cloud_bear
 			cloud_name = 'Bullish Cloud' if is_bull else 'Bearish Cloud'
 
+			if not self.fill_cloud:
+				continue
+
+			# Split each bull/bear cloud run further at time gaps so no fill
+			# polygon spans an x-axis rangebreak (weekend/holiday), which Plotly
+			# balloons into a wedge — see _Indicator.segmented_band.
+			xs, ys = self.segmented_band(x_seg, a_seg, b_seg)
 			self.fig.add_trace(
 				go.Scatter(
-					x=np.concatenate([x_seg, x_seg[::-1]]),
-					y=np.concatenate([a_seg, b_seg[::-1]]),
-					fill='toself' if self.fill_cloud else 'none',
-					fillcolor=fill_color if self.fill_cloud else None,
+					x=xs,
+					y=ys,
+					fill='toself',
+					fillcolor=fill_color,
 					line=dict(color='rgba(0,0,0,0)'),
 					showlegend=False,
 					hoverinfo='skip',

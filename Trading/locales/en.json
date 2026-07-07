@@ -74,6 +74,8 @@
   "cfg.require_isin": "Only tradable (ISIN required):",
   "cfg.trailing_stop_enabled": "Trailing stop (live/paper trading) enabled:",
   "cfg.show_regime": "Show regime / market-stress banner:",
+  "cfg.mark_nontrading_times": "Mark non-trading times in bands:",
+  "cfg.mark_nontrading_times_help": "Yes: filled bands (Bollinger, Heikin EMA, G-FRAMA, DEMA, Ichimoku) break over weekends/bank holidays – the gaps mark non-trading times. No: continuous fill (smoother); for assets that trade on otherwise-closed days (e.g. futures) the fill can be imprecise at transitions.",
   "cfg.buy_query": "Buy query:",
   "cfg.sell_query": "Sell query:",
   "cfg.data_provider_header": "Data provider",
