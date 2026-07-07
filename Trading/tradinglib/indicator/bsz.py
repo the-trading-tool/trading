@@ -36,6 +36,10 @@ class Bsz(_indicator._Indicator):
             # ✅ Ensure index is datetime
             if not isinstance(df.index, pd.DatetimeIndex):
                 df.index = pd.to_datetime(df.index)
+            # ✅ get_indexer(method='nearest') requires a monotonic index;
+            #    drop duplicate timestamps and sort chronologically.
+            df = df[~df.index.duplicated(keep='last')]
+            df = df.sort_index()
         except Exception:
             pass
         
