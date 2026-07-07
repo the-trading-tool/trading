@@ -674,7 +674,8 @@ class TradingApp:
         # Re-apply on every run so the saved preference survives server restarts
         _apply_theme(_theme_mode if _theme_mode in ('dark', 'light') else 'dark')
 
-        _cfg_col, _help_col, _dash_col, _theme_col = st.sidebar.columns(4, gap="small")
+        # Order (left→right): Home · Help · Theme · Settings
+        _dash_col, _help_col, _theme_col, _cfg_col = st.sidebar.columns(4, gap="small")
         if _cfg_col.button("⚙", use_container_width=True, key='_nav_settings', help=t('nav.settings')):
             self.sys_config.render()
         if _help_col.button("❓", use_container_width=True, key='_nav_help', help=t('nav.help')):
