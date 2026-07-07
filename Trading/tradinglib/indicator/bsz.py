@@ -51,8 +51,14 @@ class Bsz(_indicator._Indicator):
         self.data()
         
         
-    def data(self): 
+    def data(self):
         """Compute the indicator values and attach them as columns to self.df."""
+
+        # get_indexer(method='nearest') in the tagging loop below requires a
+        # unique + monotonic index. The normalisation in __init__ can be skipped
+        # (its reset_index/'Date' step may raise into the bare except), so enforce
+        # it here on self.df — the actual index used for tagging.
+        self.df = self.df[~self.df.index.duplicated(keep='last')].sort_index()
 
         zones = []
         df = self.df.copy()
