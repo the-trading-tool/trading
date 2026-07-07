@@ -42,9 +42,9 @@ ARBOR_LOGO_SVG = """
   <line x1="34" y1="140" x2="67" y2="140" stroke="#555" stroke-width="0.5"/>
 
   <!-- Balkendiagramm rechts -->
-  <rect x="135" y="118" width="7" height="22" fill="#555" rx="1"/>
-  <rect x="146" y="110" width="7" height="30" fill="#666" rx="1"/>
-  <rect x="157" y="102" width="7" height="38" fill="#888" rx="1"/>
+  <rect x="135" y="114" width="7" height="26" fill="#555" rx="1"/>
+  <rect x="146" y="104" width="7" height="36" fill="#666" rx="1"/>
+  <rect x="157" y="94" width="7" height="46" fill="#888" rx="1"/>
   <line x1="133" y1="140" x2="166" y2="140" stroke="#555" stroke-width="0.5"/>
 
   <!-- Tagline -->
