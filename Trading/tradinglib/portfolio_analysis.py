@@ -582,7 +582,11 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                             closed_series[t] = pd.Series(dtype=float, name=t)
 
             fig_closed = go.Figure()
-            for entry in closed_display:
+            # Distinct colour per trade so each line is identifiable against the
+            # legend; win/loss is still encoded via the line style (solid = gain,
+            # dotted = loss) plus the ▲/▼ and signed % in the label.
+            _palette = px.colors.qualitative.D3 + px.colors.qualitative.Set2
+            for _i, entry in enumerate(closed_display):
                 ticker   = entry['Ticker']
                 buy_ts   = entry['_buy_ts']
                 sell_ts  = entry['_sell_ts']
@@ -591,6 +595,10 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     continue
                 s = s.copy()
                 s.index = pd.to_datetime(s.index, errors='coerce')
+                # Sort chronologically and drop duplicate timestamps – otherwise an
+                # unsorted DB read makes the line zig-zag / run back to a prior day.
+                s = s[~s.index.isna()].sort_index()
+                s = s[~s.index.duplicated(keep='last')]
                 try:
                     segment = s[(s.index >= pd.Timestamp(buy_ts)) & (s.index <= pd.Timestamp(sell_ts))]
                 except Exception:
@@ -598,11 +606,15 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 if segment.empty or segment.iloc[0] == 0:
                     continue
                 norm  = (segment / segment.iloc[0]) * 100
-                label = f'{ticker} ({pd.Timestamp(buy_ts).strftime("%Y-%m-%d") if not pd.isna(buy_ts) else "?"})'
-                color = '#2ca02c' if entry['_gain_pct'] >= 0 else '#d62728'
+                _gain = entry['_gain_pct']
+                _arrow = '▲' if _gain >= 0 else '▼'
+                _buy_str = pd.Timestamp(buy_ts).strftime("%Y-%m-%d") if not pd.isna(buy_ts) else "?"
+                label = f'{_arrow} {ticker} ({_buy_str}, {_gain:+.1f}%)'
+                color = _palette[_i % len(_palette)]
                 fig_closed.add_trace(go.Scatter(
                     x=norm.index, y=norm.values.round(2),
-                    mode='lines', name=label, line=dict(color=color),
+                    mode='lines', name=label,
+                    line=dict(color=color, dash='solid' if _gain >= 0 else 'dot'),
                     hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Base 100)<extra></extra>',
                 ))
             fig_closed.update_layout(
