@@ -660,7 +660,7 @@ class TradingApp:
         else:
             self.sidebar_header = None
 
-        bp.render_logo(region=st.sidebar, max_width="65%", margin_bottom="1.3rem")
+        bp.render_logo(region=st.sidebar, max_width="85%", margin_bottom="1.3rem")
         st.sidebar.markdown("---")
 
         # ── Settings & Help ─────────────────────────────────────────────────
