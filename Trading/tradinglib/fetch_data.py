@@ -214,8 +214,18 @@ class FetchData(tt.TickerTools):
                 # display timezone (e.g. Europe/Berlin)
                 df.index = DataUtils.convert_utc_naive_to_tz(df.index, tz=self.tz_info)
 
+                # Freeze the index as chronologically sorted while it is still a
+                # real DatetimeIndex: the raw sort above was lexicographic on the
+                # stored string, and tz conversion can reorder bars across a DST
+                # boundary. Downstream .loc[start:end] slicing needs monotonic.
+                df = df.sort_index()
+
                 df.index = df.index.strftime(self.ftime_str)
                 df.index.name = 'Date'
+                # tz conversion can map two intraday UTC instants onto the same
+                # wall-clock label -> drop the resulting duplicate string keys so
+                # nearest-indexer / reindex calls stay valid.
+                df = df[~df.index.duplicated(keep='last')]
 
             try:
                 df = self.aggregate_ohlc(df, interval=interval)
