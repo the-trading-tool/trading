@@ -93,6 +93,7 @@ _INDEX_NAMES: dict[str, tuple[str, str]] = {
     'SB=F':     ('Zucker',                  'Agrar'),
     'CT=F':     ('Baumwolle',               'Agrar'),
     'DX=F':     ('US Dollar Index',          'Sonstiges'),
+    'ZN=F':     ('US-Treasuries 10Y',        'Zins USA'),
     'LE=F':     ('Live Cattle',              'Sonstiges'),
     'BTC-EUR':  ('Bitcoin (EUR)',            'Krypto'),
     'ETH-EUR':  ('Ethereum (EUR)',           'Krypto'),
@@ -125,6 +126,8 @@ _EXTRA_SYMBOLS = [
     'ZW=F', 'ZC=F', 'ZS=F', 'KC=F', 'CC=F', 'SB=F', 'CT=F',
     # Crypto
     'BTC-EUR', 'ETH-EUR',
+    # Rates / bonds
+    'ZN=F',
     # Other
     'DX=F', 'LE=F',
     # Currencies
@@ -134,6 +137,29 @@ _EXTRA_SYMBOLS = [
 
 # Default activation on first call
 _DEFAULT_INSTRUMENTS = ['^VIX', '^TNX', '^HSI', '^N225', '^GDAXI', '^SPX', 'GC=F', 'BTC-EUR']
+
+# Instruments backing the Correlation Index (correlation_index.db). They are shown
+# permanently checked + disabled in the instrument picker and are always part of the
+# analysis, so the AI can relate their stored cross-asset correlations to the market
+# data. display_id (market-overview) — the yf-ticker mapping (^SPX→^GSPC, DX=F→DX-Y.NYB)
+# stays as configured in _YF_TICKER_MAP.
+_CORR_LOCKED_IDS = ['^SPX', 'BTC-EUR', 'GC=F', 'DX=F', 'HG=F', 'ZN=F']
+
+# German pair labels for the correlation prompt block (keyed by correlation_index pair id).
+_CORR_PAIR_LABELS = {
+    'spx_btc':    'S&P 500 ↔ Bitcoin',
+    'btc_gold':   'Bitcoin ↔ Gold',
+    'spx_usd':    'S&P 500 ↔ US-Dollar-Index',
+    'copper_spx': 'Kupfer ↔ S&P 500',
+    'zn_spx':     'US-Treasuries (10Y) ↔ S&P 500',
+}
+_CORR_PAIR_CONTEXT = {
+    'spx_btc':    'BTC als High-Beta-Risk-Asset (positiv = wenig Diversifikation).',
+    'btc_gold':   '"digitales Gold"-These (positiv = bestätigt, near-null = entkoppelt).',
+    'spx_usd':    'normal negativ; Vorzeichenwechsel ins Positive = Stress/Regimewechsel.',
+    'copper_spx': 'Konjunktur-Bestätigung (positiv = risk-on; fallend = Wachstumszweifel).',
+    'zn_spx':     'negativ = gesunde 60/40-Diversifikation; positiv = Zins-Regime, geschwächt.',
+}
 
 
 def _load_index_symbols() -> list[tuple[str, str, str, str]]:
@@ -649,6 +675,66 @@ def _pivot_compression(ind: dict, close: float) -> dict:
     }
 
 
+def _correlation_prompt_block() -> str:
+    """Format the stored cross-asset correlations for the AI prompt (German scaffold).
+
+    Reads correlation_index.db via the correlation_index module. Returns '' when no
+    correlation data is available yet (scheduler job not run).
+    """
+    try:
+        from tradinglib import correlation_index as ci
+    except Exception:
+        return ''
+    try:
+        series, meta, updated_at = ci.load_from_db()
+    except Exception as exc:
+        logger.warning("market_overview: correlation load failed: %s", exc)
+        return ''
+    if series is None or series.empty:
+        return ''
+
+    meta_by = ({r['pair_id']: r for _, r in meta.iterrows()}
+               if meta is not None and not meta.empty else {})
+
+    lines = [
+        "════════════════════════════════════════",
+        "CROSS-ASSET-KORRELATIONEN (rollierende Tages-Log-Renditen)",
+        "Skala: -1 Gegenlauf · 0 entkoppelt · +1 Gleichlauf"
+        + (f"  |  Stand: {updated_at}" if updated_at else ""),
+        "════════════════════════════════════════",
+        "",
+    ]
+    for pair in ci.PAIRS:
+        pid = pair['id']
+        sub = series[series['pair_id'] == pid]
+        c30_ser = sub['corr_30'].dropna() if 'corr_30' in sub else pd.Series(dtype=float)
+        c90_ser = sub['corr_90'].dropna() if 'corr_90' in sub else pd.Series(dtype=float)
+        if c30_ser.empty and c90_ser.empty:
+            continue
+        c30 = float(c30_ser.iloc[-1]) if not c30_ser.empty else None
+        c90 = float(c90_ser.iloc[-1]) if not c90_ser.empty else None
+
+        # Trend: current vs. ~21 rows back on the longer window (fallback 30d)
+        t_ser = c90_ser if not c90_ser.empty else c30_ser
+        trend = '→ stabil'
+        if len(t_ser) > 21:
+            d = float(t_ser.iloc[-1]) - float(t_ser.iloc[-22])
+            trend = ('↗ steigend' if d > 0.12 else '↘ fallend' if d < -0.12 else '→ stabil')
+
+        mrow = meta_by.get(pid)
+        full = (float(mrow['full_corr'])
+                if mrow is not None and pd.notna(mrow.get('full_corr')) else None)
+
+        c30s = f"{c30:+.2f}" if c30 is not None else "n/a"
+        c90s = f"{c90:+.2f}" if c90 is not None else "n/a"
+        fulls = f"{full:+.2f}" if full is not None else "n/a"
+        lines.append(f"─── {_CORR_PAIR_LABELS.get(pid, pid)} ───")
+        lines.append(f"  30T: {c30s} | 90T: {c90s} | Ø gesamt: {fulls} | Trend(~1M): {trend}")
+        lines.append(f"  Kontext: {_CORR_PAIR_CONTEXT.get(pid, '')}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _build_market_prompt(
     results: list[dict], symbol_meta: list[tuple],
     interval: str, period: str, indicators: list,
@@ -887,6 +973,12 @@ def _build_market_prompt(
                 lines.append(f"  Datum: {a['published']}")
             lines.append("")
 
+    # ── Cross-Asset-Korrelationen ──────────────────────────────────────────────
+    if inc.get('correlations', True):
+        _corr_block = _correlation_prompt_block()
+        if _corr_block:
+            lines.append(_corr_block)
+
     # ── Analyse-Aufgabe ────────────────────────────────────────────────────────
     lines += [
         "════════════════════════════════════════",
@@ -929,6 +1021,23 @@ def _build_market_prompt(
             "Widersprüche:  [Asset-Kombinationen die gegenläufige Signale zeigen]",
             "Confidence:    [0–100] — 0=maximal widersprüchlich, 100=alle Signale konsistent",
             "               Begründung der Confidence in 1 Satz.",
+        ]
+
+    if inc.get('correlations', True):
+        lines += [
+            "",
+            "─────────────────────────────────────────",
+            "KORRELATIONS-NUTZUNG (Cross-Asset)",
+            "─────────────────────────────────────────",
+            "Nutze den Block CROSS-ASSET-KORRELATIONEN oben:",
+            "  • Bewerte Diversifikation & Risk-on/Risk-off-Kopplung der Assets aus den Werten.",
+            "  • Regime-Flags: SPX↔USD positiv = Stress/US-Sonderrolle; ZN↔SPX positiv = "
+            "60/40-Diversifikation geschwächt (Zins-Regime); SPX↔BTC hoch = BTC als High-Beta-"
+            "Risk-Asset; Kupfer↔SPX bestätigt/verneint die Konjunktur hinter der Aktienbewegung.",
+            "  • Beziehe den Korrelations-TREND (steigend/fallend) in die Allocation-Richtung "
+            "und das DEPOT-PROFIL ein (z.B. schwächere Anleihen-Diversifikation → eher Cash/Gold "
+            "statt Anleihen zur Absicherung).",
+            "  • Nenne konkrete Korrelationswerte als Begründung, keine allgemeinen Aussagen.",
         ]
 
     if inc.get('trend_compare', True):
@@ -989,6 +1098,7 @@ _SECTION_DEFAULTS: dict[str, tuple[str, bool]] = {
     'extended_snippets':  ('Trend-Verlauf lang (200P→50P→heute)',     False),
     'compare_4w':         ('4-Wochen-Vergleich',                      True),
     'headlines':          ('Nachrichten-Sentiment (Yahoo RSS)',        True),
+    'correlations':       ('Cross-Asset-Korrelationen',               True),
     'global_summary':     ('Global Summary + Risk Score',             True),
     'trend_compare':      ('Trendvergleich & Umschichtung',           True),
     'depot_55plus':       ('Depot-Profil 55+',                        True),
@@ -1219,16 +1329,22 @@ class MarketOverviewPage:
                 for sym in by_cat[cat]:
                     display_id = sym[0]
                     label = f"{display_id} · {sym[2]}"
+                    locked = display_id in _CORR_LOCKED_IDS
                     with cols[col_idx % 4]:
+                        # Correlation-Index instruments are permanently on: shown
+                        # checked + disabled (greyed) and always included below.
                         checked = st.checkbox(
-                            label,
-                            value=(display_id in selected_ids),
+                            f"🔒 {label}" if locked else label,
+                            value=True if locked else (display_id in selected_ids),
+                            disabled=locked,
                             key=f'instr_{display_id}',
+                            help=t('mv.corr_locked_help') if locked else None,
                         )
-                    if checked:
+                    if checked or locked:
                         new_selected_ids.append(display_id)
                     col_idx += 1
 
+            st.caption(t('mv.corr_locked_caption'))
             st.markdown("---")
 
             # ── Daten-Abschnitte ──────────────────────────────────────────────

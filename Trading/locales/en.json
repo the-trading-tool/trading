@@ -1278,5 +1278,8 @@
   "mv.cat.crypto": "Crypto",
   "mv.cat.other": "Other",
   "mv.cat.index": "Index",
-  "mv.prompt_lang_directive": "IMPORTANT: Write the ENTIRE response/analysis in English."
+  "mv.prompt_lang_directive": "IMPORTANT: Write the ENTIRE response/analysis in English.",
+  "mv.section.correlations": "Cross-asset correlations",
+  "mv.corr_locked_caption": "🔒 Locked: base instruments of the correlation index — always active so the AI can use the cross-asset correlations.",
+  "mv.corr_locked_help": "Correlation-index instrument — permanently active."
 }

@@ -1278,5 +1278,8 @@
   "mv.cat.crypto": "Krypto",
   "mv.cat.other": "Sonstiges",
   "mv.cat.index": "Index",
-  "mv.prompt_lang_directive": "WICHTIG: Schreibe die GESAMTE Antwort/Analyse auf Deutsch."
+  "mv.prompt_lang_directive": "WICHTIG: Schreibe die GESAMTE Antwort/Analyse auf Deutsch.",
+  "mv.section.correlations": "Cross-Asset-Korrelationen",
+  "mv.corr_locked_caption": "🔒 Fest gesetzt: Basis-Instrumente des Korrelationsindex — immer aktiv, damit die KI die Cross-Asset-Korrelationen auswerten kann.",
+  "mv.corr_locked_help": "Instrument des Korrelationsindex — permanent aktiv."
 }
