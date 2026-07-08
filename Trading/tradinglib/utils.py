@@ -399,7 +399,7 @@ class DataUtils():
             return default
 
     @staticmethod
-    def save_ohlc_to_sql(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame, date_format: str = '%Y-%m-%d') -> None:
+    def save_ohlc_to_sql(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame, date_format: str = '%Y-%m-%d %H:%M:%S') -> None:
         """Save DataFrame with OHLCV-like columns to sqlite using a single executemany call.
 
         Expects columns Date (or index), Open, High, Low, Close, Volume. Missing columns will be filled with None.
