@@ -1244,6 +1244,12 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
             df_m = df_m.set_index("Date")
         if df_w is not None and "Date" in df_w.columns:
             df_w = df_w.set_index("Date")
+        # set_index("Date") above re-installs the raw (possibly object-dtype,
+        # unsorted) Date column as index -> coerce back to a sorted DatetimeIndex
+        # so the df_w/df_m.loc[:date] slices below don't compare str vs Timestamp.
+        df = DataUtils.ensure_datetime_index(df)
+        df_m = DataUtils.ensure_datetime_index(df_m)
+        df_w = DataUtils.ensure_datetime_index(df_w)
 
         for date in df.index:
             res_df_d = df_r.loc[startdate:date]
