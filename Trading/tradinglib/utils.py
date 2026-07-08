@@ -306,6 +306,8 @@ class DataUtils():
         - If df is None or empty, returns it unchanged.
         - If a 'Date' column exists, it will be set as the index (preserving the column).
         - The index will be coerced to datetime and any NaT rows dropped.
+        - The index is sorted ascending so value-based slicing (df.loc[a:b])
+          works — pandas rejects partial slicing on a non-monotonic DatetimeIndex.
         """
         try:
             if df is None:
@@ -318,6 +320,9 @@ class DataUtils():
                 df.index = pd.to_datetime(df.index, errors='coerce')
             # drop invalid timestamps
             df = df[~df.index.isna()]
+            # ensure monotonic index for value-based slicing (df.loc[start:end])
+            if not df.index.is_monotonic_increasing:
+                df = df.sort_index()
             return df
         except Exception:
             return df
