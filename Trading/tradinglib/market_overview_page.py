@@ -764,18 +764,26 @@ def _build_market_prompt(
         # German (internal engineering text), only the AI's response language changes.
         t('mv.prompt_lang_directive'),
         "",
-        "Du bist ein quantitativer Multi-Asset-Analyst.",
-        "Analysiere die folgenden Märkte STRIKT DATENBASIERT — keine narrative Vereinheitlichung.",
+        "Du bist ein quantitativer Multi-Asset-Stratege.",
+        "Deine Aufgabe ist INTERPRETATION, nicht Wiederholung: Verbinde die Assets zu einem",
+        "kohärenten Makro-Bild und leite handlungsrelevante Implikationen ab. Rohzahlen nur,",
+        "wenn sie eine Aussage BELEGEN — kein Vorlesen der Daten.",
         f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
         count_line,
         "Regeln:",
-        f"  • Werte ALLE {n_total} ausgewählten Märkte aus. Triff KEINE eigene Vorauswahl "
-        "und begrenze die Anzahl NICHT — die Auswahl ist bereits vom Nutzer getroffen.",
-        "  • Verwende NUR die gelieferten Daten. Keine externen Annahmen.",
-        '  • Widersprüchliche Indikatoren → als "KONFLIKT" markieren, NICHT auflösen.',
-        "  • Hierarchie: [1-TREND] > [2-MOMENTUM] > [3-VOLATILITÄT] > [4-MAKRO] > [5-OPTIONAL]",
-        "  • Gib KEINE Anlageberatung — nur Datenanalyse"
-        + (" (Ausnahme: Abschnitt DEPOT-PROFIL am Ende)." if inc.get('depot_55plus', True) else "."),
+        f"  • Werte ALLE {n_total} Märkte aus (keine eigene Vorauswahl, Anzahl NICHT begrenzen).",
+        "  • Nutze NUR die gelieferten Daten (Marktdaten + Korrelationen). Erfinde keine externen "
+        "Fakten, News oder Kursziele.",
+        "  • Echte Widersprüche als KONFLIKT benennen, aber EINORDNEN (welches Signal wiegt schwerer "
+        "und warum) — nicht nur auflisten.",
+        "  • SEMANTIK beachten: ^TNX = 10J-RENDITE (steigende Rendite = fallender Anleihepreis = "
+        "Zinsdruck/Straffung → tendenziell RISK-OFF für Aktien/Gold, NICHT 'risk-on'). ZN=F = "
+        "Anleihe-PREIS (invers zu ^TNX). Gold/Silber/Kupfer als Metall-Komplex zusammen lesen; "
+        "^TNX und ZN=F als EIN Zins-Thema behandeln (nicht doppelt zählen).",
+        "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
+        "Korrelationen die stark vom Ø-Wert abweichen — dort liegt die eigentliche Information.",
+        "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung"
+        + (" (Ausnahme: DEPOT-PROFIL am Ende)." if inc.get('depot_55plus', True) else "."),
         "",
         "════════════════════════════════════════",
         "MARKTDATEN",
@@ -985,72 +993,74 @@ def _build_market_prompt(
         "ANALYSE-AUFGABE",
         "════════════════════════════════════════",
         "",
-        f"Schreibe für JEDES der {n_total} ausgewählten Assets exakt dieses Format",
-        "(keine Abweichungen, keine zusätzlichen Abschnitte pro Asset).",
-        "Assets mit FEHLER/ohne Daten: nur den ASSET-Kopf + 'keine Daten verfügbar' notieren,",
-        "nicht aus der Analyse streichen:",
+        "TEIL 1 — MARKT-THESE (zuerst! 3–5 Sätze, das Wichtigste oben):",
+        "  • Benenne DEN dominanten Treiber JETZT (z.B. Rendite-/Zinsschock, Dollar-Stärke, "
+        "Wachstumssorge, breites Risk-off) und belege ihn mit 2–3 konkreten Werten ÜBER Assets hinweg.",
+        "  • Welche Assets bestätigen den Treiber, welche widersprechen? Komplex-Sicht (Metalle "
+        "zusammen, zinssensitive Assets zusammen) — nicht Asset für Asset.",
+        "  • 1 Satz: Welches Signal würde diese These KIPPEN?",
         "",
-        "Klassifikations-Schwellen (VERBINDLICH — nutze exakt diese Grenzen, erfinde keine eigenen):",
-        "  Trend:       bull = Kurs über SMA50 UND SMA200  |  bear = Kurs unter SMA50 UND SMA200  |",
-        "               sideways = gemischt (Kurs über die eine, unter die andere MA)",
-        "  Momentum (RSI 14):  stark = RSI ≥ 60  |  neutral = 40 ≤ RSI < 60  |  schwach = RSI < 40.",
-        "               MACD-Hist-Vorzeichen bestätigt (+ = bullisch, − = bearisch); widerspricht es",
-        "               der RSI-Einstufung → 'neutral' UND als KONFLIKT vermerken.",
-        "  Volatilität (ATR % des Kurses):  niedrig < 1.5%  |  normal 1.5–3.0%  |  hoch > 3.0%",
-        "",
-        "ASSET: [ticker | name]",
-        "Trend:       [bull / bear / sideways] — Begründung: welche MAs bestätigen?",
-        "Momentum:    [stark / neutral / schwach] — Begründung: RSI-Wert + MACD-Hist-Vorzeichen",
-        "Volatilität: [hoch / normal / niedrig] — Begründung: ATR-% des Kurses",
-        "Regime:      [risk-on / risk-off / neutral] — NUR wenn Trend+Momentum+Volatilität",
-        "             EINDEUTIG in DIESELBE Richtung zeigen. Sonst: 'unklar'",
-        "Konflikte:   [liste jeden Widerspruch zwischen [1]–[5] explizit auf.",
-        "             Beispiel: 'RSI neutral vs. MACD bullisch' oder 'keine']",
-        "Kurzfazit:   [1–2 Sätze — ausschließlich aus den gelieferten Daten ableitbar]",
+        f"TEIL 2 — EVIDENZ JE ASSET (alle {n_total}, GENAU EINE Zeile pro Asset, KEINE Rohzahl-Wiederholung):",
+        "  Format: <ticker>: <bull/bear/sideways> · Mom <stark/neutral/schwach> · Vol "
+        "<hoch/normal/niedrig> · Regime <risk-on/off/unklar> · Auffälligkeit: <Extremwert/"
+        "Vorzeichenwechsel oder '—'>",
+        "  Asset ohne eigene OHLC: '<ticker>: keine OHLC — Einordnung aus Korrelationsblock' "
+        "(falls dort vertreten, z.B. ZN=F, DX-Y.NYB), sonst 'keine Daten'.",
+        "  Schwellen (VERBINDLICH): Trend bull=Kurs>SMA50 UND >SMA200 · bear=<SMA50 UND <SMA200 · "
+        "sonst sideways.  Momentum(RSI14): stark≥60 · neutral 40–59 · schwach<40 (MACD-Hist "
+        "bestätigt +/−; widerspricht es → neutral + KONFLIKT).  Volatilität(ATR% Kurs): niedrig<1.5 "
+        "· normal 1.5–3.0 · hoch>3.0.  Regime nur bei eindeutiger Ausrichtung, sonst 'unklar'.",
     ]
 
     if inc.get('global_summary', True):
         lines += [
             "",
             "─────────────────────────────────────────",
-            "GLOBAL SUMMARY",
+            "GLOBAL SUMMARY (Synthese, keine Aufzählung)",
             "─────────────────────────────────────────",
-            f"Risk-Modus:    [risk-on / neutral / risk-off]",
-            "               Assets (mit Daten) dasselbe Regime zeigen. Sonst: 'gemischt'",
-            "Haupttreiber:  [max. 3 Faktoren aus den Daten — konkrete Werte nennen]",
-            "Widersprüche:  [Asset-Kombinationen die gegenläufige Signale zeigen]",
-            "Confidence:    [0–100] — 0=maximal widersprüchlich, 100=alle Signale konsistent",
-            "               Begründung der Confidence in 1 Satz.",
+            "Risk-Modus:      [risk-on / neutral / risk-off / gemischt] + 1 Satz Mechanismus.",
+            "Dominante Kraft: [1 Treiber + WIE er wirkt, z.B. 'steigende Renditen drücken Gold, "
+            "Aktien und Kupfer gleichzeitig'] — Mechanismus, keine bloße Asset-Liste.",
+            "Bestätigung:     [Assets/Gruppen, die die These stützen — je 1 Kennzahl].",
+            "Divergenz:       [Assets, die widersprechen — mit möglicher Erklärung].",
+            "Confidence:      [0–100] + was sie senkt/hebt (1 Satz).",
         ]
 
     if inc.get('correlations', True):
         lines += [
             "",
             "─────────────────────────────────────────",
-            "KORRELATIONS-NUTZUNG (Cross-Asset)",
+            "KORRELATIONS-NUTZUNG (Cross-Asset — interpretieren, NICHT abschreiben)",
             "─────────────────────────────────────────",
-            "Nutze den Block CROSS-ASSET-KORRELATIONEN oben:",
-            "  • Bewerte Diversifikation & Risk-on/Risk-off-Kopplung der Assets aus den Werten.",
-            "  • Regime-Flags: SPX↔USD positiv = Stress/US-Sonderrolle; ZN↔SPX positiv = "
-            "60/40-Diversifikation geschwächt (Zins-Regime); SPX↔BTC hoch = BTC als High-Beta-"
-            "Risk-Asset; Kupfer↔SPX bestätigt/verneint die Konjunktur hinter der Aktienbewegung.",
-            "  • Beziehe den Korrelations-TREND (steigend/fallend) in die Allocation-Richtung "
-            "und das DEPOT-PROFIL ein (z.B. schwächere Anleihen-Diversifikation → eher Cash/Gold "
-            "statt Anleihen zur Absicherung).",
-            "  • Nenne konkrete Korrelationswerte als Begründung, keine allgemeinen Aussagen.",
+            "Für JEDES Paar im Block CROSS-ASSET-KORRELATIONEN (ALLE, nicht nur einige):",
+            "  • Regime benennen (Gleichlauf / Gegenlauf / entkoppelt) + ökonomische Bedeutung.",
+            "  • Aktuellen Wert gegen 'Ø gesamt' UND den Trend spiegeln: Ist die Kopplung "
+            "UNGEWÖHNLICH (weicht vom Ø ab) oder verstärkt/lockert sie sich? Das ist das Signal.",
+            "  • Genau 1 Portfolio-Implikation je Paar.",
+            "  Regime-Flags: SPX↔USD positiv = Stress/US-Sonderrolle; ZN↔SPX positiv (bes. über Ø) "
+            "= Anleihen schützen nicht mehr → 60/40 geschwächt; SPX↔BTC hoch = BTC = High-Beta-Risk; "
+            "Kupfer↔SPX bestätigt/verneint die Konjunktur.",
+            "GUT: 'ZN↔SPX +0.54 (Ø −0.08, steigend) → Anleihen und Aktien koppeln positiv, weit über "
+            "dem historischen Schnitt: Zins-Regime, Anleihen diversifizieren im Abschwung nicht mehr → "
+            "Absicherung eher über Cash/Gold.'",
+            "SCHLECHT (NICHT so): 'S&P 500 und Bitcoin: 30T +0.41, 90T +0.40 (positiv).' — nur Zahlen "
+            "wiederholt, keine Aussage.",
         ]
 
     if inc.get('trend_compare', True):
         lines += [
             "",
             "─────────────────────────────────────────",
-            "TRENDVERGLEICH VOR 4 WOCHEN",
+            "TRENDVERGLEICH VOR 4 WOCHEN & UMSCHICHTUNG",
             "─────────────────────────────────────────",
-            "Nutze die [VERGLEICH VOR 4 WOCHEN]-Blöcke pro Asset.",
-            "Welche Regime-Wechsel oder Vorzeichenwechsel sind seit vor 4 Wochen aufgetreten?",
-            "Richtungsänderung der Allocation (kein Ratschlag, nur Richtung aus den Daten):",
+            "Nutze die [VERGLEICH VOR 4 WOCHEN]-Blöcke pro Asset PLUS die Korrelations-Trends.",
+            "Welche Regime-/Vorzeichenwechsel sind seit vor 4 Wochen aufgetreten?",
+            "Allocation-Richtung (nur Richtung aus den Daten, kein pauschaler Rat):",
+            "  KONSISTENZ-PFLICHT: Jede Umschichtung braucht einen KAUSAL passenden Grund. Erhöhe ein "
+            "Asset NIE mit der Begründung, dass es fällt — außer als explizit benannte Mean-Reversion-"
+            "These (RSI überverkauft ≤ 20 oder Kompression). Fehlt ein sauberer Grund: 'neutral halten'.",
             "  Beispiel: 'Aktienquote reduzieren: SPX+GDAXI Markov Bull→Bear + MACD dreht negativ'",
-            "            'Gold erhöhen: VIX-Kompression + RSI überverkauft'",
+            "            'Cash/Gold statt Anleihen: ZN↔SPX-Korrelation steigt über Ø (Diversifikation schwächer)'",
         ]
 
     if inc.get('depot_55plus', True):
