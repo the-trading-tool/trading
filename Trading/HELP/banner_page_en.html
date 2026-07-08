@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Dashboard – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Dashboard <small style="font-size:.6em;color:#888">banner_page.py</small></h1>
+
+<p>The app's start page. It gives an overview of the overall portfolio, current AI trading tips and the historical strategy performance.</p>
+
+<h2>Section overview</h2>
+<table>
+<tr><th>Section</th><th>Content</th></tr>
+<tr><td><b>Metrics row</b></td><td>Starting capital · Current portfolio value · Performance (%) · Maximum positions</td></tr>
+<tr><td><b>Strategy labels</b></td><td>Active trading strategy/strategies and their associated indices</td></tr>
+<tr><td><b>AI trading tip</b></td><td>Automatically generated analysis of the most recently bought asset (Groq / Gemini)</td></tr>
+<tr><td><b>Trades table</b></td><td>All open and closed positions with profit/loss</td></tr>
+<tr><td><b>Cumulative gain chart</b></td><td>Time series of the realised total profit</td></tr>
+<tr><td><b>Strategy metrics</b></td><td>Profit factor, hit rate, avg. profit/trade per strategy</td></tr>
+<tr><td><b>Monthly heatmap</b></td><td>RdYlGn colour coding: gains (green) vs. losses (red) per month/year</td></tr>
+<tr><td><b>Portfolio overlap warning</b></td><td>Notice when an asset is active in several strategies at once</td></tr>
+<tr><td><b>Disclaimer</b></td><td>Legal notice (collapsed)</td></tr>
+</table>
+
+<h2>Language selection</h2>
+<p>Top left: a dropdown between <b>Deutsch</b> and <b>English</b>. The choice is stored in <code>config.db</code> and persists across sessions.</p>
+
+<h2>Reading the strategy metrics</h2>
+<table>
+<tr><th>Metric</th><th>Meaning</th></tr>
+<tr><td>Profit factor</td><td>Sum of gains ÷ sum of losses (value &gt; 1 = profitable)</td></tr>
+<tr><td>Hit rate</td><td>Share of profitable trades in %</td></tr>
+<tr><td>Avg. profit/trade</td><td>Average realised profit per completed trade</td></tr>
+<tr><td>Realised profit</td><td>Total sum of all closed positions</td></tr>
+<tr><td>Longest winning streak</td><td>Maximum number of consecutive winning trades</td></tr>
+</table>
+
+<div class="info">The AI tip is generated automatically when <code>run_agent.py</code> or <code>asset_perf2.py</code> processes a new buy signal. No API key → no tip.</div>
+<div class="warn">⚠️ For strategies with "Value Trend" in the name a geopolitics notice appears automatically, because the strategy does not account for geopolitical events.</div>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Correlation Index – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Correlation Index <small style="font-size:.6em;color:#888">correlation_index_page.py</small></h1>
+
+<p>Shows the <b>rolling correlation of daily log returns</b> for five key macro pairs.
+This reveals whether asset classes are currently moving <b>together</b> (positive
+correlation) or <b>in opposite directions</b> (negative correlation) — a gauge for
+diversification and risk-on/risk-off regimes.</p>
+
+<h2>Observed pairs</h2>
+<table>
+<tr><th>Pair</th><th>Reading when co-moving (+)</th></tr>
+<tr><td>S&amp;P 500 &harr; Bitcoin</td><td>BTC acts as a risk asset, little diversification</td></tr>
+<tr><td>Bitcoin &harr; Gold</td><td>Both traded as a store of value ("digital gold")</td></tr>
+<tr><td>S&amp;P 500 &harr; US Dollar Index</td><td>Unusual — normally negative; positive = stress/regime signal</td></tr>
+<tr><td>Copper &harr; S&amp;P 500</td><td>The economy confirms the equity move (risk-on)</td></tr>
+<tr><td>US Treasuries (10Y) &harr; S&amp;P 500</td><td>Rate-driven; 60/40 diversification weakened</td></tr>
+</table>
+
+<h2>Usage</h2>
+<ul>
+  <li><b>Window (30 / 90 days):</b> length of the rolling correlation window in trading
+      days. 30 days reacts faster, 90 days is more stable.</li>
+  <li><b>Overview table:</b> current value (colour-coded), trend arrow (vs. ~1 month)
+      and a classification per pair.</li>
+  <li><b>Per pair:</b> a chart of both windows (the selected one emphasised, ±0.6 bands,
+      zero line), key figures and an automatically generated interpretation.</li>
+</ul>
+
+<h2>Methodology – what is measured</h2>
+<table>
+<tr><th>Aspect</th><th>Value</th></tr>
+<tr><td>Measure</td><td>Pearson correlation of <b>daily log returns</b> <code>ln(C&#8348;/C&#8348;&#8331;&#8321;)</code> — not of price levels/trends</td></tr>
+<tr><td>Range</td><td>&minus;1 (perfect opposite) … 0 (decoupled) … +1 (perfect co-movement)</td></tr>
+<tr><td>Classification</td><td>|r| &ge; 0.6 strong · &ge; 0.3 moderate · &ge; 0.15 weak · otherwise decoupled</td></tr>
+<tr><td>Data source</td><td>local daily prices (<code>day_data</code>) from the <code>yf_&lt;ticker&gt;.db</code> files</td></tr>
+</table>
+<div class="warn">Comparisons with external tools/AI often differ when they look at
+<b>price/trend paths</b> instead of return correlations, or use a different time window
+or data snapshot. If the sign is reversed, first check whether the same instrument and
+method are meant.</div>
+
+<h2>Instruments &amp; data</h2>
+<table>
+<tr><th>Asset</th><th>Local ticker</th><th>Note</th></tr>
+<tr><td>S&amp;P 500</td><td><code>^SPX</code></td><td>deep history</td></tr>
+<tr><td>Bitcoin</td><td><code>BTC-EUR</code></td><td>proxy for BTC-USD (return correlation practically identical)</td></tr>
+<tr><td>Gold</td><td><code>GC=F</code></td><td>&nbsp;</td></tr>
+<tr><td>US Dollar Index</td><td><code>DX-Y.NYB</code></td><td><b>not</b> <code>DX</code> — that is the stock Dynex Capital! History from ~2024</td></tr>
+<tr><td>Copper</td><td><code>HG=F</code></td><td>History from ~2024</td></tr>
+<tr><td>US Treasuries 10Y</td><td><code>ZN=F</code></td><td>History from ~2024</td></tr>
+</table>
+
+<h2>Daily computation (scheduler)</h2>
+<p>The values are not computed live but written daily into <code>correlation_index.db</code>
+by the scheduler. Job command:</p>
+<ul>
+  <li><code>python recalc_correlation.py</code> — recomputes all pairs (a wrapper around
+      <code>python -m tradinglib.correlation_index</code>).</li>
+  <li>Recommended schedule: <b>22:35</b>, Mon–Sat, after the price download and the
+      performance simulation. On a fresh setup via <code>install.ps1</code>/<code>install.sh</code>
+      the <code>CORRELATION_INDEX</code> job is created automatically.</li>
+  <li>If no <code>correlation_index.db</code> exists yet, the page offers a
+      <b>"Compute now"</b> button as a fallback.</li>
+</ul>
+<div class="info">Prerequisite: the six instruments must be present as price DBs.
+<code>seed_db.py</code> adds them to the INDEX/CRYPTO/METALS/CURRENCIES/COMMODITIES groups,
+which are loaded by the <code>YAHOO_*_DATA_GROUP</code>/<code>/index</code> jobs.
+Reachable via the <b>Correlation Index</b> menu entry (Market group) or via
+<code>/?correlation=true</code>.</div>
+</body>
+</html>

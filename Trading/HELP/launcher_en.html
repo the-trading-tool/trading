@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>launcher.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Start the application <small style="font-size:.6em;color:#888">launcher.py · asset_analyzer.py</small></h1>
+
+<p>The Trading App is a Streamlit web application that runs locally in the browser. There are two ways to start it.</p>
+
+<h2>Way 1 – Directly via the command line (recommended for development)</h2>
+<pre>cd Trading
+streamlit run asset_analyzer.py</pre>
+<p>The browser opens automatically at <code>http://localhost:8080</code>.</p>
+
+<h2>Way 2 – Windows launcher (for end users)</h2>
+<pre>python launcher.py</pre>
+<p>The launcher:</p>
+<ol>
+  <li>Detects the Python installation automatically</li>
+  <li>Starts <code>streamlit run asset_analyzer.py</code> in the background</li>
+  <li>Waits until the server is ready</li>
+  <li>Opens the browser automatically</li>
+  <li>Optionally shows a system-tray icon</li>
+</ol>
+
+<h2>Compile as a Windows EXE</h2>
+<pre>pyinstaller --onefile launcher.py</pre>
+<p>The generated <code>launcher.exe</code> can be started directly by double-click, without any Python knowledge.</p>
+
+<h2>URL parameters</h2>
+<table>
+<tr><th>Parameter</th><th>Example</th><th>Effect</th></tr>
+<tr><td><code>symbol</code></td><td><code>/?symbol=AAPL</code></td><td>Open Asset Details for this ticker directly</td></tr>
+<tr><td><code>rotation</code></td><td><code>/?rotation=true</code></td><td>Open the sector-rotation dashboard</td></tr>
+</table>
+
+<div class="info">The port and other Streamlit settings can be adjusted in <code>.streamlit/config.toml</code> (e.g. <code>server.port = 8080</code>).</div>
+</body>
+</html>

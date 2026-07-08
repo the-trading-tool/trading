@@ -300,6 +300,7 @@ JOBS = [
     ("11:05", "get_asset_data.py",     "60m:2mo 1d:2mo 1m:7d /inverse",       WD,               "YAHOO_ALL_INVERSE_",          "19:45", "",            "", 1),
     ("22:30", None,                    "",                                    WD+",saturday",   "STANDBY",                     "22:45", "",            "", 0),
     ("22:00", "asset_perf2.py",        "true /add_current /silent",           WD,               "ASSET_PERFORMANCE_2",         "",      "",            "", 1),
+    ("22:35", "recalc_correlation.py", "",                                    WD+",saturday",   "CORRELATION_INDEX",           "",      "",            "", 1),
     ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:CRYPTO,COMMODITIES,METALS,CURRENCIES", "hours",   "YAHOO_H_DATA_GROUP",  "",      "",            "", 1),
     ("15",    "get_asset_data.py",     "1m:2d /group:CRYPTO,COMMODITIES,METALS,CURRENCIES",         "minutes", "YAHOO_M_DATA_GROUP",  "",      "",            "", 1),
     ("1",     "get_asset_data.py",     "1m:2d 60m:2d /group:ETP /worker:4",   "hours",          "YAHOO_H_DATA_ETP",            "",      "",            "", 1),

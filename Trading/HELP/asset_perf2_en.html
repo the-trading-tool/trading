@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>asset_perf2.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Performance simulation <small style="font-size:.6em;color:#888">asset_perf2.py</small></h1>
+
+<p>The app's central CLI script. Computes technical indicators on historical OHLC data and writes scores as well as buy/sell signals into the local simulation database.</p>
+
+<h2>Full run (default)</h2>
+<pre>python asset_perf2.py</pre>
+<p>Without filters it processes exactly the members of real stock indices (groups with the <code>^</code> prefix such as <code>^GDAXI</code>/<code>^SPX</code>) with the default interval (<code>1d:1mo</code>) and writes results to <code>asset_simulation_.db</code>. Category groups (ETP, COMMODITIES, CRYPTO …) are <b>not</b> included – those run via <code>/group:NAME</code> in their own passes.</p>
+
+<h2>Specifying interval and period</h2>
+<pre>python asset_perf2.py 1h:6mo
+python asset_perf2.py 1d:1y 1wk:2y</pre>
+
+<h2>Filter parameters (ticker selection)</h2>
+<table>
+<tr><th>Parameter</th><th>Effect</th></tr>
+<tr><td><code>(no filter)</code></td><td>Only members of real stock indices (groups with the <code>^</code> prefix).</td></tr>
+<tr><td><code>/index:^SPX</code></td><td>Only the named indices; several comma-separated, e.g. <code>/index:^DJI,^SPX,^RUT</code> (case-insensitive).</td></tr>
+<tr><td><code>/group:ETP</code></td><td>Only members of the named group(s); several comma-separated, e.g. <code>/group:METALS,COMMODITIES</code>. For separate runs of ETP, CRYPTO, CURRENCIES etc.</td></tr>
+<tr><td><code>/inverse</code></td><td>Only tickers assigned to <b>no</b> group (single names without index/group link).</td></tr>
+<tr><td><code>/all</code></td><td>All stocks and indices <b>except the ETP group</b>; writes to <code>asset_simulation_all.db</code>.</td></tr>
+<tr><td><code>/all /group:ETP</code></td><td>Only ETP members; writes to <code>asset_simulation_etp.db</code>. Runs independently of <code>/all</code> – its own expensive computation pass.</td></tr>
+<tr><td><code>/year:2024</code></td><td>Restrict the computation to one calendar year (snapshot/backtest).</td></tr>
+<tr><td><code>/worker:N</code></td><td>N parallel processes (ProcessPoolExecutor, CPU-heavy). On Windows automatically limited when unspecified (RAM per process).</td></tr>
+</table>
+
+<h2>Fast modes (without recomputation)</h2>
+<table>
+<tr><th>Mode</th><th>Example</th><th>Description</th></tr>
+<tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fill in missing indicator columns from existing OHLCV data – no internet needed</td></tr>
+<tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>Recompute OVT scores without an OHLCV download – uses stored DB columns</td></tr>
+</table>
+
+<h2>Known backfill indicators</h2>
+<pre>heikin  → ha_close, ha_open, ha_ema_high, ha_ema_low
+markov  → markov_regime   (additionally markov_regime_wk / _mo on a weekly/monthly basis)
+macd    → macd, macd_diff, macd_signal, macd_trend
+rsi     → rsi, rsi_ema, momentum
+ewo     → ewo, ewo_ema, ewo_diff, ewo_angle, ewo_trend
+adx     → adx, adx_plus, adx_minus, adx_angle
+dema    → dema_ema_fast, dema_ema_slow, dema_buy, dema_sell
+hor     → hor_val, hor_threshold
+sup     → sup_support, sup_resistance
+relvol  → relvol_ratio
+atc     → atc_top_high, atc_bot_low
+scr     → scr_1mo, scr_3mo, scr_eoy, scr_buy, scr_sell</pre>
+
+<div class="info">Daily cron recommendation: run automatically after market close so the app always shows current signals.</div>
+<div class="warn">A full run can take several minutes depending on the number of tickers. <code>/rescore</code> is significantly faster.</div>
+</body>
+</html>

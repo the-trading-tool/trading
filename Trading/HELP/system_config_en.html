@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Settings – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:4px 8px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:inline;white-space:pre-wrap}
+pre{display:block;margin:6px 0;padding:6px 10px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>⚙ Settings <small style="font-size:.6em;color:#888">system_config.py</small></h1>
+
+<p>The settings dialog opens via the <b>⚙</b> button in the sidebar.
+All values are stored per user in <code>config.db</code> and loaded automatically on the next app start.</p>
+
+<h2>General</h2>
+<table>
+<tr><th style="width:30%">Setting</th><th>Description</th><th style="width:20%">Possible values</th></tr>
+<tr>
+  <td><b>Language</b></td>
+  <td>App language. Takes effect immediately on all labels, tabs and help texts.</td>
+  <td><code>de</code> · <code>en</code></td>
+</tr>
+<tr>
+  <td><b>Currency</b></td>
+  <td>System currency for portfolio values, profit calculations and displays (e.g. on the banner page and the strategies). Must be a valid ISO 4217 code.</td>
+  <td><code>EUR</code> · <code>USD</code> · …</td>
+</tr>
+<tr>
+  <td><b>Default time zone</b></td>
+  <td>Time zone for displaying price data and signals. Stored data stays UTC-neutral — conversion only happens in the presentation.</td>
+  <td><code>Europe/Berlin</code> · <code>America/New_York</code> · …</td>
+</tr>
+</table>
+
+<h2>Chart defaults</h2>
+<p>These values define what is preset when the Asset Viewer is first loaded. They can be overridden per session at any time via the selectors at the top of the chart.</p>
+<table>
+<tr><th style="width:30%">Setting</th><th>Description</th><th style="width:20%">Possible values</th></tr>
+<tr>
+  <td><b>Default interval</b></td>
+  <td>Candle time frame on first load.</td>
+  <td><code>5m</code> · <code>30m</code> · <code>60m</code> · <code>1d</code> · <code>1wk</code> · <code>1mo</code></td>
+</tr>
+<tr>
+  <td><b>Default period</b></td>
+  <td>Displayed range on first load.</td>
+  <td><code>2d</code> · <code>2wk</code> · <code>1mo</code> · <code>3mo</code> · <code>6mo</code> · <code>1y</code> · <code>5y</code></td>
+</tr>
+<tr>
+  <td><b>Default overlay</b></td>
+  <td>Comma-separated list of indicator short names placed on the price on first load.</td>
+  <td><code>heikin, sup, bos</code> · <code>candle, gan</code> · …</td>
+</tr>
+<tr>
+  <td><b>Default oscillator</b></td>
+  <td>Comma-separated list of indicators shown as sub-charts on first load.</td>
+  <td><code>ewo, adx, macd</code> · …</td>
+</tr>
+<tr>
+  <td><b>Show details tab</b></td>
+  <td>Shows an additional "Details" tab with extended metrics on the main page. Helpful for detailed analysis, but a wide screen is recommended.</td>
+  <td><code>True</code> · <code>False</code></td>
+</tr>
+<tr>
+  <td><b>Show Pine Script export</b></td>
+  <td>Shows the button below the chart to export the current indicator configuration as Pine Script v5 (TradingView).</td>
+  <td><code>True</code> · <code>False</code></td>
+</tr>
+<tr>
+  <td><b>Show regime / market-stress banner</b> <small style="color:#888">show_regime</small></td>
+  <td>Shows the early-warning banner about the market breadth of the associated index below the chart in the Asset Viewer (bull/bear/sideways change + divergence). <b>Off</b> by default, because the initial computation of large indices (e.g. ^RUT with ~1900 members) takes time; the result is then cached per day (see <code>warm_market_stress.py</code>).</td>
+  <td><code>True</code> · <code>False</code> (default <code>False</code>)</td>
+</tr>
+<tr>
+  <td><b>Tradable only (ISIN required)</b> <small style="color:#888">require_isin</small></td>
+  <td>Restricts the selection in Strategy Finder and Multi-Transactions to names with a valid ISIN (an approximation for "tradable at the broker"). Only sensible after a full <code>backfill_isin.py</code> run, otherwise names that are merely not yet resolved get filtered out too. Overridable per strategy/index via the <code>require_isin</code> field in the transaction JSON.</td>
+  <td><code>True</code> · <code>False</code> (default <code>False</code>)</td>
+</tr>
+</table>
+
+<h2>Buy and sell conditions</h2>
+<p>These expressions control which candles are marked as a buy or sell signal in the performance simulation (<code>asset_perf2.py</code>) and in the Asset Viewer.</p>
+<table>
+<tr><th style="width:30%">Setting</th><th>Description</th></tr>
+<tr>
+  <td><b>Buy condition</b></td>
+  <td>Python-like boolean expression over DataFrame columns. Every candle for which the expression is <code>True</code> is marked as a buy signal (green ▲ in the chart).</td>
+</tr>
+<tr>
+  <td><b>Sell condition</b></td>
+  <td>Analogous expression for the sell signal (red ▼ in the chart).</td>
+</tr>
+</table>
+<p>Available columns correspond to the computed indicators, e.g.:</p>
+<pre>(ha_close > ha_open) &amp; (Close > ha_ema_high) &amp; (macd > macd_signal) &amp; (rsi > 50) &amp; (markov_regime &lt; 2)</pre>
+<div class="warn">Only use column names that are actually computed for the chosen interval/period. Unknown columns lead to a silent error (no signal).</div>
+
+<h2>Strategies (transactions)</h2>
+<table>
+<tr><th style="width:30%">Setting</th><th>Description</th></tr>
+<tr>
+  <td><b>Transactions</b></td>
+  <td>JSON configuration of the trading strategies. Outer keys = strategy name, inner keys = index name, value = maximum number of simultaneous positions in that index.<br>
+  Read by the banner page, Multi-Strategies and the trading agent.</td>
+</tr>
+<tr>
+  <td><b>Trading costs in %</b></td>
+  <td>Percentage surcharge per trade (entry + exit) deducted in the profit calculation. Typically 0.1–1.0 %.</td>
+</tr>
+<tr>
+  <td><b>Monitored assets</b></td>
+  <td>Comma-separated ticker list for the live ticker and push notifications (Pushover).</td>
+</tr>
+</table>
+<p>Example transaction JSON:</p>
+<pre>{"Value Trend Strategy": {"^GDAXI": 3, "^SPX": 3}, "Support Strategy": {"^GDAXI": 2}}</pre>
+
+<h2>Administration (admin users only)</h2>
+<table>
+<tr><th style="width:30%">Setting</th><th>Description</th></tr>
+<tr>
+  <td><b>Data provider</b></td>
+  <td>Source for price data: <b>Yahoo Finance</b> (free, default) or <b>FMP</b> (Financial Modeling Prep, requires an API key in the KSP entry <code>fmp</code>).</td>
+</tr>
+<tr>
+  <td><b>Real-time prices</b></td>
+  <td>Enables automatic price refresh in the live ticker. Increases the Yahoo API load — leave at <code>False</code> with many assets.</td>
+</tr>
+<tr>
+  <td><b>S/R scaling</b></td>
+  <td>Scaling factor for support/resistance calculations. Higher values produce wider S/R zones; default value 100.</td>
+</tr>
+<tr>
+  <td><b>OVT smoothing</b></td>
+  <td>Smoothing period for the Overall Value Trend indicator (OVT). Values 1–5; higher values reduce noise but delay signals.</td>
+</tr>
+<tr>
+  <td><b>Logging</b></td>
+  <td>Enables output of debug messages to the console and log file.</td>
+</tr>
+<tr>
+  <td><b>Log file name</b></td>
+  <td>Path/name of the log file, relative to the app directory. Default: <code>out.txt</code>.</td>
+</tr>
+<tr>
+  <td><b>Log level</b></td>
+  <td>Minimum severity for logged messages: <code>DEBUG</code> &gt; <code>INFO</code> &gt; <code>WARNING</code> &gt; <code>ERROR</code> &gt; <code>CRITICAL</code>.</td>
+</tr>
+<tr>
+  <td><b>License</b></td>
+  <td>Shows license tier, licensee, expiry date and active features. "Reload license" reads <code>license.json</code> without an app restart.</td>
+</tr>
+</table>
+
+<div class="info">All changes are only written permanently to <code>config.db</code> after clicking <b>Save</b>. A reload without saving discards the inputs.</div>
+</body>
+</html>

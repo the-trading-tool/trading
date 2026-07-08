@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Market Map – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Market Map <small style="font-size:.6em;color:#888">market_map.py</small></h1>
+
+<p>A visual heatmap of all monitored securities. Tile colour and size encode performance and trading volume at a glance.</p>
+
+<h2>Colour coding</h2>
+<table>
+<tr><th>Colour</th><th>Meaning</th></tr>
+<tr><td style="color:green"><b>Green</b></td><td>Positive price move over the selected period</td></tr>
+<tr><td style="color:red"><b>Red</b></td><td>Negative price move</td></tr>
+<tr><td style="color:gray"><b>Grey</b></td><td>No or neutral change / missing data</td></tr>
+</table>
+
+<h2>Tile size</h2>
+<p>The size of each tile reflects the asset's <b>overallValueTrend (OVT)</b> score: the higher the score, the larger the tile.</p>
+
+<h2>Interaction</h2>
+<ul>
+  <li>Click a tile → opens the <b>Asset Details</b> page for that security</li>
+  <li>Hover → shows ticker, name and current OVT value as a tooltip</li>
+</ul>
+
+<h2>Controls</h2>
+<table>
+<tr><th>Setting</th><th>Effect</th></tr>
+<tr><td><b>Index filter</b></td><td>Restricts the view to a specific stock index (SPX, GDAXI …)</td></tr>
+<tr><td><b>Period</b></td><td>Price change over 1 day, 1 week or 1 month</td></tr>
+<tr><td><b>Sorting</b></td><td>By OVT score, price change or alphabetically</td></tr>
+</table>
+
+<div class="info">The data comes from the local database (<code>asset_simulation_.db</code>). Run <code>asset_perf2.py</code> first for up-to-date values.</div>
+</body>
+</html>

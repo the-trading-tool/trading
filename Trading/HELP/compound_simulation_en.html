@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Compound simulation – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Compound simulation <small style="font-size:.6em;color:#888">compound_simulation.py</small></h1>
+
+<p>Computes the real (inflation-adjusted) growth of a lump-sum investment – either as a forward projection or based on historical interest-rate and inflation data.</p>
+
+<h2>Modes</h2>
+<table>
+<tr><th>Mode</th><th>Data source</th><th>Use</th></tr>
+<tr><td><b>Projection</b></td><td>Current TNX yield (10-year US Treasuries) + current CPI inflation</td><td>"What if I invest today?"</td></tr>
+<tr><td><b>Historical</b></td><td>Monthly TNX and CPI time series from Yahoo Finance</td><td>Retrospective: actual real return of past years</td></tr>
+</table>
+
+<h2>Inputs</h2>
+<table>
+<tr><th>Parameter</th><th>Meaning</th></tr>
+<tr><td>Starting capital</td><td>One-off invested amount in the system currency</td></tr>
+<tr><td>Term (years)</td><td>Investment horizon for the projection</td></tr>
+<tr><td>Interest rate</td><td>Manually overridable; default = current TNX value</td></tr>
+<tr><td>Inflation rate</td><td>Manually overridable; default = current CPI value</td></tr>
+</table>
+
+<h2>Result</h2>
+<ul>
+  <li><b>Nominal curve</b> – growth without deducting inflation</li>
+  <li><b>Real curve</b> – purchasing-power-adjusted growth</li>
+  <li>Final value and loss of purchasing power in absolute figures</li>
+</ul>
+
+<div class="info">Reachable via the <b>Lump sum investment</b> menu item in the left navigation bar.</div>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Performance – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Performance <small style="font-size:.6em;color:#888">performance_details.py</small></h1>
+
+<p>Shows the currently computed valuation and performance metrics of <b>all tickers</b> from <code>asset_simulation_.db</code>, sorted by <code>overallValueTrend</code> and <code>sortino</code> – the fastest overview of which names the model currently rates best.</p>
+
+<h2>Usage</h2>
+<ul>
+  <li>A table of all names with the key indicator columns (OVT, RSI, trend direction, analyst price targets, sector, Sortino/Sharpe …)</li>
+  <li>Clicking a row opens a mini chart of the selected name</li>
+  <li><b>📥 Download dataset:</b> Excel export of the full table</li>
+  <li><b>Show chart grid:</b> additionally shows a grid of mini charts of the top-rated names (count selectable: 5/10/20)</li>
+</ul>
+
+<div class="info">The data source is the central DuckDB engine, which can merge several <code>asset_simulation_*.db</code> files. Results are cached for 5 minutes (<code>@st.cache_data(ttl=300)</code>) – so a new run of <code>asset_perf2.py</code> becomes visible with a slight delay.</div>
+
+<h2>Asset overview (Admin)</h2>
+<p>Admin accounts additionally see the sub-item <b>→ All Assets</b> (sidebar under Assets &amp; Performance). This view corresponds to <code>all_assets.py</code> and allows free filtering via custom buy/sell queries – see the "Asset overview" help.</p>
+
+<h2>Related pages</h2>
+<table>
+<tr><th>Page</th><th>Difference</th></tr>
+<tr><td>Performance (this page)</td><td>all tickers, current valuation, no filter on custom buy/sell queries</td></tr>
+<tr><td>Asset overview (<code>all_assets.py</code>)</td><td>all tickers, filterable with a custom buy query, optional mini-chart grid with signal markers</td></tr>
+<tr><td>Strategy Finder</td><td>Backtest with custom buy/sell conditions over multiple years</td></tr>
+</table>
+</body>
+</html>

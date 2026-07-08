@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>check_stoploss.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Stop-loss check <small style="font-size:.6em;color:#888">check_stoploss.py</small></h1>
+
+<p>Monitors all open positions and checks whether the price has fallen below the ATR trailing stop. Can automatically trigger a sell order when breached.</p>
+
+<h2>ATR trailing-stop concept</h2>
+<p>Stop-loss level = highest price since purchase (<b>HWM</b>) minus N × ATR</p>
+<ul>
+  <li><b>HWM</b> – Highest Water Mark (highest price reached since entry)</li>
+  <li><b>ATR</b> – Average True Range (a measure of the average daily volatility)</li>
+  <li><b>N</b> – configurable multiplier (default: 2.0)</li>
+</ul>
+<p>The stop level is adjusted upward daily when the price rises – never downward.</p>
+
+<h2>Call</h2>
+<pre>python check_stoploss.py [options]</pre>
+
+<h2>Parameters</h2>
+<table>
+<tr><th>Parameter</th><th>Default</th><th>Meaning</th></tr>
+<tr><td><code>--atr-mult</code></td><td>2.0</td><td>ATR multiplier for the stop-level computation</td></tr>
+<tr><td><code>--user</code></td><td>admin</td><td>User context</td></tr>
+<tr><td><code>--broker</code></td><td>alpaca</td><td>Broker backend for sell orders</td></tr>
+<tr><td><code>--mode</code></td><td>paper</td><td><code>paper</code> or <code>live</code></td></tr>
+<tr><td><code>--execute</code></td><td>No</td><td>Actually send the order (otherwise check only)</td></tr>
+<tr><td><code>--live</code></td><td>No</td><td>Fetch the current live price from the broker instead of Yahoo</td></tr>
+<tr><td><code>--notify</code></td><td>No</td><td>Send a Pushover alert when the stop is breached</td></tr>
+</table>
+
+<h2>Exit codes</h2>
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td><code>0</code></td><td>No stop-level breach</td></tr>
+<tr><td><code>1</code></td><td>At least one stop level was breached</td></tr>
+<tr><td><code>2</code></td><td>Error (broker, database …)</td></tr>
+</table>
+
+<div class="info">The batch file <code>check_stoploss.bat</code> is a Windows wrapper. For intraday monitoring, run every 15–30 minutes via the scheduler.</div>
+<div class="warn">With <code>--execute --mode live</code> real sell orders are placed. Test without <code>--execute</code> first.</div>
+</body>
+</html>

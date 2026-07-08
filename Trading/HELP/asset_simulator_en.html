@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Strategy Finder – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+.badge{display:inline-block;background:#fce8e6;color:#c5221f;border-radius:3px;padding:1px 7px;font-size:.78em;font-weight:600;vertical-align:middle;margin-left:6px}
+</style>
+</head>
+<body>
+<h1>Strategy Finder <small style="font-size:.6em;color:#888">premium/asset_simulator.py</small><span class="badge">Premium</span></h1>
+
+<p>An interactive backtest calculator: define your own buy/sell conditions, simulate them on historical data and view performance, trades and portfolio development. It lets you develop new strategies before putting them into production in "Multi-Strategies".</p>
+
+<div class="info">Premium feature (Sidebar → Portfolio → <b>Strategy Finder</b>), visible only to admin accounts with the license feature <code>strategy_engine</code>. Without a license the message "Strategy Finder not available – please check your license" appears.</div>
+
+<h2>Filters (left column)</h2>
+<table>
+<tr><th>Filter</th><th>Meaning</th></tr>
+<tr><td>Index</td><td>Restrict to an index (SPX, GDAXI, MDAXI, SDAX …)</td></tr>
+<tr><td>Exchange</td><td>Restrict to a specific exchange, or <code>ANY</code></td></tr>
+<tr><td>Market cap</td><td>Minimum/maximum limit</td></tr>
+<tr><td>Price range</td><td>Minimum/maximum price</td></tr>
+<tr><td>Sort by</td><td>Column used to select the top names, e.g. <code>sortino</code>, <code>overallValueTrend</code></td></tr>
+<tr><td>Sector</td><td>Restrict to a GICS sector, or <code>ANY</code></td></tr>
+<tr><td>Currency</td><td>Restrict to a trading currency, or <code>ANY</code></td></tr>
+<tr><td>Data from (year)</td><td>Multi-select: current year and/or archive years (<code>asset_simulation_{year}.db</code>, from 2020)</td></tr>
+<tr><td>📅 As of</td><td>Reference date for a historical snapshot – simulates "as if" the computation had run on that day (backtesting)</td></tr>
+</table>
+
+<h2>Simulation parameters</h2>
+<ul>
+  <li><b>Number of assets:</b> maximum number of simultaneously held positions</li>
+  <li><b>Investment:</b> starting capital of the simulation</li>
+  <li><b>Buy delay (days):</b> number of days between the signal and the actual entry</li>
+  <li><b>Fee per trade (%):</b> accounted for in the profit calculation</li>
+  <li><b>Buy assets when / sell when:</b> free expressions over indicator columns (same syntax as on the Asset overview), e.g. <code>overallValueTrend &gt; 65</code> or <code>ewo &lt; ewo_ema</code></li>
+</ul>
+
+<div class="info"><b>Optimisation:</b> If <code>%%varname</code> is used as a placeholder in an expression, the built-in optimiser automatically searches for the best numeric value for that variable.</div>
+
+<h2>Usage</h2>
+<ul>
+  <li><b>Compute</b> starts the simulation with the chosen filters and conditions – with multiple years the data is loaded per year and merged</li>
+  <li><b>Reset</b> discards the result again</li>
+  <li>If no simulation database exists yet for a chosen year, the computation can be triggered directly via <b>▶ Start computation</b> (runs in the background, status via <b>↺ Check status</b>)</li>
+</ul>
+
+<h2>Result</h2>
+<ul>
+  <li><b>Full dataset:</b> all simulated rows, with 📥 Excel export</li>
+  <li><b>Portfolio:</b> development of the simulated positions, "Still in portfolio" list of currently held names</li>
+  <li><b>Cumulative gain:</b> chart across all trades, with 📥 trade export</li>
+  <li>Metrics: total capital, invested amount, total value, total profit (incl. unrealised gains), win rate, number of trades, implied volatility, average value trend</li>
+  <li><b>Monthly performance heatmap</b> and compact KPI overview (analogous to Dashboard/Multi-Strategies)</li>
+  <li><b>Parity analysis:</b> compares the strategy with a simple "buy once and rebalance by volatility" approach over the same period</li>
+</ul>
+
+<div class="warn">Multi-year simulations and large indices can take a few seconds to minutes, depending on the data volume. <code>duckdb</code> speeds up the queries but is optional.</div>
+</body>
+</html>

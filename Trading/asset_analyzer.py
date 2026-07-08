@@ -725,6 +725,7 @@ class TradingApp:
 
             with st.sidebar.expander(t('nav.group_market'), expanded=False):
                 _nav(t('nav.market_overview'), market_overview='true')
+                _nav(t('nav.correlation'), correlation='true')
                 _nav(t('nav.sector_rotation'), rotation='true')
                 _nav(t('nav.market_map'), marketmap='true')
 
@@ -746,6 +747,7 @@ class TradingApp:
                 _nav(t('nav.market_map'), marketmap='true')
                 _nav(t('nav.sector_rotation'), rotation='true')
                 _nav(t('nav.market_overview'), market_overview='true')
+                _nav(t('nav.correlation'), correlation='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
             with st.sidebar.expander(t('nav.group_assets'), expanded=True):
@@ -1032,6 +1034,14 @@ class TradingApp:
                             MarketOverviewPage(username=self.username).render()
                         except Exception as e:
                             st.error(t('error.load_market_overview', error=e))
+                elif parms.get('correlation'):
+                    self.set_page_config(t('page.correlation'))
+                    with st.spinner(t('page.correlation') + " …"):
+                        try:
+                            from tradinglib.correlation_index_page import CorrelationIndexPage
+                            CorrelationIndexPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_correlation', error=e))
                 elif parms.get('compound'):
                     self.set_page_config(t('page.compound_simulation'))
                     with st.spinner(t('page.compound_simulation') + " …"):

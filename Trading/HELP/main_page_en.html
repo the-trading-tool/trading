@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Asset Details – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Asset Details <small style="font-size:.6em;color:#888">main_page.py</small></h1>
+
+<p>The app's main view. Shows the interactive price chart of a security with technical indicators, fundamentals, financials and current news.</p>
+
+<h2>Selecting an asset</h2>
+<table>
+<tr><th>Field</th><th>Function</th></tr>
+<tr><td><b>Select asset by market</b></td><td>Dropdown: exchange → index → single name</td></tr>
+<tr><td><b>Select asset by full text search</b></td><td>Free-text search by company name or ticker symbol</td></tr>
+<tr><td>URL parameter <code>/?symbol=…</code></td><td>Open an asset directly by URL, e.g. <code>/?symbol=AAPL</code></td></tr>
+</table>
+
+<h2>Chart controls</h2>
+<table>
+<tr><th>Control</th><th>Options / explanation</th></tr>
+<tr><td><b>Interval</b></td><td>Candle time frame: 5m · 30m · 1h · 1d · 1wk · 1mo</td></tr>
+<tr><td><b>Period</b></td><td>Displayed range: 2d · 2wk · 1mo · 6mo · 1y · 5y</td></tr>
+<tr><td><b>Overlay</b></td><td>Indicators drawn on top of the price (Heikin-Ashi, Candle, ATC …)</td></tr>
+<tr><td><b>Oscillator</b></td><td>Separate sub-charts (EWO, ZCR …)</td></tr>
+<tr><td><b>Select range</b></td><td>Slider to restrict the displayed data range</td></tr>
+</table>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Content</th></tr>
+<tr><td><b>Trend</b></td><td>Interactive Plotly price chart with buy/sell signals</td></tr>
+<tr><td><b>Info</b></td><td>Fundamentals: sector, P/E, market cap, analyst price target</td></tr>
+<tr><td><b>Income sheet</b></td><td>Profit and loss statement (recent quarters)</td></tr>
+<tr><td><b>Balance sheet</b></td><td>Balance sheet: assets, liabilities, equity</td></tr>
+<tr><td><b>News</b></td><td>Current headlines from Yahoo Finance for the selected asset</td></tr>
+</table>
+
+<h2>Operating the price chart</h2>
+<ul>
+  <li>Zoom: mouse wheel or drag a selection box</li>
+  <li>Pan: click + drag (after a double-click reset)</li>
+  <li>Camera icon (top right of the chart): screenshot as PNG</li>
+  <li>Plotly toolbar: zoom reset, axis scaling, hide data points</li>
+</ul>
+
+<div class="info">The chart first loads data from the local SQLite database; if newer prices are missing, Yahoo Finance is queried automatically as a fallback.</div>
+
+<h2>Band overlays &amp; non-trading times</h2>
+<p>Several overlays draw <b>filled bands or clouds</b> around the price, e.g.:</p>
+<ul>
+  <li><b>Bollinger Bands</b> (slow + fast band)</li>
+  <li><b>Heikin-Ashi</b> EMA high/low band</li>
+  <li><b>G-FRAMA</b> ATR band</li>
+  <li><b>DEMA</b> trend fill (green/red)</li>
+  <li><b>Ichimoku (ICI)</b> Kumo cloud (bullish/bearish)</li>
+</ul>
+<p>The x-axis hides <b>non-trading times</b> (weekends, bank holidays and – for intraday –
+the overnight sessions) so that empty price gaps do not stretch the chart. Because trading
+hours differ per asset class (equities, FX, bonds, funds, crypto), the <b>filled bands are
+interrupted at exactly these gaps</b>.</p>
+<div class="info">
+  <b>The thin vertical lines / interruptions in the bands are not a rendering error</b> –
+  they mark <b>non-trading times, weekends or bank holidays</b> when no prices exist for
+  that asset. The <b>edge and mid lines</b> of the bands run through continuously.
+  Continuously tradable instruments (e.g. crypto, 24/7) show a <b>gap-free</b> band.
+</div>
+<p>In the <b>⚙ Settings</b> this can be toggled via <b>"Mark non-trading times in bands"</b>
+(<code>mark_nontrading_times</code>):</p>
+<ul>
+  <li><b>Yes</b> (default) – bands are interrupted at non-trading times (gaps as markers).
+      Always displayed correctly.</li>
+  <li><b>No</b> – continuous, smoother fill without markers.</li>
+</ul>
+
+<h2>Buy/sell signals in the chart</h2>
+<ul>
+  <li><b>▲ green</b> – buy signal (overallValueTrend crosses the threshold)</li>
+  <li><b>▼ red</b> – sell signal (EWO below EMA or OVT falls below the threshold)</li>
+</ul>
+
+<h2>Regime / market-stress banner</h2>
+<p>If the asset belongs to a real stock index (ticker with <code>^</code>), an early-warning
+banner about the index's <b>market breadth</b> can appear below the chart: how the share of
+bull/bear/sideways index members is shifting, plus a divergence term (index holds, breadth
+crumbles). It is a probability-based early-warning signal with a days-to-weeks lead time,
+not a crash prediction.</p>
+<ul>
+  <li><b>Hidden by default</b> — enable it in the ⚙ Settings via
+      <b>"Show regime / market-stress banner"</b> (<code>show_regime</code>).</li>
+  <li>The initial computation of large indices (e.g. ^RUT, ~1900 members) takes a while; the
+      result is then <b>cached per day</b>. The scheduler job <code>WARM_MARKET_STRESS</code>
+      can warm the cache in the morning so the first page load does not wait.</li>
+</ul>
+
+<div class="warn">Signals are not investment advice. Always apply your own judgement and a stop-loss.</div>
+</body>
+</html>

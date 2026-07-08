@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>get_asset_info.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Load asset info <small style="font-size:.6em;color:#888">get_asset_info.py</small></h1>
+
+<p>Fetches master and fundamental data for all known tickers from Yahoo Finance and stores it in <code>asset_info.db</code>. Only needs to run occasionally, since fundamentals rarely change.</p>
+
+<h2>Call</h2>
+<pre>python get_asset_info.py</pre>
+<p>Without parameters the <b>complete</b> ticker list from <code>yf_tickers.db</code> is processed (re-imports <code>All_Assets.xlsx</code> if present).</p>
+
+<h2>Parameters (ticker selection &amp; speed)</h2>
+<table>
+<tr><th>Parameter</th><th>Effect</th></tr>
+<tr><td><code>/group:ETP</code></td><td>Load master data only for members of the named group(s), several comma-separated (<code>/group:METALS,COMMODITIES</code>). Case-insensitive. This lets you top up, say, only the new ETPs instead of all ~8000 tickers.</td></tr>
+<tr><td><code>/worker:N</code></td><td>N parallel info downloads (default 1 = sequential). The <code>.info</code> queries are separate requests per ticker → thread-safe. Recommendation 2–4 (Yahoo rate limit).</td></tr>
+</table>
+<pre>python get_asset_info.py /group:ETP /worker:4</pre>
+
+<div class="info"><b>Pipeline note – when do imported assets become visible?</b><br>
+For tickers to appear in the <b>"Select asset by market" → "Select company"</b> dropdown and in the
+<b>full-text search</b>, they must be in <code>asset_info.db</code> – which is exactly what this script writes.
+The market itself (e.g. <code>ETP</code>) appears already after <code>get_asset_data.py</code> (from the <code>indices</code> table
+in <code>yf_tickers.db</code>); the <b>company list</b> however stays empty ("No options to select") until
+<code>get_asset_info.py</code> has loaded the master data (the dropdown uses an <code>INNER JOIN</code> on <code>asset_info</code>).<br>
+<b>Full-text search:</b> This script automatically rebuilds the FTS search table (<code>asset_info_fts</code>) at the end –
+so new tickers are findable by name search right after the run. The manual admin button <b>"Update index"</b> remains
+as a fallback but is no longer needed after this script.</div>
+
+<h2>Stored fields (selection)</h2>
+<table>
+<tr><th>Field</th><th>Content</th></tr>
+<tr><td><code>longName</code></td><td>Full company name</td></tr>
+<tr><td><code>sector</code> / <code>industry</code></td><td>Sector and industry</td></tr>
+<tr><td><code>isin</code></td><td>International Securities Identification Number</td></tr>
+<tr><td><code>marketCap</code></td><td>Market capitalisation</td></tr>
+<tr><td><code>trailingPE</code> / <code>forwardPE</code></td><td>Price/earnings ratio (current / forecast)</td></tr>
+<tr><td><code>dividendRate</code></td><td>Dividend per share</td></tr>
+<tr><td><code>targetHighPrice</code></td><td>Highest analyst price target</td></tr>
+<tr><td><code>returnOnAssets</code></td><td>Return on assets (ROA)</td></tr>
+<tr><td><code>earningsGrowth</code></td><td>Earnings growth</td></tr>
+</table>
+
+<h2>When to run?</h2>
+<ul>
+  <li>After the first setup (after <code>seed_db.py</code>)</li>
+  <li>After adding new tickers in the admin panel</li>
+  <li><b>After importing a new group</b> via <code>get_asset_data.py</code> (e.g. ETP) – targeted with <code>/group:NAME</code>, so the new tickers appear in the "Select company" dropdown and in the search</li>
+  <li>Quarterly for updated fundamentals</li>
+</ul>
+
+<div class="info">Existing entries are updated (upsert). The fetch runs with pauses between requests to respect Yahoo rate limits.</div>
+</body>
+</html>

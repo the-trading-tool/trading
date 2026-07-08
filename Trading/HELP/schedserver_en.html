@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>schedserver.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Scheduler daemon <small style="font-size:.6em;color:#888">schedserver.py</small></h1>
+
+<p>A background process that runs recurring jobs automatically – e.g. the daily data download, indicator computation and trading-agent runs.</p>
+
+<h2>Starting</h2>
+<pre>python schedserver.py</pre>
+<p>The process runs continuously in the background and checks every minute whether a job is due.</p>
+
+<h2>Managing jobs</h2>
+<p>Jobs are configured directly in the app via the admin panel:</p>
+<ul>
+  <li>Admin → <b>Scheduler</b> tab (if enabled)</li>
+  <li>Jobs are stored in <code>scheduler.db</code></li>
+  <li>Supported schedules: daily (HH:MM), hourly, every N minutes</li>
+</ul>
+
+<h2>Typical job configuration</h2>
+<table>
+<tr><th>Time</th><th>Command</th><th>Purpose</th></tr>
+<tr><td>22:00</td><td><code>python get_asset_data.py 1d:1y</code></td><td>Update daily prices</td></tr>
+<tr><td>22:30</td><td><code>python asset_perf2.py</code></td><td>Recompute indicators</td></tr>
+<tr><td>22:45</td><td><code>python -m tradinglib.signal_notifier</code></td><td>Notify buy/sell signals</td></tr>
+<tr><td>every 15 min</td><td><code>python run_agent.py --notify</code></td><td>Trading agent (trading hours)</td></tr>
+<tr><td>every 15 min</td><td><code>python check_stoploss.py --notify</code></td><td>Stop-loss monitoring</td></tr>
+</table>
+
+<h2>Parallel execution</h2>
+<p>At most <b>4 jobs</b> run at the same time. Additional jobs are queued.</p>
+
+<div class="warn">The scheduler runs as a simple Python process – not a systemd/Windows service. After a machine restart it must be started again manually (or set up as an autostart).</div>
+<div class="info">Logs are written to the console and optionally to a file. For production use, a Windows service or Task Scheduler entry is recommended.</div>
+</body>
+</html>

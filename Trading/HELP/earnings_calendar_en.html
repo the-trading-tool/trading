@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Earnings calendar – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Earnings calendar <small style="font-size:.6em;color:#888">earnings_calendar.py</small></h1>
+
+<p>Shows upcoming and past earnings releases of the monitored companies with EPS estimates and actual values.</p>
+
+<h2>Columns</h2>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Ticker</b></td><td>Symbol of the security</td></tr>
+<tr><td><b>Date</b></td><td>Scheduled or actual earnings date</td></tr>
+<tr><td><b>EPS Estimated</b></td><td>Analyst consensus estimate (earnings per share)</td></tr>
+<tr><td><b>EPS Actual</b></td><td>Actually reported EPS (only after release)</td></tr>
+<tr><td><b>Surprise %</b></td><td>Deviation of the reported EPS from consensus in percent</td></tr>
+</table>
+
+<h2>Filters</h2>
+<ul>
+  <li><b>Period</b>: next 7 / 14 / 30 days or past quarters</li>
+  <li><b>Index filter</b>: show only names of a specific index</li>
+</ul>
+
+<h2>Usage note</h2>
+<p>Earnings releases often cause strong price moves. Open positions in the company concerned should be reviewed before the earnings date – adjust the stop-loss or close the position if needed.</p>
+
+<div class="warn">Data comes from Yahoo Finance and may update with a delay. For time-critical decisions, always check the original source (the company's investor relations).</div>
+
+<div class="info">The calendar is available as a tab on the <b>Asset Details</b> page and additionally via the main menu item <b>Earnings Calendar</b>.</div>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Korrelationsindex – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Korrelationsindex <small style="font-size:.6em;color:#888">correlation_index_page.py</small></h1>
+
+<p>Zeigt die <b>rollierende Korrelation der Tages-Log-Renditen</b> für fünf zentrale
+Makro-Paare. Damit wird sichtbar, ob sich Anlageklassen gerade <b>gleichläufig</b>
+(positive Korrelation) oder <b>gegenläufig</b> (negative Korrelation) bewegen –
+ein Gradmesser für Diversifikation und Risk-on/Risk-off-Regime.</p>
+
+<h2>Beobachtete Paare</h2>
+<table>
+<tr><th>Paar</th><th>Aussage bei Gleichlauf (+)</th></tr>
+<tr><td>S&amp;P 500 &harr; Bitcoin</td><td>BTC agiert als Risk-Asset, kaum Diversifikation</td></tr>
+<tr><td>Bitcoin &harr; Gold</td><td>Beide als Wertaufbewahrung gehandelt ("digitales Gold")</td></tr>
+<tr><td>S&amp;P 500 &harr; US-Dollar-Index</td><td>Ungewöhnlich – normal negativ; positiv = Stress-/Regime-Signal</td></tr>
+<tr><td>Kupfer &harr; S&amp;P 500</td><td>Konjunktur bestätigt die Aktienbewegung (Risk-on)</td></tr>
+<tr><td>US-Treasuries (10Y) &harr; S&amp;P 500</td><td>Zinsgetrieben; 60/40-Diversifikation geschwächt</td></tr>
+</table>
+
+<h2>Bedienung</h2>
+<ul>
+  <li><b>Fenster (30 / 90 Tage):</b> Länge des rollierenden Korrelationsfensters in
+      Handelstagen. 30 Tage reagiert schneller, 90 Tage ist stabiler.</li>
+  <li><b>Übersichtstabelle:</b> aktueller Wert (farbcodiert), Trendpfeil (Vergleich zu
+      ~1 Monat) und Einordnung je Paar.</li>
+  <li><b>Pro Paar:</b> Chart beider Fenster (das gewählte hervorgehoben, ±0,6-Bänder,
+      Null-Linie), Kennzahlen und ein automatisch erzeugter Interpretationstext.</li>
+</ul>
+
+<h2>Methodik – was gemessen wird</h2>
+<table>
+<tr><th>Aspekt</th><th>Wert</th></tr>
+<tr><td>Maß</td><td>Pearson-Korrelation der <b>Tages-Log-Renditen</b> <code>ln(C&#8348;/C&#8348;&#8331;&#8321;)</code> – nicht der Preisniveaus/Trends</td></tr>
+<tr><td>Wertebereich</td><td>&minus;1 (perfekter Gegenlauf) … 0 (entkoppelt) … +1 (perfekter Gleichlauf)</td></tr>
+<tr><td>Einordnung</td><td>|r| &ge; 0,6 stark · &ge; 0,3 moderat · &ge; 0,15 schwach · sonst entkoppelt</td></tr>
+<tr><td>Datenquelle</td><td>lokale Tageskurse (<code>day_data</code>) aus den <code>yf_&lt;ticker&gt;.db</code></td></tr>
+</table>
+<div class="warn">Vergleiche mit externen Tools/KI weichen oft ab, wenn diese
+<b>Preis-/Trendverläufe</b> statt Renditekorrelationen betrachten oder ein anderes
+Zeitfenster/einen anderen Datenstand nutzen. Bei umgekehrtem Vorzeichen zuerst prüfen,
+ob dasselbe Instrument und dieselbe Methode gemeint sind.</div>
+
+<h2>Instrumente &amp; Datenstand</h2>
+<table>
+<tr><th>Anlage</th><th>Lokaler Ticker</th><th>Hinweis</th></tr>
+<tr><td>S&amp;P 500</td><td><code>^SPX</code></td><td>tiefe Historie</td></tr>
+<tr><td>Bitcoin</td><td><code>BTC-EUR</code></td><td>Proxy für BTC-USD (Renditekorrelation praktisch identisch)</td></tr>
+<tr><td>Gold</td><td><code>GC=F</code></td><td>&nbsp;</td></tr>
+<tr><td>US-Dollar-Index</td><td><code>DX-Y.NYB</code></td><td><b>nicht</b> <code>DX</code> – das ist die Aktie Dynex Capital! Historie ab ~2024</td></tr>
+<tr><td>Kupfer</td><td><code>HG=F</code></td><td>Historie ab ~2024</td></tr>
+<tr><td>US-Treasuries 10Y</td><td><code>ZN=F</code></td><td>Historie ab ~2024</td></tr>
+</table>
+
+<h2>Tägliche Berechnung (Scheduler)</h2>
+<p>Die Werte werden nicht live berechnet, sondern täglich vom Scheduler in die
+<code>correlation_index.db</code> geschrieben. Job-Kommando:</p>
+<ul>
+  <li><code>python recalc_correlation.py</code> – Neuberechnung aller Paare (Wrapper um
+      <code>python -m tradinglib.correlation_index</code>).</li>
+  <li>Empfohlener Zeitplan: <b>22:35</b>, Mo–Sa, nach dem Preis-Download und der
+      Performance-Simulation. Beim frischen Setup via <code>install.ps1</code>/<code>install.sh</code>
+      wird der Job <code>CORRELATION_INDEX</code> automatisch angelegt.</li>
+  <li>Ist noch keine <code>correlation_index.db</code> vorhanden, bietet die Seite einen
+      Button <b>„Jetzt berechnen"</b> als Fallback.</li>
+</ul>
+<div class="info">Voraussetzung: die sechs Instrumente müssen als Preis-DBs vorliegen.
+<code>seed_db.py</code> trägt sie in die Gruppen INDEX/CRYPTO/METALS/CURRENCIES/COMMODITIES
+ein, die von den <code>YAHOO_*_DATA_GROUP</code>/<code>/index</code>-Jobs geladen werden.
+Erreichbar über den Menüpunkt <b>Korrelationsindex</b> (Gruppe Markt) oder via
+<code>/?correlation=true</code>.</div>
+</body>
+</html>

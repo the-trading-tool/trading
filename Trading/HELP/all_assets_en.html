@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Asset overview – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Asset overview <small style="font-size:.6em;color:#888">all_assets.py</small></h1>
+
+<p>A screener for <b>all tickers</b> in the local database: a filterable table with the current indicator values, optionally supplemented by a mini-chart grid of the top names. For admin accounts, available under Assets &amp; Performance in two variants:</p>
+<ul>
+  <li><b>→ All Assets</b> – stocks and indices from <code>asset_simulation_all.db</code> (excluding the ETP group)</li>
+  <li><b>→ ETP Assets</b> – only the ETP group from <code>asset_simulation_etp.db</code> (separate computation run via <code>asset_perf2.py /all /group:ETP</code>)</li>
+</ul>
+
+<h2>Usage</h2>
+<table>
+<tr><th>Element</th><th>Effect</th></tr>
+<tr><td>Filter input field (top)</td><td>Free-text query used to filter the result table – the default is the global buy query from the system settings</td></tr>
+<tr><td>Click a table row</td><td>Opens a mini chart of the selected name with a link to the full <b>Asset Details</b> page</td></tr>
+<tr><td>📥 Download dataset</td><td>Excel export of the filtered table</td></tr>
+<tr><td>Show chart grid</td><td>Additionally shows a grid of mini charts (count selectable: 5/10/20), sorted by Sortino ratio</td></tr>
+</table>
+
+<h2>Sorting &amp; content</h2>
+<p>The table shows the most recent dataset (<code>Date DESC</code>) per ticker from the respective database (<code>asset_simulation_all.db</code> or <code>asset_simulation_etp.db</code>), sorted by currency, Sortino ratio and <code>overallValueTrend</code>. All computed indicator columns are included.</p>
+
+<h2>Filter syntax</h2>
+<p>The filter field accepts pandas-/SQL-compatible conditions on the indicator columns, e.g.:</p>
+<ul>
+  <li><code>overallValueTrend &gt; 65</code></li>
+  <li><code>(rsi &gt; 20) AND (rsi &lt; 80) AND (ewo &gt; ewo_ema)</code></li>
+  <li><code>macd_diff &gt; 0</code></li>
+</ul>
+
+<div class="info">Available column names are all computed indicators from <code>asset_simulation_all.db</code>. The default buy/sell queries are set in the configuration dialog (🏵) under <i>System settings</i>.</div>
+</body>
+</html>

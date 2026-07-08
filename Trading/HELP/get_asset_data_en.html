@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>get_asset_data.py – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Data fetch <small style="font-size:.6em;color:#888">get_asset_data.py</small></h1>
+
+<p>Downloads historical OHLCV price data (Open, High, Low, Close, Volume) from Yahoo Finance and stores it locally in per-ticker SQLite databases (<code>yf_{TICKER}.db</code>).</p>
+
+<h2>Call</h2>
+<pre>python get_asset_data.py [interval:period] [filter]</pre>
+
+<h2>Interval / period</h2>
+<table>
+<tr><th>Example</th><th>Meaning</th></tr>
+<tr><td><code>1d:1y</code></td><td>Daily candles, last year</td></tr>
+<tr><td><code>1h:6mo</code></td><td>Hourly candles, last 6 months</td></tr>
+<tr><td><code>5m:2d</code></td><td>5-minute candles, last 2 days</td></tr>
+<tr><td><code>1wk:5y</code></td><td>Weekly candles, last 5 years</td></tr>
+</table>
+<p>Several combinations at once are possible: <code>python get_asset_data.py 1d:1y 1h:6mo</code></p>
+
+<h2>Filter parameters (ticker selection)</h2>
+<p>Without a filter the ticker list is imported from <code>All_Assets.xlsx</code> (new groups and links are created in the process) and then downloaded.</p>
+<table>
+<tr><th>Parameter</th><th>Effect</th></tr>
+<tr><td><code>/index_member</code></td><td>Only members of real stock indices. These are exactly the groups whose name starts with <code>^</code> (<code>^GDAXI</code>, <code>^MDAXI</code>, <code>^SPX</code>, …). Category groups are <b>not</b> included here.</td></tr>
+<tr><td><code>/group:ETP</code></td><td>Only members of the named group(s) from the <code>indices</code> table. Several comma-separated: <code>/group:METALS,COMMODITIES</code>. Case-insensitive. This fetches ETP, CRYPTO, CURRENCIES etc. specifically in their own runs.</td></tr>
+<tr><td><code>/inverse</code></td><td>Only tickers assigned to <b>no</b> group (single names without index/group link).</td></tr>
+<tr><td><code>/all</code></td><td>All known tickers (every group + ungrouped).</td></tr>
+<tr><td><code>/index</code></td><td>Only the non-stock groups (INDEX, COMMODITIES, METALS, CURRENCIES, CRYPTO) plus currency pairs (<code>…=X</code>).</td></tr>
+</table>
+
+<h2>Parallel downloads</h2>
+<table>
+<tr><th>Parameter</th><th>Effect</th></tr>
+<tr><td><code>/worker:N</code></td><td>N parallel download threads (default 1 = sequential). Recommendation 2–4 – more strains the Yahoo rate limit (HTTP 429). Each ticker writes to its own <code>yf_{TICKER}.db</code>, so there are no collisions.</td></tr>
+</table>
+
+<h2>Stored tables per database</h2>
+<ul>
+  <li><code>min_data</code> – minute/intraday candles</li>
+  <li><code>h60_data</code> – hourly candles</li>
+  <li><code>day_data</code> – daily candles</li>
+  <li><code>week_data</code> – weekly candles</li>
+  <li><code>month_data</code> – monthly candles</li>
+</ul>
+
+<div class="info">Existing data is updated incrementally – only new candles are downloaded. Existing entries are preserved.</div>
+
+<h2>Pipeline – making assets visible after import</h2>
+<p>This script only fills <code>yf_tickers.db</code> (groups/tickers) and the price DBs <code>yf_{TICKER}.db</code>. To make newly imported assets fully usable in the app, further steps are needed:</p>
+<table>
+<tr><th>#</th><th>Script</th><th>Fills</th><th>Makes visible</th></tr>
+<tr><td>1</td><td><code>get_asset_data.py</code> (this script)</td><td><code>yf_tickers.db</code>, <code>yf_{TICKER}.db</code></td><td>market in "Select by market" + price data</td></tr>
+<tr><td>2</td><td><code>get_asset_info.py /group:NAME</code></td><td><code>asset_info.db</code></td><td><b>"Select company" dropdown + full-text search</b></td></tr>
+<tr><td>3</td><td><code>asset_perf2.py /group:NAME</code> or <code>/all /group:NAME</code></td><td><code>asset_simulation_.db</code> (yearly DB) or <code>asset_simulation_{name}.db</code> (own DB)</td><td>indicator overlays, buy/sell signals, metrics</td></tr>
+</table>
+<p>Example for a new group (e.g. ETP), step by step:</p>
+<pre>python get_asset_data.py 1d:1y /group:ETP /worker:3
+python get_asset_info.py /group:ETP /worker:4
+python asset_perf2.py /all /group:ETP /worker:2</pre>
+<p><b>Note:</b> <code>/all /group:ETP</code> writes to the dedicated database <code>asset_simulation_etp.db</code> (separate universe, visible under <i>→ ETP Assets</i>). Without <code>/all</code> it would write to the year-based <code>asset_simulation_.db</code>.</p>
+</body>
+</html>

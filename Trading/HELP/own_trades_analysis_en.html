@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Own Transactions – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Own Transactions <small style="font-size:.6em;color:#888">own_trades_analysis.py</small></h1>
+
+<p>A complete portfolio analysis of all open and closed positions from the local trades database (<code>trades{year}.db</code>).</p>
+
+<h2>Section overview</h2>
+<table>
+<tr><th>Section</th><th>Content</th></tr>
+<tr><td><b>Open positions</b></td><td>Currently held names with buy price, current price and unrealised profit/loss</td></tr>
+<tr><td><b>Normalised price paths</b></td><td>Three views of the price development: a common start date (peer comparison) plus two "since entry" charts (each position based on 100 at the buy date)</td></tr>
+<tr><td><b>Closed positions</b></td><td>Completed trades with buy/sell date, return in % and absolute</td></tr>
+<tr><td><b>Cumulative gain chart</b></td><td>Time series of the realised total profit as a line chart</td></tr>
+<tr><td><b>Strategy metrics</b></td><td>Profit factor, hit rate, best/worst trades per strategy</td></tr>
+<tr><td><b>Monthly heatmap</b></td><td>Colour-coded month × year – gains (green) and losses (red)</td></tr>
+<tr><td><b>Portfolio overlap</b></td><td>Warning about duplicate positions across several strategies</td></tr>
+<tr><td><b>Position Sizing Calculator</b></td><td>Computes the allowed number of shares so that a trade's maximum loss does not exceed your defined risk limit</td></tr>
+</table>
+
+<h2>Normalised price paths – open positions</h2>
+<p>For the open positions there are <b>three</b> normalised charts. "Normalised" means: every price is set to a starting value of <b>100</b>, so that names of different prices become directly comparable. What matters is <em>when</em> this 100 is set – each choice answers a different question.</p>
+
+<table>
+<tr><th>Chart</th><th>Base 100</th><th>X-axis</th><th>Answers</th></tr>
+<tr><td><b>Normalised Price Chart</b></td><td>common start date (selectable at the top)</td><td>calendar date</td><td>"Which of my names performed best in the selected window?" – a true <b>peer comparison</b></td></tr>
+<tr><td><b>Since entry (calendar)</b></td><td>each position's own buy day</td><td>calendar date</td><td>"How does each of <em>my</em> positions stand since entry?" – matches the <b>unrealised P&amp;L</b> per position</td></tr>
+<tr><td><b>Since entry (by holding period)</b></td><td>each position's own buy day</td><td>trading days since purchase (0, 1, 2 …)</td><td>"Which position develops better than the peers since entry?" – a path comparison <b>independent of the purchase date</b></td></tr>
+</table>
+
+<div class="info"><b>Break-even line:</b> In the two "since entry" charts the dotted line at <b>100</b> marks your cost basis. A line <b>above</b> 100 = position in profit, <b>below</b> 100 = at a loss.</div>
+
+<p><b>Why three views?</b> For a pure peer comparison the first chart is the right tool, because all names share the same base and the same window. The two "since entry" charts instead show your actual position performance from the buy day onward:</p>
+<ul>
+  <li><b>Calendar variant</b> – the lines start on different calendar days (= your respective buy dates). Directly readable: the current profit/loss per position.</li>
+  <li><b>Holding-period variant</b> – all lines start on the left at 100 and are aligned by "days since purchase". This lets you read, for example, which position ran better 30 trading days after entry than the others – regardless of when you bought it.</li>
+</ul>
+
+<div class="info">The buy date per name is the <b>earliest purchase</b> of the position. So with follow-up buys the original entry remains the reference point. Names without local price data do not appear in the chart.</div>
+
+<h2>Position Sizing Calculator</h2>
+<p>This calculator answers <b>a single question</b>: <em>"How many shares may I buy so that I do not lose more on this trade than I am willing to risk?"</em> So it does <b>not</b> determine how much money you invest, but how large your position may be so that your maximum loss (if the stop-loss triggers) does not exceed a fixed percentage of your account.</p>
+
+<h3 style="color:#444;font-size:.97em;margin:12px 0 4px">Inputs</h3>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><b>Account size</b></td><td>Your total trading capital</td></tr>
+<tr><td><b>Risk per trade (%)</b></td><td>What percentage of the account you are willing to lose at most on this trade (rule of thumb: 1–2 %)</td></tr>
+<tr><td><b>Entry price</b></td><td>Planned buy price per share</td></tr>
+<tr><td><b>Stop-loss price</b></td><td>Price at which you close the position at a loss (must be below the entry)</td></tr>
+<tr><td><b>Take-profit (optional)</b></td><td>Target price for exiting with a profit – only for the reward-to-risk ratio</td></tr>
+</table>
+
+<h3 style="color:#444;font-size:.97em;margin:12px 0 4px">The calculation (example)</h3>
+<p>Example: account €100,000, risk 2 %, entry €84, stop-loss €82.</p>
+<table>
+<tr><th>Step</th><th>Formula</th><th>Example value</th></tr>
+<tr><td>Risk per share</td><td>Entry − stop-loss</td><td>84 − 82 = <b>€2</b></td></tr>
+<tr><td>Risk amount (account)</td><td>Account size × risk %</td><td>100,000 × 2 % = <b>€2,000</b></td></tr>
+<tr><td>Recommended share count</td><td>Risk amount ÷ risk per share</td><td>2,000 ÷ 2 = <b>1,000 shares</b></td></tr>
+<tr><td>Position value</td><td>Share count × entry</td><td>1,000 × 84 = <b>€84,000</b></td></tr>
+</table>
+
+<div class="info"><b>Important:</b> The <b>position value</b> (€84,000) is only the capital tied up, <b>not</b> your risk. Your actual loss risk remains the risk amount (€2,000) – the real safety net is the stop-loss.</div>
+
+<p><b>Core idea:</b> The stop-loss distance controls the position size. A tight stop-loss (here €2 distance) allows a large position; a deeper stop-loss (e.g. €79 = €5 distance) allows only 400 shares (2,000 ÷ 5) – the account risk stays identical at €2,000 in both cases.</p>
+
+<p><b>Take-profit:</b> If you enter a take-profit above the entry, the calculator additionally shows the <b>reward-to-risk ratio</b>. Example take-profit €90 → gain €6 per share ÷ risk €2 = <b>1 : 3</b> (you risk €1 to gain €3; rule of thumb: at least 1 : 2).</p>
+
+<h2>Metrics</h2>
+<table>
+<tr><th>Metric</th><th>Formula / meaning</th></tr>
+<tr><td>Profit factor</td><td>Sum of gains ÷ sum of losses (target: &gt; 1.5)</td></tr>
+<tr><td>Hit rate</td><td>Number of winning trades ÷ total number of trades × 100</td></tr>
+<tr><td>Avg. profit/trade</td><td>Realised profit ÷ number of completed trades</td></tr>
+<tr><td>Max. drawdown</td><td>Largest cumulative decline from the peak (risk metric)</td></tr>
+</table>
+
+<h2>Period filter</h2>
+<p>The year dropdown at the top right restricts the analysis to a specific calendar year. By default the current year is shown.</p>
+
+<div class="info">The data lives in <code>database/trades{year}.db</code>. Paper trading uses the same tables as live trading, but with the mode flag <code>paper</code>.</div>
+</body>
+</html>

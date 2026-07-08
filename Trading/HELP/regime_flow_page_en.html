@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Regime Flow – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.95em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px;font-size:.88em}
+</style>
+</head>
+<body>
+<h1>Regime Flow <small style="font-size:.6em;color:#888">regime_flow_page.py</small></h1>
+
+<p>A market-breadth dashboard that classifies hundreds of assets simultaneously into three market
+regimes (<b>Bull</b>, <b>Bear</b>, <b>Sideways</b>) and visualises their evolution over time,
+capital flows and sector shifts.</p>
+
+<h2>Quick overview – tabs</h2>
+<table>
+<tr><th>Tab</th><th>Content</th></tr>
+<tr><td><b>🌊 Tidal</b></td><td>Stacked area chart: percentage share of assets in Bull/Bear/Sideways over time</td></tr>
+<tr><td><b>🔀 Capital Flow</b></td><td>Sankey diagram of regime transitions + mini Sankeys per sector</td></tr>
+<tr><td><b>🗺 Migration</b></td><td>Bubble scatter: sector shifts in the Bull-vs-Bear space with arrows</td></tr>
+<tr><td><b>📊 Flow Table</b></td><td>Single-name table with Flow Score, relative volume and EWO</td></tr>
+</table>
+
+<h2>Header area (above the tabs)</h2>
+<p>Five metrics are always shown:</p>
+<table>
+<tr><th>Metric</th><th>Meaning</th></tr>
+<tr><td><b>Total assets</b></td><td>Number of analysed tickers in the selected period</td></tr>
+<tr><td><b>▲ Bull</b></td><td>Number and share of bullish assets; delta (±pp) vs. previous period</td></tr>
+<tr><td><b>▼ Bear</b></td><td>Number and share of bearish assets; delta (±pp) vs. previous period</td></tr>
+<tr><td><b>─ Sideways</b></td><td>Number and share of sideways assets; delta (±pp) vs. previous period</td></tr>
+<tr><td><b>As of</b></td><td>Date of the last data point (YYYY-MM-DD)</td></tr>
+</table>
+
+<p>Below it the <b>market-stress panel</b> optionally appears (see the <a href="#stress">Market-stress panel</a> section).</p>
+
+<h2>Controls</h2>
+<table>
+<tr><th>Setting</th><th>Description</th></tr>
+<tr><td><b>Data source</b></td><td><em>Monitored Assets</em> – watchlist configured in the settings; <em>Index</em> – all members of a stock index from yf_tickers.db</td></tr>
+<tr><td><b>Select index</b></td><td>Appears only for the "Index" data source – choose e.g. ^GDAXI, ^SPX</td></tr>
+<tr><td><b>Comparison interval</b></td><td>Time span for the regime computation and transition arrows: 1 week, 1/6 months, 1/2 years</td></tr>
+</table>
+
+<h2>Tab 1 – 🌊 Tidal</h2>
+<p>Stacked area chart (100 % = all assets).</p>
+<table>
+<tr><th>Element</th><th>Details</th></tr>
+<tr><td><b>X-axis</b></td><td>Time (days/weeks, depending on the chosen interval)</td></tr>
+<tr><td><b>Y-axis</b></td><td>Share of assets in % (0–100)</td></tr>
+<tr><td><b>Green area ▲</b></td><td>Bull share (#84BBA1)</td></tr>
+<tr><td><b>Red area ▼</b></td><td>Bear share (#C57F86)</td></tr>
+<tr><td><b>Grey area ─</b></td><td>Sideways share (#A4ABB7)</td></tr>
+<tr><td><b>Hover</b></td><td>Exact percentage per regime and date</td></tr>
+</table>
+<div class="info">A clear decline of the green area together with a rise of the red one signals a market rotation early, before it noticeably hits indices.</div>
+
+<h2>Tab 2 – 🔀 Capital Flow</h2>
+
+<h3>Main Sankey</h3>
+<p>Shows how many assets changed regime. The <b>node width</b> corresponds to the asset count, the <b>flow width</b> is additionally weighted by the mean relative volume (<code>relvol_ratio</code>).</p>
+<table>
+<tr><th>Side</th><th>Meaning</th></tr>
+<tr><td><b>Left nodes</b></td><td>Regime at the start of the interval (Bull / Bear / Sideways)</td></tr>
+<tr><td><b>Right nodes</b></td><td>Regime today</td></tr>
+<tr><td><b>Flow colour</b></td><td>Colour of the <em>source</em> regime (green / red / grey)</td></tr>
+</table>
+<p>Example: a thick green flow from <em>Bull → Bear</em> means that many assets that started bullish are now bearish – and at above-average volume.</p>
+
+<h3>Mini Sankeys per sector</h3>
+<p>The same transition logic, but isolated per sector, in a 2-column grid. It enables comparison: which sector loses more, which one holds up?</p>
+<div class="warn">If the interval is too short for comparison data, the dashboard shows only the current regime distribution (without transition arrows).</div>
+
+<h2>Tab 3 – 🗺 Migration</h2>
+<p>Bubble scatter plot with one point per sector.</p>
+<table>
+<tr><th>Element</th><th>Details</th></tr>
+<tr><td><b>X-axis</b></td><td>Bull share of the sector (0–100 %)</td></tr>
+<tr><td><b>Y-axis</b></td><td>Bear share of the sector (0–100 %)</td></tr>
+<tr><td><b>Bubble size</b></td><td>√(number of assets in the sector) – the more names, the larger the circle</td></tr>
+<tr><td><b>Colour</b></td><td>Sector ID (up to 10 distinct colours from the Plotly palette)</td></tr>
+<tr><td><b>Arrows</b></td><td>From previous period → today; appear only for a shift of &gt;1 percentage point</td></tr>
+<tr><td><b>Dashed lines</b></td><td>Dynamic medians (Bull median vertical, Bear median horizontal) from current data</td></tr>
+</table>
+
+<h3>Reading the quadrants</h3>
+<table>
+<tr><th>Quadrant</th><th>Label</th><th>Interpretation</th></tr>
+<tr><td>Bottom right</td><td><b>Opportunity</b></td><td>High Bull share, low Bear share → stable uptrend</td></tr>
+<tr><td>Top right</td><td><b>Volatile</b></td><td>Many Bull and Bear assets at once → mixed, nervous picture</td></tr>
+<tr><td>Top left</td><td><b>Danger</b></td><td>Low Bull, high Bear share → downward pressure dominates</td></tr>
+<tr><td>Bottom left</td><td><b>Stagnation</b></td><td>Neither Bull nor Bear → the market is treading water</td></tr>
+</table>
+<div class="info">Arrows show the direction of the shift. A sector whose arrow points from "Danger" to "Opportunity" is in early recovery mode.</div>
+
+<h2>Tab 4 – 📊 Flow Table</h2>
+<p>Single-name table, sorted by absolute Flow Score (strongest moves first).</p>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Sector</b></td><td>Sector group of the name (from asset_info.db)</td></tr>
+<tr><td><b>Ticker</b></td><td>Exchange symbol</td></tr>
+<tr><td><b>Name</b></td><td>Long company name</td></tr>
+<tr><td><b>Regime</b></td><td>▲ Bull / ▼ Bear / ─ Sideways</td></tr>
+<tr><td><b>Flow Score</b></td><td>Combined flow indicator (positive = Bull flow, negative = Bear flow, 3 decimals)</td></tr>
+<tr><td><b>Rel.Vol.</b></td><td>Relative volume: current volume ÷ 20-day average (range 0.1–10.0)</td></tr>
+<tr><td><b>EWO %</b></td><td>Elliott Wave Oscillator in % of the close: (EMA5 − EMA35) / Close × 100</td></tr>
+<tr><td><b>↕</b></td><td>EWO direction: ↗ rising / ↘ falling / → neutral</td></tr>
+</table>
+
+<h2>Indicators in detail</h2>
+
+<h3>Markov regime classification</h3>
+<p>The basis for all regime assignments. The logarithmic 20-bar return is computed:</p>
+<table>
+<tr><th>Regime</th><th>Condition</th></tr>
+<tr><td>▲ Bull</td><td>log(Close / Close[–20]) &gt; +5 %</td></tr>
+<tr><td>▼ Bear</td><td>log(Close / Close[–20]) &lt; −5 %</td></tr>
+<tr><td>─ Sideways</td><td>–5 % ≤ return ≤ +5 %</td></tr>
+</table>
+
+<h3>Flow Score</h3>
+<p>Rates the strength of the regime move per name:</p>
+<p><code>Flow Score = regime direction × Rel.Vol.Ratio × (1 + |normalised EWO angle|)</code></p>
+<table>
+<tr><th>Factor</th><th>Value</th></tr>
+<tr><td>Regime direction</td><td>+1 (Bull), −1 (Bear), 0 (Sideways)</td></tr>
+<tr><td>Rel.Vol.Ratio</td><td>Volume / 20-day avg, capped to [0.1 … 10.0]</td></tr>
+<tr><td>Normalised EWO angle</td><td>EWO (capped to [−10, +10]) ÷ 10, absolute value</td></tr>
+</table>
+<div class="info">A high positive Flow Score means: the name is bullish <em>and</em> trades at above-average volume with positive momentum. A deep negative value signals bears under pressure with elevated activity.</div>
+
+<h3>Relative volume (Rel.Vol.)</h3>
+<p>Indicates whether a name is being actively traded compared to its own 20-day average.</p>
+<ul>
+  <li><b>&gt; 1.5:</b> clearly elevated volume – institution or news?</li>
+  <li><b>0.8–1.5:</b> normal range</li>
+  <li><b>&lt; 0.8:</b> below-average activity – signal less reliable</li>
+</ul>
+
+<h3>EWO (Elliott Wave Oscillator)</h3>
+<p>Measures momentum as the distance between two EMAs:</p>
+<p><code>EWO % = (EMA5 − EMA35) / Close × 100</code></p>
+<ul>
+  <li><b>EWO &gt; 0 &amp; rising (↗):</b> the short-term trend is accelerating</li>
+  <li><b>EWO &gt; 0 &amp; falling (↘):</b> momentum divergence – caution with longs</li>
+  <li><b>EWO &lt; 0 &amp; falling (↘):</b> downward pressure is increasing</li>
+</ul>
+
+<h2 id="stress">Market-stress panel</h2>
+<p>The banner below the 5 metrics rates the overall market state based on a 10-day rolling window.</p>
+
+<h3>Stress components</h3>
+<table>
+<tr><th>Component</th><th>Weight</th><th>Meaning</th></tr>
+<tr><td><b>bull_drop</b></td><td>28 %</td><td>Falling slope of the Bull share (pp/day)</td></tr>
+<tr><td><b>bear_rise</b></td><td>24 %</td><td>Rising slope of the Bear share (pp/day)</td></tr>
+<tr><td><b>divergence</b></td><td>20 %</td><td>Index stable or rising although Bull breadth falls – strongest warning signal</td></tr>
+<tr><td><b>side_rise</b></td><td>14 %</td><td>Increasing sideways movement (indecision)</td></tr>
+<tr><td><b>relvol</b></td><td>14 %</td><td>Elevated relative volume across all names (nervousness)</td></tr>
+</table>
+
+<h3>Stress levels</h3>
+<table>
+<tr><th>Score</th><th>Level</th><th>Recommended action</th></tr>
+<tr><td>≥ 60</td><td>⚠️ Warning</td><td>Review hedges, reduce position sizes</td></tr>
+<tr><td>33–59</td><td>🔶 Elevated</td><td>Increased vigilance, scrutinise new entries</td></tr>
+<tr><td>&lt; 33</td><td>🟢 Calm</td><td>Normal market environment</td></tr>
+</table>
+
+<h3>Recovery score (counterpart)</h3>
+<p>Signals a possible bottoming after a sell-off phase:</p>
+<table>
+<tr><th>Component</th><th>Weight</th><th>Meaning</th></tr>
+<tr><td><b>bull_rise</b></td><td>45 %</td><td>Rising Bull breadth from lows</td></tr>
+<tr><td><b>bear_drop</b></td><td>30 %</td><td>Falling Bear share – selling pressure eases</td></tr>
+<tr><td><b>relvol</b></td><td>25 %</td><td>Elevated volume on the buyer side</td></tr>
+</table>
+<ul>
+  <li>Score ≥ 60: "Turning" – possible bottom</li>
+  <li>Score 33–59: "Building" – first signs of recovery</li>
+</ul>
+
+<h2>Technical background</h2>
+<table>
+<tr><th>Aspect</th><th>Details</th></tr>
+<tr><td><b>Data sources</b></td><td><code>yf_&lt;ticker&gt;.db</code> (OHLCV), <code>asset_info.db</code> (sector mapping), <code>yf_tickers.db</code> (index members)</td></tr>
+<tr><td><b>Computation window</b></td><td>2 × interval days are loaded (previous period + current period)</td></tr>
+<tr><td><b>Parallel processing</b></td><td>All tickers are loaded in parallel (<code>ThreadPoolExecutor</code>)</td></tr>
+<tr><td><b>Cache</b></td><td><code>@st.cache_data(ttl=3600)</code> – data is cached for 1 hour</td></tr>
+<tr><td><b>Stress rolling window</b></td><td>10 trading days (<code>_STRESS_WINDOW = 10</code>)</td></tr>
+</table>
+
+<div class="info">The page is reachable via the <b>🌊 Regime Flow</b> menu item in the left navigation.</div>
+</body>
+</html>

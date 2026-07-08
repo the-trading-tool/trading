@@ -211,7 +211,7 @@ INDEX = [
     '^VIX',      # CBOE Volatility Index
 ]
 
-# Energie- und Agrar-Futures (werden von der Simulation ausgeschlossen)
+# Energie-, Agrar- und Finanz-Futures (werden von der Simulation ausgeschlossen)
 COMMODITIES = [
     'BZ=F',  # Brent Crude Oil
     'CC=F',  # Kakao
@@ -223,6 +223,9 @@ COMMODITIES = [
     'RB=F',  # Gasoline (RBOB)
     'SB=F',  # Zucker
     'ZC=F',  # Mais
+    'ZN=F',  # 10Y US-Treasury-Note-Future (Makro-Kontext für den Korrelationsindex;
+             # als Nicht-Aktien-Future hier im Futures-Bucket, damit ihn die
+             # YAHOO_*_DATA_GROUP-Jobs mitladen)
     'ZS=F',  # Sojabohnen
     'ZW=F',  # Weizen
 ]
@@ -236,12 +239,14 @@ METALS = [
     'SI=F',  # Silber
 ]
 
-# Währungspaare (werden von der Simulation ausgeschlossen)
+# Währungspaare + US-Dollar-Index (werden von der Simulation ausgeschlossen)
 CURRENCIES = [
     'EURUSD=X',
     'GBPUSD=X',
     'HKDEUR=X',
     'JPYEUR=X',
+    'DX-Y.NYB',  # ICE US-Dollar-Index (Spot) — Makro-Kontext für den Korrelationsindex.
+                 # NICHT 'DX' verwenden (das ist die Aktie Dynex Capital)!
 ]
 
 # Kryptowährungen (werden von der Simulation ausgeschlossen)
@@ -308,9 +313,61 @@ CREATE TABLE IF NOT EXISTS stock_indices (
 """
 
 
+def ensure_unique_schema(conn: sqlite3.Connection):
+    """Self-healing: dedupe legacy rows, then enforce uniqueness via indexes.
+
+    Older yf_tickers.db were created before the UNIQUE(Ticker) / PK(stock_id,index_id)
+    constraints existed in SCHEMA. On those tables `INSERT OR IGNORE` could not dedupe,
+    so every seed run appended duplicate stocks/links. This migration removes existing
+    duplicates and adds UNIQUE indexes so future INSERT OR IGNORE truly dedupes.
+    Idempotent — a no-op once the indexes exist and no duplicates remain (analogous to
+    the trades.db PK self-heal).
+    """
+    c = conn.cursor()
+    dup_links = c.execute(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM stock_indices "
+        "GROUP BY stock_id, index_id HAVING COUNT(*) > 1)"
+    ).fetchone()[0]
+    dup_stocks = c.execute(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM stocks WHERE Ticker IS NOT NULL "
+        "GROUP BY Ticker HAVING COUNT(*) > 1)"
+    ).fetchone()[0]
+
+    if dup_links or dup_stocks:
+        # Repoint valid links to the canonical (min id) stocks row per ticker.
+        # Skip already-orphaned links (stock_id with no stocks row) so we don't NULL them.
+        c.execute(
+            "UPDATE stock_indices SET stock_id = ("
+            "  SELECT MIN(s2.id) FROM stocks s2 "
+            "  WHERE s2.Ticker = (SELECT s1.Ticker FROM stocks s1 WHERE s1.id = stock_indices.stock_id)) "
+            "WHERE EXISTS (SELECT 1 FROM stocks s WHERE s.id = stock_indices.stock_id)"
+        )
+        c.execute(
+            "DELETE FROM stock_indices WHERE rowid NOT IN "
+            "(SELECT MIN(rowid) FROM stock_indices GROUP BY stock_id, index_id)"
+        )
+        c.execute(
+            "DELETE FROM stocks WHERE Ticker IS NOT NULL AND id NOT IN "
+            "(SELECT MIN(id) FROM stocks WHERE Ticker IS NOT NULL GROUP BY Ticker)"
+        )
+        print(f"   Dubletten bereinigt: {dup_stocks} Ticker, {dup_links} Verknüpfungen")
+
+    # Enforce uniqueness going forward. SQLite treats multiple NULLs as distinct, so a
+    # NULL Ticker will not block the index. IF NOT EXISTS keeps this idempotent and
+    # harmless even when the table already carries a UNIQUE(...) table constraint.
+    try:
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stocks_ticker ON stocks(Ticker)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_indices_pair "
+                  "ON stock_indices(stock_id, index_id)")
+    except sqlite3.IntegrityError as exc:
+        print(f"   WARN: UNIQUE-Index konnte nicht angelegt werden (Restduplikate?): {exc}")
+    conn.commit()
+
+
 def seed(conn: sqlite3.Connection):
     cursor = conn.cursor()
     cursor.executescript(SCHEMA)
+    ensure_unique_schema(conn)
 
     date_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     inserted = 0

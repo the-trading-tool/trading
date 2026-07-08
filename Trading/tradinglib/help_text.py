@@ -134,13 +134,36 @@ def set_dark_mode(enabled: bool) -> None:
     DARK_MODE = bool(enabled)
 
 
-def load_help(module_name: str) -> str:
-    """Load a help HTML file from the HELP/ folder next to the Trading root."""
+def load_help(module_name: str, lang: str | None = None) -> str:
+    """Load a help HTML file from the HELP/ folder next to the Trading root.
+
+    Language-aware: prefers ``<module>_<lang>.html`` (e.g. market_map_en.html) and
+    falls back to the base ``<module>.html`` when no localised variant exists. The
+    base files are German; add ``_en.html`` siblings to provide English versions.
+    ``lang`` defaults to the active i18n language. Explicit calls that already carry
+    a language suffix (e.g. ``ovt_de``/``ovt_en``) still resolve via the fallback.
+    """
+    if lang is None:
+        try:
+            from tradinglib import i18n
+            lang = i18n.current_language()
+        except Exception:
+            lang = None
+
     _help_dir = _os.path.join(_os.path.dirname(__file__), '..', 'HELP')
-    path = _os.path.join(_help_dir, f'{module_name}.html')
-    try:
-        with open(path, encoding='utf-8') as _f:
-            content = _f.read()
-    except FileNotFoundError:
+    candidates = []
+    if lang:
+        candidates.append(f'{module_name}_{lang}.html')
+    candidates.append(f'{module_name}.html')
+
+    content = None
+    for _name in candidates:
+        try:
+            with open(_os.path.join(_help_dir, _name), encoding='utf-8') as _f:
+                content = _f.read()
+            break
+        except FileNotFoundError:
+            continue
+    if content is None:
         return f'<p style="color:#888">Keine Hilfe verfügbar für: <code>{module_name}</code></p>'
     return (_DARK_MODE_CSS + content) if DARK_MODE else content

@@ -525,6 +525,7 @@ class SystemConfig(tools.Db_tools):
                     ("Dashboard", "banner_page"),
                     ("Market Map", "market_map"),
                     ("Sektorrotation", "sector_rotation_page"),
+                    ("Korrelationsindex", "correlation_index_page"),
                     ("Regime Flow", "regime_flow_page"),
                     ("Performance", "performance_details"),
                     ("Asset-Übersicht", "all_assets"),

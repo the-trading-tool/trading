@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Data sources – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6px;font-family:monospace;font-size:.87em}
+</style>
+</head>
+<body>
+<h1>Data sources <small style="font-size:.6em;color:#888">tradinglib/providers/</small></h1>
+
+<p>All price and OHLC data flows through a swappable <b>provider layer</b>. By default <b>Yahoo Finance</b> (via <code>yfinance</code>) is used. Alternatively, <b>Financial Modeling Prep (FMP)</b> can be enabled as the data source – e.g. when Yahoo is temporarily blocked or rate-limited.</p>
+
+<h2>Switching provider</h2>
+<p>Via the 🏵 button (configuration, visible to admins only) → <b>Data provider</b> section:</p>
+<ul>
+  <li><b>Active data provider:</b> <code>yahoo</code> (default) or <code>fmp</code></li>
+  <li>The choice applies globally to all modules that fetch price data (<code>fetch_data.py</code>, <code>market_data.py</code>, <code>get_asset_data.py</code> …)</li>
+</ul>
+
+<div class="warn"><b>Recommendation – use Yahoo only as a fallback:</b> Yahoo Finance is connected via <code>yfinance</code>, an <b>unofficial</b> interface without an SLA. Frequent automated background fetches (see the "Setup &amp; Scheduler" help) risk blocks or rate limits. For recurring jobs, therefore set up <b>FMP as the primary provider</b> and keep Yahoo only as a fallback in case FMP limits are reached or no API key is stored.</div>
+
+<h2>Financial Modeling Prep (FMP)</h2>
+<h3>Prerequisite: API key</h3>
+<ul>
+  <li>Create a free API key at <code>financialmodelingprep.com</code></li>
+  <li>In the admin panel under <b>API access</b>, create a KSP entry <code>fmp</code>, password = the API key</li>
+  <li>In the configuration dialog a green note <i>"API key found"</i> appears once the entry is recognised</li>
+  <li>Use <b>🔌 Test connection</b> to check access immediately</li>
+</ul>
+
+<h3>Ticker compatibility</h3>
+<p>FMP partly uses different ticker symbols than Yahoo Finance. The conversion happens automatically:</p>
+<table>
+<tr><th>Security type</th><th>Yahoo symbol</th><th>FMP symbol</th></tr>
+<tr><td>US stocks</td><td><code>AAPL</code></td><td><code>AAPL</code> (identical)</td></tr>
+<tr><td>German stocks (Xetra)</td><td><code>SAP.DE</code></td><td><code>SAP.F</code></td></tr>
+<tr><td>Cryptocurrencies</td><td><code>BTC-USD</code></td><td><code>BTCUSD</code></td></tr>
+<tr><td>Indices</td><td><code>^GDAXI</code>, <code>^SPX</code>, <code>^TNX</code></td><td>identical</td></tr>
+<tr><td>Other exchanges</td><td>—</td><td>mostly identical, otherwise manually overridable</td></tr>
+</table>
+
+<h3>Manual ticker overrides</h3>
+<p>If the automatic conversion does not fit a ticker, a custom mapping <i>Yahoo ticker → FMP ticker</i> can be added in the configuration dialog. The list is stored under <code>_app:fmp_ticker_overrides</code> in <code>config.db</code> and can be removed again via the ✕ symbol.</p>
+
+<div class="warn"><b>Rate limits (free FMP plan):</b> 250 requests/day, 10 requests/minute. With intensive use (e.g. <code>get_asset_data.py /all</code>) these limits can be reached quickly.</div>
+
+<div class="info">Both providers deliver data in the same format (Open/High/Low/Close/Volume, like <code>yfinance</code>). Switching provider requires no change to existing databases or analyses – only future fetches use the new source.</div>
+</body>
+</html>

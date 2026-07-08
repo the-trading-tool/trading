@@ -14,8 +14,27 @@ import streamlit as st
 
 from tradinglib.ai_client import AiClient, AiRateLimitError, AiProviderError
 from tradinglib import system_config as sysconf
+from tradinglib import i18n
+from tradinglib.i18n import t
 
 logger = logging.getLogger(__name__)
+
+# German data category (from _INDEX_NAMES) → locale key, for display translation.
+_CAT_KEY = {
+    'Angstbarometer': 'mv.cat.fear',   'Zins USA': 'mv.cat.rates_us',
+    'USA': 'mv.cat.usa',               'Europa': 'mv.cat.europe',
+    'Japan': 'mv.cat.japan',           'Asien': 'mv.cat.asia',
+    'Australien': 'mv.cat.australia',  'Metalle': 'mv.cat.metals',
+    'Energie': 'mv.cat.energy',        'Agrar': 'mv.cat.agri',
+    'Währung': 'mv.cat.currency',      'Krypto': 'mv.cat.crypto',
+    'Sonstiges': 'mv.cat.other',       'Index': 'mv.cat.index',
+}
+
+
+def _cat(cat: str) -> str:
+    """Translate a data category label to the active language (fallback: as-is)."""
+    key = _CAT_KEY.get(cat)
+    return t(key) if key else cat
 
 # ── Symbols ────────────────────────────────────────────────────────────────────
 # (display_id, yf_ticker, long_name, category)
@@ -655,6 +674,10 @@ def _build_market_prompt(
         count_line += f" (davon {n_data} mit verfügbaren Daten, {n_total - n_data} mit FEHLER)"
 
     lines = [
+        # Output language follows the user's app language; the scaffold below stays
+        # German (internal engineering text), only the AI's response language changes.
+        t('mv.prompt_lang_directive'),
+        "",
         "Du bist ein quantitativer Multi-Asset-Analyst.",
         "Analysiere die folgenden Märkte STRIKT DATENBASIERT — keine narrative Vereinheitlichung.",
         f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
@@ -990,11 +1013,9 @@ class MarketOverviewPage:
     def render(self):
         interval, period, indicators = _get_active_indicators(self.sys_conf)
 
-        st.title("Globale Marktübersicht")
-        st.caption(
-            f"Intervall: **{interval}** · Zeitraum: **{period}** · "
-            f"Indikatoren: **{', '.join(indicators) if indicators else '—'}**"
-        )
+        st.title(t('mv.title'))
+        st.caption(t('mv.caption', interval=interval, period=period,
+                     indicators=', '.join(indicators) if indicators else '—'))
 
         # Datenauswahl (immer sichtbar, vor dem Laden ausgewertet)
         sections, symbols, freetext = self._render_section_selector()
@@ -1006,17 +1027,16 @@ class MarketOverviewPage:
         col_btn, col_status = st.columns([2, 4])
         with col_btn:
             load_btn = st.button(
-                "Daten laden", type="primary", use_container_width=True,
-                help="Marktdaten + Indikatoren abrufen und Prompt bauen",
+                t('mv.load_data'), type="primary", use_container_width=True,
+                help=t('mv.load_data_help'),
             )
         with col_status:
             if result:
-                st.info(f"Letzte Analyse: {result.get('ts', '?')} — "
-                        "'Daten laden' startet von vorne.")
+                st.info(t('mv.status_last_analysis', ts=result.get('ts', '?')))
             elif prep:
-                st.success("Prompt bereit — prüfe Debug-Ausgabe und klicke 'An KI senden'.")
+                st.success(t('mv.status_prompt_ready'))
             else:
-                st.info("Startet Datenabruf + Indikator-Berechnung + Prompt-Erstellung.")
+                st.info(t('mv.status_idle'))
 
         if load_btn:
             # Zustand komplett zurücksetzen, dann Step 1
@@ -1039,7 +1059,7 @@ class MarketOverviewPage:
             self._render_headlines(prep.get('headlines', {}))
             self._render_debug(prep)
             st.markdown("")
-            if st.button("An KI senden", type="primary"):
+            if st.button(t('mv.send_to_ai'), type="primary"):
                 self._run_ai_call(prep)
         else:
             self._render_symbol_list(indicators, symbols)
@@ -1054,7 +1074,7 @@ class MarketOverviewPage:
         active_symbols = symbols if symbols else list(_SYMBOLS)
         results = self._fetch_all(interval, period, indicators, active_symbols)
 
-        with st.spinner("Nachrichten-Sentiment wird abgerufen …"):
+        with st.spinner(t('mv.spinner_sentiment')):
             headlines = _fetch_sentiment_headlines()
 
         prompt    = _build_market_prompt(
@@ -1078,7 +1098,7 @@ class MarketOverviewPage:
 
     def _run_ai_call(self, prep: dict):
         """Sendet den fertigen Prompt an die KI und speichert das Ergebnis → _SESSION_KEY."""
-        with st.spinner("KI analysiert Marktdaten …"):
+        with st.spinner(t('mv.spinner_ai')):
             try:
                 client   = AiClient(username=self.username)
                 analysis = client.run_question(prep['prompt'], max_tokens=2800)
@@ -1097,12 +1117,12 @@ class MarketOverviewPage:
                 st.rerun()
 
             except AiRateLimitError as exc:
-                st.error(f"KI-Rate-Limit — alle Provider erschöpft:\n\n{exc}")
+                st.error(t('mv.err_ratelimit', error=exc))
             except AiProviderError as exc:
-                st.error(f"KI-Provider-Fehler:\n\n{exc}")
+                st.error(t('mv.err_provider', error=exc))
             except Exception as exc:
                 logger.exception("market_overview: unexpected AI error")
-                st.error(f"Unerwarteter Fehler: {exc}")
+                st.error(t('mv.err_unexpected', error=exc))
 
     # ── Daten laden ───────────────────────────────────────────────────────────
 
@@ -1110,11 +1130,11 @@ class MarketOverviewPage:
                    symbols: list | None = None) -> list[dict]:
         active = symbols if symbols else list(_SYMBOLS)
         results = []
-        prog = st.progress(0, text="Marktdaten werden geladen …")
+        prog = st.progress(0, text=t('mv.progress_loading'))
         for i, (display_id, yf_ticker, name, cat) in enumerate(active):
             prog.progress(
                 (i + 1) / len(active),
-                text=f"Lade {display_id} ({name}) …",
+                text=t('mv.progress_load_one', id=display_id, name=name),
             )
             r = _compute_for_symbol(
                 display_id, yf_ticker, interval, period, indicators, self.sys_conf
@@ -1148,16 +1168,11 @@ class MarketOverviewPage:
         else:
             selected_ids = [sid for sid in _DEFAULT_INSTRUMENTS if sid in symbol_pool]
 
-        with st.expander("⚙ Datenauswahl für KI-Prompt", expanded=False):
+        with st.expander(t('mv.data_selection'), expanded=False):
 
             # ── Provider-Reihenfolge ──────────────────────────────────────────
             _all_providers  = ['groq', 'github', 'gemini', 'ollama']
-            _prov_labels    = {
-                'groq':   'Groq  (llama-4-scout · kostenlos · schnell)',
-                'github': 'GitHub Models  (gpt-4o-mini · kostenlos · GPT-Qualität)',
-                'gemini': 'Gemini  (flash-lite · kostenlos)',
-                'ollama': 'Ollama  (lokal)',
-            }
+            _prov_labels    = {p: t(f'mv.prov.{p}') for p in _all_providers}
             saved_order = self.sys_conf.get_value('ai_provider_order', _all_providers)
             if not isinstance(saved_order, list):
                 saved_order = _all_providers
@@ -1165,13 +1180,10 @@ class MarketOverviewPage:
             saved_order = [p for p in saved_order if p in _all_providers] + \
                           [p for p in _all_providers if p not in saved_order]
 
-            st.markdown("**KI-Provider Reihenfolge:**")
-            st.caption(
-                "Auswahl bestimmt die Priorität — erster Provider wird zuerst versucht. "
-                "Nicht konfigurierte Provider (kein API-Key) werden übersprungen."
-            )
+            st.markdown(t('mv.provider_order_head'))
+            st.caption(t('mv.provider_order_caption'))
             new_order = st.multiselect(
-                "Reihenfolge (oberster = höchste Priorität):",
+                t('mv.provider_order_label'),
                 options=_all_providers,
                 default=saved_order,
                 format_func=lambda p: _prov_labels.get(p, p),
@@ -1188,7 +1200,7 @@ class MarketOverviewPage:
             st.markdown("---")
 
             # ── Instrumente ───────────────────────────────────────────────────
-            st.markdown("**Instrumente:**")
+            st.markdown(t('mv.instruments_head'))
             # Sortiert nach Kategorie für bessere Übersicht
             by_cat: dict[str, list] = {}
             for sym in all_symbols:
@@ -1220,18 +1232,15 @@ class MarketOverviewPage:
             st.markdown("---")
 
             # ── Daten-Abschnitte ──────────────────────────────────────────────
-            st.caption(
-                "**Pflicht (immer aktiv):** Trend (SMA20/50/200) · Momentum (RSI + MACD) · "
-                "Volatilität (ATR)"
-            )
-            st.markdown("**Optionale Daten & Analyse-Abschnitte:**")
+            st.caption(t('mv.mandatory_caption'))
+            st.markdown(t('mv.optional_head'))
             sec_cols = st.columns(3)
             selections: dict[str, bool] = {}
             for i, key in enumerate(_SECTION_DEFAULTS):
-                label, default = _SECTION_DEFAULTS[key]
+                _label, default = _SECTION_DEFAULTS[key]
                 with sec_cols[i % 3]:
                     selections[key] = st.checkbox(
-                        label,
+                        t(f'mv.section.{key}'),
                         value=saved_sec.get(key, default),
                         key=f'sec_{key}',
                     )
@@ -1242,17 +1251,13 @@ class MarketOverviewPage:
         saved_freetext = self.sys_conf.get_value(_CFG_FREETEXT_KEY, '') or ''
         if not isinstance(saved_freetext, str):
             saved_freetext = ''
-        st.markdown("**Individuelle Zusatzfragen / Anweisungen:**")
-        st.caption(
-            "Dieser Text wird direkt ans Ende des Prompts angehängt. "
-            "Beispiel: *'Berechne das Sharpe-Ratio basierend auf den Volatilitätsdaten.'* "
-            "oder *'Vergleiche VIX mit dem historischen Durchschnitt von 20.'*"
-        )
+        st.markdown(t('mv.freetext_head'))
+        st.caption(t('mv.freetext_caption'))
         new_freetext = st.text_area(
-            "Freitext (optional):",
+            t('mv.freetext_label'),
             value=saved_freetext,
             height=100,
-            placeholder="Eigene Fragen oder Anweisungen an die KI …",
+            placeholder=t('mv.freetext_placeholder'),
             key='sec_freetext',
             label_visibility='collapsed',
         )
@@ -1282,14 +1287,18 @@ class MarketOverviewPage:
 
     def _render_symbol_list(self, indicators: list, symbols: list | None = None):
         active = symbols if symbols else list(_SYMBOLS)
-        st.markdown(f"**Zu analysierende Instrumente ({len(active)}):**")
-        rows = [{'Symbol': s[0], 'Name': s[2], 'Kategorie': s[3]} for s in active]
+        st.markdown(t('mv.instruments_to_analyse', n=len(active)))
+        rows = [{t('mv.col_symbol'): s[0], t('mv.col_name'): s[2],
+                 t('mv.col_category'): _cat(s[3])} for s in active]
         st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
         if indicators:
-            st.markdown(f"**Aktive Indikatoren:** {', '.join(indicators)}")
+            st.markdown(t('mv.active_indicators', indicators=', '.join(indicators)))
 
     def _render_indicator_table(self, results: list[dict]):
-        _regime_map = {0.0: 'Seitwärts', 1.0: 'Bullen', 2.0: 'Bären'}
+        _regime_map = {0.0: t('mv.regime_sideways'), 1.0: t('mv.regime_bull'),
+                       2.0: t('mv.regime_bear')}
+        c_sym, c_name = t('mv.col_symbol'), t('mv.col_name')
+        c_price, c_date = t('mv.col_price'), t('mv.col_date')
         compact_rows = []
         for r in results:
             ind       = r.get('indicator_values', {})
@@ -1298,10 +1307,10 @@ class MarketOverviewPage:
 
             if r.get('error'):
                 compact_rows.append({
-                    'Symbol': r['ticker'], 'Name': r.get('name', ''),
-                    'Kurs': 'Fehler', '1W %': '-', '1M %': '-',
+                    c_sym: r['ticker'], c_name: r.get('name', ''),
+                    c_price: t('mv.val_error'), '1W %': '-', '1M %': '-',
                     'Markov': '-', 'HA': '-', 'MACD H.': '-', 'EWO': '-',
-                    'PVT-Komp.': '-', 'Stand': '-',
+                    'PVT-Komp.': '-', c_date: '-',
                 })
                 continue
 
@@ -1313,8 +1322,8 @@ class MarketOverviewPage:
             ha_open  = ind.get('ha_open')
             ha_low   = ind.get('ha_ema_low')
             if ha_close is not None and ha_open is not None:
-                ha_signal = ('Bear (u.Band)' if (ha_low and ha_close < ha_low)
-                             else 'Bull' if ha_close > ha_open else 'Bear')
+                ha_signal = (t('mv.ha_bear_lowband') if (ha_low and ha_close < ha_low)
+                             else t('mv.ha_bull') if ha_close > ha_open else t('mv.ha_bear'))
             else:
                 ha_signal = '-'
 
@@ -1323,9 +1332,9 @@ class MarketOverviewPage:
             pvm       = _pivot_compression(ind, r['close'])
 
             compact_rows.append({
-                'Symbol':    r['ticker'],
-                'Name':      r.get('name', ''),
-                'Kurs':      r['close'],
+                c_sym:       r['ticker'],
+                c_name:      r.get('name', ''),
+                c_price:     r['close'],
                 '1W %':      week_str,
                 '1M %':      month_str,
                 'Markov':    regime,
@@ -1334,17 +1343,18 @@ class MarketOverviewPage:
                 'EWO':       f"{ewo:+.4f}"        if ewo       is not None else '-',
                 'PVT-Komp.': (f"{pvm['compression_pct']}% {'⚠' if pvm['compressed'] else ''}"
                               if pvm else '-'),
-                'Stand':     r.get('datum', '-'),
+                c_date:      r.get('datum', '-'),
             })
 
         st.dataframe(pd.DataFrame(compact_rows), hide_index=True, use_container_width=True)
 
-        with st.expander("Alle Indikatorwerte (Rohdaten)", expanded=False):
+        with st.expander(t('mv.raw_values'), expanded=False):
             for r in results:
                 if r.get('error') or not r.get('indicator_values'):
                     continue
                 st.markdown(f"**{r['ticker']} — {r.get('name', '')}**")
-                rows = [{'Indikator': k, 'Wert': v, 'Hinweis': _INDICATOR_HINTS.get(k, '')}
+                rows = [{t('mv.col_indicator'): k, t('mv.col_value'): v,
+                         t('mv.col_hint'): _INDICATOR_HINTS.get(k, '')}
                         for k, v in r['indicator_values'].items()]
                 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=False)
 
@@ -1353,7 +1363,7 @@ class MarketOverviewPage:
             return
         _meta  = {s[0]: s[2] for s in _SYMBOLS}
         _color = {'positiv': '#27ae60', 'negativ': '#e74c3c', 'neutral': '#7f8c8d'}
-        with st.expander("Aktuelle Schlagzeilen (Yahoo Finance RSS)", expanded=False):
+        with st.expander(t('mv.headlines'), expanded=False):
             for ticker, articles in headlines.items():
                 if not articles:
                     continue
@@ -1371,16 +1381,14 @@ class MarketOverviewPage:
 
     def _render_debug(self, prep: dict):
         """Zeigt Prompt + Provider-Reihenfolge BEVOR der KI-Call geht (State 1)."""
-        with st.expander("Debug: Prompt & Provider-Reihenfolge", expanded=True):
+        with st.expander(t('mv.debug_title'), expanded=True):
             providers = prep.get('providers', [])
-            st.markdown("**Provider-Reihenfolge** (der Reihe nach versucht):")
+            st.markdown(t('mv.provider_order_tried'))
             for i, name in enumerate(providers, 1):
                 st.markdown(f"&nbsp;&nbsp;{i}. `{name}`", unsafe_allow_html=True)
             prompt = prep.get('prompt', '')
-            st.markdown(
-                f"**Prompt-Länge:** {len(prompt):,} Zeichen "
-                f"≈ {len(prompt)//4:,} Tokens"
-            )
+            st.markdown(t('mv.prompt_length', chars=f"{len(prompt):,}",
+                          tokens=f"{len(prompt)//4:,}"))
             st.code(prompt, language="text")
 
     def _render_analysis(self, analysis: str, model: str, ts: str,
@@ -1400,5 +1408,5 @@ class MarketOverviewPage:
                     parts.append(f"❌ ~~{e['provider']}~~ — {err}")
             st.markdown("  →  ".join(parts))
 
-        st.markdown(f"**KI-Marktanalyse** — Stand: {ts}")
+        st.markdown(t('mv.ai_analysis', ts=ts))
         st.markdown(analysis)

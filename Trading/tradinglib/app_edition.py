@@ -69,6 +69,7 @@ SCALABLE_FREE_ROUTES = frozenset({
     'marketmap',        # Market Map
     'rotation',         # Sector Rotation
     'market_overview',  # Market View
+    'correlation',      # Correlation Index
     'compound',         # Lump Sum Investment
 })
 
@@ -80,7 +81,7 @@ SCALABLE_FREE_ROUTES = frozenset({
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
     'strategy_finder', 'trading', 'rotation', 'market_overview',
-    'compound', 'marketmap', 'summary', 'option_calc', 'upgrade',
+    'correlation', 'compound', 'marketmap', 'summary', 'option_calc', 'upgrade',
 )
 
 # Routes/endpoints that are always allowed regardless of edition

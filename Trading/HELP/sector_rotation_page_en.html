@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sector Rotation – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Sector Rotation <small style="font-size:.6em;color:#888">sector_rotation_page.py</small></h1>
+
+<p>A three-tier dashboard for analysing capital flows between market sectors – from the macro overview down to the single-stock drill-down.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Content</th></tr>
+<tr><td><b>RRG Weekly</b></td><td>Relative Rotation Graph (weekly) of all sectors versus the reference index</td></tr>
+<tr><td><b>RRG Daily</b></td><td>Relative Rotation Graph (daily) – a shorter-term perspective</td></tr>
+<tr><td><b>Treemap</b></td><td>Capital-flow treemap: tile size = market weight, colour = relative strength</td></tr>
+<tr><td><b>Sector Matrix</b></td><td>Tabular comparison of all sectors with RSC, CMF and OBV</td></tr>
+<tr><td><b>Industry Drill-down</b></td><td>Select a sector → industry detail with the strongest single stocks</td></tr>
+<tr><td><b>Best of Sector</b></td><td>Top names per sector by RSC vs. ETF enrichment</td></tr>
+</table>
+
+<h2>Reading the RRG</h2>
+<table>
+<tr><th>Quadrant</th><th>Phase</th><th>Meaning</th></tr>
+<tr><td>Top right</td><td>Leading</td><td>Stronger than the market and still increasing → <b>overweight</b></td></tr>
+<tr><td>Bottom right</td><td>Weakening</td><td>Stronger than the market, but momentum fading → watch</td></tr>
+<tr><td>Bottom left</td><td>Lagging</td><td>Weaker than the market and still decreasing → <b>avoid</b></td></tr>
+<tr><td>Top left</td><td>Improving</td><td>Weaker than the market, but momentum turning → consider entry</td></tr>
+</table>
+
+<h2>Indicators used</h2>
+<ul>
+  <li><b>RSC</b> – Relative Strength Comparison (vs. benchmark ETF)</li>
+  <li><b>CMF</b> – Chaikin Money Flow (capital in-/outflow)</li>
+  <li><b>OBV</b> – On Balance Volume (cumulative volume direction)</li>
+</ul>
+
+<h2>Choosing the universe</h2>
+<p>At the top of the dashboard: <b>US</b> (S&amp;P 500 sectors), <b>EU</b> (STOXX 600 sectors) or <b>EM</b> (Emerging Markets). The chosen universe determines the sectors, ETFs and reference index.</p>
+
+<div class="info">The page is reachable via the <b>Sector Rotation</b> menu item or directly via <code>/?rotation=true</code>.</div>
+</body>
+</html>
