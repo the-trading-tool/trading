@@ -92,7 +92,7 @@ _INDEX_NAMES: dict[str, tuple[str, str]] = {
     'CC=F':     ('Kakao',                   'Agrar'),
     'SB=F':     ('Zucker',                  'Agrar'),
     'CT=F':     ('Baumwolle',               'Agrar'),
-    'DX=F':     ('US Dollar Index',          'Sonstiges'),
+    'DX-Y.NYB': ('US Dollar Index',          'Sonstiges'),
     'ZN=F':     ('US-Treasuries 10Y',        'Zins USA'),
     'LE=F':     ('Live Cattle',              'Sonstiges'),
     'BTC-EUR':  ('Bitcoin (EUR)',            'Krypto'),
@@ -109,10 +109,10 @@ _INDEX_NAMES: dict[str, tuple[str, str]] = {
     'USDCNY=X': ('USD/CNY',                  'Währung'),
 }
 
-# yfinance ticker differs from the display ticker
-# DX=F (US Dollar Index Future) no longer delivers data via Yahoo (404/delisted);
-# the ICE spot index DX-Y.NYB represents the same measure and works.
-_YF_TICKER_MAP: dict[str, str] = {'^SPX': '^GSPC', 'DX=F': 'DX-Y.NYB'}
+# yfinance ticker differs from the display ticker (^SPX index price = ^GSPC).
+# The US Dollar Index is the ICE spot index DX-Y.NYB — the DX=F future is delisted
+# on Yahoo. DX-Y.NYB is used directly as the display id, so no mapping is needed.
+_YF_TICKER_MAP: dict[str, str] = {'^SPX': '^GSPC'}
 
 # Symbols that are always in the pool (regardless of yf_tickers.db)
 _EXTRA_SYMBOLS = [
@@ -129,7 +129,7 @@ _EXTRA_SYMBOLS = [
     # Rates / bonds
     'ZN=F',
     # Other
-    'DX=F', 'LE=F',
+    'DX-Y.NYB', 'LE=F',
     # Currencies
     'EURUSD=X', 'GBPUSD=X', 'USDJPY=X', 'USDCHF=X',
     'AUDUSD=X', 'USDCAD=X', 'EURGBP=X', 'EURJPY=X', 'USDCNY=X',
@@ -141,9 +141,9 @@ _DEFAULT_INSTRUMENTS = ['^VIX', '^TNX', '^HSI', '^N225', '^GDAXI', '^SPX', 'GC=F
 # Instruments backing the Correlation Index (correlation_index.db). They are shown
 # permanently checked + disabled in the instrument picker and are always part of the
 # analysis, so the AI can relate their stored cross-asset correlations to the market
-# data. display_id (market-overview) — the yf-ticker mapping (^SPX→^GSPC, DX=F→DX-Y.NYB)
-# stays as configured in _YF_TICKER_MAP.
-_CORR_LOCKED_IDS = ['^SPX', 'BTC-EUR', 'GC=F', 'DX=F', 'HG=F', 'ZN=F']
+# data. display_id (market-overview) — the yf-ticker mapping (^SPX→^GSPC) stays as
+# configured in _YF_TICKER_MAP; the US Dollar Index uses DX-Y.NYB directly.
+_CORR_LOCKED_IDS = ['^SPX', 'BTC-EUR', 'GC=F', 'DX-Y.NYB', 'HG=F', 'ZN=F']
 
 # German pair labels for the correlation prompt block (keyed by correlation_index pair id).
 _CORR_PAIR_LABELS = {
