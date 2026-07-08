@@ -282,9 +282,14 @@ Aufteilen in: `db_tools.py`, `st_tools.py`, `expression_eval.py`.
 Streamlit-Rerun wird eine neue Instanz gebaut → Connection-Leak.
 **Fix:** Instanzen in `st.session_state` cachen.
 
-**M) Keine Tests** — kein einziger Test im Repository. Für eine App, die
-Handelsentscheidungen trifft, ist das das größte Stabilitätsrisiko.
-Einstieg: `pytest` + Smoke-Tests für `fetch_data.py` und `tools.py`.
+**M) Testabdeckung noch dünn** — erste Tests existieren unter `tests/`
+(`pytest tests/ -q`, pytest 9.x im venv):
+- `tests/test_signal_mask.py` — BuySellSignalGenerator / Multi-Strategies-Masking
+- `tests/test_index_normalization.py` — DatetimeIndex-Sort/Dedup (ensure_datetime_index, Bsz)
+
+Für eine App, die Handelsentscheidungen trifft, bleibt die Abdeckung das größte
+Stabilitätsrisiko. Nächste sinnvolle Ziele: `fetch_data.load_price_data`
+(Lade-Pipeline) und `tools.py` (Evaluator/Db_tools).
 
 **N) `Scheduler` nicht thread-safe genug** — `check_same_thread=False` mit nur
 einem `Lock`, aber `load_schedule_from_db` und `save_schedule_to_db` sind nicht
