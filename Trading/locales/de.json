@@ -1313,5 +1313,16 @@
   "pine.strategy_help": "strategy()-Skript mit Backtest-Engine (Entries/Exits + Marker)",
   "pine.strategy_failed": "Strategie-Export fehlgeschlagen: {err}",
   "pine.signals_help": "Reines overlay=true-Overlay: Buy/Sell nur als Dreiecke, ohne Backtest — auf jeden Chart legbar",
-  "pine.signals_failed": "Signal-Overlay-Export fehlgeschlagen: {err}"
+  "pine.signals_failed": "Signal-Overlay-Export fehlgeschlagen: {err}",
+  "pine.admin_title": "Pine Script Export",
+  "pine.admin_caption": "Wähle Indikatoren aus und lade die fertigen Pine Script Dateien für TradingView herunter.  \nDie Vorauswahl entspricht deinen gespeicherten Indikator-Einstellungen.",
+  "pine.admin_overlays_label": "Overlays (auf dem Preis-Chart)",
+  "pine.admin_oscillators_label": "Oszillatoren (eigene Pane)",
+  "pine.admin_select_hint": "Bitte mindestens einen Overlay oder Oszillator auswählen.",
+  "pine.admin_legacy_strategy_title": "📥 Strategie-Export (Buy/Sell → `strategy()`)",
+  "pine.admin_legacy_strategy_caption": "Übersetzt die technischen Buy/Sell-Formeln aus deiner Config in ein Pine-v5-`strategy()`-Skript. Strategien mit `overallValueTrend` (Fundamental-Score) sind in TradingView nicht abbildbar.",
+  "pine.admin_no_strategies": "Keine Strategien/Queries in der Config gefunden.",
+  "pine.admin_legacy_strategy_failed": "Strategie-Export fehlgeschlagen: {err}",
+  "pine.expander_title": "Pine Script Export",
+  "pine.sidebar_caption": "Pine Script Export für TradingView"
 }

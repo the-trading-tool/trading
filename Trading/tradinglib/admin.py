@@ -1720,16 +1720,13 @@ class Admin():
         _default_ovl = [n for n in _parse_stored(_cfg.get_value('overlay',   None)) if n in _ovl_map]
         _default_osc = [n for n in _parse_stored(_cfg.get_value('oszilator', None)) if n in _osc_map]
 
-        st.markdown("### Pine Script Export")
-        st.caption(
-            "Wähle Indikatoren aus und lade die fertigen Pine Script Dateien für TradingView herunter.  \n"
-            "Die Vorauswahl entspricht deinen gespeicherten Indikator-Einstellungen."
-        )
+        st.markdown(f"### {t('pine.admin_title')}")
+        st.caption(t("pine.admin_caption"))
 
         col_l, col_r = st.columns(2)
         with col_l:
             sel_ovl = st.multiselect(
-                "Overlays (auf dem Preis-Chart)",
+                t("pine.admin_overlays_label"),
                 options=_all_ovl,
                 default=_default_ovl,
                 format_func=lambda k: _ovl_map.get(k, k),
@@ -1737,7 +1734,7 @@ class Admin():
             )
         with col_r:
             sel_osc = st.multiselect(
-                "Oszillatoren (eigene Pane)",
+                t("pine.admin_oscillators_label"),
                 options=_all_osc,
                 default=_default_osc,
                 format_func=lambda k: _osc_map.get(k, k),
@@ -1748,16 +1745,12 @@ class Admin():
             st.divider()
             render_export_buttons(sel_ovl, sel_osc, _cfg)
         else:
-            st.info("Bitte mindestens einen Overlay oder Oszillator auswählen.")
+            st.info(t("pine.admin_select_hint"))
 
         # ── Strategie-Export: Buy/Sell-Formeln → handelbares strategy() ──────
         st.divider()
-        st.markdown("### 📥 Strategie-Export (Buy/Sell → `strategy()`)")
-        st.caption(
-            "Übersetzt die technischen Buy/Sell-Formeln aus deiner Config in ein "
-            "Pine-v5-`strategy()`-Skript. Strategien mit `overallValueTrend` "
-            "(Fundamental-Score) sind in TradingView nicht abbildbar."
-        )
+        st.markdown(f"### {t('pine.admin_legacy_strategy_title')}")
+        st.caption(t("pine.admin_legacy_strategy_caption"))
         try:
             from tradinglib import pine_strategy_export as _pse
             import re as _re2
@@ -1770,7 +1763,7 @@ class Admin():
                 except _pse.StrategyExportError as _e:
                     _exp['buy_query / sell_query'] = {'error': str(_e)}
             if not _exp:
-                st.info("Keine Strategien/Queries in der Config gefunden.")
+                st.info(t("pine.admin_no_strategies"))
             for _name, _res in _exp.items():
                 _slug = _re2.sub(r'[^A-Za-z0-9]+', '_', _name).strip('_')
                 if 'pine' in _res:
@@ -1785,4 +1778,4 @@ class Admin():
                 else:
                     st.caption(f"⛔ {_name}: {_res['error']}")
         except Exception as _sx:
-            st.error(f"Strategie-Export fehlgeschlagen: {_sx}")
+            st.error(t("pine.admin_legacy_strategy_failed", err=_sx))

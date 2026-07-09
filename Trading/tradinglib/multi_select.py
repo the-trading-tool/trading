@@ -481,7 +481,8 @@ class MultiCheckboxSelector:
 
     def render_pine_export(self, region=None) -> None:
         """Renders Pine Script export buttons for the currently selected indicators."""
-        _p_expander = (region or st).expander("Pine Script Export")
+        from tradinglib.i18n import t
+        _p_expander = (region or st).expander(t("pine.expander_title"))
         with _p_expander:
             from tradinglib.pine_exporter import render_export_buttons
             r          = region if region is not None else st
@@ -490,5 +491,5 @@ class MultiCheckboxSelector:
             if not overlays and not oscillators:
                 return
             r.divider()
-            r.caption("Pine Script Export für TradingView")
+            r.caption(t("pine.sidebar_caption"))
             render_export_buttons(overlays, oscillators, self.sys_conf, r)
