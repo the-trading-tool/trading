@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import sys
 import plotly.graph_objects as go
 
@@ -116,6 +117,69 @@ class Ici(_indicator._Indicator):
 		x = self.df['Date']
 		span_a = self.df['senkou_span_a']
 		span_b = self.df['senkou_span_b']
+
+		# =========================================================
+		# FORWARD PROJECTION OF THE KUMO CLOUD
+		# Senkou A/B are shifted +26 bars. The base values of the
+		# most recent 26 bars therefore belong to dates *beyond* the
+		# last candle — but there are no future rows to hold them, so
+		# .shift(26) drops them and the cloud stops at the last candle.
+		# Rebuild those 26 base values and append 26 future bars so the
+		# cloud extends into the future (standard Ichimoku behaviour).
+		# self.df is left untouched — only the local cloud arrays grow,
+		# and Plotly auto-extends the x-axis because this trace carries
+		# the future x-values.
+		# =========================================================
+		try:
+			n_fwd = 26
+			x_dt = pd.to_datetime(x, errors='coerce')
+			valid_dt = x_dt.dropna()
+
+			if len(valid_dt) > n_fwd:
+				# Unshifted Senkou bases (same formulas as data(), pre-shift)
+				base_a = (self.df['tenkan_sen'] + self.df['kijun_sen']) / 2.0
+				base_b = (
+					self.df['High'].rolling(window=52).max() +
+					self.df['Low'].rolling(window=52).min()
+				) / 2.0
+
+				# Median positive bar spacing (rangebreak-agnostic)
+				deltas = valid_dt.diff().dropna()
+				pos = deltas[deltas > pd.Timedelta(0)]
+				step = pos.median()
+
+				# Assets that genuinely trade on weekends (crypto/FX) keep
+				# their weekend bars; everything else skips Sat/Sun so no
+				# future vertex lands on a collapsed rangebreak day.
+				trades_weekend = bool((valid_dt.dt.dayofweek >= 5).mean() > 0.15)
+
+				if pd.notna(step) and step > pd.Timedelta(0):
+					last_dt = valid_dt.iloc[-1]
+					future_dates = []
+					cur = last_dt
+					guard = 0
+					while len(future_dates) < n_fwd and guard < n_fwd * 5:
+						cur = cur + step
+						guard += 1
+						if (not trades_weekend) and cur.dayofweek >= 5:
+							continue
+						future_dates.append(cur)
+
+					fut_a = base_a.iloc[-n_fwd:].to_numpy(dtype=float)
+					fut_b = base_b.iloc[-n_fwd:].to_numpy(dtype=float)
+					m = min(len(future_dates), n_fwd)
+
+					x = pd.Series(list(x_dt) + future_dates[:m])
+					span_a = pd.concat(
+						[span_a, pd.Series(fut_a[:m])], ignore_index=True)
+					span_b = pd.concat(
+						[span_b, pd.Series(fut_b[:m])], ignore_index=True)
+				else:
+					x = x_dt
+			else:
+				x = x_dt
+		except Exception:
+			pass
 
 		valid = span_a.notna() & span_b.notna()
 		bull_int = (span_a >= span_b).astype(int)

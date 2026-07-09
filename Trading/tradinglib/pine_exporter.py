@@ -1117,10 +1117,10 @@ ici_tenkan = (ta.highest(high,  9) + ta.lowest(low,  9)) / 2
 ici_kijun  = (ta.highest(high, 26) + ta.lowest(low, 26)) / 2
 ici_span_a = (ici_tenkan + ici_kijun) / 2
 ici_span_b = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2
-ici_chikou = close[26]
+ici_chikou = close
 ici_ema    = ta.ema(close, {win})
-ici_sa_p = plot(ici_span_a, "Span A", color.new(ici_bull_col, 0), ici_width, offset=-26)
-ici_sb_p = plot(ici_span_b, "Span B", color.new(ici_bear_col, 0), ici_width, offset=-26)
+ici_sa_p = plot(ici_span_a, "Span A", color.new(ici_bull_col, 0), ici_width, offset=26)
+ici_sb_p = plot(ici_span_b, "Span B", color.new(ici_bear_col, 0), ici_width, offset=26)
 fill(ici_sa_p, ici_sb_p, ici_span_a >= ici_span_b ? ici_bull_col : ici_bear_col)
 plot(ici_tenkan, "Tenkan",    ici_tenkan_col, ici_width)
 plot(ici_kijun,  "Kijun",     ici_kijun_col,  ici_width)
