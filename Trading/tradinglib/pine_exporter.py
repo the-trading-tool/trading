@@ -3554,6 +3554,7 @@ def render_export_buttons(
         of that section; the split ratio is configurable via a slider.
     """
     import streamlit as st
+    from tradinglib.i18n import t
     r = region if region is not None else st
 
     exp = PineExporter(overlays, oscillators, sys_conf)
@@ -3565,18 +3566,17 @@ def render_export_buttons(
 
     if unsup_sel:
         _unsup_reasons = {
-            'pre':    'loads an external ML model; Pine Script has no model-loading capability',
-            'bar':    'standard OHLC bar chart — use TradingView\'s native "Bars" chart type',
-            'candle': 'standard candlestick chart — use TradingView\'s native "Candles" chart type',
+            'pre':    t("pine.unsup_pre"),
+            'bar':    t("pine.unsup_bar"),
+            'candle': t("pine.unsup_candle"),
         }
-        _lines = [f"Cannot translate to Pine Script: **{', '.join(sorted(unsup_sel))}**"]
+        _lines = [t("pine.cannot_translate", items=', '.join(sorted(unsup_sel)))]
         for _n in sorted(unsup_sel):
             _lines.append(f"• **{_n}** — {_unsup_reasons.get(_n, 'not supported')}")
         r.warning("  \n".join(_lines))
     if missing_ovl or missing_osc:
-        r.info(f"Pine template not yet available for: "
-               f"**{', '.join(sorted(missing_ovl + missing_osc))}** "
-               "(placeholder comment added)")
+        r.info(t("pine.template_missing",
+                 items=', '.join(sorted(missing_ovl + missing_osc))))
 
     # Config buy/sell queries — drive the optional signal markers.
     _buy_q  = (sys_conf.get_value("buy_query",  "") or "") if sys_conf is not None else ""
@@ -3587,22 +3587,17 @@ def render_export_buttons(
     embed_signals = False
     if _buy_q or _sell_q:
         embed_signals = r.checkbox(
-            "🔺 Buy/Sell-Signale in overlay_indicators.pine einbetten",
+            t("pine.embed_signals"),
             value=False,
             key="pine_embed_signals",
-            help="Hängt die positions-bewussten Buy/Sell-Dreiecke aus deiner "
-                 "Config-Query mit in die Overlay-Datei — kein separates signals.pine "
-                 "nötig. In TradingView per Toggle ein-/ausblendbar.",
+            help=t("pine.embed_signals_help"),
         )
 
     # ── Row 1: separate files ─────────────────────────────────────────────────
     c1, c2 = r.columns(2)
-    _ovl_label = (
-        f"⬇ overlay_indicators.pine  ({len(overlays)} selected"
-        + (" + signals)" if embed_signals else ")")
-    )
+    _extra = t("pine.with_signals") if embed_signals else ""
     c1.download_button(
-        label=_ovl_label,
+        label=t("pine.ovl_btn", count=len(overlays), extra=_extra),
         data=exp.generate_overlay(
             include_signals=embed_signals, buy_query=_buy_q, sell_query=_sell_q,
         ).encode("utf-8"),
@@ -3611,7 +3606,7 @@ def render_export_buttons(
         use_container_width=True,
     )
     c2.download_button(
-        label=f"⬇ oscillator_indicators.pine  ({len(oscillators)} selected)",
+        label=t("pine.osc_btn", count=len(oscillators)),
         data=exp.generate_oscillator().encode("utf-8"),
         file_name="oscillator_indicators.pine",
         mime="text/plain",
@@ -3621,35 +3616,19 @@ def render_export_buttons(
     # ── Row 2: combined chart (only shown when both overlays AND oscillators) ──
     if overlays and oscillators:
         r.divider()
-        r.caption(
-            "**Combined chart** — overlays + oscillators in one `overlay=true` script.  \n"
-            "TradingView natively cannot pin pane-height ratios from Pine Script; this "
-            "workaround normalises oscillator values into the price axis so that the "
-            f"split is fixed regardless of zoom level."
-        )
+        r.caption(t("pine.combined_caption"))
         ovl_pct = r.slider(
-            "Overlay area (%)",
+            t("pine.overlay_area"),
             min_value=40, max_value=85, value=65, step=5,
-            help=(
-                f"Top {'{ovl_pct}'}% -> price overlays | "
-                f"bottom {'{osc_pct}'}% -> {len(oscillators)} oscillator slot(s), "
-                "each slot gets an equal share"
-            ),
+            help=t("pine.overlay_area_help", n=len(oscillators)),
             key="pine_combined_ovl_pct",
         )
         osc_pct = 100 - ovl_pct
         n = len(oscillators)
         slot_w = osc_pct / n
-        r.caption(
-            f"Overlays: **{ovl_pct}%** of chart height  |  "
-            f"Oscillators: **{osc_pct}%** split into **{n}** slot(s) "
-            f"x **{slot_w:.1f}%** each"
-        )
+        r.caption(t("pine.split_caption", ovl=ovl_pct, osc=osc_pct, n=n, slot=slot_w))
         r.download_button(
-            label=(
-                f"⬇ combined_chart.pine  "
-                f"({len(overlays)} overlay + {len(oscillators)} oscillator)"
-            ),
+            label=t("pine.combined_btn", ovl_n=len(overlays), osc_n=len(oscillators)),
             data=exp.generate_combined(overlay_pct=float(ovl_pct)).encode("utf-8"),
             file_name="combined_chart.pine",
             mime="text/plain",
@@ -3664,8 +3643,7 @@ def render_export_buttons(
         sell_query = sys_conf.get_value("sell_query", "") or ""
         if buy_query or sell_query:
             r.divider()
-            r.markdown("**Strategy export** — übersetzt deine Buy/Sell-Query in ein "
-                       "TradingView `strategy()`-Skript (Pine Script v5).")
+            r.markdown(t("pine.strategy_export_md"))
             r.code(
                 f"Buy:  {buy_query}\nSell: {sell_query}",
                 language="python",
@@ -3679,10 +3657,10 @@ def render_export_buttons(
                     file_name="strategy.pine",
                     mime="text/plain",
                     use_container_width=True,
-                    help="strategy()-Skript mit Backtest-Engine (Entries/Exits + Marker)",
+                    help=t("pine.strategy_help"),
                 )
             except Exception as _strat_err:
-                sc1.error(f"Strategy-Export fehlgeschlagen: {_strat_err}")
+                sc1.error(t("pine.strategy_failed", err=_strat_err))
             try:
                 signal_pine = exp.generate_signal_overlay(buy_query, sell_query)
                 sc2.download_button(
@@ -3691,8 +3669,7 @@ def render_export_buttons(
                     file_name="signals.pine",
                     mime="text/plain",
                     use_container_width=True,
-                    help="Reines overlay=true-Overlay: Buy/Sell nur als Dreiecke, "
-                         "ohne Backtest — auf jeden Chart legbar",
+                    help=t("pine.signals_help"),
                 )
             except Exception as _sig_err:
-                sc2.error(f"Signal-Overlay-Export fehlgeschlagen: {_sig_err}")
+                sc2.error(t("pine.signals_failed", err=_sig_err))
