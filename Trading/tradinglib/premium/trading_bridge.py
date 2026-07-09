@@ -44,9 +44,14 @@ class OrderLog(Tools):
                     submitted_at    TEXT,
                     filled_at       TEXT,
                     fill_price      REAL,
-                    error_msg       TEXT
+                    error_msg       TEXT,
+                    submit_after    TEXT
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE broker_orders ADD COLUMN submit_after TEXT")
+            except Exception:
+                pass  # column already exists
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS position_trails (
                     ticker          TEXT,
@@ -121,6 +126,34 @@ class OrderLog(Tools):
                 WHERE order_id=?
             """, (fill_price, ts, order_id))
 
+    def has_buy_for_date(
+        self,
+        ticker:      str,
+        mode:        str,
+        broker:      str,
+        signal_date: str,
+        exclude_id:  'int | None' = None,
+    ) -> bool:
+        """Return True if a non-error buy for *ticker* already exists for *signal_date*.
+
+        *exclude_id* skips a specific row by primary key — used when auto-submitting
+        a scheduled order so the row itself is not counted as a duplicate.
+        """
+        query = """
+            SELECT 1 FROM broker_orders
+            WHERE ticker=? AND action='buy' AND mode=? AND broker=?
+            AND signal_date=?
+            AND status NOT IN ('error', 'canceled', 'cancelled', 'expired')
+        """
+        params: list = [ticker, mode, broker, signal_date]
+        if exclude_id is not None:
+            query += " AND id != ?"
+            params.append(exclude_id)
+        query += " LIMIT 1"
+        with sqlite3.connect(self._db) as conn:
+            row = conn.execute(query, params).fetchone()
+        return row is not None
+
     # ------------------------------------------------------------------ #
     #  Queued (staged) manual orders — review & send later                #
     # ------------------------------------------------------------------ #
@@ -137,24 +170,24 @@ class OrderLog(Tools):
         qty: float,
         signal_price: float,
         signal_date: str,
+        submit_after: 'str | None' = None,
     ) -> None:
-        """Stage a manual order (status='queued') without contacting the broker.
+        """Stage a manual or scheduled order (status='queued') without contacting the broker.
 
-        Lets a user pick buy/sell from any page (e.g. the asset-detail quick
-        order buttons) without depending on the broker connection or the
-        dry-run toggle being set the way they expect *right now*. The order
-        sits in `broker_orders` until explicitly sent or discarded from the
-        Trading page's "Queued Orders" list.
+        When *submit_after* is set (ISO timestamp), the order is considered
+        scheduled: the Positions tab auto-submits it once that time has passed.
+        Without *submit_after* the order is manual and waits for explicit user action.
         """
         now = datetime.now().isoformat()
         with sqlite3.connect(self._db) as conn:
             conn.execute("""
                 INSERT INTO broker_orders
                     (mode, broker, strategy, ticker, broker_symbol, action, qty,
-                     signal_price, order_id, status, signal_date, submitted_at, error_msg)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'queued', ?, ?, '')
+                     signal_price, order_id, status, signal_date, submitted_at,
+                     error_msg, submit_after)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 'queued', ?, ?, '', ?)
             """, (mode, broker, strategy, ticker, broker_symbol, action, qty,
-                  signal_price, signal_date, now))
+                  signal_price, signal_date, now, submit_after))
 
     def get_queued_orders(self, mode: str | None = None, broker: str | None = None) -> 'pd.DataFrame':
         """Return staged-but-not-yet-sent orders (status='queued'), newest first."""
@@ -171,7 +204,37 @@ class OrderLog(Tools):
             with sqlite3.connect(self._db) as conn:
                 return pd.read_sql_query(query, conn, params=params)
         except Exception as e:
-            logger.error(f'get_queued_orders failed: {e}')
+            logger.error('get_queued_orders failed: %s', e)
+            return pd.DataFrame()
+
+    def get_overdue_scheduled(
+        self,
+        mode:   'str | None' = None,
+        broker: 'str | None' = None,
+    ) -> 'pd.DataFrame':
+        """Return queued orders whose submit_after time has passed (ready to auto-submit).
+
+        Only includes rows with a non-NULL submit_after that is <= now.
+        Manual queued orders (submit_after IS NULL) are never returned here.
+        """
+        now = datetime.now().isoformat()
+        query = (
+            "SELECT * FROM broker_orders "
+            "WHERE status='queued' AND submit_after IS NOT NULL AND submit_after <= ?"
+        )
+        params: list = [now]
+        if mode:
+            query += " AND mode=?"
+            params.append(mode)
+        if broker:
+            query += " AND broker=?"
+            params.append(broker)
+        query += " ORDER BY submit_after"
+        try:
+            with sqlite3.connect(self._db) as conn:
+                return pd.read_sql_query(query, conn, params=params)
+        except Exception as e:
+            logger.error('get_overdue_scheduled failed: %s', e)
             return pd.DataFrame()
 
     def mark_queued_sent(self, row_id: int, order_id: str, status: str, error_msg: str = ''):
