@@ -2786,13 +2786,14 @@ _STRAT_COL_MAP: dict[str, str] = {
     'High':           'high',
     'Low':            'low',
     'Volume':         'volume',
-    # Heikin Ashi (heikin indicator)
-    'ha_close':       'ha_close',
-    'ha_open':        'ha_open',
-    'ha_high':        'ha_high',
-    'ha_low':         'ha_low',
-    'ha_ema_high':    'ha_ema_hi',
-    'ha_ema_low':     'ha_ema_lo',
+    # Heikin Ashi (heikin indicator) — str_ prefix avoids clashing with the
+    # Heikin-Ashi overlay template when signals are embedded in overlay_indicators
+    'ha_close':       'str_ha_close',
+    'ha_open':        'str_ha_open',
+    'ha_high':        'str_ha_high',
+    'ha_low':         'str_ha_low',
+    'ha_ema_high':    'str_ha_ema_hi',
+    'ha_ema_low':     'str_ha_ema_lo',
     # MACD (macd indicator)
     'macd':           'str_macd',
     'macd_signal':    'str_macd_sig',
@@ -2858,24 +2859,27 @@ def _strat_heikin(p: dict) -> str:
         src_c = f"{mat_b}(close, {slb})"
     else:
         src_o, src_h, src_l, src_c = 'open', 'high', 'low', 'close'
+    # All variables carry a str_ prefix so this block never collides with the
+    # Heikin-Ashi *overlay* template (_t_heikin uses bare ha_close/ha_open/…),
+    # letting the signal computation be embedded into overlay_indicators.pine.
     code = f"""\
-// ── Heikin Ashi ───────────────────────────────────────────────────────────────
-ha_close  = ({src_o} + {src_h} + {src_l} + {src_c}) / 4
-var float ha_open = na
-ha_open  := na(ha_open[1]) ? ({src_o} + {src_c}) / 2 : (ha_open[1] + ha_close[1]) / 2
-ha_high   = math.max({src_h}, math.max(ha_open, ha_close))
-ha_low    = math.min({src_l}, math.min(ha_open, ha_close))
+// ── Heikin Ashi (signal query) ────────────────────────────────────────────────
+str_ha_close  = ({src_o} + {src_h} + {src_l} + {src_c}) / 4
+var float str_ha_open = na
+str_ha_open  := na(str_ha_open[1]) ? ({src_o} + {src_c}) / 2 : (str_ha_open[1] + str_ha_close[1]) / 2
+str_ha_high   = math.max({src_h}, math.max(str_ha_open, str_ha_close))
+str_ha_low    = math.min({src_l}, math.min(str_ha_open, str_ha_close))
 """
     if smooth:
         code += f"""\
-ha_close := {mat_a}(ha_close, {sla})
-ha_open  := {mat_a}(ha_open,  {sla})
-ha_high  := {mat_a}(ha_high,  {sla})
-ha_low   := {mat_a}(ha_low,   {sla})
+str_ha_close := {mat_a}(str_ha_close, {sla})
+str_ha_open  := {mat_a}(str_ha_open,  {sla})
+str_ha_high  := {mat_a}(str_ha_high,  {sla})
+str_ha_low   := {mat_a}(str_ha_low,   {sla})
 """
     code += f"""\
-ha_ema_hi = {ma_fn}(ha_high, {ehl})
-ha_ema_lo = {ma_fn}(ha_low,  {ell})
+str_ha_ema_hi = {ma_fn}(str_ha_high, {ehl})
+str_ha_ema_lo = {ma_fn}(str_ha_low,  {ell})
 """
     return code
 
@@ -3058,18 +3062,30 @@ class PineExporter:
 
     # ── public API ─────────────────────────────────────────────────────────────
 
-    def generate_overlay(self) -> str:
+    def generate_overlay(
+        self, include_signals: bool = False,
+        buy_query: str = "", sell_query: str = "",
+    ) -> str:
         """Generate a self-contained Pine Script v5 overlay file for the selected overlays.
 
         Each overlay gets an individual ``input.bool`` toggle in TradingView so users
         can show or hide it without removing the whole indicator.
+
+        When *include_signals* is True the config buy/sell rules are appended as
+        position-aware Buy/Sell triangles in the *same* ``indicator(overlay=true)``
+        script (see :meth:`_signal_overlay_body`). Because all signal-computation
+        variables are ``str_``/``sig_`` prefixed they never clash with the overlay
+        templates. Pine allows this freely — a single overlay script can hold every
+        overlay plus the markers (subject only to the ~64-plot per-script limit).
         """
-        if not self.overlays:
+        if not self.overlays and not include_signals:
             return self._header("Overlays", True) + "// No overlays selected.\n"
         body = "".join(
             self._render_block(n, _OVL_TEMPLATES, with_toggle=True)
             for n in self.overlays
         )
+        if include_signals and (buy_query or sell_query):
+            body += "\n" + self._signal_overlay_body(buy_query, sell_query)
         return self._header("Overlays", True) + body
 
     def generate_oscillator_single(self, name: str) -> str:
@@ -3226,28 +3242,18 @@ class PineExporter:
 
         return header + layout + slot_labels + helper + ovl_body + osc_body
 
-    def generate_strategy(self, buy_query: str, sell_query: str) -> str:
-        """Generate a standalone Pine Script v5 *strategy* for the configured
-        buy/sell rules.
+    def _query_calc_blocks(
+        self, buy_query: str, sell_query: str
+    ) -> tuple[str, str, str]:
+        """Shared by the strategy and signal-overlay exports.
 
-        The method auto-detects which indicator variables are referenced in the
-        query expressions, emits minimal computation code for those indicators
-        (no plot calls — strategy scripts should be clean), translates the
-        Python-style expressions to Pine-compatible boolean syntax, and wraps
-        everything in a ``strategy()`` script with entry / close calls and
-        visual signal markers.
+        Auto-detects which indicator variables are referenced in the buy/sell
+        query expressions, emits the minimal computation code for those
+        indicators (no plot calls) in dependency order, and translates the
+        Python-style expressions to Pine-compatible boolean syntax.
 
-        Parameters
-        ----------
-        buy_query:
-            Python/pandas expression string (e.g.
-            ``"(ha_close > ha_open) & (Close > ha_ema_high) & (rsi > 50)"``).
-        sell_query:
-            Python/pandas expression string (e.g.
-            ``"(ha_close < ha_open) & (Close < ha_ema_low)"``).
+        Returns ``(calc_code, pine_buy, pine_sell)``.
         """
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-
         # ── 1. Detect required indicator computation blocks ────────────────────
         combined = f"{buy_query} {sell_query}"
         needed: set[str] = set()
@@ -3271,11 +3277,41 @@ class PineExporter:
                     f"// ── {ind.upper()} — render error: {exc}\n"
                 )
 
+        calc_code = (
+            "// ── Indicator computations ───────────────────────────────────────────────────\n"
+            + "\n".join(calc_lines)
+        )
+
         # ── 3. Translate buy/sell expressions ─────────────────────────────────
         pine_buy  = _translate_query(buy_query)  if buy_query  else "false"
         pine_sell = _translate_query(sell_query) if sell_query else "false"
+        return calc_code, pine_buy, pine_sell
 
-        # ── 4. Assemble the script ─────────────────────────────────────────────
+    def generate_strategy(self, buy_query: str, sell_query: str) -> str:
+        """Generate a standalone Pine Script v5 *strategy* for the configured
+        buy/sell rules.
+
+        The method auto-detects which indicator variables are referenced in the
+        query expressions, emits minimal computation code for those indicators
+        (no plot calls — strategy scripts should be clean), translates the
+        Python-style expressions to Pine-compatible boolean syntax, and wraps
+        everything in a ``strategy()`` script with entry / close calls and
+        visual signal markers.
+
+        Parameters
+        ----------
+        buy_query:
+            Python/pandas expression string (e.g.
+            ``"(ha_close > ha_open) & (Close > ha_ema_high) & (rsi > 50)"``).
+        sell_query:
+            Python/pandas expression string (e.g.
+            ``"(ha_close < ha_open) & (Close < ha_ema_low)"``).
+        """
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        calc_code, pine_buy, pine_sell = self._query_calc_blocks(buy_query, sell_query)
+
+        # ── Assemble the script ────────────────────────────────────────────────
         header = (
             f"//@version=6\n"
             f"{_PINE_LICENSE}"
@@ -3288,11 +3324,6 @@ class PineExporter:
             f"         default_qty_value = 100,\n"
             f"         commission_type   = strategy.commission.percent,\n"
             f"         commission_value  = 0.1)\n\n"
-        )
-
-        calcs = (
-            "// ── Indicator computations ───────────────────────────────────────────────────\n"
-            + "\n".join(calc_lines)
         )
 
         signals = f"""\
@@ -3313,7 +3344,73 @@ plotshape(strat_buy,  "Buy Signal",  shape.triangleup,   location.belowbar,
 plotshape(strat_sell, "Sell Signal", shape.triangledown, location.abovebar,
           color.new(color.red,  0), size = size.small)
 """
-        return header + calcs + signals
+        return header + calc_code + signals
+
+    def _signal_overlay_body(self, buy_query: str, sell_query: str) -> str:
+        """Return the Pine body (computation blocks + signal markers, no header)
+        for the config buy/sell rules.
+
+        Shared by :meth:`generate_signal_overlay` (standalone file) and
+        :meth:`generate_overlay` (embedded alongside the other overlays). All
+        emitted variables are ``str_`` / ``sig_`` prefixed so the block can be
+        appended to any overlay script without name clashes.
+
+        The markers are position-aware, mirroring the app's chart logic
+        (``indicator.buy_sell`` → ``BuySellSignalGenerator``): a Buy is drawn only
+        on the first bar its condition holds *while flat*, a Sell only while *in a
+        position*.  This yields clean, alternating triangles instead of a marker
+        on every bar the raw condition is true.
+        """
+        calc_code, pine_buy, pine_sell = self._query_calc_blocks(buy_query, sell_query)
+        signals = f"""\
+
+// ── Buy / Sell signals (from config queries) ──────────────────────────────────
+// Buy  : {buy_query}
+// Sell : {sell_query}
+sig_show_buy  = input.bool(true, "Show Buy signals",  group="Signals")
+sig_show_sell = input.bool(true, "Show Sell signals", group="Signals")
+sig_buy_col   = input.color(color.teal, "Buy color",  group="Signals -- Style")
+sig_sell_col  = input.color(color.red,  "Sell color", group="Signals -- Style")
+
+sig_buy_raw  = {pine_buy}
+sig_sell_raw = {pine_sell}
+
+// ── Position-aware markers (matches the app's chart signals) ──────────────────
+// Buy fires only while flat, Sell only while in a position → alternating.
+var bool sig_in_pos = false
+sig_entry = sig_buy_raw  and not sig_in_pos
+sig_exit  = sig_sell_raw and sig_in_pos
+if sig_entry
+    sig_in_pos := true
+if sig_exit
+    sig_in_pos := false
+
+plotshape(sig_show_buy  and sig_entry, "Buy",  shape.triangleup,   location.belowbar,
+          color.new(sig_buy_col,  0), size = size.small, text = "Buy")
+plotshape(sig_show_sell and sig_exit,  "Sell", shape.triangledown, location.abovebar,
+          color.new(sig_sell_col, 0), size = size.small, text = "Sell")
+"""
+        return calc_code + signals
+
+    def generate_signal_overlay(self, buy_query: str, sell_query: str) -> str:
+        """Generate a standalone Pine Script v5 *overlay indicator* that plots the
+        configured buy/sell rules as triangles on the price chart.
+
+        Unlike :meth:`generate_strategy` this emits an ``indicator(overlay=true)``
+        script with no backtest engine — just the two signal markers plus
+        show/hide toggles — so it can be layered on top of a chart that already
+        runs a strategy or other indicators.
+        """
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = (
+            f"//@version=6\n"
+            f"{_PINE_LICENSE}"
+            f"// Generated by Trading App — {ts}\n"
+            f"// Buy  : {buy_query}\n"
+            f"// Sell : {sell_query}\n"
+            f'indicator("Trading App Signals", overlay=true, max_bars_back=500)\n\n'
+        )
+        return header + self._signal_overlay_body(buy_query, sell_query)
 
 
 # ── Streamlit UI helper ────────────────────────────────────────────────────────
@@ -3360,11 +3457,34 @@ def render_export_buttons(
                f"**{', '.join(sorted(missing_ovl + missing_osc))}** "
                "(placeholder comment added)")
 
+    # Config buy/sell queries — drive the optional signal markers.
+    _buy_q  = (sys_conf.get_value("buy_query",  "") or "") if sys_conf is not None else ""
+    _sell_q = (sys_conf.get_value("sell_query", "") or "") if sys_conf is not None else ""
+
+    # Opt-in: embed the Buy/Sell triangles into overlay_indicators.pine so the
+    # markers ship in the same file as the other overlays (one indicator).
+    embed_signals = False
+    if _buy_q or _sell_q:
+        embed_signals = r.checkbox(
+            "🔺 Buy/Sell-Signale in overlay_indicators.pine einbetten",
+            value=False,
+            key="pine_embed_signals",
+            help="Hängt die positions-bewussten Buy/Sell-Dreiecke aus deiner "
+                 "Config-Query mit in die Overlay-Datei — kein separates signals.pine "
+                 "nötig. In TradingView per Toggle ein-/ausblendbar.",
+        )
+
     # ── Row 1: separate files ─────────────────────────────────────────────────
     c1, c2 = r.columns(2)
+    _ovl_label = (
+        f"⬇ overlay_indicators.pine  ({len(overlays)} selected"
+        + (" + signals)" if embed_signals else ")")
+    )
     c1.download_button(
-        label=f"⬇ overlay_indicators.pine  ({len(overlays)} selected)",
-        data=exp.generate_overlay().encode("utf-8"),
+        label=_ovl_label,
+        data=exp.generate_overlay(
+            include_signals=embed_signals, buy_query=_buy_q, sell_query=_sell_q,
+        ).encode("utf-8"),
         file_name="overlay_indicators.pine",
         mime="text/plain",
         use_container_width=True,
@@ -3429,14 +3549,29 @@ def render_export_buttons(
                 f"Buy:  {buy_query}\nSell: {sell_query}",
                 language="python",
             )
+            sc1, sc2 = r.columns(2)
             try:
                 strategy_pine = exp.generate_strategy(buy_query, sell_query)
-                r.download_button(
+                sc1.download_button(
                     label="⬇ strategy.pine",
                     data=strategy_pine.encode("utf-8"),
                     file_name="strategy.pine",
                     mime="text/plain",
                     use_container_width=True,
+                    help="strategy()-Skript mit Backtest-Engine (Entries/Exits + Marker)",
                 )
             except Exception as _strat_err:
-                r.error(f"Strategy-Export fehlgeschlagen: {_strat_err}")
+                sc1.error(f"Strategy-Export fehlgeschlagen: {_strat_err}")
+            try:
+                signal_pine = exp.generate_signal_overlay(buy_query, sell_query)
+                sc2.download_button(
+                    label="⬇ signals.pine",
+                    data=signal_pine.encode("utf-8"),
+                    file_name="signals.pine",
+                    mime="text/plain",
+                    use_container_width=True,
+                    help="Reines overlay=true-Overlay: Buy/Sell nur als Dreiecke, "
+                         "ohne Backtest — auf jeden Chart legbar",
+                )
+            except Exception as _sig_err:
+                sc2.error(f"Signal-Overlay-Export fehlgeschlagen: {_sig_err}")
