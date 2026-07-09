@@ -2813,6 +2813,15 @@ _STRAT_COL_MAP: dict[str, str] = {
     # Z-Score (zcr indicator)
     'Z':              'str_zcr',
     'zcr':            'str_zcr',
+    # EMA 9 (fetch_data helper)
+    'ema9':           'str_ema9',
+    # Momentum = Stochastic %K (rsi.py → indicator.momentum)
+    'momentum':       'str_momentum',
+    # Relative Volume ratio (relvol indicator)
+    'relvol_ratio':   'str_relvol',
+    # Auto Trend Channels (atc indicator) — top of high-anchor / bottom of low-anchor
+    'atc_top_high':   'str_atc_top_high',
+    'atc_bot_low':    'str_atc_bot_low',
 }
 
 # Which indicator computation block is required for each column name.
@@ -2836,6 +2845,11 @@ _STRAT_COL_INDICATOR: dict[str, str] = {
     'stoch_signal':   'stoch',
     'Z':              'zcr',
     'zcr':            'zcr',
+    'ema9':           'ema',
+    'momentum':       'momentum',
+    'relvol_ratio':   'relvol',
+    'atc_top_high':   'atc',
+    'atc_bot_low':    'atc',
 }
 
 # ── Per-indicator computation snippets (no plot / plotshape calls) ─────────────
@@ -2952,18 +2966,112 @@ str_zcr   = _zcr_std != 0 ? (close - _zcr_mean) / _zcr_std : 0.0
 """
 
 
+def _strat_ema(p: dict) -> str:
+    """Return the Pine Script v5 EMA-9 helper (fetch_data emits ema9)."""
+    return """\
+// ── EMA 9 ─────────────────────────────────────────────────────────────────────
+str_ema9 = ta.ema(close, 9)
+"""
+
+
+def _strat_momentum(p: dict) -> str:
+    """Return the Pine Script v5 momentum expression.
+
+    momentum = Stochastic %K (rsi.py calls indicator.momentum() with the
+    defaults window=14, smooth_window=3; %K itself is the raw stoch).
+    """
+    return """\
+// ── Momentum (Stochastic %K, 14) ──────────────────────────────────────────────
+str_momentum = ta.stoch(close, high, low, 14)
+"""
+
+
+def _strat_relvol(p: dict) -> str:
+    """Return the Pine Script v5 relative-volume ratio (Regular mode).
+
+    Mirrors relvol.py: relvol_ratio = volume / SMA(volume, length).shift(1),
+    with the div-by-zero / NaN case falling back to 1.0. The unconfirmed-bar
+    extrapolation (last bar only) is omitted — it does not affect history.
+    """
+    n = int(p.get('relvol_length', 21))
+    return f"""\
+// ── Relative Volume ratio ─────────────────────────────────────────────────────
+str_relvol_past = ta.sma(volume[1], {n})
+str_relvol      = na(str_relvol_past) or str_relvol_past == 0 ? 1.0 : volume / str_relvol_past
+"""
+
+
+def _strat_atc(p: dict) -> str:
+    """Return the Pine Script v5 Auto Trend Channels port (causal, dynamic anchor).
+
+    Mirrors atc.py: the low channel is a linear regression over [lowest-low → now]
+    and the high channel over [highest-high → now]; band = ±dev·residual_stdev.
+    The manual OLS (str_atc_reg) matches the _t_atc overlay's atc_reg. Anchor
+    length is found per bar via ta.lowest/highestbars within a bounded lookback.
+
+    IMPORTANT — lookahead caveat: atc.py computes ONE regression using data up to
+    *today* and paints it back over history, so its historical buy/sell markers
+    "know" where the bottom/top was. Pine is causal (only past data per bar), so
+    it matches the app at the *current* bar but cannot reproduce the app's
+    historical ATC markers exactly. All vars are str_atc_ prefixed so they never
+    clash with the _t_atc overlay template.
+    """
+    dev = float(p.get('dev_multi', 2.0))
+    win = 300   # max lookback for the anchor search (bounded for performance)
+    return f"""\
+// ── Auto Trend Channels (causal dynamic-anchor regression) ────────────────────
+str_atc_dev = {dev}
+str_atc_win = {win}
+
+str_atc_reg(len) =>
+    float n   = float(len)
+    float sx  = 0.0
+    float sy  = 0.0
+    float sxx = 0.0
+    float sxy = 0.0
+    for i = 0 to len - 1
+        float xi = float(i)
+        float yi = close[len - 1 - i]
+        sx  += xi
+        sy  += yi
+        sxx += xi * xi
+        sxy += xi * yi
+    float denom = n * sxx - sx * sx
+    float b = denom != 0.0 ? (n * sxy - sx * sy) / denom : 0.0
+    float a = (sy - b * sx) / n
+    float ssr = 0.0
+    for i = 0 to len - 1
+        float err = close[len - 1 - i] - (a + b * float(i))
+        ssr += err * err
+    [a + b * (n - 1.0), math.sqrt(ssr / n)]
+
+int str_atc_lw   = math.min(str_atc_win, bar_index + 1)
+int str_atc_llen = math.max(2, -ta.lowestbars(low,  str_atc_lw) + 1)
+int str_atc_hlen = math.max(2, -ta.highestbars(high, str_atc_lw) + 1)
+[str_atc_lcur, str_atc_lstd] = str_atc_reg(str_atc_llen)
+[str_atc_hcur, str_atc_hstd] = str_atc_reg(str_atc_hlen)
+str_atc_bot_low  = str_atc_lcur - str_atc_dev * str_atc_lstd
+str_atc_top_high = str_atc_hcur + str_atc_dev * str_atc_hstd
+"""
+
+
 _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
-    'heikin': _strat_heikin,
-    'macd':   _strat_macd,
-    'rsi':    _strat_rsi,
-    'markov': _strat_markov,
-    'ewo':    _strat_ewo,
-    'stoch':  _strat_stoch,
-    'zcr':    _strat_zcr,
+    'heikin':   _strat_heikin,
+    'macd':     _strat_macd,
+    'rsi':      _strat_rsi,
+    'markov':   _strat_markov,
+    'ewo':      _strat_ewo,
+    'stoch':    _strat_stoch,
+    'zcr':      _strat_zcr,
+    'ema':      _strat_ema,
+    'momentum': _strat_momentum,
+    'relvol':   _strat_relvol,
+    'atc':      _strat_atc,
 }
 
 # Fixed emit order so dependent variables are always declared before use.
-_STRAT_ORDER = ['heikin', 'ewo', 'macd', 'rsi', 'stoch', 'zcr', 'markov']
+_STRAT_ORDER = ['heikin', 'ewo', 'macd', 'rsi', 'stoch', 'momentum',
+                'relvol', 'ema', 'atc', 'zcr', 'markov']
 
 
 def _translate_query(query: str) -> str:
@@ -3362,6 +3470,19 @@ plotshape(strat_sell, "Sell Signal", shape.triangledown, location.abovebar,
         on every bar the raw condition is true.
         """
         calc_code, pine_buy, pine_sell = self._query_calc_blocks(buy_query, sell_query)
+
+        # Plot the ATC regression channel when the query references it, so the
+        # user can see the lower/upper channel the signal is testing against.
+        atc_extra = ""
+        if "str_atc_bot_low" in calc_code or "str_atc_top_high" in calc_code:
+            atc_extra = (
+                'sig_show_atc = input.bool(true, "Show ATC channel", group="Signals")\n'
+                'plot(sig_show_atc ? str_atc_bot_low  : na, "ATC bottom (low anchor)",'
+                ' color.new(color.green, 20), 1)\n'
+                'plot(sig_show_atc ? str_atc_top_high : na, "ATC top (high anchor)",'
+                ' color.new(color.red,   20), 1)\n'
+            )
+
         signals = f"""\
 
 // ── Buy / Sell signals (from config queries) ──────────────────────────────────
@@ -3371,7 +3492,7 @@ sig_show_buy  = input.bool(true, "Show Buy signals",  group="Signals")
 sig_show_sell = input.bool(true, "Show Sell signals", group="Signals")
 sig_buy_col   = input.color(color.teal, "Buy color",  group="Signals -- Style")
 sig_sell_col  = input.color(color.red,  "Sell color", group="Signals -- Style")
-
+{atc_extra}
 sig_buy_raw  = {pine_buy}
 sig_sell_raw = {pine_sell}
 
