@@ -242,7 +242,7 @@ class BannerPage():
             total_dividends = pd.to_numeric(div_rows[value_col], errors='coerce').abs().sum()
 
         _c1, _c2, _c3, _c4, _c5 = self.region.columns(5)
-        _c1.metric("Investiert gesamt", f"{total_invested:,.2f} {self.system_currency}")
+        _c1.metric("Investiert (offen)", f"{cost_basis_open:,.2f} {self.system_currency}")
         _c2.metric("Marktwert (offen)", f"{current_value:,.2f} {self.system_currency}",
                    delta=f"{unrealized_pnl:+,.2f} {self.system_currency}")
         _c3.metric("Unreal. G/V", f"{unrealized_pnl:+,.2f} {self.system_currency}",
