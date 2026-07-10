@@ -309,7 +309,10 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
         {'': sys_cur, 'NAN': sys_cur, 'NONE': sys_cur})
 
     start = ev['_date'].min()
-    end = pd.Timestamp.today().normalize()
+    # Extend the calendar to the latest trade date if it lies in the future
+    # (e.g. a mis-dated import). Otherwise such rows fall outside `daily` and are
+    # silently dropped from BOTH value and invested — a hidden data loss.
+    end = max(pd.Timestamp.today().normalize(), ev['_date'].max())
     if end < start:
         end = ev['_date'].max()
     daily = pd.date_range(start, end, freq='D')
@@ -891,12 +894,17 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
     # ══════════════════════════════════════════════════════════════════════════
     with _sec_history.expander(_t('ota.section_history'), expanded=False):
         st.caption(_t('ota.history_caption'))
+        # Only buy/sell rows drive share counts and deployed capital. Dividends,
+        # interest and fees are cash income/expense — treating them as sells
+        # (as a blanket "not buy → negative" rule does) wrongly shrinks the
+        # invested capital and distorts the P&L.
+        _bs = raw[raw[act_col].isin(['buy', 'sell'])].copy()
         events = pd.DataFrame({
-            '_ts':         raw['_ts'],
-            '_ticker':     raw['_ticker'],
-            '_cur':        raw['_currency'],
-            '_signed_sh':  np.where(raw[act_col] == 'buy',  raw['_shares'],      -raw['_shares']),
-            '_signed_val': np.where(raw[act_col] == 'buy',  raw['_value'].abs(), -raw['_value'].abs()),
+            '_ts':         _bs['_ts'],
+            '_ticker':     _bs['_ticker'],
+            '_cur':        _bs['_currency'],
+            '_signed_sh':  np.where(_bs[act_col] == 'buy',  _bs['_shares'],      -_bs['_shares']),
+            '_signed_val': np.where(_bs[act_col] == 'buy',  _bs['_value'].abs(), -_bs['_value'].abs()),
         })
         # Currency per ticker (first reliable trade currency) for price conversion
         def _first_currency(s):
@@ -905,7 +913,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 if xs and xs not in ('NAN', 'NONE'):
                     return xs
             return system_currency
-        currency_map = raw.groupby('_ticker')['_currency'].apply(_first_currency).to_dict()
+        currency_map = _bs.groupby('_ticker')['_currency'].apply(_first_currency).to_dict()
         with st.spinner(_t('ota.history_loading')):
             hist = _build_portfolio_history(events, db_path,
                                             system_currency=system_currency,
@@ -945,11 +953,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             )
             st.plotly_chart(fig_h, use_container_width=True)
 
-            h1, h2, h3 = st.columns(3)
-            h1.metric(_t('ota.history_metric_value'),    f'{cur_val:,.2f} {system_currency}')
-            h2.metric(_t('ota.history_metric_invested'), f'{cur_inv:,.2f} {system_currency}')
-            h3.metric(_t('ota.history_metric_pnl'),      f'{pnl:+,.2f} {system_currency}', delta=f'{pnl_pct:+.1f}%')
-            st.caption(_t('ota.history_fx_note'))
+            st.metric(_t('ota.history_metric_value'), f'{cur_val:,.2f} {system_currency}')
 
             # ── Pure total trend (time-weighted, excluding cash flows) ──────
             if 'trend_index' in hist.columns and hist['trend_index'].notna().any():

@@ -415,7 +415,6 @@
   "ota.history_trend_caption": "Time-weighted return (TWR): deposits and withdrawals are removed, leaving only the pure price performance of the portfolio. Index starts at 100.",
   "ota.history_trend_label": "Overall trend (index 100)",
   "ota.history_trend_twr": "time-weighted",
-  "ota.history_fx_note": "Note: Small profit/loss deviations can arise from daily currency conversion (exchange rates).",
   "ota.cum_pnl_title": "Cumulative Realised P&L",
   "ota.upload_label": "Upload trades file (CSV or XLSX). Expected columns: timestamp, action, ticker, price, shares, value, longName, isin, currency, stockIndex",
   "ota.upload_error": "Failed to read uploaded file: {error}",

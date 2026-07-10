@@ -234,13 +234,21 @@ class BannerPage():
         pnl_pct         = (total_pnl / total_invested * 100) if total_invested else 0.0
         n_open          = len(open_pos_df)
 
-        _c1, _c2, _c3, _c4 = self.region.columns(4)
+        # Dividends are already-realized cash income — reported separately, NOT
+        # folded into the unrealized P&L above.
+        total_dividends = 0.0
+        if act_col in raw.columns and value_col in raw.columns:
+            div_rows = raw[raw[act_col] == 'dividend']
+            total_dividends = pd.to_numeric(div_rows[value_col], errors='coerce').abs().sum()
+
+        _c1, _c2, _c3, _c4, _c5 = self.region.columns(5)
         _c1.metric("Investiert gesamt", f"{total_invested:,.2f} {self.system_currency}")
         _c2.metric("Marktwert (offen)", f"{current_value:,.2f} {self.system_currency}",
                    delta=f"{unrealized_pnl:+,.2f} {self.system_currency}")
         _c3.metric("Unreal. G/V", f"{unrealized_pnl:+,.2f} {self.system_currency}",
                    delta=f"{(unrealized_pnl / cost_basis_open * 100) if cost_basis_open else 0.0:+.1f} %")
-        _c4.metric("Offene Positionen", n_open)
+        _c4.metric("Dividenden (real.)", f"{total_dividends:,.2f} {self.system_currency}")
+        _c5.metric("Offene Positionen", n_open)
 
         # ── Trades table ──────────────────────────────────────────────────
         disp = raw.copy()

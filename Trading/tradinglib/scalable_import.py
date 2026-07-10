@@ -67,6 +67,31 @@ def _parse_de_number(val) -> float:
         return 0.0
 
 
+def _parse_scalable_timestamp(date_s: pd.Series, time_s: pd.Series) -> pd.Series:
+    """Parse Scalable date + time robustly across locales.
+
+    Scalable exports the date either German (DD.MM.YYYY) or ISO (YYYY-MM-DD),
+    depending on the account locale. A blind ``dayfirst=True`` fallback MISPARSES
+    ISO dates — e.g. '2026-07-10' becomes 2026-10-07 (month/day swapped), which is
+    how a July buy ended up dated to October. Route by format instead:
+      • ISO  (starts with a 4-digit year) → parse WITHOUT dayfirst
+      • German (DD.MM.YYYY)                → parse WITH dayfirst=True
+    """
+    date_s = date_s.fillna('').astype(str).str.strip()
+    time_s = time_s.fillna('').astype(str).str.strip()
+    combined = (date_s + ' ' + time_s).str.strip()
+
+    is_iso = date_s.str.match(r'^\d{4}[-/]')  # e.g. 2026-07-10 / 2026/07/10 → year first
+    # format='mixed' infers each element individually, so rows with/without a
+    # time part don't collapse to NaT (pandas 2.x quirk on non-uniform formats).
+    # ISO dates are unambiguous — never apply dayfirst here.
+    iso_parsed = pd.to_datetime(combined.where(is_iso), format='mixed', errors='coerce')
+    # German/EU dates (DD.MM.YYYY) — dayfirst resolves DD vs MM correctly.
+    eu_parsed = pd.to_datetime(combined.where(~is_iso), dayfirst=True,
+                               format='mixed', errors='coerce')
+    return iso_parsed.fillna(eu_parsed)
+
+
 def _format_de_number(val, decimals: int = 2) -> str:
     """Format a number as a German-locale string (1.234,56). Inverse of _parse_de_number."""
     if val is None:
@@ -506,18 +531,7 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
         return df[orig].copy() if orig else pd.Series([''] * len(df), index=df.index)
 
     # ── timestamp ─────────────────────────────────────────────────────────
-    date_s = _s('date').astype(str).str.strip()
-    time_s = _s('time').astype(str).str.strip()
-    combined = date_s + ' ' + time_s
-    # Try strict format first, fall back to dayfirst inference
-    df['_timestamp'] = pd.to_datetime(
-        combined, format='%d.%m.%Y %H:%M:%S', errors='coerce'
-    )
-    still_nat = df['_timestamp'].isna()
-    if still_nat.any():
-        df.loc[still_nat, '_timestamp'] = pd.to_datetime(
-            combined[still_nat], dayfirst=True, errors='coerce'
-        )
+    df['_timestamp'] = _parse_scalable_timestamp(_s('date'), _s('time'))
 
     # ── numeric columns ───────────────────────────────────────────────────
     for src, dst in [('shares', '_shares'), ('price', '_price'),

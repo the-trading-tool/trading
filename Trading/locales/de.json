@@ -415,7 +415,6 @@
   "ota.history_trend_caption": "Zeitgewichtete Wertentwicklung (TWR): Ein- und Auszahlungen sind herausgerechnet, sodass nur die reine Kursperformance des Depots übrig bleibt. Index startet bei 100.",
   "ota.history_trend_label": "Gesamttrend (Index 100)",
   "ota.history_trend_twr": "zeitgewichtet",
-  "ota.history_fx_note": "Hinweis: Geringe Abweichungen bei Gewinn/Verlust können durch tagesgenaue Währungsumrechnung (Wechselkurse) entstehen.",
   "ota.cum_pnl_title": "Kumulierter realisierter G&V",
   "ota.upload_label": "Trades-Datei hochladen (CSV oder XLSX). Erwartete Spalten: timestamp, action, ticker, price, shares, value, longName, isin, currency, stockIndex",
   "ota.upload_error": "Fehler beim Lesen der hochgeladenen Datei: {error}",
