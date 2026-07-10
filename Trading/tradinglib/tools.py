@@ -796,6 +796,45 @@ def lazy_excel_download(data, button_label, file_name, region=st, state_key=None
                                key=f'dl_{key}')
 
 
+def excel_download_button(data, button_label, file_name, region=st, lazy=False,
+                          state_key=None, key=None):
+    """Zentraler Excel-Download-Button fuer beliebige DataFrames.
+
+    Ein Einstiegspunkt fuer alle Seiten (Strategy Finder, Own Transactions, …),
+    damit die Serialisierung (DataUtils.get_bin_excel_data) nur an einer Stelle
+    lebt und Doppel-Implementierungen (df_to_excel_bytes o.ae.) entfallen.
+
+    lazy=True: teure Konvertierung erst auf Knopfdruck (siehe lazy_excel_download)
+    — sinnvoll fuer sehr grosse Datensaetze. lazy=False (Default): direkt ein
+    Download-Button, die Bytes werden bei jedem Rerun gebaut (fuer die kleinen
+    Portfolio-Tabellen unkritisch).
+    """
+    if data is None:
+        return
+    try:
+        if len(data) == 0:
+            return
+    except Exception:
+        pass
+    if lazy:
+        lazy_excel_download(data, button_label, file_name, region=region,
+                            state_key=state_key or f'_xlsx_{file_name}')
+        return
+    from tradinglib.utils import DataUtils  # lazy: vermeidet Import-Zyklus tools<->utils
+    try:
+        payload = DataUtils.get_bin_excel_data(data)
+    except Exception:
+        logger.debug('excel_download_button: serialization failed', exc_info=True)
+        return
+    region.download_button(
+        label=button_label,
+        data=payload,
+        file_name=file_name,
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        key=key or f'dl_{file_name}',
+    )
+
+
 class BuySellSignalGenerator:
     # OHLCV columns that may appear in either capitalised (live df) or
     # lowercase (simulation db) form.  We add the missing alias so that

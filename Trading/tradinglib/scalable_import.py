@@ -67,6 +67,75 @@ def _parse_de_number(val) -> float:
         return 0.0
 
 
+def _format_de_number(val, decimals: int = 2) -> str:
+    """Format a number as a German-locale string (1.234,56). Inverse of _parse_de_number."""
+    if val is None:
+        return ''
+    try:
+        f = float(val)
+    except (TypeError, ValueError):
+        return ''
+    if np.isnan(f):
+        return ''
+    s = f'{f:,.{decimals}f}'          # e.g. '1,234.56' (en locale)
+    # Swap separators to German convention: ',' <-> '.'
+    return s.replace(',', '\x00').replace('.', ',').replace('\x00', '.')
+
+
+# Reverse of _SCALABLE_ACTION_MAP: internal action → Scalable "type" label
+_SCALABLE_TYPE_LABELS = {
+    'buy':          'Buy',
+    'sell':         'Sell',
+    'dividend':     'Distribution',
+    'interest':     'Interest',
+    'fee':          'Fee',
+    'transfer_out': 'Cash transfer out',
+    'transfer_in':  'Cash transfer in',
+}
+
+
+def build_scalable_export_df(raw: pd.DataFrame) -> pd.DataFrame:
+    """Reverse-map the internal trades schema to the Scalable Capital CSV layout.
+
+    Produces a DataFrame with the original Scalable export columns
+    (date;time;status;…;currency), German-formatted numbers and reversed
+    type labels, so the file round-trips through parse_scalable_csv().
+
+    Accepts the raw `trades` table (columns: timestamp, action, ticker, isin,
+    longName, shares, price, value, fee, tax, currency — case-insensitive).
+    """
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+
+    df = raw.copy()
+    col_lower = {c.lower(): c for c in df.columns}
+
+    def _s(name):
+        orig = col_lower.get(name.lower())
+        return df[orig] if orig else pd.Series([''] * len(df), index=df.index)
+
+    ts = pd.to_datetime(_s('timestamp'), errors='coerce')
+    action = _s('action').astype(str).str.lower().str.strip()
+
+    out = pd.DataFrame({
+        'date':        ts.dt.strftime('%d.%m.%Y').fillna(''),
+        'time':        ts.dt.strftime('%H:%M:%S').fillna(''),
+        'status':      'Executed',
+        'reference':   _s('reference').astype(str).replace('nan', '') if 'reference' in col_lower else '',
+        'description': _s('longName').astype(str).replace('nan', ''),
+        'assetType':   _s('assetType').astype(str).replace('nan', '') if 'assettype' in col_lower else 'Security',
+        'type':        action.map(_SCALABLE_TYPE_LABELS).fillna(action.str.capitalize()),
+        'isin':        _s('isin').astype(str).replace('nan', ''),
+        'shares':      _s('shares').apply(lambda v: _format_de_number(v, 6)),
+        'price':       _s('price').apply(lambda v: _format_de_number(v, 4)),
+        'amount':      _s('value').apply(lambda v: _format_de_number(v, 2)),
+        'fee':         _s('fee').apply(lambda v: _format_de_number(v, 2)),
+        'tax':         _s('tax').apply(lambda v: _format_de_number(v, 2)),
+        'currency':    _s('currency').astype(str).replace('nan', ''),
+    })
+    return out.reset_index(drop=True)
+
+
 def _write_isin_ticker(tickers_db: str, symbol: str, isin: str) -> None:
     """Persist an ISIN→ticker mapping in yf_tickers.db/stocks for future local lookups."""
     import sqlite3 as _sq

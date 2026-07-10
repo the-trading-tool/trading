@@ -254,18 +254,6 @@ def analyze_own_trades(db_path='database', db_name='trades.db', asset_date=None,
     return {'df': raw, 'processed': processed, 'table_info': tbl_info}
 
 
-def df_to_excel_bytes(df: pd.DataFrame) -> bytes:
-    """Convert a DataFrame to Excel bytes for download."""
-    from io import BytesIO
-    bio = BytesIO()
-    try:
-        with pd.ExcelWriter(bio, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False)
-        return bio.getvalue()
-    except Exception:
-        return b''
-
-
 def import_trades(df_u: pd.DataFrame, user_map: dict = None, username: str = '', db_path='database', db_name='trades.db'):
     """
     Import a DataFrame of uploaded trades into the trades DB.
@@ -968,9 +956,10 @@ def render_import_export(region, simulator=None, username='', db_path='database'
             except Exception:
                 pass
             try:
-                xlsx = df_to_excel_bytes(df_all) if df_all is not None else b''
-                if xlsx:
-                    st_region.download_button(_t('ota.export_xlsx'), data=xlsx, file_name='trades_export.xlsx', mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+                from tradinglib import tools as _tools
+                _tools.excel_download_button(df_all, _t('ota.export_xlsx'),
+                                             'trades_export.xlsx', region=st_region,
+                                             key='dl_trades_export')
             except Exception:
                 pass
         except Exception:

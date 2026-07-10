@@ -566,6 +566,9 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                              f'P&L ({system_currency})': st.column_config.NumberColumn(format='%.2f'),
                              'P&L %': st.column_config.NumberColumn(format='%.2f'),
                          })
+            tools.excel_download_button(
+                closed_tbl[disp_cols_c], _t('ota.export_table_xlsx'),
+                'closed_trades.xlsx', region=st, key='dl_closed_trades')
 
             # Normalised chart: each position over its holding period
             st.markdown(_t('ota.norm_chart_closed'))
@@ -731,6 +734,9 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                              'pnl_pct':       st.column_config.NumberColumn(_t('ota.col_pnl_pct'),      format='%.1f'),
                              'weight_pct':    st.column_config.NumberColumn(_t('ota.col_weight_pct'),   format='%.1f'),
                          })
+            tools.excel_download_button(
+                _agg_disp[disp_cols_o], _t('ota.export_table_xlsx'),
+                'open_positions.xlsx', region=st, key='dl_open_positions')
 
             total_invest = agg['buy_value'].sum()
             total_gain   = agg['unrealized_pnl'].sum()
@@ -843,6 +849,11 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     hide_index=True,
                     use_container_width=True,
                 )
+                tools.excel_download_button(
+                    parity_df[['Ticker', 'Current %', 'Parity %', 'Diff %',
+                               'Action', 'Target', 'Invested', 'Delta']],
+                    _t('ota.export_table_xlsx'), 'parity_analysis.xlsx',
+                    region=st, key='dl_parity')
 
                 # Pie charts: current (cost basis) vs. parity target
                 pie_c1, pie_c2 = st.columns(2)

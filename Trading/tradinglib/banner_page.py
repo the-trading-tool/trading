@@ -254,6 +254,17 @@ class BannerPage():
         self.region.dataframe(disp[disp_cols] if disp_cols else disp,
                               use_container_width=True, hide_index=True)
 
+        # Excel export in Scalable Capital CSV layout (round-trips through import)
+        try:
+            from tradinglib.scalable_import import build_scalable_export_df
+            _export_df = build_scalable_export_df(raw)
+            tools.excel_download_button(
+                _export_df, t('banner.export_scalable_xlsx'),
+                'scalable_transactions.xlsx', region=self.region,
+                key='dl_scalable_trades')
+        except Exception:
+            logger.debug('Scalable export button failed', exc_info=True)
+
         # ── Portfolio value over time ──────────────────────────────────────
         if not trades_df.empty and 'timestamp' in trades_df.columns:
             try:
