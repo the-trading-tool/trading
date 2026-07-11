@@ -227,148 +227,6 @@ class SystemConfig(tools.Db_tools):
             i18n.load_language(selected_lang)
             st.rerun()
 
-        if self.is_admin:
-            with st.expander("License", expanded=False):
-                info = lm.get_license_info()
-                st.write(i18n.t("cfg.license_tier", tier=info['tier']))
-                if info.get("user"):
-                    st.write(i18n.t("cfg.license_licensee", user=info['user']))
-                if info.get("expires"):
-                    st.write(i18n.t("cfg.license_expires", expires=info['expires']))
-                active = [f for f in lm.ALL_FEATURES if lm.has_feature(f)]
-                st.write(i18n.t("cfg.license_features", features=', '.join(active)))
-                if info.get("error"):
-                    st.error(info["error"])
-                if not info["path_exists"]:
-                    st.info(i18n.t("cfg.license_no_file"))
-                if st.button(i18n.t("cfg.reload_license")):
-                    lm.reset_cache()
-                    st.rerun()
-
-        if self.is_admin:
-            with st.expander(i18n.t("cfg.data_provider_header"), expanded=False):
-                import json as _json
-
-                def _read_app(key, default=None):
-                    try:
-                        with open_db(self._db_path, readonly=True) as _c:
-                            row = _c.execute("SELECT value FROM config WHERE key=?", (f"_app:{key}",)).fetchone()
-                            if row and row[0]:
-                                try:
-                                    return _json.loads(row[0])
-                                except Exception:
-                                    return row[0]
-                    except Exception:
-                        pass
-                    return default
-
-                def _write_app(key, value):
-                    v = _json.dumps(value)
-                    with open_db(self._db_path) as _c:
-                        _c.execute(
-                            "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                            (f"_app:{key}", v),
-                        )
-                        _c.commit()
-
-                providers = ["yahoo", "fmp"]
-                cur_provider = _read_app("data_provider", "yahoo")
-                try:
-                    p_idx = providers.index(cur_provider)
-                except ValueError:
-                    p_idx = 0
-                new_provider = st.selectbox(i18n.t("cfg.data_provider"), providers, p_idx,
-                                            format_func=lambda x: {"yahoo": "Yahoo Finance (default)", "fmp": "Financial Modeling Prep (FMP)"}.get(x, x))
-                _write_app("data_provider", new_provider)
-
-                if new_provider == "fmp":
-                    # API key is managed via KSP — show status
-                    try:
-                        from tradinglib.ksplib import Ksp as _Ksp
-                        _ksp_creds = _Ksp(storage_path=self._db_path.replace('config.db', ''),
-                                          secrets_path=self._db_path.replace('config.db', '')).get_ksp("fmp")
-                        _ksp_key = (_ksp_creds.get("password", "") if isinstance(_ksp_creds, dict) else "") or ""
-                    except Exception:
-                        _ksp_key = ""
-                    if _ksp_key:
-                        st.success(i18n.t("cfg.fmp_ksp_found"))
-                    else:
-                        st.warning(i18n.t("cfg.fmp_ksp_missing"))
-
-                    cur_overrides_raw = _read_app("fmp_ticker_overrides", {})
-                    cur_overrides = cur_overrides_raw if isinstance(cur_overrides_raw, dict) else {}
-                    st.caption(i18n.t("cfg.fmp_overrides_caption"))
-                    col_y, col_f, col_del = st.columns([2, 2, 1])
-                    new_yf = col_y.text_input(i18n.t("cfg.fmp_override_yahoo"), key="_fmp_ov_yf")
-                    new_fmp = col_f.text_input(i18n.t("cfg.fmp_override_fmp"), key="_fmp_ov_fmp")
-                    col_del.write("")
-                    col_del.write("")
-                    if col_del.button(i18n.t("cfg.fmp_override_add"), key="_fmp_ov_add"):
-                        if new_yf.strip() and new_fmp.strip():
-                            cur_overrides[new_yf.strip()] = new_fmp.strip()
-                            _write_app("fmp_ticker_overrides", cur_overrides)
-                            st.rerun()
-                    if cur_overrides:
-                        for yf_tk, fmp_tk in list(cur_overrides.items()):
-                            c1, c2, c3 = st.columns([2, 2, 1])
-                            c1.code(yf_tk)
-                            c2.code(fmp_tk)
-                            if c3.button("✕", key=f"_fmp_del_{yf_tk}"):
-                                del cur_overrides[yf_tk]
-                                _write_app("fmp_ticker_overrides", cur_overrides)
-                                st.rerun()
-
-                    if st.button(i18n.t("cfg.fmp_test_btn"), key="_fmp_test"):
-                        if not _ksp_key:
-                            st.error(i18n.t("cfg.fmp_test_no_key"))
-                        else:
-                            try:
-                                from tradinglib.providers.fmp_provider import FMPProvider
-                                ok = FMPProvider(api_key=_ksp_key).test_connection()
-                                if ok:
-                                    st.success(i18n.t("cfg.fmp_test_ok"))
-                                else:
-                                    st.error(i18n.t("cfg.fmp_test_fail"))
-                            except Exception as _e:
-                                st.error(str(_e))
-
-        if self.is_admin:
-            logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
-            self.set_value('logging', logging_choice)
-            # logfile and level controls
-            current_logfile = self.get_value('logfile', 'logfile.txt')
-            current_loglevel = self.get_value('loglevel', 'INFO')
-            logfile = st.text_input(i18n.t("cfg.logfile"), value=current_logfile)
-            loglevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-            try:
-                idx_level = loglevels.index(current_loglevel)
-            except Exception:
-                idx_level = 1
-            loglevel = st.selectbox(i18n.t("cfg.loglevel"), loglevels, idx_level)
-            self.set_value('logfile', logfile)
-            self.set_value('loglevel', loglevel)
-            # Apply logging setting immediately
-            try:
-                if logging_choice:
-                    lgc.enable_logging(to_console=True, level=loglevel, logfile=logfile)
-                else:
-                    lgc.disable_logging()
-            except Exception:
-                pass
-            self.set_value('sr_scaling', st.selectbox(i18n.t("cfg.sr_scaling"), sr_select, idx_sr_select))
-            self.set_value('rt_prices', st.selectbox(i18n.t("cfg.rt_prices"), b_select, idx_rt_select))
-            self.set_value('ovt_smoothing', st.selectbox(i18n.t("cfg.ovt_smoothing"), s_select, idx_s_select))
-        self.set_value('system_currency', st.text_input(i18n.t("cfg.currency"), self.get_value('system_currency', 'EUR')))
-        self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
-        self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
-        self.set_value('default_ticker', st.text_input(i18n.t("cfg.default_ticker"), self.get_value('default_ticker', '^GDAXI')) or '^GDAXI')
-        self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
-        self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
-        self.set_value('start_page', st.selectbox(
-            i18n.t("cfg.start_page"), start_pages, idx_start_page,
-            format_func=lambda k: i18n.t(f"cfg.start_page_opt.{k}"),
-            help=i18n.t("cfg.start_page_help"),
-        ))
         def _coerce_names(raw, fallback):
             """Normalise a config value / user text into a clean list[str] of
             indicator short-names. Accepts a real list, a JSON or Python-repr
@@ -398,27 +256,182 @@ class SystemConfig(tools.Db_tools):
             names = [n for n in names if n]
             return names or list(fallback)
 
-        _ov_list = _coerce_names(self.get_value('overlay', None), ['bos', 'pre'])
-        _ov_in = st.text_input(i18n.t("cfg.default_overlay"), ", ".join(_ov_list))
-        self.set_value('overlay', _coerce_names(_ov_in, ['bos', 'pre']))
-        self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
-        check_list(overlays, 'overlay')
-        _oz_list = _coerce_names(self.get_value('oszilator', None), ['adx', 'cci', 'ewo'])
-        _oz_in = st.text_input(i18n.t("cfg.default_oscillator"), ", ".join(_oz_list))
-        self.set_value('oszilator', _coerce_names(_oz_in, ['adx', 'cci', 'ewo']))
-        check_list(oszilators, 'oszilator')
-        self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
-        self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))
-        self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
-        self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
-        self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
-        self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
-        self.set_value('mark_nontrading_times', st.selectbox(i18n.t("cfg.mark_nontrading_times"), b_select, idx_mark_nontrading, help=i18n.t("cfg.mark_nontrading_times_help")))
-        self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
-        self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
+        tab_labels = [i18n.t("cfg.tab_general"), i18n.t("cfg.tab_charts"), i18n.t("cfg.tab_strategies")]
+        if self.is_admin:
+            tab_labels.append(i18n.t("cfg.tab_admin"))
+        tabs = st.tabs(tab_labels)
+
+        with tabs[0]:
+            self.set_value('system_currency', st.text_input(i18n.t("cfg.currency"), self.get_value('system_currency', 'EUR')))
+            self.set_value('trading_cost_pct', st.text_input(i18n.t("cfg.trading_cost"), self.get_value('trading_cost_pct', '0.6')))
+            self.set_value('default_ticker', st.text_input(i18n.t("cfg.default_ticker"), self.get_value('default_ticker', '^GDAXI')) or '^GDAXI')
+            self.set_value('interval', st.selectbox(i18n.t("cfg.default_interval"), intervals, idx_interval))
+            self.set_value('period', st.selectbox(i18n.t("cfg.default_period"), periods, idx_period))
+            self.set_value('start_page', st.selectbox(
+                i18n.t("cfg.start_page"), start_pages, idx_start_page,
+                format_func=lambda k: i18n.t(f"cfg.start_page_opt.{k}"),
+                help=i18n.t("cfg.start_page_help"),
+            ))
+            self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
+            self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
+
+        with tabs[1]:
+            _ov_list = _coerce_names(self.get_value('overlay', None), ['bos', 'pre'])
+            _ov_in = st.text_input(i18n.t("cfg.default_overlay"), ", ".join(_ov_list))
+            self.set_value('overlay', _coerce_names(_ov_in, ['bos', 'pre']))
+            check_list(overlays, 'overlay')
+            _oz_list = _coerce_names(self.get_value('oszilator', None), ['adx', 'cci', 'ewo'])
+            _oz_in = st.text_input(i18n.t("cfg.default_oscillator"), ", ".join(_oz_list))
+            self.set_value('oszilator', _coerce_names(_oz_in, ['adx', 'cci', 'ewo']))
+            check_list(oszilators, 'oszilator')
+            self.set_value('mp_details', st.selectbox(i18n.t("cfg.mp_details"), b_select, idx_mp_details))
+            self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
+            self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
+            self.set_value('mark_nontrading_times', st.selectbox(i18n.t("cfg.mark_nontrading_times"), b_select, idx_mark_nontrading, help=i18n.t("cfg.mark_nontrading_times_help")))
+
+        with tabs[2]:
+            self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
+            self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
+            self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
+            self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
+            self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
+
+        if self.is_admin:
+            with tabs[3]:
+                with st.expander("License", expanded=False):
+                    info = lm.get_license_info()
+                    st.write(i18n.t("cfg.license_tier", tier=info['tier']))
+                    if info.get("user"):
+                        st.write(i18n.t("cfg.license_licensee", user=info['user']))
+                    if info.get("expires"):
+                        st.write(i18n.t("cfg.license_expires", expires=info['expires']))
+                    active = [f for f in lm.ALL_FEATURES if lm.has_feature(f)]
+                    st.write(i18n.t("cfg.license_features", features=', '.join(active)))
+                    if info.get("error"):
+                        st.error(info["error"])
+                    if not info["path_exists"]:
+                        st.info(i18n.t("cfg.license_no_file"))
+                    if st.button(i18n.t("cfg.reload_license")):
+                        lm.reset_cache()
+                        st.rerun()
+
+                with st.expander(i18n.t("cfg.data_provider_header"), expanded=False):
+                    import json as _json
+
+                    def _read_app(key, default=None):
+                        try:
+                            with open_db(self._db_path, readonly=True) as _c:
+                                row = _c.execute("SELECT value FROM config WHERE key=?", (f"_app:{key}",)).fetchone()
+                                if row and row[0]:
+                                    try:
+                                        return _json.loads(row[0])
+                                    except Exception:
+                                        return row[0]
+                        except Exception:
+                            pass
+                        return default
+
+                    def _write_app(key, value):
+                        v = _json.dumps(value)
+                        with open_db(self._db_path) as _c:
+                            _c.execute(
+                                "INSERT INTO config (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                                (f"_app:{key}", v),
+                            )
+                            _c.commit()
+
+                    providers = ["yahoo", "fmp"]
+                    cur_provider = _read_app("data_provider", "yahoo")
+                    try:
+                        p_idx = providers.index(cur_provider)
+                    except ValueError:
+                        p_idx = 0
+                    new_provider = st.selectbox(i18n.t("cfg.data_provider"), providers, p_idx,
+                                                format_func=lambda x: {"yahoo": "Yahoo Finance (default)", "fmp": "Financial Modeling Prep (FMP)"}.get(x, x))
+                    _write_app("data_provider", new_provider)
+
+                    if new_provider == "fmp":
+                        # API key is managed via KSP — show status
+                        try:
+                            from tradinglib.ksplib import Ksp as _Ksp
+                            _ksp_creds = _Ksp(storage_path=self._db_path.replace('config.db', ''),
+                                              secrets_path=self._db_path.replace('config.db', '')).get_ksp("fmp")
+                            _ksp_key = (_ksp_creds.get("password", "") if isinstance(_ksp_creds, dict) else "") or ""
+                        except Exception:
+                            _ksp_key = ""
+                        if _ksp_key:
+                            st.success(i18n.t("cfg.fmp_ksp_found"))
+                        else:
+                            st.warning(i18n.t("cfg.fmp_ksp_missing"))
+
+                        cur_overrides_raw = _read_app("fmp_ticker_overrides", {})
+                        cur_overrides = cur_overrides_raw if isinstance(cur_overrides_raw, dict) else {}
+                        st.caption(i18n.t("cfg.fmp_overrides_caption"))
+                        col_y, col_f, col_del = st.columns([2, 2, 1])
+                        new_yf = col_y.text_input(i18n.t("cfg.fmp_override_yahoo"), key="_fmp_ov_yf")
+                        new_fmp = col_f.text_input(i18n.t("cfg.fmp_override_fmp"), key="_fmp_ov_fmp")
+                        col_del.write("")
+                        col_del.write("")
+                        if col_del.button(i18n.t("cfg.fmp_override_add"), key="_fmp_ov_add"):
+                            if new_yf.strip() and new_fmp.strip():
+                                cur_overrides[new_yf.strip()] = new_fmp.strip()
+                                _write_app("fmp_ticker_overrides", cur_overrides)
+                                st.rerun()
+                        if cur_overrides:
+                            for yf_tk, fmp_tk in list(cur_overrides.items()):
+                                c1, c2, c3 = st.columns([2, 2, 1])
+                                c1.code(yf_tk)
+                                c2.code(fmp_tk)
+                                if c3.button("✕", key=f"_fmp_del_{yf_tk}"):
+                                    del cur_overrides[yf_tk]
+                                    _write_app("fmp_ticker_overrides", cur_overrides)
+                                    st.rerun()
+
+                        if st.button(i18n.t("cfg.fmp_test_btn"), key="_fmp_test"):
+                            if not _ksp_key:
+                                st.error(i18n.t("cfg.fmp_test_no_key"))
+                            else:
+                                try:
+                                    from tradinglib.providers.fmp_provider import FMPProvider
+                                    ok = FMPProvider(api_key=_ksp_key).test_connection()
+                                    if ok:
+                                        st.success(i18n.t("cfg.fmp_test_ok"))
+                                    else:
+                                        st.error(i18n.t("cfg.fmp_test_fail"))
+                                except Exception as _e:
+                                    st.error(str(_e))
+
+                with st.expander(i18n.t("cfg.logging_header"), expanded=False):
+                    logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
+                    self.set_value('logging', logging_choice)
+                    # logfile and level controls
+                    current_logfile = self.get_value('logfile', 'logfile.txt')
+                    current_loglevel = self.get_value('loglevel', 'INFO')
+                    logfile = st.text_input(i18n.t("cfg.logfile"), value=current_logfile)
+                    loglevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+                    try:
+                        idx_level = loglevels.index(current_loglevel)
+                    except Exception:
+                        idx_level = 1
+                    loglevel = st.selectbox(i18n.t("cfg.loglevel"), loglevels, idx_level)
+                    self.set_value('logfile', logfile)
+                    self.set_value('loglevel', loglevel)
+                    # Apply logging setting immediately
+                    try:
+                        if logging_choice:
+                            lgc.enable_logging(to_console=True, level=loglevel, logfile=logfile)
+                        else:
+                            lgc.disable_logging()
+                    except Exception:
+                        pass
+
+                with st.expander(i18n.t("cfg.advanced_header"), expanded=False):
+                    self.set_value('sr_scaling', st.selectbox(i18n.t("cfg.sr_scaling"), sr_select, idx_sr_select))
+                    self.set_value('rt_prices', st.selectbox(i18n.t("cfg.rt_prices"), b_select, idx_rt_select))
+                    self.set_value('ovt_smoothing', st.selectbox(i18n.t("cfg.ovt_smoothing"), s_select, idx_s_select))
 
         if st.button(i18n.t("cfg.save")):
-            st.rerun()        
+            st.rerun()
 
     def get_plugin_params(self, plugin_name: str) -> dict:
         """Returns stored parameter overrides for a plugin, or an empty dict."""
