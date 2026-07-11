@@ -424,7 +424,7 @@ class TradingApp:
         self.username = st.session_state.get("username", 'api_key')
         self.authentication_status = st.session_state.get("authentication_status", None)
         self.is_admin = st.session_state.get("is_admin", False)
-        self.sys_config = sysconf.SystemConfig(username=self.username)
+        self.sys_config = sysconf.SystemConfig(username=self.username, is_admin=self.is_admin)
 #        if self.rt_prices and sys.platform == 'win32':
     
     def set_page_title(self, title=None, icon=None):
@@ -457,7 +457,7 @@ class TradingApp:
         except Exception as exc:
             self.logger.warning("Login (unrendered) error: %s", exc)
         self.init_session()
-        self.sys_config = sysconf.SystemConfig(username=self.username)
+        self.sys_config = sysconf.SystemConfig(username=self.username, is_admin=self.is_admin)
 
     # get_selectors moved to tradinglib.tiny_chart_grid.ChartsGridRenderer
 
