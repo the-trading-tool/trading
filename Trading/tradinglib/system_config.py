@@ -336,7 +336,7 @@ class SystemConfig(tools.Db_tools):
             logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
             self.set_value('logging', logging_choice)
             # logfile and level controls
-            current_logfile = self.get_value('logfile', 'out.txt')
+            current_logfile = self.get_value('logfile', 'logfile.txt')
             current_loglevel = self.get_value('loglevel', 'INFO')
             logfile = st.text_input(i18n.t("cfg.logfile"), value=current_logfile)
             loglevels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']

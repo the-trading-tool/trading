@@ -1316,39 +1316,59 @@ class Admin():
         log_expander = st.expander('Log viewer', expanded=False)
         with log_expander:
             _spin.markdown(_tab_overlay("Log viewer"), unsafe_allow_html=True)
-            default_log = 'out.txt'
-            log_file = st.text_input('Log file path (relative or absolute):', value=default_log)
-            tail_lines = st.number_input('Lines to show', min_value=10, max_value=10000, value=200, step=10)
-            if st.button('Refresh log'):
-                pass
 
-            resolved = None
-            try:
-                if os.path.isabs(log_file) and os.path.exists(log_file):
-                    resolved = log_file
-                elif os.path.exists(log_file):
-                    resolved = os.path.abspath(log_file)
-                else:
-                    tpath = tools.Tools().get_path(path='', file_name=log_file)
-                    if os.path.exists(tpath):
-                        resolved = tpath
-            except Exception:
-                resolved = None
+            root_logger = logging.getLogger()
+            file_handlers = [h for h in root_logger.handlers if isinstance(h, logging.FileHandler)]
 
-            if not resolved:
-                st.info(f'Log file not found: {log_file}')
-                logger.warning(f'Log viewer: file not found: {log_file}')
+            if not file_handlers:
+                st.info(
+                    'No file handler is attached to the logger. Enable file logging '
+                    '(⚙ config dialog → Logging) to write logs to disk.'
+                )
             else:
-                try:
-                    with open(resolved, 'r', encoding='utf-8', errors='replace') as f:
-                        lines = f.readlines()
-                    shown = ''.join(lines[-int(tail_lines):])
-                    st.code(shown)
-                    st.write(f'Showing last {min(len(lines), int(tail_lines))} lines from: {resolved}')
-                    logger.info(f'Log viewer: showed {min(len(lines), int(tail_lines))} lines from {resolved}')
-                except Exception as e:
-                    st.error(f'Error reading log file: {e}')
-                    logger.exception(f'Error reading log file {resolved}: {e}')
+                log_files: list[str] = []
+                for _fh in file_handlers:
+                    base_path = os.path.abspath(_fh.baseFilename)
+                    if os.path.exists(base_path):
+                        log_files.append(base_path)
+                    base_dir, base_name = os.path.split(base_path)
+                    try:
+                        rotated = sorted(
+                            (f for f in os.listdir(base_dir)
+                             if f.startswith(base_name + '.') and f.rsplit('.', 1)[-1].isdigit()),
+                            key=lambda f: int(f.rsplit('.', 1)[-1])
+                        )
+                    except FileNotFoundError:
+                        rotated = []
+                    log_files.extend(os.path.join(base_dir, f) for f in rotated)
+
+                seen: set[str] = set()
+                log_files = [p for p in log_files if not (p in seen or seen.add(p))]
+
+                if not log_files:
+                    st.warning(
+                        f"Logger reports {len(file_handlers)} file handler(s), "
+                        "but no log file exists on disk yet."
+                    )
+                else:
+                    log_file = st.selectbox('Log file', options=log_files, index=0, key='logviewer_file_sel')
+                    tail_lines = st.number_input(
+                        'Lines to show', min_value=10, max_value=10000, value=200, step=10,
+                        key='logviewer_lines'
+                    )
+                    if st.button('Refresh log', key='logviewer_refresh'):
+                        pass
+
+                    try:
+                        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                            lines = f.readlines()
+                        shown = ''.join(lines[-int(tail_lines):])
+                        st.code(shown)
+                        st.caption(f'Showing last {min(len(lines), int(tail_lines))} lines from: {log_file}')
+                        logger.info(f'Log viewer: showed {min(len(lines), int(tail_lines))} lines from {log_file}')
+                    except Exception as e:
+                        st.error(f'Error reading log file: {e}')
+                        logger.exception(f'Error reading log file {log_file}: {e}')
             _spin.empty()
 
         banner_notes_expander = st.expander('Banner note', expanded=False)
