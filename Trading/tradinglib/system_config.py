@@ -401,6 +401,32 @@ class SystemConfig(tools.Db_tools):
                                 except Exception as _e:
                                     st.error(str(_e))
 
+                with st.expander(i18n.t("cfg.ai_models_header"), expanded=False):
+                    st.caption(i18n.t("cfg.ai_models_caption"))
+                    from tradinglib.ai_client import _GROQ_MODELS, _GEMINI_MODELS, _GITHUB_MODELS
+
+                    def _models_input(cfg_key, default_models, label):
+                        cur = self.get_value(cfg_key, None)
+                        if isinstance(cur, list) and cur:
+                            cur_str = ", ".join(str(m) for m in cur)
+                        elif isinstance(cur, str) and cur.strip():
+                            cur_str = cur
+                        else:
+                            cur_str = ", ".join(default_models)
+                        raw = st.text_input(label, value=cur_str, key=f"_ai_models_{cfg_key}")
+                        names = [m.strip() for m in raw.split(',') if m.strip()]
+                        self.set_value(cfg_key, names or list(default_models))
+
+                    _models_input('ai_models_groq', _GROQ_MODELS, i18n.t("cfg.ai_models_groq"))
+                    _models_input('ai_models_gemini', _GEMINI_MODELS, i18n.t("cfg.ai_models_gemini"))
+                    _models_input('ai_models_github', _GITHUB_MODELS, i18n.t("cfg.ai_models_github"))
+                    st.markdown("---")
+                    self.set_value('ai_model_ollama', st.text_input(
+                        i18n.t("cfg.ai_model_ollama"),
+                        self.get_value('ai_model_ollama', ''),
+                        help=i18n.t("cfg.ai_model_ollama_help"),
+                    ))
+
                 with st.expander(i18n.t("cfg.logging_header"), expanded=False):
                     logging_choice = st.selectbox(i18n.t("cfg.logging"), b_select, idx_b_select)
                     self.set_value('logging', logging_choice)

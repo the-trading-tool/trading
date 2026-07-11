@@ -74,8 +74,13 @@ _GEMINI_MAX_WAIT    = 70   # s — longer = daily quota, not RPM
 class GeminiProvider(BaseProvider):
     name = 'gemini'
 
-    def __init__(self, api_key: str):
-        """Initialize the Gemini client with the given API key."""
+    def __init__(self, api_key: str, models: list[str] | None = None):
+        """Initialize the Gemini client with the given API key.
+
+        models: ordered list of model names to try, falling back to
+        _GEMINI_MODELS when not given (or empty). Overridable via
+        config.db key 'ai_models_gemini' (see _resolve_models).
+        """
         try:
             from google import genai as _genai
             self.client = _genai.Client(api_key=api_key)
@@ -83,6 +88,7 @@ class GeminiProvider(BaseProvider):
             raise AiProviderError(
                 "google-genai nicht installiert: pip install google-genai"
             ) from exc
+        self.models = models or list(_GEMINI_MODELS)
 
     def generate(self, prompt: str, max_tokens: int = 1024) -> tuple[str, str]:
         """Send prompt to Gemini, cycling through models and retrying on rate-limit errors.
@@ -91,7 +97,7 @@ class GeminiProvider(BaseProvider):
         """
         from google.genai import types as _gtypes
         last_exc = None
-        for model in _GEMINI_MODELS:
+        for model in self.models:
             for attempt in range(1, _GEMINI_MAX_RETRIES + 1):
                 try:
                     resp = self.client.models.generate_content(
@@ -138,8 +144,13 @@ _GROQ_MAX_WAIT    = 60
 class GroqProvider(BaseProvider):
     name = 'groq'
 
-    def __init__(self, api_key: str):
-        """Initialize the Groq client with the given API key."""
+    def __init__(self, api_key: str, models: list[str] | None = None):
+        """Initialize the Groq client with the given API key.
+
+        models: ordered list of model names to try, falling back to
+        _GROQ_MODELS when not given (or empty). Overridable via
+        config.db key 'ai_models_groq' (see _resolve_models).
+        """
         try:
             from groq import Groq
             self.client = Groq(api_key=api_key)
@@ -147,6 +158,7 @@ class GroqProvider(BaseProvider):
             raise AiProviderError(
                 "groq nicht installiert: pip install groq"
             ) from exc
+        self.models = models or list(_GROQ_MODELS)
 
     def generate(self, prompt: str, max_tokens: int = 1024) -> tuple[str, str]:
         """Send prompt to Groq, cycling through models and retrying on rate-limit errors.
@@ -154,7 +166,7 @@ class GroqProvider(BaseProvider):
         Returns (text, model_name). Raises AiRateLimitError when all models are exhausted.
         """
         last_exc = None
-        for model in _GROQ_MODELS:
+        for model in self.models:
             for attempt in range(1, _GROQ_MAX_RETRIES + 1):
                 try:
                     resp = self.client.chat.completions.create(
@@ -206,8 +218,13 @@ _GITHUB_MAX_WAIT    = 60
 class GitHubModelsProvider(BaseProvider):
     name = 'github'
 
-    def __init__(self, api_key: str):
-        """Initialize with a GitHub Personal Access Token."""
+    def __init__(self, api_key: str, models: list[str] | None = None):
+        """Initialize with a GitHub Personal Access Token.
+
+        models: ordered list of model names to try, falling back to
+        _GITHUB_MODELS when not given (or empty). Overridable via
+        config.db key 'ai_models_github' (see _resolve_models).
+        """
         try:
             from openai import OpenAI as _OpenAI
             self.client = _OpenAI(base_url=_GITHUB_ENDPOINT, api_key=api_key)
@@ -216,13 +233,14 @@ class GitHubModelsProvider(BaseProvider):
                 "openai-Paket nicht installiert: "
                 ".venv/Scripts/python.exe -m pip install openai"
             ) from exc
+        self.models = models or list(_GITHUB_MODELS)
 
     def generate(self, prompt: str, max_tokens: int = 1024) -> tuple[str, str]:
         """Send prompt to GitHub Models (GPT-4o-mini → GPT-4o fallback)."""
         # GitHub Models: max 4096 Output-Tokens
         effective_max = min(max_tokens, 4096)
         last_exc = None
-        for model in _GITHUB_MODELS:
+        for model in self.models:
             for attempt in range(1, _GITHUB_MAX_RETRIES + 1):
                 try:
                     resp = self.client.chat.completions.create(
@@ -455,6 +473,23 @@ def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
     )
 
 
+def _resolve_models(cfg, key: str, default: list[str]) -> list[str]:
+    """Return the configured model-name override list for *key*, or *default*.
+
+    Accepts a real list or a comma-separated string in config.db (both are
+    produced by the ⚙-dialog's "AI models" admin section); falls back to the
+    hardcoded provider default when unset, empty, or malformed.
+    """
+    raw = cfg.get_value(key, None)
+    if isinstance(raw, list):
+        names = [str(m).strip() for m in raw if str(m).strip()]
+    elif isinstance(raw, str) and raw.strip():
+        names = [m.strip() for m in raw.split(',') if m.strip()]
+    else:
+        names = []
+    return names or list(default)
+
+
 def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseProvider]:
     """Return an ordered list of all available providers.
 
@@ -467,8 +502,8 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
     from tradinglib import ksplib
     from tradinglib import system_config as sysconf
 
+    cfg = sysconf.SystemConfig(username=username)
     if provider == 'auto':
-        cfg      = sysconf.SystemConfig(username=username)
         provider = cfg.get_value('ai_provider', 'auto')
 
     ksp = ksplib.Ksp()
@@ -481,6 +516,14 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         creds = ksp.get_ksp(name)
         return (creds.get('url', '') if isinstance(creds, dict) else '') or default
 
+    def _get_ollama_model() -> str:
+        # config.db 'ai_model_ollama' takes priority over the KSP 'ollama' entry,
+        # which in turn takes priority over the hardcoded default.
+        override = cfg.get_value('ai_model_ollama', '')
+        if isinstance(override, str) and override.strip():
+            return override.strip()
+        return _get_key('ollama') or _OLLAMA_DEFAULT_MODEL
+
     # ── Explicit single providers ─────────────────────────────────────────────
     if provider == 'groq':
         key = _get_key('groq')
@@ -488,7 +531,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
             raise AiProviderError(
                 "Groq API-Key fehlt. Bitte unter 'groq' in den API Credentials eintragen."
             )
-        return [GroqProvider(api_key=key)]
+        return [GroqProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_groq', _GROQ_MODELS))]
 
     if provider == 'gemini':
         key = _get_key('gapi')
@@ -496,7 +539,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
             raise AiProviderError(
                 "Gemini API-Key fehlt. Bitte unter 'gapi' in den API Credentials eintragen."
             )
-        return [GeminiProvider(api_key=key)]
+        return [GeminiProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_gemini', _GEMINI_MODELS))]
 
     if provider == 'github':
         key = _get_key('github')
@@ -506,20 +549,17 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
                 "Token erstellen: GitHub → Settings → Developer settings → "
                 "Personal access tokens → Generate new token (kein Scope nötig)."
             )
-        return [GitHubModelsProvider(api_key=key)]
+        return [GitHubModelsProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_github', _GITHUB_MODELS))]
 
     if provider == 'ollama':
-        url   = _get_url('ollama', _OLLAMA_DEFAULT_URL)
-        model = _get_key('ollama') or _OLLAMA_DEFAULT_MODEL
-        return [OllamaProvider(url=url, model=model)]
+        url = _get_url('ollama', _OLLAMA_DEFAULT_URL)
+        return [OllamaProvider(url=url, model=_get_ollama_model())]
 
     # ── auto: collect providers in configured order ──────────────────────────
     # Default: groq → github → gemini → ollama
     # Overridable via config.db key 'ai_provider_order' (list of names)
     _DEFAULT_ORDER = ['groq', 'github', 'gemini', 'ollama']
-    cfg_order = sysconf.SystemConfig(username=username).get_value(
-        'ai_provider_order', _DEFAULT_ORDER
-    )
+    cfg_order = cfg.get_value('ai_provider_order', _DEFAULT_ORDER)
     if not isinstance(cfg_order, list) or not cfg_order:
         cfg_order = _DEFAULT_ORDER
     # Ensure all known providers are considered
@@ -533,17 +573,16 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         try:
             if name == 'groq':
                 key = _get_key('groq')
-                return GroqProvider(api_key=key) if key else None
+                return GroqProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_groq', _GROQ_MODELS)) if key else None
             if name == 'github':
                 key = _get_key('github')
-                return GitHubModelsProvider(api_key=key) if key else None
+                return GitHubModelsProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_github', _GITHUB_MODELS)) if key else None
             if name == 'gemini':
                 key = _get_key('gapi')
-                return GeminiProvider(api_key=key) if key else None
+                return GeminiProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_gemini', _GEMINI_MODELS)) if key else None
             if name == 'ollama':
                 url   = _get_url('ollama', _OLLAMA_DEFAULT_URL)
-                model = _get_key('ollama') or _OLLAMA_DEFAULT_MODEL
-                prov  = OllamaProvider(url=url, model=model)
+                prov  = OllamaProvider(url=url, model=_get_ollama_model())
                 return prov if prov.is_available() else None
         except AiProviderError as exc:
             logger.warning("%s not available: %s", name, exc)
