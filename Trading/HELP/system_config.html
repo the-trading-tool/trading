@@ -5,6 +5,7 @@
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
 h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
 h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.95em;margin:10px 0 4px}
 code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:4px 8px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:inline;white-space:pre-wrap}
 pre{display:block;margin:6px 0;padding:6px 10px}
 table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
@@ -17,8 +18,9 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <body>
 <h1>⚙ Einstellungen <small style="font-size:.6em;color:#888">system_config.py</small></h1>
 
-<p>Der Einstellungs-Dialog öffnet sich über den <b>⚙</b>-Button in der Sidebar.
-Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim nächsten App-Start automatisch geladen.</p>
+<p>Der Einstellungs-Dialog öffnet sich über den <b>⚙</b>-Button in der Sidebar und ist in Tabs gegliedert.
+Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim nächsten App-Start automatisch geladen.
+Der Tab <b>Admin</b> wird nur Admin-Benutzern angezeigt.</p>
 
 <h2>Allgemein</h2>
 <table>
@@ -34,26 +36,41 @@ Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim n�
   <td><code>EUR</code> · <code>USD</code> · …</td>
 </tr>
 <tr>
+  <td><b>Handelskosten in %</b></td>
+  <td>Prozentualer Aufschlag je Trade (Ein- + Ausstieg), der bei der Gewinnberechnung abgezogen wird. Typisch 0,1–1,0 %.</td>
+  <td><code>0.6</code></td>
+</tr>
+<tr>
+  <td><b>Standard-Ticker (Startansicht)</b></td>
+  <td>Ticker, der beim Öffnen des Asset Viewers ohne explizites Symbol voreingestellt ist.</td>
+  <td><code>^GDAXI</code> · <code>AAPL</code> · …</td>
+</tr>
+<tr>
+  <td><b>Standard-Intervall / -Zeitraum</b></td>
+  <td>Kerzen-Zeitrahmen und dargestellter Zeitraum beim ersten Laden des Asset-Viewers. Kann pro Session jederzeit über die Selektoren oben im Chart überschrieben werden.</td>
+  <td>Intervall: <code>5m</code> · <code>30m</code> · <code>60m</code> · <code>1d</code> · <code>1wk</code> · <code>1mo</code><br>Zeitraum: <code>2d</code> · <code>2wk</code> · <code>1mo</code> · <code>3mo</code> · <code>6mo</code> · <code>1y</code> · <code>5y</code></td>
+</tr>
+<tr>
+  <td><b>Startseite</b></td>
+  <td>Seite, die beim frischen App-Aufruf ohne explizite Route (z.&nbsp;B. nach dem Login) gezeigt wird. Mobilgeräte öffnen unabhängig davon immer den Asset Viewer.</td>
+  <td>Dashboard · Asset Viewer · Asset-Übersicht · Performance · Eigene Transaktionen · Marktübersicht · Market Map · Sektorrotation</td>
+</tr>
+<tr>
   <td><b>Standard-Zeitzone</b></td>
   <td>Zeitzone für die Anzeige von Kursdaten und Signalen. Die gespeicherten Daten bleiben UTC-neutral — die Konvertierung erfolgt nur in der Darstellung.</td>
   <td><code>Europe/Berlin</code> · <code>America/New_York</code> · …</td>
 </tr>
+<tr>
+  <td><b>Beobachtete Assets</b></td>
+  <td>Komma-getrennte Ticker-Liste für den Live-Ticker und Push-Benachrichtigungen (Pushover).</td>
+  <td><code>AAPL, ^GDAXI, TSLA</code></td>
+</tr>
 </table>
 
-<h2>Chart-Vorgaben</h2>
+<h2>Charts &amp; Indikatoren</h2>
 <p>Diese Werte definieren, was beim ersten Laden des Asset-Viewers voreingestellt ist. Sie können pro Session über die Selektoren oben im Chart jederzeit überschrieben werden.</p>
 <table>
 <tr><th style="width:30%">Einstellung</th><th>Beschreibung</th><th style="width:20%">Mögliche Werte</th></tr>
-<tr>
-  <td><b>Standard-Intervall</b></td>
-  <td>Kerzen-Zeitrahmen beim ersten Aufruf.</td>
-  <td><code>5m</code> · <code>30m</code> · <code>60m</code> · <code>1d</code> · <code>1wk</code> · <code>1mo</code></td>
-</tr>
-<tr>
-  <td><b>Standard-Zeitraum</b></td>
-  <td>Dargestellter Zeitraum beim ersten Aufruf.</td>
-  <td><code>2d</code> · <code>2wk</code> · <code>1mo</code> · <code>3mo</code> · <code>6mo</code> · <code>1y</code> · <code>5y</code></td>
-</tr>
 <tr>
   <td><b>Standard-Overlay</b></td>
   <td>Komma-getrennte Liste von Indikator-Kurzbezeichnungen, die beim ersten Aufruf auf den Kurs gelegt werden.</td>
@@ -80,13 +97,26 @@ Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim n�
   <td><code>True</code> · <code>False</code> (Default <code>False</code>)</td>
 </tr>
 <tr>
-  <td><b>Nur handelbare (ISIN erforderlich)</b> <small style="color:#888">require_isin</small></td>
-  <td>Beschränkt die Auswahl in Strategy Finder und Multi-Transactions auf Werte mit gültiger ISIN (Näherung für „beim Broker handelbar"). Erst nach einem vollständigen <code>backfill_isin.py</code>-Lauf sinnvoll, sonst werden auch bloß-noch-nicht-aufgelöste Werte herausgefiltert. Pro Strategie/Index per Feld <code>require_isin</code> im Transaktions-JSON überschreibbar.</td>
-  <td><code>True</code> · <code>False</code> (Default <code>False</code>)</td>
+  <td><b>Nicht-Handelszeiten in Bändern markieren</b> <small style="color:#888">mark_nontrading_times</small></td>
+  <td><code>True</code>: gefüllte Bänder (Bollinger, Heikin-EMA, G-FRAMA, DEMA, Ichimoku) brechen über Wochenenden/Feiertage auf — die Lücken markieren Nicht-Handelszeiten. <code>False</code>: durchgehende Füllung (glatter); bei Werten, die auch an sonst geschlossenen Tagen handeln (z.&nbsp;B. Futures), kann die Füllung an den Übergängen ungenau sein.</td>
+  <td><code>True</code> · <code>False</code></td>
 </tr>
 </table>
 
-<h2>Kauf- und Verkaufsbedingungen</h2>
+<h2>Strategien &amp; Handel</h2>
+<h3>Strategie-Konfiguration</h3>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
+<tr>
+  <td><b>Transaktionen</b></td>
+  <td>JSON-Konfiguration der Handelsstrategien. Äußere Keys = Strategiename, innere Keys = Index-Name, Wert = maximale Anzahl gleichzeitiger Positionen in diesem Index.<br>
+  Wird von der Banner-Seite, Multi-Strategien und dem Trading-Agenten gelesen.</td>
+</tr>
+</table>
+<p>Beispiel Transaktions-JSON:</p>
+<pre>{"Value Trend Strategy": {"^GDAXI": 3, "^SPX": 3}, "Support Strategy": {"^GDAXI": 2}}</pre>
+
+<h3>Kauf- und Verkaufsbedingungen</h3>
 <p>Diese Ausdrücke steuern, welche Kerzen in der Performance-Simulation (<code>asset_perf2.py</code>) und im Asset-Viewer als Kauf- bzw. Verkaufssignal markiert werden.</p>
 <table>
 <tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
@@ -103,60 +133,64 @@ Alle Werte werden pro Benutzer in <code>config.db</code> gespeichert und beim n�
 <pre>(ha_close > ha_open) &amp; (Close > ha_ema_high) &amp; (macd > macd_signal) &amp; (rsi > 50) &amp; (markov_regime &lt; 2)</pre>
 <div class="warn">Nur Spaltennamen verwenden, die nach dem gewählten Intervall/Zeitraum tatsächlich berechnet werden. Unbekannte Spalten führen zu einem stillen Fehler (kein Signal).</div>
 
-<h2>Strategien (Transaktionen)</h2>
+<h3>Sonstiges</h3>
 <table>
 <tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
 <tr>
-  <td><b>Transaktionen</b></td>
-  <td>JSON-Konfiguration der Handelsstrategien. Äußere Keys = Strategiename, innere Keys = Index-Name, Wert = maximale Anzahl gleichzeitiger Positionen in diesem Index.<br>
-  Wird von der Banner-Seite, Multi-Strategien und dem Trading-Agenten gelesen.</td>
+  <td><b>Nur handelbare (ISIN erforderlich)</b> <small style="color:#888">require_isin</small></td>
+  <td>Beschränkt die Auswahl in Strategy Finder und Multi-Transactions auf Werte mit gültiger ISIN (Näherung für „beim Broker handelbar"). Erst nach einem vollständigen <code>backfill_isin.py</code>-Lauf sinnvoll, sonst werden auch bloß-noch-nicht-aufgelöste Werte herausgefiltert. Pro Strategie/Index per Feld <code>require_isin</code> im Transaktions-JSON überschreibbar.</td>
 </tr>
 <tr>
-  <td><b>Handelskosten in %</b></td>
-  <td>Prozentualer Aufschlag je Trade (Ein- + Ausstieg), der bei der Gewinnberechnung abgezogen wird. Typisch 0,1–1,0 %.</td>
-</tr>
-<tr>
-  <td><b>Beobachtete Assets</b></td>
-  <td>Komma-getrennte Ticker-Liste für den Live-Ticker und Push-Benachrichtigungen (Pushover).</td>
+  <td><b>Trailing Stop aktiviert</b> <small style="color:#888">trailing_stop_enabled</small></td>
+  <td>Aktiviert die Trailing-Stop-Logik für Live-/Paper-Trading-Positionen, die vom Trading-Agenten eröffnet wurden.</td>
 </tr>
 </table>
-<p>Beispiel Transaktions-JSON:</p>
-<pre>{"Value Trend Strategy": {"^GDAXI": 3, "^SPX": 3}, "Support Strategy": {"^GDAXI": 2}}</pre>
 
-<h2>Administration (nur Admin-Benutzer)</h2>
+<h2>Admin (nur Admin-Benutzer)</h2>
+<h3>Lizenz</h3>
+<p>Zeigt Lizenz-Tier, Lizenznehmer, Ablaufdatum und aktive Features. Über „Lizenz neu laden" wird <code>license.json</code> ohne App-Neustart eingelesen.</p>
+
+<h3>Datenprovider</h3>
 <table>
 <tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
 <tr>
   <td><b>Datenprovider</b></td>
-  <td>Quelle für Kursdaten: <b>Yahoo Finance</b> (kostenlos, Standard) oder <b>FMP</b> (Financial Modeling Prep, erfordert API-Key im KSP-Eintrag <code>fmp</code>).</td>
+  <td>Quelle für Kursdaten: <b>Yahoo Finance</b> (kostenlos, Standard) oder <b>FMP</b> (Financial Modeling Prep, erfordert API-Key im KSP-Eintrag <code>fmp</code>). Enthält Ticker-Override-Mapping und einen Verbindungstest bei aktiviertem FMP.</td>
 </tr>
-<tr>
-  <td><b>Echtzeit-Kurse</b></td>
-  <td>Aktiviert den automatischen Kurs-Refresh im Live-Ticker. Erhöht die Yahoo-API-Last — bei vielen Assets auf <code>False</code> lassen.</td>
-</tr>
-<tr>
-  <td><b>S/R-Skalierung</b></td>
-  <td>Skalierungsfaktor für Support/Resistance-Berechnungen. Höhere Werte erzeugen weiter gefasste S/R-Zonen; Standardwert 100.</td>
-</tr>
-<tr>
-  <td><b>OVT-Glättung</b></td>
-  <td>Glättungsperiode für den Overall-Value-Trend-Indikator (OVT). Werte 1–5; höhere Werte reduzieren Rauschen, verzögern aber Signale.</td>
-</tr>
+</table>
+
+<h3>Logging</h3>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
 <tr>
   <td><b>Logging</b></td>
   <td>Aktiviert die Ausgabe von Debug-Meldungen in Konsole und Logdatei.</td>
 </tr>
 <tr>
   <td><b>Log-Dateiname</b></td>
-  <td>Pfad/Name der Logdatei, relativ zum App-Verzeichnis. Standard: <code>out.txt</code>.</td>
+  <td>Pfad/Name der Logdatei, relativ zum App-Verzeichnis. Standard: <code>logfile.txt</code>.</td>
 </tr>
 <tr>
   <td><b>Log-Level</b></td>
   <td>Mindest-Schweregrad für protokollierte Meldungen: <code>DEBUG</code> &gt; <code>INFO</code> &gt; <code>WARNING</code> &gt; <code>ERROR</code> &gt; <code>CRITICAL</code>.</td>
 </tr>
+</table>
+<p>Der <b>Log Viewer</b> im Admin-Bereich (Tab System) liest direkt den hier verdrahteten File-Handler aus — Logging also zuerst aktivieren, wenn dort etwas zu sehen sein soll.</p>
+
+<h3>Erweitert / Performance</h3>
+<table>
+<tr><th style="width:30%">Einstellung</th><th>Beschreibung</th></tr>
 <tr>
-  <td><b>Lizenz</b></td>
-  <td>Zeigt Lizenz-Tier, Lizenznehmer, Ablaufdatum und aktive Features. Über „Lizenz neu laden" wird <code>license.json</code> ohne App-Neustart eingelesen.</td>
+  <td><b>S/R-Skalierung</b></td>
+  <td>Skalierungsfaktor für Support/Resistance-Berechnungen. Höhere Werte erzeugen weiter gefasste S/R-Zonen; Standardwert 100.</td>
+</tr>
+<tr>
+  <td><b>Echtzeit-Kurse</b></td>
+  <td>Aktiviert den automatischen Kurs-Refresh im Live-Ticker. Erhöht die Yahoo-API-Last — bei vielen Assets auf <code>False</code> lassen.</td>
+</tr>
+<tr>
+  <td><b>OVT-Glättung</b></td>
+  <td>Glättungsperiode für den Overall-Value-Trend-Indikator (OVT). Werte 1–5; höhere Werte reduzieren Rauschen, verzögern aber Signale.</td>
 </tr>
 </table>
 
