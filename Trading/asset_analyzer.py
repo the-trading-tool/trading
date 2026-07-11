@@ -893,6 +893,13 @@ class TradingApp:
             else:
                 
                 self.is_admin= self.config['credentials']['usernames'].get(self.username, {}).get('admin', False)
+                # session_state['is_admin'] is read by init_session()/login_overlay() on
+                # every rerun to build self.sys_config — nothing else ever wrote it, so it
+                # was always False there (this is the first point the real flag is known).
+                # Persist it and sync the already-built sys_config so the ⚙ dialog's
+                # admin-only section (logging, license, …) actually renders.
+                st.session_state['is_admin'] = self.is_admin
+                self.sys_config.is_admin = self.is_admin
                 self.show_navigation_links()
 
                 # Fresh load without an explicit route: resolve the entry page now
