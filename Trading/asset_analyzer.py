@@ -276,7 +276,7 @@ class TradingApp:
 
     def __init__(self):
         """Configure Streamlit page layout, load config.yaml, and initialize the authenticator."""
-        self.title = "Silvesto, your growth tool."
+        self.title = "Silvesto, your portal for growth."
         if 'title' not in st.session_state:
             st.set_page_config(self.title, initial_sidebar_state='collapsed', layout="wide" )
         else:
@@ -872,7 +872,7 @@ class TradingApp:
             fp.FileProvider()
         else:
 
-            with st.spinner("Silvesto, your growth tool."):
+            with st.spinner("Silvesto, your portal for growth."):
                 self.login_overlay()
 
                 # i18n init happens here — AFTER login_overlay() so the real username

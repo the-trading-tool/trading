@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 ARBOR_LOGO_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 195" role="img">
-  <title>Silvesto, your growth tool.</title>
+  <title>Silvesto, your portal for growth.</title>
   <desc>Baum-Logo mit Balkendiagrammen</desc>
 
   <!-- Transparenter Hintergrund mit grauem Rahmen -->
@@ -51,7 +51,7 @@ ARBOR_LOGO_SVG = """
   <text x="100" y="163" text-anchor="middle" font-family="Georgia, serif"
         font-size="16" fill="#aaa" letter-spacing="0.5">Silvesto,</text>
   <text x="100" y="182" text-anchor="middle" font-family="Georgia, serif"
-        font-size="14" fill="#888" letter-spacing="0.5">the growth tool.</text>
+        font-size="14" fill="#888" letter-spacing="0.5">your portal for growth.</text>
 </svg>
 """
 
@@ -948,7 +948,7 @@ class WelcomePage:
         render_logo(region=st, max_width="200px", margin_bottom="0.8rem")
         st.markdown("""
 <div class="wlc-hero">
-  <p class="wlc-hero-title">📈 Silvesto, your growth tool.</p>
+  <p class="wlc-hero-title">📈 Silvesto, your portal for growth.</p>
   <p class="wlc-hero-sub">Ihr persönliches Analyse-Werkzeug für den Kapitalmarkt</p>
   <p class="wlc-hero-tag">Offline &nbsp;·&nbsp; Lokal &nbsp;·&nbsp; Self-hosted</p>
 </div>""", unsafe_allow_html=True)
