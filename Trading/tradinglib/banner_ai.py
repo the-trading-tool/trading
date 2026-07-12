@@ -224,10 +224,19 @@ class BannerAiGenerator:
             transactions = ast.literal_eval(raw) if isinstance(raw, str) else raw
             # stock_index e.g. "^MDAXI" → key "MDAXI"
             key = stock_index.lstrip('^')
-            if key in transactions:
-                return transactions[key]
-            # Fallback: partial match
+            # 2-level (key IS the index) vs. 3-level (key = strategy, value = {index: {...}})
+            # — same dual-mode detection as banner_page.py, needed because config.db can
+            # hold either shape depending on when it was created.
+            candidates = []
             for k, v in transactions.items():
+                if isinstance(v, dict) and 'num_assets' in v:
+                    candidates.append((k, v))
+                elif isinstance(v, dict):
+                    candidates.extend(v.items())
+            if key in dict(candidates):
+                return dict(candidates)[key]
+            # Fallback: partial match
+            for k, v in candidates:
                 if k in stock_index or stock_index in k:
                     return v
         except Exception as exc:

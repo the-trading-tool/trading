@@ -31,12 +31,18 @@ class SystemConfig(tools.Db_tools):
 #        'SDAXI': {'buy': '(overallValueTrend >= 51)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 41)', 'num_assets': 3, 'invest': 8000, 'order_by': 'sortino'}
 #        }
 
+    # 3-stufig (Strategie -> Index -> Feld-Dict) -- multi_transaction.py iteriert
+    # zwingend "for item in transactions: for id in transactions[item]: ...['buy']"
+    # ohne Fallback auf die alte 2-stufige Form (Index direkt als aeusserer Key).
+    # banner_page.py erkennt zwar beide Formen automatisch, Multi Strategies nicht.
     transactions = {
-        'SPX': {'buy': '(overallValueTrend >= 69)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 59)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'}, 
-        'GDAXI': {'buy': '(overallValueTrend >= 67)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 57)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'}, 
-        'MDAXI': {'buy': '(overallValueTrend >= 60)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 50)', 'num_assets': 2, 'invest': 7000, 'order_by': 'sortino'}, 
-        'SDAXI': {'buy': '(overallValueTrend >= 56)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 46)', 'num_assets': 3, 'invest': 10000, 'order_by': 'sortino'}, 
-        }                 
+        'Value Trend Strategy': {
+            'SPX': {'buy': '(overallValueTrend >= 69)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 59)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'},
+            'GDAXI': {'buy': '(overallValueTrend >= 67)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 57)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'},
+            'MDAXI': {'buy': '(overallValueTrend >= 60)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 50)', 'num_assets': 2, 'invest': 7000, 'order_by': 'sortino'},
+            'SDAXI': {'buy': '(overallValueTrend >= 56)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 46)', 'num_assets': 3, 'invest': 10000, 'order_by': 'sortino'},
+        },
+    }
     
     def __init__(self, db_path="database", db_name="config.db", username='admin', region=st, is_admin=False, bare_mode=False):
         """Open config.db and ensure the config table exists.
