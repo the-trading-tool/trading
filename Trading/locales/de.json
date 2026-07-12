@@ -281,6 +281,7 @@
   "search.select_market": "Markt auswählen:",
   "search.select_company": "Unternehmen auswählen:",
   "main.tab_trend": "Trend",
+  "main.tab_overview": "Kennzahlen",
   "main.stress_level_warning": "Warnung — unsicherer Markt",
   "main.stress_level_elevated": "Erhöhte Vorsicht",
   "main.stress_level_calm": "Markt ruhig",

@@ -484,17 +484,20 @@ class render_mainpage(fetch_data.FetchData):
 
     @st.fragment
     def _render_selector_and_chart(self, pp_right):
-        """Search row + headlines + pips slider + selector (Interval/Period/
-        Overlay/Oszilator) + chart + tabs, top to bottom in that order.
+        """Search row + pips slider + selector (Interval/Period/Overlay/
+        Oszilator) + tabs (Trend, Kennzahlen/headlines, ...), top to bottom
+        in that order.
 
         Isolated as an st.fragment: toggling a checkbox here reruns only this
         section, not the whole page (sidebar navigation, page CSS). The search
-        boxes, quick-trade buttons and headline placeholders all live in this
-        fragment (not just the selector/chart) — Streamlit forbids writing a
-        widget into a container created outside the fragment's own render
-        path, and DOM order follows creation order, so everything that must
-        appear above the chart in a specific order has to be created here,
-        in that order.
+        boxes and quick-trade buttons live in this fragment (not just the
+        selector/chart) — Streamlit forbids writing a widget into a container
+        created outside the fragment's own render path, and DOM order follows
+        creation order, so everything that must appear above the chart in a
+        specific order has to be created here, in that order. The two
+        headline rows render inside the "Kennzahlen" tab (built alongside
+        Trend) rather than as their own top-level rows — except in
+        hide_details (compact) mode, which has no tabs at all.
         """
         def set_ticker(ticker):
             """Persist the selected ticker to sys_conf and update self.symbol."""
@@ -513,11 +516,6 @@ class render_mainpage(fetch_data.FetchData):
         fts = sr.FullTextSearch(region=sr_right, symbol=self.symbol, search_ticker_only=True, is_admin=self.is_admin)
         buy_slot = buy_col.empty()
         sell_slot = sell_col.empty()
-
-        # ── Headline values (Price date / Close / Currency / Open / Low / High
-        # / 52-week range) — placed right below the search row.
-        head_row1 = st.empty()
-        head_row2 = st.empty()
 
         # Auto-resolve URL-provided symbols (e.g. /?symbol=Holcim%20AG → HOLN.SW).
         # Rules:
@@ -547,8 +545,6 @@ class render_mainpage(fetch_data.FetchData):
             fts.symbol_search()
 
         self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
-
-        slider_row = pp_right.empty()
 
         if self.hide_details:
             # Compact / read-only mode (e.g. the Market Map chart overlay): skip the
@@ -583,6 +579,10 @@ class render_mainpage(fetch_data.FetchData):
             self.no_plot_oszilators = [n for n in self.oszilators if n not in plot_oszilators]
 
             (interval, period, self.overlays, self.oszilators) = self.sys_conf.get_selectors(interval, period, self.overlays, self.oszilators)
+
+        # Pips slider — placed after the Interval/Period/Overlay/Oszilator
+        # dropdowns and before the tabs (filled later, once tiny_chart runs).
+        slider_row = pp_right.empty()
 
         if not self.interval == None:
             interval = self.interval
@@ -697,23 +697,22 @@ class render_mainpage(fetch_data.FetchData):
                 except Exception:
                     self._portfolio_positions = []
 
-            if 1:
-#        try:
-                headlines = hl.Headlines(self.df, self.ticker, self.data, screen_region_row1=head_row1, screen_region_row2=head_row2, interval = interval, index_name=fts.index_name, system_currency=self.sys_conf.get_value("system_currency","USD"))
-                headlines.render()
-#        except Exception:
-
-            # Quick buy/sell — placed in the top row (next to config/help) so they
-            # don't cost an extra line. Uses the same close price / suggested
-            # investment (d_txt → calculate_investment) shown in the headlines.
-            if not self.hide_search and ticker_selected:
-                self._render_quick_trade_buttons(buy_slot, sell_slot, ticker_selected, headlines)
-
             # Tabs
-
             if ticker_selected:
 
                 if self.hide_details:
+                    # Compact / read-only mode (e.g. the Market Map chart overlay) has
+                    # no tabs — the headline rows keep their own two-row placeholders.
+                    head_row1 = st.empty()
+                    head_row2 = st.empty()
+                    headlines = hl.Headlines(self.df, self.ticker, self.data, screen_region_row1=head_row1, screen_region_row2=head_row2, interval = interval, index_name=fts.index_name, system_currency=self.sys_conf.get_value("system_currency","USD"))
+                    headlines.render()
+
+                    # Quick buy/sell — placed in the top row (next to config/help) so they
+                    # don't cost an extra line. Uses the same close price / suggested
+                    # investment (d_txt → calculate_investment) shown in the headlines.
+                    if not self.hide_search and ticker_selected:
+                        self._render_quick_trade_buttons(buy_slot, sell_slot, ticker_selected, headlines)
 
                     self.render_trend(ticker_selected, ticker_selected_longname, interval=interval, period=period )
                     if self.sys_conf.get_value("pine_export", False):
@@ -736,7 +735,10 @@ class render_mainpage(fetch_data.FetchData):
 
                     seasonality_enabled = SEASONALITY_AVAILABLE and has_feature(FEATURE_SEASONALITY) and sn is not None
 
-                    tab_list = [t('main.tab_trend')]
+                    # "Kennzahlen" / "Key Data" holds both headline rows (price/close/
+                    # currency/open/low/high/52-week range/ratios) — right after Trend
+                    # so it stays close to the default view.
+                    tab_list = [t('main.tab_trend'), t('main.tab_overview')]
                     if seasonality_enabled:
                         tab_list.append(t('main.tab_seasonality'))
                     if has_info:
@@ -752,6 +754,7 @@ class render_mainpage(fetch_data.FetchData):
 
                     tab_iter = iter(pp_right.tabs(tab_list))
                     tab_trend = next(tab_iter)
+                    tab_overview = next(tab_iter)
                     tab_seasonality = next(tab_iter) if seasonality_enabled else None
                     tab_info = next(tab_iter) if has_info else None
                     tab_income_sheet = next(tab_iter) if not income_df.empty else None
@@ -759,6 +762,16 @@ class render_mainpage(fetch_data.FetchData):
                     tab_news = next(tab_iter) if news_articles else None
                     if show_details:
                         tab_details = next(tab_iter)
+
+                    # Both headline rows render into the same "Kennzahlen" tab.
+                    headlines = hl.Headlines(self.df, self.ticker, self.data, screen_region_row1=tab_overview, screen_region_row2=tab_overview, interval = interval, index_name=fts.index_name, system_currency=self.sys_conf.get_value("system_currency","USD"))
+                    headlines.render()
+
+                    # Quick buy/sell — placed in the top row (next to config/help) so they
+                    # don't cost an extra line. Uses the same close price / suggested
+                    # investment (d_txt → calculate_investment) shown in the headlines.
+                    if not self.hide_search and ticker_selected:
+                        self._render_quick_trade_buttons(buy_slot, sell_slot, ticker_selected, headlines)
 
                     # Spinner placeholder lives OUTSIDE any tab so position:fixed covers the viewport
                     _spin = st.empty()
