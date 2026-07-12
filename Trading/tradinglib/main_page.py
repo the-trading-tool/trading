@@ -480,22 +480,40 @@ class render_mainpage(fetch_data.FetchData):
 
 #        exp_ = pp_right.expander('Asset details',expanded=True)
 #        with exp_:
-        srch_region = pp_right.empty()
         head_row1 = st.empty()
         head_row2 = st.empty()
 
-        # Settings (⚙) and Help (❓) moved to the sidebar (asset_analyzer.py
-        # show_navigation_links); the freed width goes to the search columns.
-        # Quick-trade buttons used to share this row too, but Streamlit forbids
-        # a fragment from writing widgets into a container created outside of
-        # it — the buy/sell buttons depend on the chart/headlines (built inside
-        # the selector/chart fragment below), so they now get their own row
-        # created inside that fragment instead (see _render_selector_and_chart).
-        (sr_left, sr_right) = srch_region.columns([0.5, 0.5])
+        self._render_selector_and_chart(head_row1, head_row2, pp_right)
 
-#        (sr_left, sr_right,_,cfg_btn_c,cfg_btn_h) = srch_region.columns([0.35,0.35,0.06,0.07,0.07],gap='small')
+    @st.fragment
+    def _render_selector_and_chart(self, head_row1, head_row2, pp_right):
+        """Search row + quick-trade buttons + selector (Interval/Period/Overlay/
+        Oszilator) + chart + tabs.
+
+        Isolated as an st.fragment: toggling a checkbox here reruns only this
+        section, not the whole page (sidebar navigation, page CSS). The search
+        boxes and the quick-trade buttons live in this fragment too (not just
+        the selector/chart) so the buttons can share the search row — Streamlit
+        forbids writing a widget into a container created outside the
+        fragment's own render path, so both need to be created here together.
+        """
+        def set_ticker(ticker):
+            """Persist the selected ticker to sys_conf and update self.symbol."""
+            self.ticker = ticker
+            self.symbol = ticker
+            if ticker:
+                self.sys_conf.set_value('last_ticker', ticker)
+            return ticker
+
+        # ── Search row: market search · full-text search · quick-trade buttons ──
+        # Settings (⚙) and Help (❓) live in the sidebar (asset_analyzer.py
+        # show_navigation_links), so the freed width goes to the search columns.
+        srch_region = pp_right.empty()
+        (sr_left, sr_right, buy_col, sell_col) = srch_region.columns([0.42, 0.42, 0.08, 0.08])
         mkt = sr.MarketSearch(region=sr_left, default_ticker=self.symbol)
         fts = sr.FullTextSearch(region=sr_right, symbol=self.symbol, search_ticker_only=True, is_admin=self.is_admin)
+        buy_slot = buy_col.empty()
+        sell_slot = sell_col.empty()
 
         # Auto-resolve URL-provided symbols (e.g. /?symbol=Holcim%20AG → HOLN.SW).
         # Rules:
@@ -524,36 +542,9 @@ class render_mainpage(fetch_data.FetchData):
         else:
             fts.symbol_search()
 
-        self._render_selector_and_chart(mkt, fts, head_row1, head_row2, pp_right)
-
-    @st.fragment
-    def _render_selector_and_chart(self, mkt, fts, head_row1, head_row2, pp_right):
-        """Selector (Interval/Period/Overlay/Oszilator) + chart + tabs.
-
-        Isolated as an st.fragment: toggling a checkbox here reruns only this
-        section, not the whole page (search boxes, sidebar navigation, page CSS).
-
-        All containers that receive widgets (selector checkboxes, quick-trade
-        buttons, the pips slider) must be created *inside* this fragment —
-        Streamlit forbids writing a widget into a container that was created
-        outside the fragment's own render path.
-        """
-        def set_ticker(ticker):
-            """Persist the selected ticker to sys_conf and update self.symbol."""
-            self.ticker = ticker
-            self.symbol = ticker
-            if ticker:
-                self.sys_conf.set_value('last_ticker', ticker)
-            return ticker
-
         self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
 
-        # Quick-trade buttons share the "Select range" row (right of the pips
-        # slider) instead of taking their own row — saves vertical space.
-        slider_container = pp_right.empty()
-        slider_col, buy_col, sell_col = slider_container.columns([0.84, 0.08, 0.08])
-        buy_slot = buy_col.empty()
-        sell_slot = sell_col.empty()
+        slider_row = pp_right.empty()
 
         if self.hide_details:
             # Compact / read-only mode (e.g. the Market Map chart overlay): skip the
@@ -685,7 +676,7 @@ class render_mainpage(fetch_data.FetchData):
                 zoom = True,
                 pips_select = True,
                 add_current=add_current,
-                region = slider_col
+                region = slider_row
                 )
             self.df = self.t_chart.df
             self.ticker = self.t_chart.ticker
