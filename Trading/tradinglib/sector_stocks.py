@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 from tradinglib import market_data as md
-from tradinglib.tools import open_db
+from tradinglib.tools import open_db, attach_db
 from tradinglib.tools import Tools
 
 logger = logging.getLogger(__name__)
@@ -173,10 +173,8 @@ def query_sector_stocks(
             continue
 
         try:
-            # Use f-string for ATTACH DATABASE — parameterised ATTACH is unreliable
-            # in some Python/SQLite builds (matches existing codebase pattern)
             conn = open_db(sim_file)
-            conn.execute(f"ATTACH DATABASE '{info_file}' AS info_db")
+            attach_db(conn, info_file, "info_db")
 
             # Fetch the latest date as a DATE string first.
             # DATE() strips time-of-day so we match all records for the newest day,

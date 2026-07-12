@@ -29,6 +29,22 @@ info() { echo -e "${GRAY}    ... $*${NC}"; }
 warn() { echo -e "${YELLOW}    WRN $*${NC}"; }
 fail() { echo -e "${RED}    ERR $*${NC}"; }
 
+# Rueckfrage vor dem (Neu-)Anlegen einer Datenbankdatei, die bereits existiert.
+# Gibt 0 (fortfahren) zurueck wenn die Datei fehlt oder der Nutzer bestaetigt,
+# 1 (ueberspringen) wenn die Datei existiert und der Nutzer ablehnt.
+confirm_overwrite() {
+    local desc="$1" path="$2"
+    if [[ -e "$path" ]]; then
+        warn "$desc existiert bereits: $path"
+        read -rp "  Trotzdem neu anlegen/aktualisieren? (j/N): " REPLY
+        if ! echo "$REPLY" | grep -qiE '^[jy]'; then
+            info "Uebersprungen -- bestehende Datei bleibt unveraendert."
+            return 1
+        fi
+    fi
+    return 0
+}
+
 # ---------------------------------------------------------------------------
 # Parameter parsen
 # ---------------------------------------------------------------------------
@@ -67,6 +83,9 @@ fi
 ROOT="$(pwd)"
 echo -e "\n${WHITE}Trading-App Installer${NC}"
 echo -e "Arbeitsverzeichnis: $ROOT\n"
+
+# Datenbank-Verzeichnis -- respektiert TradingDB-Env analog zu tools.get_path()
+DB_DIR="${TradingDB:-$ROOT/database}"
 
 # ---------------------------------------------------------------------------
 # Phase 1A: Python 3.10+ finden
@@ -380,11 +399,13 @@ fi
 
 if [[ "$DO_SEED" -eq 1 ]]; then
     step "Phase 3: Ticker-Datenbank befuellen (seed_db.py)"
-    if "$VENV_PYTHON" seed_db.py; then
-        ok "yf_tickers.db befuellt"
-    else
-        fail "seed_db.py fehlgeschlagen."
-        exit 1
+    if confirm_overwrite "yf_tickers.db" "$DB_DIR/yf_tickers.db"; then
+        if "$VENV_PYTHON" seed_db.py; then
+            ok "yf_tickers.db befuellt"
+        else
+            fail "seed_db.py fehlgeschlagen."
+            exit 1
+        fi
     fi
 else
     info "Ticker-DB nicht befuellt (kein --seed / --init / --init-info angegeben)"
@@ -397,16 +418,23 @@ fi
 
 if [[ "$DO_INIT_INFO" -eq 1 ]]; then
     step "Phase 4A: Asset-Metadaten laden (get_asset_info.py)"
-    info "Laedt Ticker-Stammdaten von Yahoo Finance ..."
-    if "$VENV_PYTHON" get_asset_info.py; then
-        ok "asset_info.db befuellt"
-    else
-        warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden moeglicherweise uebersprungen)."
+    if confirm_overwrite "asset_info.db" "$DB_DIR/asset_info.db"; then
+        info "Laedt Ticker-Stammdaten von Yahoo Finance ..."
+        if "$VENV_PYTHON" get_asset_info.py; then
+            ok "asset_info.db befuellt"
+        else
+            warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden moeglicherweise uebersprungen)."
+        fi
     fi
 fi
 
 if [[ "$DO_INIT" -eq 1 ]]; then
     step "Phase 4B: OHLC-Kursdaten laden (get_asset_data.py)"
+    existing_price_dbs=$(find "$DB_DIR" -maxdepth 1 -name 'yf_*.db' ! -name 'yf_tickers.db' 2>/dev/null | wc -l)
+    if [[ "$existing_price_dbs" -gt 0 ]]; then
+        warn "$existing_price_dbs vorhandene Kursdaten-Datei(en) (yf_<TICKER>.db) in $DB_DIR gefunden."
+        warn "Der Download ergaenzt/aktualisiert bestehende Daten, ueberschreibt sie nicht pauschal."
+    fi
     warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     read -rp "  Fortfahren? (j/N): " CONFIRM
     if echo "$CONFIRM" | grep -qiE '^[jy]'; then

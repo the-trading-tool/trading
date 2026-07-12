@@ -66,7 +66,7 @@ class AllAssetsView(tt.TickerTools):
         # Attach die anderen Datenbanken
         buy_query = self.sys_config.get_value("buy_query",default="(ewo>ewo_ema)")
         sell_query = self.sys_config.get_value("sell_query",default="(ewo<ewo_ema)")
-        db.conn.execute(f"ATTACH DATABASE '{self.get_path(path = 'database', file_name='asset_info.db')}' AS info_db")
+        tt.tools.attach_db(db.conn, self.get_path(path = 'database', file_name='asset_info.db'), "info_db")
         bq_input = st.text_input(t('assets.filter_label'), buy_query)
         o_by = "ORDER BY Date DESC, ap.currency, ap.sortino DESC, ap.overallValueTrend DESC Limit 7000;"
 #        if qv:

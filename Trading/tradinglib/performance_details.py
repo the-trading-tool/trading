@@ -4,7 +4,7 @@ from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as p
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
 from tradinglib.utils import DataUtils
 from tradinglib.i18n import t
-from tradinglib.tools import open_db
+from tradinglib.tools import open_db, attach_db
 
 from tradinglib.indicator import ewo
 import datetime as dt
@@ -31,8 +31,8 @@ except ImportError:
 def _cached_ticker_conn(ticker_path: str, perf_path: str, info_path: str):
     """Return a cached SQLite connection to yf_tickers.db with perf and info DBs attached."""
     conn = open_db(ticker_path, check_same_thread=False)
-    conn.execute(f"ATTACH DATABASE '{perf_path}' AS performance_db")
-    conn.execute(f"ATTACH DATABASE '{info_path}' AS info_db")
+    attach_db(conn, perf_path, "performance_db")
+    attach_db(conn, info_path, "info_db")
     return conn
 
 

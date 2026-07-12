@@ -48,6 +48,22 @@ function Test-Command {
     return ($null -ne (Get-Command $cmd -ErrorAction SilentlyContinue))
 }
 
+# Rueckfrage vor dem (Neu-)Anlegen einer Datenbankdatei, die bereits existiert.
+# Gibt $true (fortfahren) zurueck wenn die Datei fehlt oder der Nutzer bestaetigt,
+# $false (ueberspringen) wenn die Datei existiert und der Nutzer ablehnt.
+function Confirm-Overwrite {
+    param([string]$desc, [string]$path)
+    if (Test-Path $path) {
+        Write-Warn "$desc existiert bereits: $path"
+        $reply = Read-Host "  Trotzdem neu anlegen/aktualisieren? (j/N)"
+        if ($reply -notmatch '^[jJyY]') {
+            Write-Info "Uebersprungen -- bestehende Datei bleibt unveraendert."
+            return $false
+        }
+    }
+    return $true
+}
+
 # ---------------------------------------------------------------------------
 # Verzeichnis-Pruefung -- Installer muss im Trading-Ordner laufen
 # ---------------------------------------------------------------------------
@@ -61,6 +77,9 @@ if (-not (Test-Path 'asset_analyzer.py')) {
 $ROOT = $PWD.Path
 Write-Host "`nTrading-App Installer" -ForegroundColor White
 Write-Host "Arbeitsverzeichnis: $ROOT`n"
+
+# Datenbank-Verzeichnis -- respektiert TradingDB-Env analog zu tools.get_path()
+$DB_DIR = if ($env:TradingDB) { $env:TradingDB } else { Join-Path $ROOT 'database' }
 
 # ---------------------------------------------------------------------------
 # Phase 1A: Python 3.11 finden
@@ -420,12 +439,14 @@ cookie:
 
 if ($Seed -or $Init -or $InitInfo) {
     Write-Step "Phase 3: Ticker-Datenbank befuellen (seed_db.py)"
-    & $PY seed_db.py
-    if ($LASTEXITCODE -ne 0) {
-        Write-Fail "seed_db.py fehlgeschlagen."
-        exit 1
+    if (Confirm-Overwrite "yf_tickers.db" (Join-Path $DB_DIR 'yf_tickers.db')) {
+        & $PY seed_db.py
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "seed_db.py fehlgeschlagen."
+            exit 1
+        }
+        Write-Ok "yf_tickers.db befuellt"
     }
-    Write-Ok "yf_tickers.db befuellt"
 } else {
     Write-Info "Ticker-DB nicht befuellt (kein -Seed / -Init / -InitInfo angegeben)"
     Write-Info "Zum Befuellen: .\install.ps1 -Seed"
@@ -437,17 +458,25 @@ if ($Seed -or $Init -or $InitInfo) {
 
 if ($InitInfo -or $Init) {
     Write-Step "Phase 4A: Asset-Metadaten laden (get_asset_info.py)"
-    Write-Info "Laedt Ticker-Stammdaten von Yahoo Finance ..."
-    & $PY get_asset_info.py
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden moeglicherweise uebersprungen)."
-    } else {
-        Write-Ok "asset_info.db befuellt"
+    if (Confirm-Overwrite "asset_info.db" (Join-Path $DB_DIR 'asset_info.db')) {
+        Write-Info "Laedt Ticker-Stammdaten von Yahoo Finance ..."
+        & $PY get_asset_info.py
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "get_asset_info.py mit Fehler beendet (einige Ticker wurden moeglicherweise uebersprungen)."
+        } else {
+            Write-Ok "asset_info.db befuellt"
+        }
     }
 }
 
 if ($Init) {
     Write-Step "Phase 4B: OHLC-Kursdaten laden (get_asset_data.py)"
+    $existingPriceDbs = @(Get-ChildItem -Path $DB_DIR -Filter 'yf_*.db' -ErrorAction SilentlyContinue |
+                          Where-Object { $_.Name -ne 'yf_tickers.db' })
+    if ($existingPriceDbs.Count -gt 0) {
+        Write-Warn "$($existingPriceDbs.Count) vorhandene Kursdaten-Datei(en) (yf_<TICKER>.db) in $DB_DIR gefunden."
+        Write-Warn "Der Download ergaenzt/aktualisiert bestehende Daten, ueberschreibt sie nicht pauschal."
+    }
     Write-Warn "Dies laedt historische Kurse fuer alle Ticker -- kann Stunden dauern!"
     $confirm = Read-Host "  Fortfahren? (j/N)"
     if ($confirm -match '^[jJyY]') {

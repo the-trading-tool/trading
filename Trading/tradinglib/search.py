@@ -136,8 +136,8 @@ class FullTextSearch(tools.Db_tools):
         perf_table = 'asset_simulation'
         db_path = 'database'
         db = tools.Db_tools(db_path=db_path, database_name='yf_tickers.db')
-        db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name='asset_simulation_.db')}' AS performance_db")
-        db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name='asset_info.db')}' AS info_db")
+        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_simulation_.db'), "performance_db")
+        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
 
         query = mq.make_query(perf_table, index=index, q=q, conn=db.conn)
         self.df = pd.read_sql_query(query, db.conn)
@@ -316,8 +316,8 @@ class MarketSearch(tools.Db_tools):
         perf_db_file = "asset_simulation_.db"
         db_path = 'database'
         db = tools.Db_tools(db_path=db_path, database_name='yf_tickers.db')
-        db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name=perf_db_file)}' AS performance_db")
-        db.conn.execute(f"ATTACH DATABASE '{tools.Tools().get_path(path = db_path, file_name='asset_info.db')}' AS info_db")
+        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name=perf_db_file), "performance_db")
+        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
         query = mq.make_query(perf_table, index=index, q=q, q_ext="", conn=db.conn)
         try:
             self.df = pd.read_sql_query(query, db.conn)

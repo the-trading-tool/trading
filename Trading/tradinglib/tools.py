@@ -45,6 +45,19 @@ def open_db(path: str, readonly: bool = False, timeout: float = 5.0,
     conn.execute("PRAGMA mmap_size = 268435456")
     return conn
 
+
+def attach_db(conn: sqlite3.Connection, path: str, alias: str) -> None:
+    """ATTACH an existing SQLite database file under the given alias.
+
+    Plain `ATTACH DATABASE` silently creates an empty file when path does not
+    exist — no error at attach time, only a confusing "no such table" once a
+    query later hits the missing schema (e.g. a database directory copied
+    incompletely to a new machine). Fail fast here instead.
+    """
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Cannot attach '{alias}': database file not found at {path}")
+    conn.execute(f"ATTACH DATABASE '{path}' AS {alias}")
+
 class Tools:
 
     ftime_str = ftime_str

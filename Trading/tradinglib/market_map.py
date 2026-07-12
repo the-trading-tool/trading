@@ -6,7 +6,7 @@ from tradinglib import make_query as mq
 from tradinglib import system_config as sysconf
 from tradinglib import tiny_chart as tc
 from tradinglib.utils import DataUtils
-from tradinglib.tools import open_db
+from tradinglib.tools import open_db, attach_db
 
 import sqlite3
 import pandas as pd
@@ -20,8 +20,8 @@ import streamlit as st
 def _cached_ticker_conn(ticker_path: str, perf_path: str, info_path: str):
     """Return a cached SQLite connection to yf_tickers.db with perf and info DBs attached."""
     conn = open_db(ticker_path, check_same_thread=False)
-    conn.execute(f"ATTACH DATABASE '{perf_path}' AS performance_db")
-    conn.execute(f"ATTACH DATABASE '{info_path}' AS info_db")
+    attach_db(conn, perf_path, "performance_db")
+    attach_db(conn, info_path, "info_db")
     return conn
 
 
