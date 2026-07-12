@@ -548,13 +548,12 @@ class render_mainpage(fetch_data.FetchData):
 
         self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
 
-        # Quick-trade buttons: own row (created here, inside the fragment),
-        # narrow columns to approximate their old inline position next to search.
-        _, buy_col, sell_col = st.columns([0.84, 0.08, 0.08])
+        # Quick-trade buttons share the "Select range" row (right of the pips
+        # slider) instead of taking their own row — saves vertical space.
+        slider_container = pp_right.empty()
+        slider_col, buy_col, sell_col = slider_container.columns([0.84, 0.08, 0.08])
         buy_slot = buy_col.empty()
         sell_slot = sell_col.empty()
-
-        slider_row = pp_right.empty()
 
         if self.hide_details:
             # Compact / read-only mode (e.g. the Market Map chart overlay): skip the
@@ -686,7 +685,7 @@ class render_mainpage(fetch_data.FetchData):
                 zoom = True,
                 pips_select = True,
                 add_current=add_current,
-                region = slider_row
+                region = slider_col
                 )
             self.df = self.t_chart.df
             self.ticker = self.t_chart.ticker
