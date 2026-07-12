@@ -1563,6 +1563,28 @@ class Admin():
                 st.write(f"Error, no change to: {existing_ticker}")
             _spin.empty()
 
+        sidebar_menu_expander = st.expander(t('admin.sidebar_menu_expander'), expanded=False)
+        with sidebar_menu_expander:
+            _spin.markdown(_tab_overlay(t('admin.sidebar_menu_expander')), unsafe_allow_html=True)
+            st.caption(t('admin.sidebar_menu_hint'))
+
+            _sb_cfg = sysconf.SystemConfig.sidebar_menu_config(db_path=self.db_path)
+            _sb_items = _sb_cfg.get_sidebar_items()
+            _sb_new = dict(_sb_items)
+            for _grp_label_key, _grp_item_keys in sysconf.SIDEBAR_MENU_GROUPS:
+                st.markdown(f"**{t(_grp_label_key)}**")
+                _sb_cols = st.columns(2)
+                for _sb_i, _sb_key in enumerate(_grp_item_keys):
+                    _sb_new[_sb_key] = _sb_cols[_sb_i % 2].checkbox(
+                        t(sysconf.SIDEBAR_ITEM_LABEL_KEYS[_sb_key]),
+                        value=_sb_items.get(_sb_key, False),
+                        key=f"_sb_menu_{_sb_key}",
+                    )
+            if _sb_new != _sb_items:
+                _sb_cfg.set_sidebar_items(_sb_new)
+                st.toast(t('admin.sidebar_menu_saved'))
+            _spin.empty()
+
         config_copy_expander = st.expander("Copy user configuration", expanded=False)
         with config_copy_expander:
             _spin.markdown(_tab_overlay("Copy user configuration"), unsafe_allow_html=True)

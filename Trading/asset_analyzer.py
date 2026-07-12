@@ -742,44 +742,67 @@ class TradingApp:
                 st.session_state['_nav_params'] = {'upgrade': 'true'}
                 st.rerun()
         else:
+            # Sidebar visibility per item — configurable via Admin → System →
+            # "Sidebar menu" (see system_config.DEFAULT_SIDEBAR_ITEMS for the
+            # factory defaults). Global setting, shared by all users.
+            _sb_items = sysconf.SystemConfig.sidebar_menu_config().get_sidebar_items()
+
             # ── Markt ──────────────────────────────────────────────────────────
-            with st.sidebar.expander(t('nav.group_market'), expanded=False):
-                _nav(t('nav.market_map'), marketmap='true')
-                _nav(t('nav.sector_rotation'), rotation='true')
-                _nav(t('nav.market_overview'), market_overview='true')
-                _nav(t('nav.correlation'), correlation='true')
+            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'market_overview', 'correlation')):
+                with st.sidebar.expander(t('nav.group_market'), expanded=False):
+                    if _sb_items.get('marketmap'):
+                        _nav(t('nav.market_map'), marketmap='true')
+                    if _sb_items.get('rotation'):
+                        _nav(t('nav.sector_rotation'), rotation='true')
+                    if _sb_items.get('market_overview'):
+                        _nav(t('nav.market_overview'), market_overview='true')
+                    if _sb_items.get('correlation'):
+                        _nav(t('nav.correlation'), correlation='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
-            with st.sidebar.expander(t('nav.group_assets'), expanded=True):
-                _nav(t('nav.asset_viewer'), asset='true')
-                _nav(t('nav.asset_summary'), summary='true')
-                _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
-                _nav(t('nav.performance'), performance='true')
-                if self.is_admin:
-                    _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
-                    _nav(t('nav.perf_tab_etp'), performance='true', tab='etp_assets')
-                _nav(t('nav.compound_simulation'), compound='true')
+            if any(_sb_items.get(k) for k in ('asset', 'summary', 'performance', 'compound')):
+                with st.sidebar.expander(t('nav.group_assets'), expanded=True):
+                    if _sb_items.get('asset'):
+                        _nav(t('nav.asset_viewer'), asset='true')
+                    if _sb_items.get('summary'):
+                        _nav(t('nav.asset_summary'), summary='true')
+                        _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
+                    if _sb_items.get('performance'):
+                        _nav(t('nav.performance'), performance='true')
+                        if self.is_admin:
+                            _nav(t('nav.perf_tab_all'), performance='true', tab='all_assets')
+                            _nav(t('nav.perf_tab_etp'), performance='true', tab='etp_assets')
+                    if _sb_items.get('compound'):
+                        _nav(t('nav.compound_simulation'), compound='true')
 
             # ── Portfolio ───────────────────────────────────────────────────────
-            if self.is_admin:
+            if self.is_admin and any(_sb_items.get(k) for k in ('strategy_finder', 'multi', 'trading', 'own_trades')):
                 with st.sidebar.expander(t('nav.group_portfolio'), expanded=False):
-                    if STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                    if _sb_items.get('strategy_finder') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
                         _nav(t('nav.strategy_finder'), strategy_finder='true')
+                    if _sb_items.get('multi') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
                         _nav(t('nav.multi_strategies'), multi='true')
-                    if PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                    if _sb_items.get('trading') and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
                         _nav(t('nav.trading'), trading='true')
-                    _nav(t('nav.own_transactions'), own_trades='true')
+                    if _sb_items.get('own_trades'):
+                        _nav(t('nav.own_transactions'), own_trades='true')
 
             # ── Admin (always last) ─────────────────────────────────────────────
-            if self.is_admin:
+            if self.is_admin and any(_sb_items.get(k) for k in ('admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine')):
                 st.sidebar.markdown("---")
                 with st.sidebar.expander(t('nav.group_admin'), expanded=False):
-                    _nav(t('nav.admin_ticker'),      admin='true', section='ticker')
-                    _nav(t('nav.admin_database'),    admin='true', section='database')
-                    _nav(t('nav.admin_credentials'), admin='true', section='credentials')
-                    _nav(t('nav.admin_system'),      admin='true', section='system')
-                    _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
-                    _nav(t('nav.admin_pine'),        admin='true', section='pine')
+                    if _sb_items.get('admin_ticker'):
+                        _nav(t('nav.admin_ticker'),      admin='true', section='ticker')
+                    if _sb_items.get('admin_database'):
+                        _nav(t('nav.admin_database'),    admin='true', section='database')
+                    if _sb_items.get('admin_credentials'):
+                        _nav(t('nav.admin_credentials'), admin='true', section='credentials')
+                    if _sb_items.get('admin_system'):
+                        _nav(t('nav.admin_system'),      admin='true', section='system')
+                    if _sb_items.get('admin_scheduler'):
+                        _nav(t('nav.admin_scheduler'),   admin='true', section='scheduler')
+                    if _sb_items.get('admin_pine'):
+                        _nav(t('nav.admin_pine'),        admin='true', section='pine')
 
         # ── External links ──────────────────────────────────────────────────
         st.sidebar.markdown("---")

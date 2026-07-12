@@ -23,6 +23,66 @@ from tradinglib.indicator import indicator  # Import the base class
 from tradinglib import logging_config as lgc
 from tradinglib import i18n
 
+# Sidebar menu visibility — configurable via the admin "System" section
+# (rendered from admin.py, stored under the global '_sidebar_menu_config'
+# user namespace so it applies to every user, not just the editing admin).
+# Only these are shown out of the box; everything else is admin opt-in.
+DEFAULT_SIDEBAR_ITEMS = {
+    'marketmap': True,
+    'rotation': False,
+    'market_overview': False,
+    'correlation': False,
+    'asset': True,
+    'summary': False,
+    'performance': False,
+    'compound': False,
+    'strategy_finder': False,
+    'multi': False,
+    'trading': False,
+    'own_trades': True,
+    'admin_ticker': True,
+    'admin_database': False,
+    'admin_credentials': True,
+    'admin_system': True,
+    'admin_scheduler': False,
+    'admin_pine': False,
+}
+
+# (group label i18n key, [item keys in the group]) — drives both the admin
+# checkbox editor and the sidebar's own render order.
+SIDEBAR_MENU_GROUPS = [
+    ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation']),
+    ('nav.group_assets', ['asset', 'summary', 'performance', 'compound']),
+    ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades']),
+    ('nav.group_admin', ['admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine']),
+]
+
+SIDEBAR_ITEM_LABEL_KEYS = {
+    'marketmap': 'nav.market_map',
+    'rotation': 'nav.sector_rotation',
+    'market_overview': 'nav.market_overview',
+    'correlation': 'nav.correlation',
+    'asset': 'nav.asset_viewer',
+    'summary': 'nav.asset_summary',
+    'performance': 'nav.performance',
+    'compound': 'nav.compound_simulation',
+    'strategy_finder': 'nav.strategy_finder',
+    'multi': 'nav.multi_strategies',
+    'trading': 'nav.trading',
+    'own_trades': 'nav.own_transactions',
+    'admin_ticker': 'nav.admin_ticker',
+    'admin_database': 'nav.admin_database',
+    'admin_credentials': 'nav.admin_credentials',
+    'admin_system': 'nav.admin_system',
+    'admin_scheduler': 'nav.admin_scheduler',
+    'admin_pine': 'nav.admin_pine',
+}
+
+# Namespace the global sidebar config is stored under (independent of
+# whichever user happens to be logged in when reading or editing it).
+SIDEBAR_MENU_CONFIG_USER = '_sidebar_menu_config'
+
+
 class SystemConfig(tools.Db_tools):
     
 #        'SPX': {'buy': '(momentum > rsi_ema) & (overallValueTrend > 53)', 'sell': '(overallValueTrend < 58)', 'num_assets': 7, 'invest': 17000, 'order_by': 'sortino'}, 
@@ -102,6 +162,30 @@ class SystemConfig(tools.Db_tools):
             cursor = conn.cursor()
             cursor.execute("DELETE FROM config WHERE key = ?", (f"{self.username}:{key}",))
             conn.commit()
+
+    @classmethod
+    def sidebar_menu_config(cls, db_path="database"):
+        """Return a SystemConfig instance scoped to the global sidebar-menu namespace.
+
+        Sidebar visibility is one app-wide setting (edited by an admin, read by
+        every user's nav render), so it is stored under a fixed pseudo-username
+        rather than the current session's username.
+        """
+        return cls(db_path=db_path, username=SIDEBAR_MENU_CONFIG_USER)
+
+    def get_sidebar_items(self) -> dict:
+        """Return the global sidebar menu visibility map, merged with factory defaults."""
+        stored = self.get_value('sidebar_items', None)
+        items = dict(DEFAULT_SIDEBAR_ITEMS)
+        if isinstance(stored, dict):
+            for k, v in stored.items():
+                if k in items:
+                    items[k] = bool(v)
+        return items
+
+    def set_sidebar_items(self, items: dict):
+        """Persists the global sidebar menu visibility map."""
+        self.set_value('sidebar_items', {k: bool(v) for k, v in items.items() if k in DEFAULT_SIDEBAR_ITEMS})
 
     def get_selectors(self, interval=None, period=None, overlays=None, oszilators=None):
         """Return (interval, period, overlays, oscillators) resolved from config with sensible defaults.
