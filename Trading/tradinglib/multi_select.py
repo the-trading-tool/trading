@@ -21,6 +21,10 @@ class MultiCheckboxSelector:
             ('Oszilator',  indicators.get_oszilator_indicators()),
         ]
 
+    # Relative column widths for render(): Overlay/Oszilator get twice the
+    # width of Interval/Period (12.5% / 12.5% / 25% / 25% of the row).
+    COLUMN_WEIGHTS = {'Interval': 1, 'Period': 1, 'Overlay': 2, 'Oszilator': 2}
+
     def __init__(self, list_data = None, instance_name = '1', region = st, sys_conf = None):
         """
         list_data: List of tuples with (list ID, options list)
@@ -321,7 +325,14 @@ class MultiCheckboxSelector:
         # Dynamic column count: maximum 3 per row for better readability
         num_columns = min(4, len(self.lists))
         col_row = self.region.empty()
-        columns = col_row.columns(num_columns, gap='small')
+        # Use the configured width ratios (Overlay/Oszilator wider than
+        # Interval/Period) when every visible list has a known weight;
+        # otherwise fall back to equal-width columns.
+        _visible_ids = [list_id for list_id, _ in self.lists[:num_columns]]
+        if all(lid in self.COLUMN_WEIGHTS for lid in _visible_ids):
+            columns = col_row.columns([self.COLUMN_WEIGHTS[lid] for lid in _visible_ids], gap='small')
+        else:
+            columns = col_row.columns(num_columns, gap='small')
 
         # Iterate over each list and generate checkboxes inside expanders
         for index, (list_id, options) in enumerate(self.lists):
