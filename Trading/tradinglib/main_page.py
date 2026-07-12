@@ -457,14 +457,6 @@ class render_mainpage(fetch_data.FetchData):
     def render(self):
         """Render the full asset detail page: search, chart, headlines, indicators, and sentiment."""
         logger.debug(f'render_mainpage called symbol={self.symbol} username={self.username} is_admin={self.is_admin}')
-        def set_ticker(ticker):
-            """Persist the selected ticker to sys_conf and update self.symbol."""
-            self.ticker = ticker
-            self.symbol = ticker
-            if ticker:
-                self.sys_conf.set_value('last_ticker', ticker)
-            return ticker
-            
         try:
             st.set_page_config(layout="wide")
         except Exception:
@@ -489,20 +481,17 @@ class render_mainpage(fetch_data.FetchData):
 #        exp_ = pp_right.expander('Asset details',expanded=True)
 #        with exp_:
         srch_region = pp_right.empty()
-        slctr_region = st.empty()
         head_row1 = st.empty()
         head_row2 = st.empty()
-    
-        slider_row = pp_right.empty()
-    
-        self.multi_selector = ms.MultiCheckboxSelector(region=slctr_region, sys_conf=self.sys_conf)
+
         # Settings (⚙) and Help (❓) moved to the sidebar (asset_analyzer.py
-        # show_navigation_links); the freed width goes to the search/quick-trade
-        # columns. Both still open an @st.dialog, so behaviour is unchanged.
-        (sr_left, sr_right, sr_buy, sr_sell) = srch_region.columns([0.42,0.42,0.08,0.08])
-        # Filled later, once ticker_selected/close_price/suggested_investment are known.
-        buy_slot = sr_buy.empty()
-        sell_slot = sr_sell.empty()
+        # show_navigation_links); the freed width goes to the search columns.
+        # Quick-trade buttons used to share this row too, but Streamlit forbids
+        # a fragment from writing widgets into a container created outside of
+        # it — the buy/sell buttons depend on the chart/headlines (built inside
+        # the selector/chart fragment below), so they now get their own row
+        # created inside that fragment instead (see _render_selector_and_chart).
+        (sr_left, sr_right) = srch_region.columns([0.5, 0.5])
 
 #        (sr_left, sr_right,_,cfg_btn_c,cfg_btn_h) = srch_region.columns([0.35,0.35,0.06,0.07,0.07],gap='small')
         mkt = sr.MarketSearch(region=sr_left, default_ticker=self.symbol)
@@ -534,7 +523,39 @@ class render_mainpage(fetch_data.FetchData):
                 st.session_state[_auto_ss_key] = fts.ticker_selected
         else:
             fts.symbol_search()
-        
+
+        self._render_selector_and_chart(mkt, fts, head_row1, head_row2, pp_right)
+
+    @st.fragment
+    def _render_selector_and_chart(self, mkt, fts, head_row1, head_row2, pp_right):
+        """Selector (Interval/Period/Overlay/Oszilator) + chart + tabs.
+
+        Isolated as an st.fragment: toggling a checkbox here reruns only this
+        section, not the whole page (search boxes, sidebar navigation, page CSS).
+
+        All containers that receive widgets (selector checkboxes, quick-trade
+        buttons, the pips slider) must be created *inside* this fragment —
+        Streamlit forbids writing a widget into a container that was created
+        outside the fragment's own render path.
+        """
+        def set_ticker(ticker):
+            """Persist the selected ticker to sys_conf and update self.symbol."""
+            self.ticker = ticker
+            self.symbol = ticker
+            if ticker:
+                self.sys_conf.set_value('last_ticker', ticker)
+            return ticker
+
+        self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
+
+        # Quick-trade buttons: own row (created here, inside the fragment),
+        # narrow columns to approximate their old inline position next to search.
+        _, buy_col, sell_col = st.columns([0.84, 0.08, 0.08])
+        buy_slot = buy_col.empty()
+        sell_slot = sell_col.empty()
+
+        slider_row = pp_right.empty()
+
         if self.hide_details:
             # Compact / read-only mode (e.g. the Market Map chart overlay): skip the
             # interactive selector UI — it doesn't fit the compact dialog layout and
