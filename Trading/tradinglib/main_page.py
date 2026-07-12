@@ -480,22 +480,21 @@ class render_mainpage(fetch_data.FetchData):
 
 #        exp_ = pp_right.expander('Asset details',expanded=True)
 #        with exp_:
-        head_row1 = st.empty()
-        head_row2 = st.empty()
-
-        self._render_selector_and_chart(head_row1, head_row2, pp_right)
+        self._render_selector_and_chart(pp_right)
 
     @st.fragment
-    def _render_selector_and_chart(self, head_row1, head_row2, pp_right):
-        """Search row + quick-trade buttons + selector (Interval/Period/Overlay/
-        Oszilator) + chart + tabs.
+    def _render_selector_and_chart(self, pp_right):
+        """Search row + headlines + pips slider + selector (Interval/Period/
+        Overlay/Oszilator) + chart + tabs, top to bottom in that order.
 
         Isolated as an st.fragment: toggling a checkbox here reruns only this
         section, not the whole page (sidebar navigation, page CSS). The search
-        boxes and the quick-trade buttons live in this fragment too (not just
-        the selector/chart) so the buttons can share the search row — Streamlit
-        forbids writing a widget into a container created outside the
-        fragment's own render path, so both need to be created here together.
+        boxes, quick-trade buttons and headline placeholders all live in this
+        fragment (not just the selector/chart) — Streamlit forbids writing a
+        widget into a container created outside the fragment's own render
+        path, and DOM order follows creation order, so everything that must
+        appear above the chart in a specific order has to be created here,
+        in that order.
         """
         def set_ticker(ticker):
             """Persist the selected ticker to sys_conf and update self.symbol."""
@@ -514,6 +513,11 @@ class render_mainpage(fetch_data.FetchData):
         fts = sr.FullTextSearch(region=sr_right, symbol=self.symbol, search_ticker_only=True, is_admin=self.is_admin)
         buy_slot = buy_col.empty()
         sell_slot = sell_col.empty()
+
+        # ── Headline values (Price date / Close / Currency / Open / Low / High
+        # / 52-week range) — placed right below the search row.
+        head_row1 = st.empty()
+        head_row2 = st.empty()
 
         # Auto-resolve URL-provided symbols (e.g. /?symbol=Holcim%20AG → HOLN.SW).
         # Rules:
