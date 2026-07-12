@@ -185,6 +185,34 @@ class MultiCheckboxSelector:
                     self.sys_conf.set_value(config_key, selections)
             break
 
+    def _save_selection_delta(self, list_id: str, option: str, is_selected: bool) -> None:
+        """Persist a single Overlay/Oszilator selection toggle to config.db as a
+        targeted delta — same fix as _save_no_plot_flag, applied to the
+        selection itself. A full-set rewrite from session_state (the original
+        _save_to_config path) was the source of the "Overlay-Default-
+        Korruption": Streamlit re-fires on_change when widgets are recreated
+        after a non-render rerun, at which point the session_state set is
+        partial and would overwrite the good config value. A single-option
+        delta against the config-stored set is idempotent under such spurious
+        re-fires, so it is safe to auto-persist.
+        """
+        if self.sys_conf is None:
+            return
+        conf_key = {'Overlay': 'overlay', 'Oszilator': 'oszilator'}.get(list_id)
+        if not conf_key:
+            return
+        short = option.split(' - ')[0]
+        raw = self.sys_conf.get_value(conf_key, [])
+        current = [str(n) for n in raw] if isinstance(raw, list) else []
+        rest = [n for n in current if n.lower() != short.lower()]
+        if is_selected:
+            rest.append(short)
+        # Never overwrite a non-empty DB value with an empty list (mirrors the
+        # same guard in _save_to_config) — clearing the last default is a job
+        # for the ⚙ settings dialog, not an (possibly spurious) checkbox event.
+        if rest:
+            self.sys_conf.set_value(conf_key, rest)
+
     def _save_no_plot_flag(self, list_id: str, option: str, is_plot: bool) -> None:
         """Persist a single Plot-toggle to config.db as a targeted delta.
 
@@ -353,17 +381,16 @@ class MultiCheckboxSelector:
                             selector_self._save_to_config(lid)
                         return _cb
 
-                    def _make_save_cb(lid, selector_self):
-                        # Overlay/Oszilator toggles are session-scoped overrides:
-                        # mark the selector as user-touched (so the init guard stops
-                        # forcing config defaults) but DO NOT auto-persist to
-                        # config.db. Auto-persisting from here corrupted the stored
-                        # defaults, because Streamlit re-fires on_change when widgets
-                        # are recreated after a non-render rerun, writing a partial
-                        # selection. The configured defaults are owned by the
-                        # ⚙ settings dialog only.
+                    def _make_save_cb(lid, opt, key, selector_self):
+                        # Overlay/Oszilator toggles: mark the selector as
+                        # user-touched (so the init guard stops forcing config
+                        # defaults) and persist via a corruption-safe single-
+                        # option delta — see _save_selection_delta for why a
+                        # full-set rewrite from session_state isn't safe here.
                         def _cb():
                             st.session_state[selector_self._touched_key] = True
+                            selector_self._save_selection_delta(
+                                lid, opt, st.session_state.get(key, False))
                         return _cb
 
                     def _make_plot_cb(lid, opt, p_key, selector_self):
@@ -394,7 +421,7 @@ class MultiCheckboxSelector:
                             cb_kwargs['on_change'] = _make_single_select_cb(
                                 list_id, option, self.instance_id, options, self)
                         elif self.sys_conf:
-                            cb_kwargs['on_change'] = _make_save_cb(list_id, self)
+                            cb_kwargs['on_change'] = _make_save_cb(list_id, option, unique_key, self)
 
                         is_indicator = list_id in ('Overlay', 'Oszilator')
                         plot_key = f"plot_{list_id}_{option}_{self.instance_id}" if is_indicator else None
