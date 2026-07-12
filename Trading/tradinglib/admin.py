@@ -1691,7 +1691,8 @@ class Admin():
             st.divider()
             st.markdown("**Reset user password**")
             try:
-                _reset_usernames = list(self.config.get('credentials', {}).get('usernames', {}).keys())
+                _live_credentials = self.authenticator.authentication_controller.authentication_model.credentials or {}
+                _reset_usernames = list(_live_credentials.get('usernames', {}).keys())
                 if _reset_usernames:
                     _reset_user = st.selectbox("Username", _reset_usernames, key="admin_reset_pw_user")
                     if st.button("Reset password", key="admin_reset_pw_btn"):
