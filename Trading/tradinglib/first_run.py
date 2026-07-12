@@ -396,6 +396,7 @@ credentials:
       email: admin@localhost
       name: Administrator
       password: {pw_hash}
+      admin: true
 
 cookie:
   expiry_days: 30

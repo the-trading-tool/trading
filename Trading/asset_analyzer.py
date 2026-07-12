@@ -413,8 +413,8 @@ class TradingApp:
     def init_authenticator(self):
         """Create and return a streamlit-authenticator Authenticate instance from config.yaml."""
         return Authenticate(
-            self.config['credentials'],
-            self.config['cookie']['name'],  
+            ts.Tools().get_path('', self.config_file),
+            self.config['cookie']['name'],
             self.config['cookie']['key'],
             self.config['cookie']['expiry_days'],
         )

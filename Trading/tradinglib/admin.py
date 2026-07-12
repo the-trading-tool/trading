@@ -1685,6 +1685,7 @@ class Admin():
                 if email_of_registered_user:
                     st.success(f'User registered successfully: {email_of_registered_user}, {username_of_registered_user}, {name_of_registered_user}')
             except Exception as e:
+                logger.exception("User registration failed")
                 st.error(e)
             _spin.empty()
         _spin.empty()
