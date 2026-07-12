@@ -1687,6 +1687,27 @@ class Admin():
             except Exception as e:
                 logger.exception("User registration failed")
                 st.error(e)
+
+            st.divider()
+            st.markdown("**Reset user password**")
+            try:
+                _reset_usernames = list(self.config.get('credentials', {}).get('usernames', {}).keys())
+                if _reset_usernames:
+                    _reset_user = st.selectbox("Username", _reset_usernames, key="admin_reset_pw_user")
+                    if st.button("Reset password", key="admin_reset_pw_btn"):
+                        _u, _email, _new_pw = self.authenticator.authentication_controller.forgot_password(
+                            _reset_user, captcha=False
+                        )
+                        if _u:
+                            st.success(f"Password for '{_u}' reset. New password: `{_new_pw}`")
+                            st.caption("Copy this password now and share it with the user — it will not be shown again.")
+                        else:
+                            st.warning(f"User '{_reset_user}' not found.")
+                else:
+                    st.info("No users found in config.yaml.")
+            except Exception as e:
+                logger.exception("Password reset failed")
+                st.error(e)
             _spin.empty()
         _spin.empty()
 
