@@ -8,6 +8,7 @@ from tradinglib import ksplib
 from tradinglib import system_config as sysconf
 from tradinglib import market_data
 from tradinglib.i18n import t
+from streamlit_authenticator import utilities as sa_utilities
 from tradinglib import ticker_tools as tt
 from tradinglib.utils import DataUtils
 import pandas as pd
@@ -1695,15 +1696,38 @@ class Admin():
                 _reset_usernames = list(_live_credentials.get('usernames', {}).keys())
                 if _reset_usernames:
                     _reset_user = st.selectbox("Username", _reset_usernames, key="admin_reset_pw_user")
+                    _manual_pw = st.text_input(
+                        "New password (leave empty to auto-generate)", type="password",
+                        key="admin_reset_pw_manual",
+                        help="8-20 characters, at least one upper-case letter, one lower-case "
+                             "letter, one digit and one special character.",
+                    )
                     if st.button("Reset password", key="admin_reset_pw_btn"):
-                        _u, _email, _new_pw = self.authenticator.authentication_controller.forgot_password(
-                            _reset_user, captcha=False
-                        )
-                        if _u:
-                            st.success(f"Password for '{_u}' reset. New password: `{_new_pw}`")
-                            st.caption("Copy this password now and share it with the user — it will not be shown again.")
+                        if _manual_pw:
+                            if not sa_utilities.Validator().validate_password(_manual_pw):
+                                st.error(
+                                    "Password does not meet the requirements: 8-20 characters, "
+                                    "at least one upper-case letter, one lower-case letter, one "
+                                    "digit and one special character."
+                                )
+                            else:
+                                _model = self.authenticator.authentication_controller.authentication_model
+                                _model.credentials['usernames'][_reset_user]['password'] = \
+                                    sa_utilities.Hasher.hash(_manual_pw)
+                                if _model.path:
+                                    sa_utilities.Helpers.update_config_file(
+                                        _model.path, 'credentials', _model.credentials
+                                    )
+                                st.success(f"Password for '{_reset_user}' set successfully.")
                         else:
-                            st.warning(f"User '{_reset_user}' not found.")
+                            _u, _email, _new_pw = self.authenticator.authentication_controller.forgot_password(
+                                _reset_user, captcha=False
+                            )
+                            if _u:
+                                st.success(f"Password for '{_u}' reset. New password: `{_new_pw}`")
+                                st.caption("Copy this password now and share it with the user — it will not be shown again.")
+                            else:
+                                st.warning(f"User '{_reset_user}' not found.")
                 else:
                     st.info("No users found in config.yaml.")
             except Exception as e:
