@@ -136,11 +136,16 @@ class FullTextSearch(tools.Db_tools):
         perf_table = 'asset_simulation'
         db_path = 'database'
         db = tools.Db_tools(db_path=db_path, database_name='yf_tickers.db')
-        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_simulation_.db'), "performance_db")
-        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
-
-        query = mq.make_query(perf_table, index=index, q=q, conn=db.conn)
-        self.df = pd.read_sql_query(query, db.conn)
+        try:
+            # asset_simulation_.db / asset_info.db may not exist yet (asset_perf2.py /
+            # get_asset_info.py have not run yet on a fresh install) — tolerate that
+            # by returning an empty DataFrame instead of crashing the page.
+            tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_simulation_.db'), "performance_db")
+            tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
+            query = mq.make_query(perf_table, index=index, q=q, conn=db.conn)
+            self.df = pd.read_sql_query(query, db.conn)
+        except Exception:
+            self.df = pd.DataFrame()
     
     def symbol_search(self):
         """Load self.df filtered to self.symbol and set ticker_selected / ticker_selected_longname."""
@@ -316,14 +321,16 @@ class MarketSearch(tools.Db_tools):
         perf_db_file = "asset_simulation_.db"
         db_path = 'database'
         db = tools.Db_tools(db_path=db_path, database_name='yf_tickers.db')
-        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name=perf_db_file), "performance_db")
-        tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
-        query = mq.make_query(perf_table, index=index, q=q, q_ext="", conn=db.conn)
         try:
+            # asset_simulation_.db / asset_info.db may not exist yet (asset_perf2.py /
+            # get_asset_info.py have not run yet on a fresh install), or asset_info.db
+            # may exist but have no ticker column yet — tolerate all of that by
+            # returning an empty DataFrame instead of crashing the page.
+            tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name=perf_db_file), "performance_db")
+            tools.attach_db(db.conn, tools.Tools().get_path(path = db_path, file_name='asset_info.db'), "info_db")
+            query = mq.make_query(perf_table, index=index, q=q, q_ext="", conn=db.conn)
             self.df = pd.read_sql_query(query, db.conn)
         except Exception:
-            # asset_info.db has no ticker column yet (get_asset_info.py
-            # has not run yet) — return empty DataFrame
             self.df = pd.DataFrame()
 
     def get_index_list(self):
