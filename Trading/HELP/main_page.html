@@ -41,11 +41,103 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <table>
 <tr><th>Tab</th><th>Inhalt</th></tr>
 <tr><td><b>Trend</b></td><td>Interaktives Plotly-Kursdiagramm mit Kauf-/Verkaufssignalen</td></tr>
+<tr><td><b>Key Data</b></td><td>Kennzahlen-Übersicht zum Asset: Signal, Preis/Performance, Bewertung, Bilanz, Risiko, Dividende (Details unten)</td></tr>
 <tr><td><b>Info</b></td><td>Fundamentaldaten: Sektor, KGV, Marktkapitalisierung, Analysten-Kursziel</td></tr>
 <tr><td><b>Income sheet</b></td><td>Gewinn- und Verlustrechnung (letzte Quartale)</td></tr>
 <tr><td><b>Balance sheet</b></td><td>Bilanz: Aktiva, Passiva, Eigenkapital</td></tr>
 <tr><td><b>News</b></td><td>Aktuelle Schlagzeilen aus Yahoo Finance für das gewählte Asset</td></tr>
 </table>
+
+<h2>Key Data – Kennzahlen im Detail</h2>
+<p>Der Tab <b>„Key Data"</b> bündelt die wichtigsten Kennzahlen eines Assets aus drei Quellen:
+dem hauseigenen <b>Signal-Modell</b> (<code>asset_simulation</code>), den <b>Fundamentaldaten</b>
+(<code>asset_info</code>) und der <b>lokalen Kurshistorie</b>. Kacheln erscheinen nur, wenn Daten
+vorliegen – <b>Indizes, Metalle, ETFs und Krypto</b> zeigen daher weniger als Einzelaktien
+(keine Bewertung/Bilanz/Dividende).</p>
+
+<h3>Trading-Tool-Signal</h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung für die Entscheidung</th></tr>
+<tr><td><b>Value Trend (OVT)</b></td><td>Zusammengesetzter Score <b>−100…+100</b> aus vielen technischen Indikatoren <i>plus</i> Fundamentaldaten. Höher = attraktiver.</td><td>Kernsignal. Kaufzone typischerweise oberhalb eines index-abhängigen Schwellwerts (oft 55–70). Der kleine <b>„W ↑ · M ↓"</b> darunter zeigt die Wochen-/Monats-Richtung: hoher Wert <i>und</i> steigend = bestätigter Aufwärtstrend.</td></tr>
+<tr><td><b>Overall Trend</b></td><td>Rein <b>technischer</b> Trend-Score (ohne Fundamentaldaten).</td><td>Im Vergleich zum OVT lesen: großer Abstand OVT↔Overall = Fundamentaldaten treiben oder dämpfen das Signal.</td></tr>
+<tr><td><b>Trend D / W / M</b></td><td>Trendrichtung auf Tages-, Wochen- und Monatsbasis.</td><td>Alle drei positiv = robuster Multi-Zeitrahmen-Trend. Widersprüche = abwarten.</td></tr>
+<tr><td><b>Take-Profit / Stop-Loss</b></td><td>Modellierte Ziel- bzw. Absicherungsniveaus (aus ATR/Support abgeleitet).</td><td>Orientierung für Ausstieg und Positionsgröße (Abstand Kurs↔Stop bestimmt das Risiko je Stück).</td></tr>
+<tr><td><b>Support / Resistance</b></td><td>Nächstgelegene Unterstützung bzw. Widerstand.</td><td>Nähe zum Support = günstigerer Einstieg mit engem Stop; Nähe zum Resistance = Vorsicht / Teilgewinne.</td></tr>
+<tr><td><b>Regime</b></td><td>Markov-Marktregime: <b>Bull / Bear / Seitwärts</b>.</td><td>Bull = Rückenwind für Long, Bear = Gegenwind, Seitwärts = eher Range-/Ausbruch-Strategie.</td></tr>
+<tr><td><b>Sharpe / Sortino</b></td><td>Risiko-adjustierte Rendite (Sortino gewichtet nur das <b>Abwärts</b>risiko).</td><td>&gt;1 gut, &gt;2 sehr gut, negativ = Rendite hat das Risiko nicht kompensiert.</td></tr>
+<tr><td><b>Volatilität / ATR</b></td><td>Schwankungsbreite des Kurses.</td><td>Höher = größere Ausschläge → kleinere Position und weitere Stops wählen.</td></tr>
+</table>
+
+<h3>Preis &amp; Performance <small style="color:#888">(alle Asset-Typen)</small></h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>Return 1W / 1M · 3M / 1J · YTD</b></td><td>Kursrendite über die jeweiligen Zeiträume (aus lokaler Tageshistorie).</td><td>Momentum-Check. Immer gegen Index/Sektor spiegeln – absolute Rendite allein sagt wenig.</td></tr>
+<tr><td><b>52W-Range (Pos. x%)</b></td><td>52-Wochen-Spanne und Position des Kurses darin.</td><td>Nahe 0% = am Jahrestief (antizyklische Chance <i>oder</i> Schwäche); nahe 100% = am Hoch (Momentum, aber wenig Puffer).</td></tr>
+<tr><td><b>vs 50d / 200d</b></td><td>Abstand zu den gleitenden 50-/200-Tage-Durchschnitten.</td><td>Über beiden = Aufwärtstrend intakt. 50-Tage über 200-Tage = „Golden-Cross"-Kontext.</td></tr>
+<tr><td><b>ATH</b></td><td>Allzeithoch und Abstand dazu.</td><td>Großer negativer Abstand = Erholungspotenzial oder struktureller Abstieg – im Kontext prüfen.</td></tr>
+<tr><td><b>Rel-Volumen</b></td><td>Aktuelles Handelsvolumen gegenüber dem Durchschnitt.</td><td>&gt;1 = erhöhtes Interesse; bestätigt Ausbrüche und Trendbewegungen.</td></tr>
+</table>
+
+<h3>Bewertung <small style="color:#888">(nur Aktien)</small></h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>KGV fwd / ttm</b></td><td>Kurs-Gewinn-Verhältnis (erwartet / nachlaufend).</td><td>Niedriger = günstiger, aber immer im Branchen- und Historien-Vergleich lesen.</td></tr>
+<tr><td><b>PEG</b></td><td>KGV relativ zum Gewinnwachstum.</td><td>&lt;1 = Wachstum wird günstig bezahlt.</td></tr>
+<tr><td><b>Kurs / Buch · Kurs / Umsatz</b></td><td>Weitere Bewertungsmultiplikatoren (Substanz bzw. Umsatz).</td><td>Ergänzen das KGV, v.&nbsp;a. bei Verlust- oder Substanzwerten.</td></tr>
+<tr><td><b>EV / EBITDA</b></td><td>Unternehmenswert zu operativem Ergebnis (kapitalstruktur-neutral).</td><td>Gut für Vergleiche über unterschiedlich verschuldete Firmen hinweg.</td></tr>
+<tr><td><b>Kursziel Ø</b></td><td>Analysten-Mittel + Abstand (Upside %) zum aktuellen Kurs.</td><td>Orientierung, kein Automatismus – Streuung und Anzahl der Analysten beachten (Tooltip).</td></tr>
+<tr><td><b>Rating</b></td><td>Analystenkonsens (<code>strong_buy</code> … <code>sell</code>).</td><td>Stimmungsbild; gegen eigene Analyse und OVT spiegeln.</td></tr>
+</table>
+
+<h3>Profitabilität &amp; Bilanz <small style="color:#888">(nur Aktien)</small></h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>Marge netto / brutto / EBITDA</b></td><td>Ertragskraft auf verschiedenen Ebenen.</td><td>Höher &amp; stabil = Qualität und Preissetzungsmacht.</td></tr>
+<tr><td><b>RoE / RoA</b></td><td>Eigenkapital- bzw. Gesamtkapitalrendite.</td><td>Hoch = effizienter Kapitaleinsatz. RoE wird auch durch Verschuldung getrieben → immer mit Debt/Equity lesen.</td></tr>
+<tr><td><b>Umsatzwachstum</b></td><td>Veränderung des Umsatzes ggü. Vorperiode.</td><td>Wachstumsdynamik; treibt langfristig Kurs und Bewertung.</td></tr>
+<tr><td><b>Debt / Equity · Current Ratio</b></td><td>Verschuldungsgrad und kurzfristige Liquidität.</td><td>Hohe Verschuldung = Risiko bei steigenden Zinsen/Abschwung. Current Ratio &gt;1 = kurzfristig zahlungsfähig.</td></tr>
+<tr><td><b>Free Cashflow</b></td><td>Frei verfügbarer Zahlungsstrom nach Investitionen.</td><td>Positiv &amp; wachsend = gesund (finanziert Dividenden, Rückkäufe, Schuldenabbau).</td></tr>
+<tr><td><b>Marktkap. / Enterprise Value</b></td><td>Börsenwert bzw. Gesamtunternehmenswert.</td><td>Größenklasse einordnen (Liquidität, Schwankung, Risiko).</td></tr>
+</table>
+
+<h3>Risiko</h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>Beta</b></td><td>Schwankung relativ zum Gesamtmarkt.</td><td>&gt;1 offensiver (verstärkt Marktbewegungen), &lt;1 defensiver.</td></tr>
+<tr><td><b>Short (% Float)</b></td><td>Leerverkaufter Anteil der frei handelbaren Aktien.</td><td>Hoch = skeptischer Markt bzw. Short-Squeeze-Potenzial.</td></tr>
+<tr><td><b>Overall Risk</b></td><td>Aggregierter Governance-/Risiko-Score (1 niedrig … 10 hoch).</td><td>Qualitäts-/Risiko-Filter, besonders für langfristige Positionen.</td></tr>
+</table>
+
+<h3>Dividende <small style="color:#888">(nur bei Ausschüttung)</small></h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>Rendite / Rate</b></td><td>Dividende relativ zum Kurs bzw. je Aktie.</td><td>Einkommenskomponente; hohe Rendite kann auch ein Warnsignal (gefallener Kurs) sein.</td></tr>
+<tr><td><b>Ausschüttungsquote</b></td><td>Anteil des Gewinns, der ausgeschüttet wird.</td><td>Sehr hoch (&gt;80–100%) = möglicherweise nicht nachhaltig.</td></tr>
+<tr><td><b>Ex-Dividende</b></td><td>Stichtag für den Dividendenanspruch.</td><td>Wer nach diesem Tag kauft, erhält die laufende Dividende nicht.</td></tr>
+<tr><td><b>5J-Ø-Rendite</b></td><td>Durchschnittliche Dividendenrendite über 5 Jahre.</td><td>Einordnung, ob die aktuelle Rendite historisch hoch oder niedrig ist.</td></tr>
+</table>
+
+<h3>Fonds-Fakten (ETF) &amp; Krypto</h3>
+<table>
+<tr><th>Kennzahl</th><th>Bedeutung</th><th>Nutzung</th></tr>
+<tr><td><b>Fondsvolumen · NAV · Anbieter</b></td><td>Größe, Nettoinventarwert und Emittent des ETFs.</td><td>Größere/etablierte Fonds = mehr Liquidität und engere Spreads.</td></tr>
+<tr><td><b>TER</b></td><td>Jährliche Kostenquote des ETFs.</td><td>Niedriger ist besser – frisst direkt Rendite.</td></tr>
+<tr><td><b>Marktkap. · Umlauf / Max-Supply</b></td><td>Krypto: Bewertung und Knappheit (zirkulierendes vs. maximales Angebot).</td><td>Knappes Max-Supply = potenzieller Angebotsdruck-Vorteil.</td></tr>
+<tr><td><b>Volumen 24h · All-Time-Low</b></td><td>Krypto: Handelsaktivität und historischer Tiefstkurs.</td><td>Liquidität und Spannweite für Risiko-Einschätzung.</td></tr>
+</table>
+
+<div class="info">
+  <b>Datengesteuerte Anzeige:</b> Fehlt eine Kennzahl, wird die Kachel automatisch ausgeblendet.
+  Das Signal (OVT, Trends, TP/SL) stammt primär aus dem Jahres-Modell; für Indizes, Metalle, FX
+  und Krypto wird automatisch auf das Gesamt-Modell (<code>asset_simulation_all</code>)
+  zurückgegriffen. Die Wochen-/Monats-Pfeile unter OVT und Overall Trend entfallen, wenn zu wenig
+  Historie vorliegt.
+</div>
+<div class="warn">
+  Keine Kennzahl ist für sich allein ein Kauf-/Verkaufsgrund. Kombiniere das <b>Signal</b> (Trend
+  intakt?), die <b>Bewertung</b> (nicht zu teuer?), die <b>Qualität/Bilanz</b> (solide?) und das
+  <b>Risiko</b> (passt zur eigenen Risikotoleranz?) – und setze immer einen Stop-Loss.
+</div>
 
 <h2>Kursdiagramm bedienen</h2>
 <ul>

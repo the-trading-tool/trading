@@ -41,11 +41,103 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <table>
 <tr><th>Tab</th><th>Content</th></tr>
 <tr><td><b>Trend</b></td><td>Interactive Plotly price chart with buy/sell signals</td></tr>
+<tr><td><b>Key Data</b></td><td>Key-metrics overview of the asset: signal, price/performance, valuation, balance, risk, dividend (details below)</td></tr>
 <tr><td><b>Info</b></td><td>Fundamentals: sector, P/E, market cap, analyst price target</td></tr>
 <tr><td><b>Income sheet</b></td><td>Profit and loss statement (recent quarters)</td></tr>
 <tr><td><b>Balance sheet</b></td><td>Balance sheet: assets, liabilities, equity</td></tr>
 <tr><td><b>News</b></td><td>Current headlines from Yahoo Finance for the selected asset</td></tr>
 </table>
+
+<h2>Key Data – metrics in detail</h2>
+<p>The <b>"Key Data"</b> tab bundles an asset's most important metrics from three sources:
+the in-house <b>signal model</b> (<code>asset_simulation</code>), the <b>fundamentals</b>
+(<code>asset_info</code>) and the <b>local price history</b>. Tiles only appear when data is
+available – <b>indices, metals, ETFs and crypto</b> therefore show fewer than single stocks
+(no valuation/balance/dividend).</p>
+
+<h3>Trading tool signal</h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use for your decision</th></tr>
+<tr><td><b>Value trend (OVT)</b></td><td>Composite score <b>−100…+100</b> from many technical indicators <i>plus</i> fundamentals. Higher = more attractive.</td><td>The core signal. Buy zone is typically above an index-dependent threshold (often 55–70). The small <b>"W ↑ · M ↓"</b> below shows the week/month direction: a high value <i>and</i> rising = confirmed uptrend.</td></tr>
+<tr><td><b>Overall trend</b></td><td>Purely <b>technical</b> trend score (no fundamentals).</td><td>Read against the OVT: a large gap OVT↔Overall means fundamentals are driving or dampening the signal.</td></tr>
+<tr><td><b>Trend D / W / M</b></td><td>Trend direction on a daily, weekly and monthly basis.</td><td>All three positive = a robust multi-timeframe trend. Conflicts = wait.</td></tr>
+<tr><td><b>Take-profit / Stop-loss</b></td><td>Modelled target and protection levels (derived from ATR/support).</td><td>Guidance for exit and position size (price↔stop distance defines the risk per share).</td></tr>
+<tr><td><b>Support / Resistance</b></td><td>Nearest support and resistance level.</td><td>Close to support = better entry with a tight stop; close to resistance = caution / take partial profit.</td></tr>
+<tr><td><b>Regime</b></td><td>Markov market regime: <b>Bull / Bear / Sideways</b>.</td><td>Bull = tailwind for longs, Bear = headwind, Sideways = range/breakout strategy.</td></tr>
+<tr><td><b>Sharpe / Sortino</b></td><td>Risk-adjusted return (Sortino only penalises <b>downside</b> risk).</td><td>&gt;1 good, &gt;2 very good, negative = the return did not compensate for the risk.</td></tr>
+<tr><td><b>Volatility / ATR</b></td><td>Magnitude of price swings.</td><td>Higher = larger moves → choose a smaller position and wider stops.</td></tr>
+</table>
+
+<h3>Price &amp; performance <small style="color:#888">(all asset types)</small></h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>Return 1W / 1M · 3M / 1Y · YTD</b></td><td>Price return over the respective periods (from local daily history).</td><td>Momentum check. Always compare against index/sector – absolute return alone says little.</td></tr>
+<tr><td><b>52W range (pos. x%)</b></td><td>52-week span and the price's position within it.</td><td>Near 0% = at the yearly low (contrarian opportunity <i>or</i> weakness); near 100% = at the high (momentum, but little buffer).</td></tr>
+<tr><td><b>vs 50d / 200d</b></td><td>Distance to the 50-/200-day moving averages.</td><td>Above both = uptrend intact. 50-day above 200-day = "golden cross" context.</td></tr>
+<tr><td><b>ATH</b></td><td>All-time high and distance to it.</td><td>A large negative distance = recovery potential or a structural decline – check the context.</td></tr>
+<tr><td><b>Rel. volume</b></td><td>Current trading volume versus its average.</td><td>&gt;1 = elevated interest; confirms breakouts and trend moves.</td></tr>
+</table>
+
+<h3>Valuation <small style="color:#888">(equities only)</small></h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>P/E fwd / ttm</b></td><td>Price-to-earnings ratio (forward / trailing).</td><td>Lower = cheaper, but always read against sector and history.</td></tr>
+<tr><td><b>PEG</b></td><td>P/E relative to earnings growth.</td><td>&lt;1 = growth is cheaply priced.</td></tr>
+<tr><td><b>Price / book · Price / sales</b></td><td>Further valuation multiples (substance and revenue).</td><td>Complement the P/E, especially for loss-making or asset-heavy names.</td></tr>
+<tr><td><b>EV / EBITDA</b></td><td>Enterprise value to operating earnings (capital-structure neutral).</td><td>Good for comparisons across differently leveraged companies.</td></tr>
+<tr><td><b>Price target avg</b></td><td>Analyst mean + distance (upside %) to the current price.</td><td>Guidance, not a rule – note the spread and number of analysts (tooltip).</td></tr>
+<tr><td><b>Rating</b></td><td>Analyst consensus (<code>strong_buy</code> … <code>sell</code>).</td><td>Sentiment gauge; cross-check with your own analysis and the OVT.</td></tr>
+</table>
+
+<h3>Profitability &amp; balance <small style="color:#888">(equities only)</small></h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>Net / gross / EBITDA margin</b></td><td>Earnings power at different levels.</td><td>Higher &amp; stable = quality and pricing power.</td></tr>
+<tr><td><b>RoE / RoA</b></td><td>Return on equity / on assets.</td><td>High = efficient use of capital. RoE is also driven by leverage → always read with Debt/Equity.</td></tr>
+<tr><td><b>Revenue growth</b></td><td>Change in revenue versus the prior period.</td><td>Growth momentum; drives price and valuation over the long run.</td></tr>
+<tr><td><b>Debt / equity · Current ratio</b></td><td>Leverage and short-term liquidity.</td><td>High leverage = risk when rates rise or in a downturn. Current ratio &gt;1 = short-term solvent.</td></tr>
+<tr><td><b>Free cashflow</b></td><td>Cash left after investments.</td><td>Positive &amp; growing = healthy (funds dividends, buybacks, debt reduction).</td></tr>
+<tr><td><b>Market cap / Enterprise value</b></td><td>Equity value and total enterprise value.</td><td>Gauge the size class (liquidity, volatility, risk).</td></tr>
+</table>
+
+<h3>Risk</h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>Beta</b></td><td>Volatility relative to the overall market.</td><td>&gt;1 more aggressive (amplifies market moves), &lt;1 more defensive.</td></tr>
+<tr><td><b>Short (% float)</b></td><td>Short-sold share of the freely tradable stock.</td><td>High = a sceptical market or short-squeeze potential.</td></tr>
+<tr><td><b>Overall risk</b></td><td>Aggregated governance/risk score (1 low … 10 high).</td><td>A quality/risk filter, especially for long-term positions.</td></tr>
+</table>
+
+<h3>Dividend <small style="color:#888">(only when it pays)</small></h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>Yield / Rate</b></td><td>Dividend relative to price and per share.</td><td>Income component; a very high yield can also be a warning sign (fallen price).</td></tr>
+<tr><td><b>Payout ratio</b></td><td>Share of earnings paid out as dividends.</td><td>Very high (&gt;80–100%) = possibly not sustainable.</td></tr>
+<tr><td><b>Ex-dividend</b></td><td>Record date for the dividend entitlement.</td><td>Buying after this date forgoes the current dividend.</td></tr>
+<tr><td><b>5Y avg yield</b></td><td>Average dividend yield over 5 years.</td><td>Tells you whether the current yield is historically high or low.</td></tr>
+</table>
+
+<h3>Fund facts (ETF) &amp; crypto</h3>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use</th></tr>
+<tr><td><b>Fund size · NAV · Provider</b></td><td>Size, net asset value and issuer of the ETF.</td><td>Larger/established funds = more liquidity and tighter spreads.</td></tr>
+<tr><td><b>TER</b></td><td>Annual expense ratio of the ETF.</td><td>Lower is better – it eats directly into returns.</td></tr>
+<tr><td><b>Market cap · Circ. / max supply</b></td><td>Crypto: valuation and scarcity (circulating vs. maximum supply).</td><td>A scarce max supply = a potential supply-pressure advantage.</td></tr>
+<tr><td><b>Volume 24h · All-time low</b></td><td>Crypto: trading activity and historical low.</td><td>Liquidity and range for risk assessment.</td></tr>
+</table>
+
+<div class="info">
+  <b>Data-driven display:</b> when a metric is missing, its tile is hidden automatically. The
+  signal (OVT, trends, TP/SL) comes primarily from the current-year model; for indices, metals,
+  FX and crypto it automatically falls back to the all-time model
+  (<code>asset_simulation_all</code>). The week/month arrows below OVT and Overall trend are
+  omitted when there is too little history.
+</div>
+<div class="warn">
+  No single metric is a buy/sell reason on its own. Combine the <b>signal</b> (is the trend
+  intact?), the <b>valuation</b> (not too expensive?), the <b>quality/balance</b> (solid?) and the
+  <b>risk</b> (fits your risk tolerance?) – and always set a stop-loss.
+</div>
 
 <h2>Operating the price chart</h2>
 <ul>

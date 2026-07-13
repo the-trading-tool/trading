@@ -705,7 +705,7 @@ class render_mainpage(fetch_data.FetchData):
                     # no tabs — the headline rows keep their own two-row placeholders.
                     head_row1 = st.empty()
                     head_row2 = st.empty()
-                    headlines = hl.Headlines(self.df, self.ticker, self.data, screen_region_row1=head_row1, screen_region_row2=head_row2, interval = interval, index_name=fts.index_name, system_currency=self.sys_conf.get_value("system_currency","USD"))
+                    headlines = hl.Headlines(self.df, self.ticker, self.data, screen_region_row1=head_row1, screen_region_row2=head_row2, interval = interval, index_name=fts.index_name, system_currency=self.sys_conf.get_value("system_currency","USD"), compact=True)
                     headlines.render()
 
                     # Quick buy/sell — placed in the top row (next to config/help) so they
