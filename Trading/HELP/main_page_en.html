@@ -126,6 +126,21 @@ available – <b>indices, metals, ETFs and crypto</b> therefore show fewer than 
 <tr><td><b>Volume 24h · All-time low</b></td><td>Crypto: trading activity and historical low.</td><td>Liquidity and range for risk assessment.</td></tr>
 </table>
 
+<h3>Sector comparison <small style="color:#888">(equities only)</small></h3>
+<p>Places the asset in relation to its <b>GICS sector</b> (its industry peers) – computed entirely
+locally. This reveals whether a metric is strong in absolute terms <i>and</i> versus peers.</p>
+<table>
+<tr><th>Metric</th><th>Meaning</th><th>Use for your decision</th></tr>
+<tr><td><b>Sector</b></td><td>The asset's GICS sector; the tooltip names the matching sector ETF (e.g. Technology → XLK).</td><td>Industry context – defines the peer group for the comparisons below.</td></tr>
+<tr><td><b>OVT rank</b></td><td>Percentile rank of the OVT among <i>all</i> names in the sector, e.g. <code>Top 15 % · rank 53/350</code>.</td><td>Leader or laggard within its own sector? A high OVT counts for more when it also ranks well <b>relative</b> to peers.</td></tr>
+<tr><td><b>vs {ETF} (3M)</b></td><td><b>Relative strength:</b> the asset's 3-month return minus the sector ETF's (delta in percentage points).</td><td>Positive (green) = genuine <b>alpha</b> – the asset beats its own sector, not just the broad market.</td></tr>
+<tr><td><b>P/E vs sector</b></td><td>Distance of the P/E to the sector <b>median</b> (in %).</td><td>Negative (green) = cheaper than the industry. Puts an absolutely high valuation into perspective.</td></tr>
+<tr><td><b>Margin vs sector</b></td><td>Distance of the net margin to the sector median (in percentage points).</td><td>Positive (green) = more profitable than peers – a quality signal.</td></tr>
+</table>
+<p style="font-size:.88em;color:#555">The sector aggregates (median, rank distribution) are <b>cached per
+sector</b> (once per hour) and reused for every name in the sector. The section only appears for
+equities that have a sector on file.</p>
+
 <div class="info">
   <b>Data-driven display:</b> when a metric is missing, its tile is hidden automatically. The
   signal (OVT, trends, TP/SL) comes primarily from the current-year model; for indices, metals,

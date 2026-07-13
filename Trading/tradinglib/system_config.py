@@ -619,6 +619,24 @@ class SystemConfig(tools.Db_tools):
                 st.session_state.pop(f"_plgparam_{plugin_name}_{k}", None)
             st.rerun()
 
+    def _render_help_pages(self, pages):
+        """Render a list of (label, module) help pages as tabs — one tab per page.
+
+        Replaces the previous per-page st.expander list so a category's pages sit
+        side by side instead of stacking vertically. Streamlit scrolls the tab
+        strip horizontally when there are many/long labels.
+
+        Plain helper (NOT a dialog): it is called from inside render_help, which
+        already owns the @st.dialog. Decorating this would open a nested dialog per
+        call → StreamlitDuplicateElementId.
+        """
+        if not pages:
+            return
+        subtabs = st.tabs([label for label, _ in pages])
+        for subtab, (_label, module) in zip(subtabs, pages):
+            with subtab:
+                st.html(help_text.load_help(module))
+
     @st.dialog('Help', width='large')
     def render_help(self):
         """Render the tabbed help dialog with HTML content from the HELP/ directory."""
@@ -649,7 +667,7 @@ class SystemConfig(tools.Db_tools):
                 self._render_scalable_help()
 
             with tabs[1]:
-                for label, module in [
+                self._render_help_pages([
                     ("Asset Details", "main_page"),
                     ("Dashboard", "banner_page"),
                     ("Market Map", "market_map"),
@@ -659,12 +677,10 @@ class SystemConfig(tools.Db_tools):
                     ("Performance", "performance_details"),
                     ("Asset-Übersicht", "all_assets"),
                     ("Eigene Transaktionen", "own_trades_analysis"),
-                ]:
-                    with st.expander(label):
-                        st.html(help_text.load_help(module))
+                ])
 
             with tabs[2]:
-                for label, module in [
+                self._render_help_pages([
                     ("Einstellungen (⚙)", "system_config"),
                     ("Zinseszins-Simulation", "compound_simulation"),
                     ("Earnings-Kalender", "earnings_calendar"),
@@ -672,24 +688,20 @@ class SystemConfig(tools.Db_tools):
                     ("KI-Integration", "ai_client"),
                     ("Signal-Benachrichtigung", "signal_notifier"),
                     ("Datenquellen (Yahoo / FMP)", "providers"),
-                ]:
-                    with st.expander(label):
-                        st.html(help_text.load_help(module))
+                ])
 
             with tabs[3]:
-                for label, module in [
+                self._render_help_pages([
                     ("Strategie-Suche", "asset_simulator"),
                     ("Multi-Strategien", "multi_transaction"),
                     ("Paper / Live Trading", "trading_page"),
-                ]:
-                    with st.expander(label):
-                        st.html(help_text.load_help(module))
+                ])
 
             with tabs[4]:
                 st.html(help_text.load_help("admin"))
 
             with tabs[5]:
-                for label, module in [
+                self._render_help_pages([
                     ("Performance-Simulation (asset_perf2.py)", "asset_perf2"),
                     ("Trading-Agent (run_agent.py)", "run_agent"),
                     ("Stop-Loss-Prüfung (check_stoploss.py)", "check_stoploss"),
@@ -700,9 +712,7 @@ class SystemConfig(tools.Db_tools):
                     ("Scheduler-Daemon (schedserver.py)", "schedserver"),
                     ("Anwendung starten (launcher.py)", "launcher"),
                     ("Setup & Scheduler (Empfehlungen)", "setup_scheduler"),
-                ]:
-                    with st.expander(label):
-                        st.html(help_text.load_help(module))
+                ])
 
             with tabs[6]:
                 lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
@@ -723,13 +733,11 @@ class SystemConfig(tools.Db_tools):
                 st.html(help_text.load_help("scalable_en"))
 
         with tabs[1]:
-            for label, module in [
+            self._render_help_pages([
                 ("Eigene Transaktionen / Own Transactions", "own_trades_analysis"),
                 ("Asset-Ansicht / Asset viewer", "main_page"),
                 ("Sektorrotation / Sector rotation", "sector_rotation_page"),
                 ("Market Map", "market_map"),
                 ("Einmalinvestition / Lump sum", "compound_simulation"),
                 ("Datenquellen (Yahoo / FMP)", "providers"),
-            ]:
-                with st.expander(label):
-                    st.html(help_text.load_help(module))
+            ])

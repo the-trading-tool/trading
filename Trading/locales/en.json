@@ -1408,5 +1408,15 @@
   "keydata.ter": "TER",
   "keydata.supply": "Circ. / max",
   "keydata.volume_24h": "Volume 24h",
-  "keydata.all_time_low": "All-time low"
+  "keydata.all_time_low": "All-time low",
+  "keydata.sector_section": "Sector comparison",
+  "keydata.sector": "Sector",
+  "keydata.sector_rank": "OVT rank",
+  "keydata.sector_rank_help": "Rank {rank}/{n} in {sector}",
+  "keydata.sector_rsc": "vs {etf} (3M)",
+  "keydata.sector_rsc_help": "Relative strength: asset 3M return minus {etf} ({rsc:+.1f} pp)",
+  "keydata.sector_pe": "P/E vs sector",
+  "keydata.sector_pe_help": "Sector median P/E {med}",
+  "keydata.sector_margin": "Margin vs sector",
+  "keydata.sector_margin_help": "Sector median net margin {med} %"
 }

@@ -6,8 +6,79 @@ import pandas as pd
 import streamlit as st
 
 from tradinglib import ticker_tools as tt
+from tradinglib import tools as _tools
 from tradinglib.tools import open_db
 from tradinglib.i18n import t
+from tradinglib.sector_stocks import SECTOR_ETF_MAP
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sector_stats(sector):
+    """Distribution of key metrics across all equities in *sector* (latest row
+    each). Cached per sector so it is computed once, not per ticker render.
+
+    Returns {n, ovt_values, ovt_median, pe_median, margin_median} or None.
+    """
+    try:
+        import numpy as np
+        T = _tools.Tools()
+        sim_path = T.get_path(path='database', file_name='asset_simulation_.db')
+        info_path = T.get_path(path='database', file_name='asset_info.db')
+        conn = open_db(sim_path, readonly=True)
+        try:
+            _tools.attach_db(conn, info_path, 'info_db')
+            df = pd.read_sql_query(
+                """SELECT s.overallValueTrend AS ovt, ai.trailingPE AS tpe,
+                          ai.forwardPE AS fpe, ai.profitMargins AS margin
+                   FROM asset_simulation s
+                   JOIN (SELECT ticker, MAX(Date) md FROM asset_simulation
+                         GROUP BY ticker) l
+                     ON s.ticker = l.ticker AND s.Date = l.md
+                   JOIN info_db.asset_info ai ON s.ticker = ai.ticker
+                   WHERE ai.sector = ?""",
+                conn, params=(sector,))
+        finally:
+            conn.close()
+        if df is None or df.empty:
+            return None
+        ovt = pd.to_numeric(df['ovt'], errors='coerce').dropna()
+        pe = pd.to_numeric(df['fpe'], errors='coerce')
+        pe = pe.where(pe > 0)
+        pe = pe.fillna(pd.to_numeric(df['tpe'], errors='coerce').where(lambda x: x > 0))
+        margin = pd.to_numeric(df['margin'], errors='coerce')
+        return {
+            'n': int(len(df)),
+            'ovt_values': ovt.tolist(),
+            'ovt_median': float(ovt.median()) if len(ovt) else None,
+            'pe_median': float(pe.dropna().median()) if pe.notna().any() else None,
+            'margin_median': float(margin.dropna().median()) if margin.notna().any() else None,
+        }
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _etf_return_3m(etf):
+    """3-month return (%) of a sector ETF from its local day_data. None on miss."""
+    try:
+        T = _tools.Tools()
+        path = T.get_path(path='database', file_name=f'yf_{etf}.db')
+        if not os.path.exists(path):
+            return None
+        conn = open_db(path, readonly=True)
+        try:
+            df = pd.read_sql_query(
+                "SELECT Close FROM day_data ORDER BY Date DESC LIMIT 64", conn)
+        finally:
+            conn.close()
+        cl = pd.to_numeric(df['Close'], errors='coerce').dropna()
+        if len(cl) > 63:
+            last, base = float(cl.iloc[0]), float(cl.iloc[63])
+            if base:
+                return round((last - base) / base * 100, 1)
+    except Exception:
+        pass
+    return None
 
 
 class Headlines(tt.TickerTools):
@@ -381,6 +452,7 @@ class Headlines(tt.TickerTools):
         reg = self.screen_region_row1
         quote_type = str(self.get_ticker_value(self.ticker, 'quoteType') or '').upper()
         c = self.close_price
+        self._ret_3m = None
 
         # Key-Data metrics one size larger than the compact strip.
         reg.markdown(
@@ -445,6 +517,8 @@ class Headlines(tt.TickerTools):
 
         # --- Fundamentals — equities only -------------------------------
         if quote_type == 'EQUITY':
+            # Sector comparison: rank / relative strength / valuation vs peers.
+            self._grid(reg, t('keydata.sector_section'), self._sector_items(c), per_row=6)
             self._grid(reg, t('keydata.valuation'), self._valuation_items(c), per_row=6)
             self._grid(reg, t('keydata.profitability'), self._profitability_items(), per_row=6)
 
@@ -485,6 +559,7 @@ class Headlines(tt.TickerTools):
                     return None
 
                 r1w, r1m, r3m, r1y = ret(5), ret(21), ret(63), ret(252)
+                self._ret_3m = r3m  # reused for sector relative strength (RSC)
                 # YTD
                 ytd = None
                 try:
@@ -532,6 +607,65 @@ class Headlines(tt.TickerTools):
             vol = self._info('volume')
             if vol:
                 items.append(self._item(t('keydata.volume'), self._big(vol)))
+        return items
+
+    def _sector_items(self, c):
+        """Sector comparison (equities): OVT percentile rank, relative strength
+        vs the sector ETF, and valuation/margin vs the sector median.
+
+        Sector aggregates come from the cached _sector_stats (one computation per
+        sector, not per ticker)."""
+        sector = self.get_ticker_value(self.ticker, 'sector')
+        if not sector or not isinstance(sector, str):
+            return []
+        stats = _sector_stats(sector)
+        if not stats or not stats.get('n'):
+            return []
+        import numpy as np
+
+        etf = SECTOR_ETF_MAP.get(sector)
+        n = stats['n']
+        items = [self._item(t('keydata.sector'), sector, help=etf)]
+
+        # A) OVT percentile rank within the sector
+        ovt = self._sig_val('overallValueTrend')
+        vals = stats.get('ovt_values') or []
+        if ovt is not None and vals:
+            arr = np.asarray(vals, dtype=float)
+            better = int((arr > ovt).sum())
+            top_pct = round(better / len(arr) * 100)
+            items.append(self._item(
+                t('keydata.sector_rank'), f"Top {top_pct} %",
+                help=t('keydata.sector_rank_help', rank=better + 1, n=n, sector=sector)))
+
+        # C) Relative strength vs the sector ETF over 3 months (local-only)
+        if etf and self._ret_3m is not None:
+            etf_3m = _etf_return_3m(etf)
+            if etf_3m is not None:
+                rsc = round(self._ret_3m - etf_3m, 1)
+                items.append(self._item(
+                    t('keydata.sector_rsc', etf=etf), f"{self._ret_3m:+.1f} %",
+                    delta=f"{rsc:+.1f} pp",
+                    help=t('keydata.sector_rsc_help', etf=etf, rsc=rsc)))
+
+        # B) Valuation vs sector median (cheaper = green → inverse delta colour)
+        pe = self._info('forwardPE') or self._info('trailingPE')
+        pe_med = stats.get('pe_median')
+        if pe and pe_med and pe_med > 0:
+            d = round((pe - pe_med) / pe_med * 100)
+            items.append(self._item(
+                t('keydata.sector_pe'), f"{pe}", delta=f"{d:+d} %", delta_color='inverse',
+                help=t('keydata.sector_pe_help', med=round(pe_med, 1))))
+
+        # B) Net margin vs sector median (higher = green → normal delta colour)
+        margin = self._info('profitMargins', digits=4)
+        m_med = stats.get('margin_median')
+        if margin is not None and m_med is not None:
+            d = round((margin - m_med) * 100, 1)
+            items.append(self._item(
+                t('keydata.sector_margin'), f"{round(margin * 100, 1)} %",
+                delta=f"{d:+.1f} pp",
+                help=t('keydata.sector_margin_help', med=round(m_med * 100, 1))))
         return items
 
     def _valuation_items(self, c):
