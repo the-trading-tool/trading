@@ -1418,5 +1418,7 @@
   "keydata.sector_pe": "P/E vs sector",
   "keydata.sector_pe_help": "Sector median P/E {med}",
   "keydata.sector_margin": "Margin vs sector",
-  "keydata.sector_margin_help": "Sector median net margin {med} %"
+  "keydata.sector_margin_help": "Sector median net margin {med} %",
+  "keydata.buy_volume": "Buy volume",
+  "keydata.buy_volume_help": "≈ {shares} shares · {total} {cur} / {n} positions, inverse-vol weighted (base {base} {cur})"
 }

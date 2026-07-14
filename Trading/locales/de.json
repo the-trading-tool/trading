@@ -1418,5 +1418,7 @@
   "keydata.sector_pe": "KGV vs Sektor",
   "keydata.sector_pe_help": "Sektor-Median KGV {med}",
   "keydata.sector_margin": "Marge vs Sektor",
-  "keydata.sector_margin_help": "Sektor-Median Netto-Marge {med} %"
+  "keydata.sector_margin_help": "Sektor-Median Netto-Marge {med} %",
+  "keydata.buy_volume": "Kaufvolumen",
+  "keydata.buy_volume_help": "≈ {shares} Stück · {total} {cur} / {n} Positionen, invers-Vola-gewichtet (Basis {base} {cur})"
 }

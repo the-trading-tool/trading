@@ -8,8 +8,41 @@ import streamlit as st
 from tradinglib import ticker_tools as tt
 from tradinglib import tools as _tools
 from tradinglib.tools import open_db
-from tradinglib.i18n import t
+from tradinglib.i18n import t, current_language
 from tradinglib.sector_stocks import SECTOR_ETF_MAP
+
+# Position-sizing assumption for the "Buy volume" tile: a total portfolio budget
+# split equally across N positions, then tilted by inverse volatility.
+KEYDATA_TOTAL_INVEST = 100000   # € assumed total portfolio budget
+KEYDATA_NUM_POSITIONS = 40      # assumed number of positions (equal-weight base = total/N)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _median_log_vola():
+    """Median logVola across the simulation universe — the reference volatility for
+    inverse-vol position sizing (the median asset gets factor ~1). Cached hourly."""
+    try:
+        T = _tools.Tools()
+        conn = open_db(T.get_path(path='database', file_name='asset_simulation_.db'), readonly=True)
+        try:
+            _tools.attach_db(conn, T.get_path(path='database', file_name='asset_info.db'), 'info_db')
+            # Restrict to equities: the reference for a typical multi-stock portfolio.
+            # Including low-vol ETFs would drag the median down and under-size stocks.
+            df = pd.read_sql_query(
+                """SELECT s.logVola v FROM asset_simulation s
+                   JOIN (SELECT ticker, MAX(Date) md FROM asset_simulation
+                         GROUP BY ticker) l
+                     ON s.ticker = l.ticker AND s.Date = l.md
+                   JOIN info_db.asset_info ai ON s.ticker = ai.ticker
+                   WHERE ai.quoteType = 'EQUITY'""", conn)
+        finally:
+            conn.close()
+        v = pd.to_numeric(df['v'], errors='coerce')
+        v = v[(v > 0) & v.notna()]
+        m = float(v.median()) if len(v) else 0.0
+        return m if m > 0 else 0.19
+    except Exception:
+        return 0.19
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -502,6 +535,7 @@ class Headlines(tt.TickerTools):
             self._item(t('keydata.trend_dwm'), trend_dwm),
             self._item(t('keydata.take_profit'), self._sig_val('take_profit', self.digits)),
             self._item(t('keydata.stop_loss'), self._sig_val('stop_loss', self.digits)),
+            self._buy_volume_item(),
             self._item(t('keydata.support'), self._sig_val('sup_support', self.digits)),
             self._item(t('keydata.resistance'), self._sig_val('sup_resistance', self.digits)),
             self._item(t('keydata.regime'), regime_name),
@@ -608,6 +642,41 @@ class Headlines(tt.TickerTools):
             if vol:
                 items.append(self._item(t('keydata.volume'), self._big(vol)))
         return items
+
+    @staticmethod
+    def _grp(x):
+        """Group thousands with a locale-appropriate separator (de: '.', else ',')."""
+        s = f"{int(round(x)):,}"
+        return s.replace(',', '.') if current_language() == 'de' else s
+
+    def _buy_volume_item(self):
+        """Inverse-volatility position size: a KEYDATA_TOTAL_INVEST budget split
+        equally across KEYDATA_NUM_POSITIONS positions (base per position), then
+        tilted by inverse volatility (calm assets get more, up to 3× the base).
+        Returns an _item or None."""
+        log_vola = self._sig_val('logVola', 4)
+        if log_vola is None and 'log_vola' in self.df.columns:
+            try:
+                lv = float(self.df['log_vola'].iloc[-1])
+                log_vola = lv if lv == lv else None
+            except Exception:
+                log_vola = None
+        if not log_vola or log_vola <= 0 or not self.close_price:
+            return None
+        ref = _median_log_vola()
+        base = KEYDATA_TOTAL_INVEST / max(1, KEYDATA_NUM_POSITIONS)
+        # calculate_investment = base * min(ref/log_vola, 3.0) — inverse vol, capped 3×.
+        amount = tt.calculate_investment(log_vola, target_avg=base, ref_vola=ref)
+        try:
+            shares = int(amount * self.x_rate / self.close_price)
+        except Exception:
+            shares = 0
+        cur = self.system_currency
+        return self._item(
+            t('keydata.buy_volume'), f"{self._grp(amount)} {cur}",
+            help=t('keydata.buy_volume_help', shares=shares,
+                   total=self._grp(KEYDATA_TOTAL_INVEST), n=KEYDATA_NUM_POSITIONS,
+                   base=self._grp(base), cur=cur))
 
     def _sector_items(self, c):
         """Sector comparison (equities): OVT percentile rank, relative strength
