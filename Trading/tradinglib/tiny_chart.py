@@ -554,7 +554,17 @@ class tiny_chart(gt.GraphTools):
 
         try:
             if self.ath:
-                (df,_) = self.fd.fetch_data(self.symbol, period='max', interval='1mo', add_current=False, max_periods=self.max_periods, region=st)
+                # ATH lookup must NOT reuse self.fd: fetch_data() stores each
+                # indicator as an attribute on the FetchData instance
+                # (self.fd.ewo, self.fd.rsi, …). Reusing self.fd here — with a
+                # different interval ('1mo') — would overwrite the sub-plot's
+                # weekly/daily oscillator instances with monthly ones, so the
+                # sub-plots (getattr(self.fd, n) below) would render monthly data
+                # on the main axis (values before the first candle). Use a
+                # throwaway, indicator-free instance instead (also cheaper).
+                _ath_fd = ft.FetchData(database_path='database', tz_info=self.tz_info,
+                                       indicators=[], sys_conf=self.sys_conf)
+                (df,_) = _ath_fd.fetch_data(self.symbol, period='max', interval='1mo', add_current=False, max_periods=self.max_periods, region=st)
                 ath = df['High'].max()
                 self._add_hline_outside(
                     y=ath,

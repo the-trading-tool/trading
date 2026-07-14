@@ -861,6 +861,9 @@ class render_mainpage(fetch_data.FetchData):
                                                                 calc_ly_hl=True,
                                                                 username=self.username,
                                                                 add_overlays=self.overlays,
+                                                                add_sub_plots=self.oszilators,
+                                                                no_plot_overlays=self.no_plot_overlays,
+                                                                no_plot_oszilators=self.no_plot_oszilators,
                                                                 )
                                         fig = t_chart.fig
                                         ir_c[j][i].plotly_chart(fig,

@@ -128,11 +128,22 @@ class GraphTools:
             # are preferable to the alternative (zigzag across the entire chart).
 
         else:
-            # --- DAILY / WEEKLY ---
+            # --- DAILY (only) ---
+            # Rangebreaks only make sense for DAILY bars. Weekly/monthly bars are
+            # >= ~7 days apart: there are no intra-bar gaps worth collapsing, so
+            # breaks give no benefit and actively harm the render:
+            #   * the weekend break ["sat","mon"] on weekly bars — which sit on
+            #     Mondays, exactly on the break's end boundary — makes Plotly draw
+            #     the connecting lines (oscillators, MAs) as broken dashes;
+            #   * the holiday `values` break would flag ~4 of every 5 business days
+            #     as "absent" (one bar per week) and blank out ~80% of the axis.
+            # So return no breaks for anything coarser than daily.
+            if freq > pd.Timedelta(days=1):
+                return []
+
             breaks.append(dict(bounds=["sat", "mon"]))
 
-            # Missing trading days (bank holidays) via values — for daily data
-            # without a pattern="hour" break the values method is Plotly-safe.
+            # Missing trading days (bank holidays) via values — daily only.
             all_workdays = pd.date_range(
                 start=df['Date'].min(), end=df['Date'].max(), freq='B'
             )
