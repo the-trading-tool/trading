@@ -60,9 +60,18 @@ Gilt für: DataFrame-Spalten, pdict-Keys (= DB-Spalten), buy/sell-Queries.
 ### OHLC in `asset_simulation` (2026-07, Commit `ddde705`)
 
 Roh-OHLC ist in `asset_simulation` als **`Open`/`High`/`Low`/`close`** verfügbar
-(Ausnahme von der snake_case-Regel — bewusst großgeschrieben `Open/High/Low`,
-damit kein Konflikt mit `asset_info.open/dayHigh/dayLow`, die es dort auch gibt).
+(Ausnahme von der snake_case-Regel — großgeschrieben `Open/High/Low`).
 → In Buy/Sell-Queries direkt nutzbar, z. B. `(close > Open) & (High > sup_resistance)`.
+
+> **⚠️ SQLite ist bei Spaltennamen case-INSENSITIV.** Das Großschreiben von `Open`
+> verhindert **nicht** die Kollision mit `asset_info.open` — für SQLite sind `Open`
+> und `open` derselbe Bezeichner. Sobald `asset_simulation` mit `asset_info` gejoint
+> wird (z. B. All-Assets-Screener, `all_assets.py`), ist unqualifiziertes `Open`/`High`/
+> `Low` in der `WHERE`-Klausel **mehrdeutig** → `ambiguous column name: Open`, die
+> ganze Query crasht. Fix in `all_assets.py`: der JOIN exponiert per Subquery nur
+> `ticker/longName/exchange` aus `asset_info`, damit `asset_info.open/dayHigh/dayLow`
+> nicht im Scope sind. Bei neuen Joins mit `asset_info` dieselbe Vorsicht — entweder
+> Spalten qualifizieren (`ap.Open`) oder den Join auf die gebrauchten Spalten narrowen.
 
 - **Umbenannt:** `dayHigh → High`, `dayLow → Low` (in `asset_perf2.py` pdict +
   `score_df: col('Low')`; alle 9 `asset_simulation_*.db` per `ALTER TABLE RENAME COLUMN`).

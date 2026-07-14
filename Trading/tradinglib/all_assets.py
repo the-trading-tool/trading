@@ -72,17 +72,23 @@ class AllAssetsView(tt.TickerTools):
 #        if qv:
 #            o_by = "ORDER BY Date DESC, ap.currency Limit 7000;"
 
-        query = f"""SELECT ai.longName, ai.exchange, ap.* FROM asset_simulation as ap 
-        INNER JOIN info_db.asset_info as ai on ap.ticker = ai.ticker
-        WHERE {bq_input}  
+        # ai exposes only longName/exchange: asset_info also has an "open" column, and
+        # SQLite matches identifiers case-insensitively, so an unqualified Open/High/Low
+        # in the user filter would clash with asset_simulation's Open/High/Low
+        # ("ambiguous column name"). Narrowing the join keeps OHLC filters unqualified.
+        query = f"""SELECT ai.longName, ai.exchange, ap.* FROM asset_simulation as ap
+        INNER JOIN (SELECT ticker, longName, exchange FROM info_db.asset_info) as ai on ap.ticker = ai.ticker
+        WHERE {bq_input}
         {o_by}
         """
         try:
             df = pd.read_sql_query(query, db.conn)
-        except Exception:
-            st.error(t('assets.no_data_error'))
+        except Exception as exc:
+            # Surface the SQLite message (e.g. "no such column", "ambiguous column
+            # name") so an invalid filter formula is diagnosable instead of masked
+            # behind a generic "no data" notice.
+            st.error(f"{t('assets.no_data_error')} — {exc}")
             df = pd.DataFrame()
-            pass
         try:
             cols = list(df)
             cols.insert(0, cols.pop(cols.index('invest')))
