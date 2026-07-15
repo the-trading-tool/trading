@@ -1,25 +1,54 @@
 import streamlit as st
 import requests
 import re
+import socket
 import feedparser
 import nltk
 import pandas as pd
 import plotly.express as px
+import logging
 from datetime import datetime
 
-# Download vader_lexicon -- SSL bypass for restricted environments
-try:
-    import ssl
-    ssl._create_default_https_context = ssl._create_unverified_context
-except Exception:
-    pass
-nltk.download('vader_lexicon', quiet=True)
+logger = logging.getLogger(__name__)
 
-try:
-    from nltk.sentiment import SentimentIntensityAnalyzer
-    _SIA_AVAILABLE = True
-except Exception:
-    _SIA_AVAILABLE = False
+_VADER_RESOURCE = 'sentiment/vader_lexicon.zip'
+_DOWNLOAD_TIMEOUT = 15  # seconds
+
+
+def _ensure_vader_lexicon() -> bool:
+    """Return True when the VADER lexicon is usable, downloading it only if missing.
+
+    nltk.download() contacts raw.githubusercontent.com to refresh its package
+    index on *every* call, even when the lexicon is already installed, and the
+    urlopen() inside it passes no timeout — a stalled connection blocks the
+    importing process forever (headless CLI runs such as run_agent.py import
+    this module transitively). Probing the local data path first keeps the
+    normal path offline; the download itself is bounded by a socket timeout.
+    """
+    try:
+        nltk.data.find(_VADER_RESOURCE)
+        return True
+    except LookupError:
+        pass
+
+    previous_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(_DOWNLOAD_TIMEOUT)
+    try:
+        return bool(nltk.download('vader_lexicon', quiet=True))
+    except Exception as exc:
+        logger.warning('vader_lexicon download failed (%s) — sentiment scoring disabled.', exc)
+        return False
+    finally:
+        socket.setdefaulttimeout(previous_timeout)
+
+
+_SIA_AVAILABLE = False
+if _ensure_vader_lexicon():
+    try:
+        from nltk.sentiment import SentimentIntensityAnalyzer
+        _SIA_AVAILABLE = True
+    except Exception:
+        _SIA_AVAILABLE = False
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _cached_fetch_news(ticker: str, url: str) -> list:
