@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import schedule
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import sqlite3
 import subprocess
 import psutil
@@ -238,27 +238,92 @@ class Scheduler:
 
 
     def terminate_process(self, pid):
-        """Send SIGTERM to PID and wait up to 3 seconds before escalating to SIGKILL."""
+        """Terminate PID and all its children, escalating to SIGKILL after 3 seconds.
+
+        The children matter: on Windows the venv's python.exe is a redirector that
+        runs the real interpreter as a child process, so terminating only the
+        parent would leave the actual job running and orphaned.
+        """
         try:
-            p = psutil.Process(pid)
-            p.terminate()
-            p.wait(timeout=3)
+            parent = psutil.Process(pid)
         except psutil.NoSuchProcess:
-            pass
-        except psutil.TimeoutExpired:
-            p.kill()
+            return
+
+        try:
+            targets = parent.children(recursive=True)
+        except psutil.Error:
+            targets = []
+        targets.append(parent)
+
+        for proc in targets:
+            try:
+                proc.terminate()
+            except psutil.Error:
+                pass
+        _, alive = psutil.wait_procs(targets, timeout=3)
+        for proc in alive:
+            try:
+                proc.kill()
+            except psutil.Error:
+                pass
+
+
+    def load_end_times(self, conn) -> dict:
+        """Return {job_name: end_time} for all jobs, used to enforce runtime limits."""
+        c = conn.cursor()
+        c.execute('SELECT job_name, end_time FROM jobs')
+        return dict(c.fetchall())
+
+
+    def runtime_limit_exceeded(self, end_time, started_at: datetime) -> bool:
+        """Return True when a job started at started_at has outlived its end_time.
+
+        end_time accepts 'HH:MM' (wall-clock deadline relative to the start) or
+        '<N>' / '<N>m' (maximum runtime in minutes). Empty or unparsable values
+        mean 'no limit', so jobs without an end_time keep running unrestricted.
+        """
+        value = str(end_time).strip().lower() if end_time is not None else ''
+        if not value or value in ('none', 'nan'):
+            return False
+
+        now = datetime.now()
+        try:
+            if ':' in value:
+                hour, minute = (int(part) for part in value.split(':', 1))
+                deadline = started_at.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if deadline <= started_at:  # deadline already passed at launch -> next day
+                    deadline += timedelta(days=1)
+                return now > deadline
+            minutes = int(value.rstrip('m'))
+            return minutes > 0 and now > started_at + timedelta(minutes=minutes)
+        except (ValueError, TypeError):
+            self.write(f"Invalid end_time '{end_time}' — no runtime limit applied.", stdout=True)
+            return False
 
 
     def monitor_tasks(self, conn):
-        """Clean up finished or zombie processes from the processes table."""
+        """Clean up finished/zombie processes and kill jobs that outran their end_time."""
         with self.lock:
             processes = self.load_processes_from_db(conn)
-            for _, task_id, pid, _ in processes:
+            end_times = self.load_end_times(conn) if processes else {}
+            for _, task_id, pid, job_name in processes:
                 try:
                     p = psutil.Process(pid)
                     if not p.is_running() or p.status() == psutil.STATUS_ZOMBIE:
                         self.delete_process_from_db(conn, task_id)
                         self.write(f"Job cleanup for pid: {pid}, task id {task_id}", stdout=True)
+                        continue
+
+                    end_time = end_times.get(job_name)
+                    started_at = datetime.fromtimestamp(p.create_time())
+                    if self.runtime_limit_exceeded(end_time, started_at):
+                        self.write(
+                            f"Job {job_name} (PID {pid}) exceeded end_time '{end_time}' "
+                            f"(started {started_at.strftime('%d.%m.%Y %H:%M')}) — terminating.",
+                            stdout=True,
+                        )
+                        self.terminate_process(pid)
+                        self.delete_process_from_db(conn, task_id)
                 except psutil.NoSuchProcess:
                     self.delete_process_from_db(conn, task_id)
                     self.write(f"Process {pid} not found. Cleaned up task id {task_id}", stdout=True)
