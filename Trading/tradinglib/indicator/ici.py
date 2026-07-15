@@ -156,14 +156,48 @@ class Ici(_indicator._Indicator):
 				if pd.notna(step) and step > pd.Timedelta(0):
 					last_dt = valid_dt.iloc[-1]
 					future_dates = []
-					cur = last_dt
 					guard = 0
-					while len(future_dates) < n_fwd and guard < n_fwd * 5:
-						cur = cur + step
-						guard += 1
-						if (not trades_weekend) and cur.dayofweek >= 5:
-							continue
-						future_dates.append(cur)
+
+					# Intraday: walk the *observed session slots* rather than a flat
+					# step. A flat step marches straight through the night (4h bars →
+					# 20:00/00:00/04:00), and those hours sit inside the x-axis'
+					# pattern="hour" night rangebreak, so Plotly collapses them: half
+					# the projected bars land on hidden positions and the Kumo looks
+					# squashed. Cycling the real slots (e.g. 08/12/16) keeps every
+					# projected vertex on a visible x position.
+					if step < pd.Timedelta(days=1):
+						slots = sorted({
+							float(h) + float(mi) / 60.0
+							for h, mi in zip(valid_dt.dt.hour, valid_dt.dt.minute)
+						})
+					else:
+						slots = []
+
+					if slots:
+						last_slot = last_dt.hour + last_dt.minute / 60.0
+						day = last_dt.normalize()
+						# first slot strictly after the last candle (else: next day)
+						idx = next((i for i, s in enumerate(slots) if s > last_slot),
+								   len(slots))
+						while len(future_dates) < n_fwd and guard < n_fwd * 10:
+							guard += 1
+							if idx >= len(slots):
+								idx = 0
+								day = day + pd.Timedelta(days=1)
+							if (not trades_weekend) and day.dayofweek >= 5:
+								idx = len(slots)   # force advance to the next day
+								continue
+							future_dates.append(day + pd.Timedelta(hours=slots[idx]))
+							idx += 1
+					else:
+						# Daily and coarser: one bar per day, a flat step is correct.
+						cur = last_dt
+						while len(future_dates) < n_fwd and guard < n_fwd * 5:
+							cur = cur + step
+							guard += 1
+							if (not trades_weekend) and cur.dayofweek >= 5:
+								continue
+							future_dates.append(cur)
 
 					fut_a = base_a.iloc[-n_fwd:].to_numpy(dtype=float)
 					fut_b = base_b.iloc[-n_fwd:].to_numpy(dtype=float)
