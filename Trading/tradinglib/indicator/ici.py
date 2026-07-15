@@ -16,7 +16,8 @@ class Ici(_indicator._Indicator):
 	name = 'Ichimoku indicators'
 
 	params = {
-		'window':             {'type': 'int',   'default': 14, 'min': 2, 'max': 100, 'label': 'Tenkan-sen period'},
+		'tenkan_window':      {'type': 'int',   'default': 9,  'min': 2, 'max': 100, 'label': 'Tenkan-sen period'},
+		'window':             {'type': 'int',   'default': 14, 'min': 2, 'max': 100, 'label': 'EMA period'},
 		'color_tenkan':       {'type': 'color', 'default': '',  'label': 'Tenkan-sen color'},
 		'color_kijun':        {'type': 'color', 'default': '',  'label': 'Kijun-sen color'},
 		'color_chikou':       {'type': 'color', 'default': '',  'label': 'Chikou span color'},
@@ -26,7 +27,7 @@ class Ici(_indicator._Indicator):
 		'color_cloud_bear':   {'type': 'color', 'default': '',  'label': 'Bearish cloud color'},
 	}
 
-	def __init__(self, df, symbol = "", window=14,
+	def __init__(self, df, symbol = "", window=14, tenkan_window=9,
 				 fill_cloud=True,
 				 color_tenkan='', color_kijun='', color_chikou='', color_ema='',
 				 color_cloud_bull='', color_cloud_bear=''):
@@ -34,6 +35,7 @@ class Ici(_indicator._Indicator):
 
 		super().__init__(df=df, symbol=symbol)
 		self.window = window
+		self.tenkan_window = tenkan_window
 		self.fill_cloud       = fill_cloud
 		self.color_tenkan     = color_tenkan     or 'deepskyblue'
 		self.color_kijun      = color_kijun      or 'orange'
@@ -49,7 +51,16 @@ class Ici(_indicator._Indicator):
 		"""Compute the indicator values and attach them as columns to self.df."""
 
 		# Calculate the Ichimoku indicators
-		self.df['tenkan_sen'] = (self.df['High'] + self.df['Low']) / 2
+		# Tenkan-sen = midpoint of the highest high / lowest low over the last
+		# tenkan_window bars (standard Ichimoku: 9). Using the *current* bar's
+		# (High+Low)/2 — i.e. a 1-period Tenkan — makes the line roughly twice as
+		# noisy and, via senkou_span_a = (tenkan+kijun)/2, pushes the cloud edge
+		# off by ~100 DAX points on average (up to ~2% of price) versus the
+		# Pine/TradingView export.
+		self.df['tenkan_sen'] = (
+			self.df['High'].rolling(window=self.tenkan_window).max() +
+			self.df['Low'].rolling(window=self.tenkan_window).min()
+		) / 2
 		self.df['kijun_sen'] = (self.df['High'].rolling(window=26).max() + self.df['Low'].rolling(window=26).min()) / 2
 #		self.df['senkou_span_a'] = (self.df['tenkan_sen'] + self.df['kijun_sen']) / 2
 #		self.df['senkou_span_b'] = (self.df['High'].rolling(window=52).max() + self.df['Low'].rolling(window=52).min()) / 2

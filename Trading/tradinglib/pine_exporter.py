@@ -1096,6 +1096,7 @@ fill(ha_p_high, ha_p_low, color = ha_fill_band ? color.new(color.gray, 85) : col
 def _t_ici(p: dict) -> str:
     """Return the Pine Script v5 ICT overlay template."""
     win = int(p.get('window', 14))
+    tenkan_win = int(p.get('tenkan_window', 9))
     col_tenkan     = _hex_to_pine_color(p.get('color_tenkan',     ''), 'color.aqua')
     col_kijun      = _hex_to_pine_color(p.get('color_kijun',      ''), 'color.orange')
     col_chikou     = _hex_to_pine_color(p.get('color_chikou',     ''), 'color.new(color.gray, 30)')
@@ -1113,7 +1114,7 @@ ici_ema_col    = input.color({col_ema},        "EMA color",          group="{grp
 ici_bull_col   = input.color({col_cloud_bull}, "Bull cloud color",   group="{grp}")
 ici_bear_col   = input.color({col_cloud_bear}, "Bear cloud color",   group="{grp}")
 ici_width      = input.int({wid}, "Width", minval=1, maxval=5, group="{grp}")
-ici_tenkan = (ta.highest(high,  9) + ta.lowest(low,  9)) / 2
+ici_tenkan = (ta.highest(high,  {tenkan_win}) + ta.lowest(low,  {tenkan_win})) / 2
 ici_kijun  = (ta.highest(high, 26) + ta.lowest(low, 26)) / 2
 ici_span_a = (ici_tenkan + ici_kijun) / 2
 ici_span_b = (ta.highest(high, 52) + ta.lowest(low, 52)) / 2
