@@ -18,7 +18,6 @@ except ImportError:
 
 from tradinglib import tools
 from tradinglib import help_text
-from tradinglib import multi_select
 from tradinglib.indicator import indicator  # Import the base class
 from tradinglib import logging_config as lgc
 from tradinglib import i18n
@@ -225,18 +224,12 @@ class SystemConfig(tools.Db_tools):
                 pass
             return None
 
-        ol = ""
-        for t in multi_select.MultiCheckboxSelector.lists[2][1]:
-            ol += "'"+t.split(" - ")[0]+"', "
         if overlays is None or overlays == []:
             raw = self.get_value('overlay', None)
             parsed = _parse_list(raw) if raw is not None else None
             # Use factory default when nothing is stored OR stored value is empty
             overlays = parsed if parsed else ['heikin', 'bar', 'sup']
 
-        oz = ""
-        for t in multi_select.MultiCheckboxSelector.lists[3][1]:
-            oz += "'"+t.split(" - ")[0]+"', "
         if oszilators is None or oszilators == []:
             raw = self.get_value('oszilator', None)
             parsed = _parse_list(raw) if raw is not None else None
@@ -271,6 +264,10 @@ class SystemConfig(tools.Db_tools):
                 except Exception:
                     st.error(f"{error_text} [{ol}]")
                     pass
+
+        # Imported here, not at module level: multi_select is UI-only, while
+        # SystemConfig itself is imported by headless callers (run_agent).
+        from tradinglib import multi_select
 
         intervals = multi_select.MultiCheckboxSelector.lists[0][1]
         periods = multi_select.MultiCheckboxSelector.lists[1][1]
