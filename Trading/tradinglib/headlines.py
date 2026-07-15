@@ -272,6 +272,18 @@ class Headlines(tt.TickerTools):
             return None
         return val
 
+    def _pct_of(self, key):
+        """Read an asset_info field that is stored as a *fraction* and return percent.
+
+        Yahoo mixes units: margins/growth/returns, payoutRatio and
+        shortPercentOfFloat are fractions (0.0133 = 1.33 %), while dividendYield,
+        fiveYearAvgDividendYield, netExpenseRatio and ytdReturn are already in
+        percent. Never infer the unit from magnitude — a 0.47 % dividend yield and
+        a 0.47 fraction are indistinguishable. Use this only for fraction fields.
+        """
+        v = self._info(key, digits=6)
+        return None if v is None else round(v * 100, 2)
+
     def _sig_val(self, key, digits=2):
         """Scalar from the loaded simulation row; None when absent/NaN."""
         try:
@@ -559,7 +571,7 @@ class Headlines(tt.TickerTools):
         # --- Risk (beta / short / governance — mostly equities) ---------
         risk_items = [
             self._item(t('keydata.beta'), self._info('beta')),
-            self._item(t('keydata.short_float'), self._pct(self._info('shortPercentOfFloat'))),
+            self._item(t('keydata.short_float'), self._pct(self._pct_of('shortPercentOfFloat'))),
             self._item(t('keydata.overall_risk'), self._info('overallRisk')),
         ]
         self._grid(reg, t('keydata.risk'), risk_items, per_row=6)
@@ -767,9 +779,7 @@ class Headlines(tt.TickerTools):
         ]
 
     def _profitability_items(self):
-        def pct(key):
-            v = self._info(key, digits=4)
-            return None if v is None else round(v * 100, 1)
+        pct = self._pct_of  # margins / growth / returns are fractions in asset_info
 
         roa = self._sig_val('roa', 4)
         roa_pct = None if roa is None else round(roa * 100, 1)
@@ -794,27 +804,23 @@ class Headlines(tt.TickerTools):
 
     def _dividend_items(self):
         rate = self._info('dividendRate')
-        yield_ = self._info('dividendYield', digits=4)
-        if not rate and not yield_:
+        # dividendYield / fiveYearAvgDividendYield are already percent (0.47 = 0.47 %).
+        yld = self._info('dividendYield', digits=4)
+        if not rate and not yld:
             return []
-        yld = None if yield_ is None else round(yield_ * 100, 2) if yield_ < 1 else round(yield_, 2)
-        payout = self._info('payoutRatio', digits=4)
         return [
             self._item(t('keydata.div_yield'), self._pct(yld, digits=2)),
             self._item(t('keydata.div_rate'), rate),
-            self._item(t('keydata.payout'), self._pct(None if payout is None else round(payout * 100, 1))),
+            self._item(t('keydata.payout'), self._pct(self._pct_of('payoutRatio'))),
             self._item(t('keydata.ex_dividend'), self._date('exDividendDate') or self._date('dividendDate')),
             self._item(t('keydata.div_5y_avg'), self._pct(self._info('fiveYearAvgDividendYield'), digits=2)),
         ]
 
     def _etf_items(self):
+        # ytdReturn and netExpenseRatio are already percent in asset_info
+        # (TER 0.22 = 0.22 %). Do not rescale by magnitude.
         ytd = self._info('ytdReturn')
-        # Fund returns arrive as fractions (0.126) or already-percent (12.6) — normalise.
-        if ytd is not None and abs(ytd) < 1:
-            ytd = round(ytd * 100, 1)
         exp = self._info('netExpenseRatio')
-        if exp is not None and exp < 1:
-            exp = round(exp * 100, 2)
         return [
             self._item(t('keydata.fund_volume'), self._big(self._info('netAssets') or self._info('totalAssets'))),
             self._item(t('keydata.nav'), self._info('navPrice')),
