@@ -17,13 +17,14 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <body>
 <h1>Datenquellen <small style="font-size:.6em;color:#888">tradinglib/providers/</small></h1>
 
-<p>Alle Kurs- und OHLC-Daten laufen über eine austauschbare <b>Provider-Schicht</b>. Standardmäßig wird <b>Yahoo Finance</b> (über <code>yfinance</code>) verwendet. Alternativ kann <b>Financial Modeling Prep (FMP)</b> als Datenquelle aktiviert werden – z.&nbsp;B. wenn Yahoo zeitweise blockiert oder rate-limitiert ist.</p>
+<p>Alle Kurs- und OHLC-Daten laufen über eine austauschbare <b>Provider-Schicht</b>. Standardmäßig wird <b>Yahoo Finance</b> (über <code>yfinance</code>) verwendet. Alternativ kann <b>Financial Modeling Prep (FMP)</b> oder <b>EOD Historical Data (EODHD)</b> als Datenquelle aktiviert werden – z.&nbsp;B. wenn Yahoo zeitweise blockiert oder rate-limitiert ist.</p>
 
 <h2>Provider umschalten</h2>
 <p>Über den 🏵-Button (Konfiguration, nur für Admins sichtbar) → Abschnitt <b>Datenprovider</b>:</p>
 <ul>
-  <li><b>Aktiver Datenprovider:</b> <code>yahoo</code> (Standard) oder <code>fmp</code></li>
+  <li><b>Aktiver Datenprovider:</b> <code>yahoo</code> (Standard), <code>fmp</code> oder <code>eodhd</code></li>
   <li>Die Auswahl gilt global für alle Module, die Kursdaten abrufen (<code>fetch_data.py</code>, <code>market_data.py</code>, <code>get_asset_data.py</code> …)</li>
+  <li>Fehlt bei <code>fmp</code>/<code>eodhd</code> der API-Schlüssel, fällt die App automatisch auf Yahoo zurück (keine Fehlermeldung, nur ein Log-Eintrag)</li>
 </ul>
 
 <div class="warn"><b>Empfehlung – Yahoo nur als Fallback verwenden:</b> Yahoo Finance ist über <code>yfinance</code> angebunden, eine <b>inoffizielle</b> Schnittstelle ohne SLA. Bei häufigen automatisierten Hintergrund-Abrufen (siehe Hilfe „Setup &amp; Scheduler") drohen Sperren oder Rate-Limits. Für regelmäßige Jobs daher <b>FMP als primären Provider</b> einrichten und Yahoo nur als Rückfalloption belassen, falls FMP-Limits erreicht sind oder kein API-Key hinterlegt wurde.</div>
@@ -53,6 +54,38 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="warn"><b>Rate-Limits (kostenloser FMP-Tarif):</b> 250 Anfragen/Tag, 10 Anfragen/Minute. Bei intensiver Nutzung (z.&nbsp;B. <code>get_asset_data.py /all</code>) können diese Limits schnell erreicht werden.</div>
 
-<div class="info">Beide Provider liefern Daten im selben Format (Open/High/Low/Close/Volume, wie <code>yfinance</code>). Ein Wechsel des Providers erfordert keine Änderung an bestehenden Datenbanken oder Auswertungen – nur künftige Abrufe nutzen die neue Quelle.</div>
+<h2>EOD Historical Data (EODHD)</h2>
+<h3>Voraussetzung: API-Schlüssel</h3>
+<ul>
+  <li>API-Key auf <code>eodhd.com</code> erstellen</li>
+  <li>Im Admin-Panel unter <b>API-Zugänge</b> einen KSP-Eintrag <code>eodhd</code> anlegen, Passwort = API-Key</li>
+  <li>Ablauf ansonsten identisch zu FMP: grüner Hinweis bei erkanntem Schlüssel, <b>🔌 Verbindung testen</b> prüft den Zugang</li>
+</ul>
+
+<h3>Ticker-Kompatibilität</h3>
+<p>EODHD verwendet <b>immer</b> das Format <code>CODE.BÖRSE</code> – auch US-Werte brauchen ein Suffix. Die Umrechnung erfolgt automatisch:</p>
+<table>
+<tr><th>Wertpapierart</th><th>Yahoo-Symbol</th><th>EODHD-Symbol</th></tr>
+<tr><td>US-Aktien</td><td><code>AAPL</code></td><td><code>AAPL.US</code></td></tr>
+<tr><td>Deutsche Aktien (Xetra)</td><td><code>SAP.DE</code></td><td><code>SAP.XETRA</code></td></tr>
+<tr><td>London</td><td><code>VOD.L</code></td><td><code>VOD.LSE</code></td></tr>
+<tr><td>Indizes</td><td><code>^GSPC</code>, <code>^GDAXI</code></td><td><code>GSPC.INDX</code>, <code>GDAXI.INDX</code></td></tr>
+<tr><td>Kryptowährungen</td><td><code>BTC-USD</code></td><td><code>BTC-USD.CC</code></td></tr>
+<tr><td>Devisen</td><td><code>EURUSD=X</code></td><td><code>EURUSD.FOREX</code></td></tr>
+<tr><td>Sonstige Börsenplätze</td><td><code>AIR.PA</code>, <code>NESN.SW</code></td><td>meist identisch (<code>.AX</code>→<code>.AU</code>, <code>.SS</code>→<code>.SHG</code> u.&nbsp;a. werden umgesetzt)</td></tr>
+<tr><td>Futures</td><td><code>CT=F</code></td><td>kein verlässliches Äquivalent → manuell überschreiben</td></tr>
+</table>
+
+<h3>Intervalle</h3>
+<p>EODHD liefert intraday nur <code>1m</code>, <code>5m</code> und <code>1h</code>. Andere Intervalle werden aus der nächstfeineren Auflösung <b>lokal aggregiert</b> (z.&nbsp;B. <code>15m</code> aus <code>5m</code>-Kerzen), damit die angeforderte Granularität stimmt. Historie je Intervall: 1m ≈ 120 Tage, 5m ≈ 600 Tage, 1h ≈ 7200 Tage – ältere Startdaten werden automatisch begrenzt. Tages-/Wochen-/Monatsdaten (<code>1d</code>/<code>1wk</code>/<code>1mo</code>) sind unbegrenzt.</p>
+
+<div class="warn"><b>Rate-Limits:</b> kostenloser EODHD-Tarif nur <b>20 Anfragen/Tag</b> (zum Testen); kostenpflichtige Tarife 100.000 Anfragen/Tag. Ein EOD-Abruf = 1 Anfrage pro Ticker.</div>
+
+<h3>Manuelle Ticker-Überschreibungen</h3>
+<p>Wie bei FMP: individuelle Zuordnung <i>Yahoo-Ticker → EODHD-Ticker</i> im Konfigurationsdialog. Gespeichert unter <code>_app:eodhd_ticker_overrides</code> in <code>config.db</code>.</p>
+
+<div class="info">Alle Provider liefern Daten im selben Format (Open/High/Low/Close/Volume, wie <code>yfinance</code>). Ein Wechsel des Providers erfordert keine Änderung an bestehenden Datenbanken oder Auswertungen – nur künftige Abrufe nutzen die neue Quelle.</div>
+
+<div class="info"><b>ISIN-Auflösung:</b> FMP und EODHD können beide ISINs zu Tickern auflösen (genutzt vom Scalable-Import und <code>backfill_isin.py</code>). Verwendet wird bevorzugt der aktive Datenprovider; ist dort kein Schlüssel hinterlegt, greift der jeweils andere. Ein EODHD-Schlüssel allein genügt also – ein zusätzlicher FMP-Key ist nicht nötig.</div>
 </body>
 </html>

@@ -17,13 +17,14 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <body>
 <h1>Data sources <small style="font-size:.6em;color:#888">tradinglib/providers/</small></h1>
 
-<p>All price and OHLC data flows through a swappable <b>provider layer</b>. By default <b>Yahoo Finance</b> (via <code>yfinance</code>) is used. Alternatively, <b>Financial Modeling Prep (FMP)</b> can be enabled as the data source – e.g. when Yahoo is temporarily blocked or rate-limited.</p>
+<p>All price and OHLC data flows through a swappable <b>provider layer</b>. By default <b>Yahoo Finance</b> (via <code>yfinance</code>) is used. Alternatively, <b>Financial Modeling Prep (FMP)</b> or <b>EOD Historical Data (EODHD)</b> can be enabled as the data source – e.g. when Yahoo is temporarily blocked or rate-limited.</p>
 
 <h2>Switching provider</h2>
 <p>Via the 🏵 button (configuration, visible to admins only) → <b>Data provider</b> section:</p>
 <ul>
-  <li><b>Active data provider:</b> <code>yahoo</code> (default) or <code>fmp</code></li>
+  <li><b>Active data provider:</b> <code>yahoo</code> (default), <code>fmp</code> or <code>eodhd</code></li>
   <li>The choice applies globally to all modules that fetch price data (<code>fetch_data.py</code>, <code>market_data.py</code>, <code>get_asset_data.py</code> …)</li>
+  <li>If the API key for <code>fmp</code>/<code>eodhd</code> is missing, the app falls back to Yahoo automatically (no error, just a log entry)</li>
 </ul>
 
 <div class="warn"><b>Recommendation – use Yahoo only as a fallback:</b> Yahoo Finance is connected via <code>yfinance</code>, an <b>unofficial</b> interface without an SLA. Frequent automated background fetches (see the "Setup &amp; Scheduler" help) risk blocks or rate limits. For recurring jobs, therefore set up <b>FMP as the primary provider</b> and keep Yahoo only as a fallback in case FMP limits are reached or no API key is stored.</div>
@@ -53,6 +54,38 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="warn"><b>Rate limits (free FMP plan):</b> 250 requests/day, 10 requests/minute. With intensive use (e.g. <code>get_asset_data.py /all</code>) these limits can be reached quickly.</div>
 
-<div class="info">Both providers deliver data in the same format (Open/High/Low/Close/Volume, like <code>yfinance</code>). Switching provider requires no change to existing databases or analyses – only future fetches use the new source.</div>
+<h2>EOD Historical Data (EODHD)</h2>
+<h3>Prerequisite: API key</h3>
+<ul>
+  <li>Create an API key at <code>eodhd.com</code></li>
+  <li>In the admin panel under <b>API access</b>, create a KSP entry <code>eodhd</code>, password = the API key</li>
+  <li>Otherwise identical to FMP: a green note confirms the key, <b>🔌 Test connection</b> checks access</li>
+</ul>
+
+<h3>Ticker compatibility</h3>
+<p>EODHD <b>always</b> uses a <code>CODE.EXCHANGE</code> format – even US symbols need a suffix. The conversion happens automatically:</p>
+<table>
+<tr><th>Security type</th><th>Yahoo symbol</th><th>EODHD symbol</th></tr>
+<tr><td>US stocks</td><td><code>AAPL</code></td><td><code>AAPL.US</code></td></tr>
+<tr><td>German stocks (Xetra)</td><td><code>SAP.DE</code></td><td><code>SAP.XETRA</code></td></tr>
+<tr><td>London</td><td><code>VOD.L</code></td><td><code>VOD.LSE</code></td></tr>
+<tr><td>Indices</td><td><code>^GSPC</code>, <code>^GDAXI</code></td><td><code>GSPC.INDX</code>, <code>GDAXI.INDX</code></td></tr>
+<tr><td>Cryptocurrencies</td><td><code>BTC-USD</code></td><td><code>BTC-USD.CC</code></td></tr>
+<tr><td>Forex</td><td><code>EURUSD=X</code></td><td><code>EURUSD.FOREX</code></td></tr>
+<tr><td>Other exchanges</td><td><code>AIR.PA</code>, <code>NESN.SW</code></td><td>mostly identical (<code>.AX</code>→<code>.AU</code>, <code>.SS</code>→<code>.SHG</code> etc. are mapped)</td></tr>
+<tr><td>Futures</td><td><code>CT=F</code></td><td>no reliable equivalent → override manually</td></tr>
+</table>
+
+<h3>Intervals</h3>
+<p>EODHD serves only <code>1m</code>, <code>5m</code> and <code>1h</code> intraday bars. Other intervals are <b>aggregated locally</b> from the next finer resolution (e.g. <code>15m</code> from <code>5m</code> bars), so callers get the granularity they asked for. History per interval: 1m ≈ 120 days, 5m ≈ 600 days, 1h ≈ 7200 days – earlier start dates are clamped automatically. Daily/weekly/monthly data (<code>1d</code>/<code>1wk</code>/<code>1mo</code>) is unlimited.</p>
+
+<div class="warn"><b>Rate limits:</b> the free EODHD plan allows only <b>20 requests/day</b> (for testing); paid plans allow 100,000 requests/day. One EOD fetch = 1 request per ticker.</div>
+
+<h3>Manual ticker overrides</h3>
+<p>As with FMP: a custom mapping <i>Yahoo ticker → EODHD ticker</i> can be added in the configuration dialog. Stored under <code>_app:eodhd_ticker_overrides</code> in <code>config.db</code>.</p>
+
+<div class="info">All providers deliver data in the same format (Open/High/Low/Close/Volume, like <code>yfinance</code>). Switching provider requires no change to existing databases or analyses – only future fetches use the new source.</div>
+
+<div class="info"><b>ISIN resolution:</b> FMP and EODHD can both resolve ISINs to tickers (used by the Scalable import and <code>backfill_isin.py</code>). The active data provider is preferred; if no key is stored there, the other one is used. An EODHD key alone is therefore sufficient – an additional FMP key is not required.</div>
 </body>
 </html>

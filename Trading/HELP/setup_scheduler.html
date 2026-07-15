@@ -103,7 +103,7 @@ schtasks /create /tn "Trading-StopLoss" /tr "\"&lt;APP&gt;\.venv\Scripts\python.
 <h3>Datenquelle (Marktdaten)</h3>
 <ul>
   <li><b>Yahoo Finance (Standard):</b> keine Registrierung nötig, sofort einsatzbereit. Es handelt sich aber um eine <b>inoffizielle Schnittstelle</b> (<code>yfinance</code> scrapt öffentliche Endpunkte) – ohne SLA, mit gelegentlichen Sperren oder Rate-Limits, besonders bei vielen automatisierten Hintergrund-Läufen.</li>
-  <li><b>Financial Modeling Prep (FMP), empfohlen für Hintergrund-Jobs:</b> kostenlosen API-Key auf <code>financialmodelingprep.com</code> registrieren, als KSP-Eintrag <code>fmp</code> hinterlegen und im Konfigurationsdialog (🏵) als aktiven Datenprovider auswählen. Details siehe Hilfe „Datenquellen (Yahoo / FMP)".</li>
+  <li><b>Financial Modeling Prep (FMP), empfohlen für Hintergrund-Jobs:</b> kostenlosen API-Key auf <code>financialmodelingprep.com</code> registrieren, als KSP-Eintrag <code>fmp</code> hinterlegen und im Konfigurationsdialog (🏵) als aktiven Datenprovider auswählen. Details siehe Hilfe „Datenquellen (Yahoo / FMP / EODHD)".</li>
 </ul>
 <div class="warn"><b>Empfehlung:</b> Für regelmäßige, automatisierte Abrufe (siehe Tabelle oben) FMP als primäre Quelle nutzen und Yahoo Finance nur als <b>Fallback</b> betrachten – z.&nbsp;B. wenn FMP-Limits (250 Anfragen/Tag im Free-Tier) erreicht sind oder kein API-Key hinterlegt ist. So bleibt die App auch bei einer Yahoo-Sperre funktionsfähig.</div>
 

@@ -225,17 +225,17 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     except Exception:
         pass
 
-    # ── 1b. FMP ISIN search (only when an FMP key is configured) ───────────
+    # ── 1b. Provider ISIN search (only when an API key is configured) ──────
     try:
-        from tradinglib.providers import get_fmp_provider
-        fmp = get_fmp_provider(db_path)
-        if fmp is not None:
-            symbol = (fmp.search_isin(isin) or '').strip().upper()
+        from tradinglib.providers import get_isin_resolver
+        provider = get_isin_resolver(db_path)
+        if provider is not None:
+            symbol = (provider.search_isin(isin) or '').strip().upper()
             if symbol and symbol != isin:
                 _write_isin_ticker(tickers_db, symbol, isin)
                 return symbol
     except Exception as e:
-        logger.debug(f'FMP ISIN lookup failed for {isin}: {e}')
+        logger.debug(f'Provider ISIN lookup failed for {isin}: {e}')
 
     # ── 2. yfinance network lookup ─────────────────────────────────────────
     try:

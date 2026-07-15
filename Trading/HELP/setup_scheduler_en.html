@@ -102,7 +102,7 @@ schtasks /create /tn "Trading-StopLoss" /tr "\"&lt;APP&gt;\.venv\Scripts\python.
 <h3>Data source (market data)</h3>
 <ul>
   <li><b>Yahoo Finance (default):</b> no registration needed, ready to use immediately. However, it is an <b>unofficial interface</b> (<code>yfinance</code> scrapes public endpoints) – no SLA, with occasional blocks or rate limits, especially with many automated background runs.</li>
-  <li><b>Financial Modeling Prep (FMP), recommended for background jobs:</b> register a free API key at <code>financialmodelingprep.com</code>, store it as a KSP entry <code>fmp</code> and select it as the active data provider in the configuration dialog (🏵). For details see the "Data sources (Yahoo / FMP)" help.</li>
+  <li><b>Financial Modeling Prep (FMP), recommended for background jobs:</b> register a free API key at <code>financialmodelingprep.com</code>, store it as a KSP entry <code>fmp</code> and select it as the active data provider in the configuration dialog (🏵). For details see the "Data sources (Yahoo / FMP / EODHD)" help.</li>
 </ul>
 <div class="warn"><b>Recommendation:</b> For recurring, automated fetches (see the table above) use FMP as the primary source and treat Yahoo Finance only as a <b>fallback</b> – e.g. when FMP limits (250 requests/day on the free tier) are reached or no API key is stored. That keeps the app functional even during a Yahoo block.</div>
 

@@ -75,32 +75,34 @@ def parse_args(argv=None):
 
 # ── Hilfsfunktionen ────────────────────────────────────────────────────────
 
-_FMP_PROVIDER = None
-_FMP_TRIED = False
+_ISIN_PROVIDER = None
+_ISIN_PROVIDER_TRIED = False
 
 
-def _get_fmp():
-    """Lazily build a FMPProvider from the configured KSP key (None if unavailable)."""
-    global _FMP_PROVIDER, _FMP_TRIED
-    if _FMP_TRIED:
-        return _FMP_PROVIDER
-    _FMP_TRIED = True
+def _get_isin_provider():
+    """Lazily build the ISIN-resolving provider from KSP (None if unavailable).
+
+    Uses whichever keyed provider (FMP or EODHD) has an API key configured.
+    """
+    global _ISIN_PROVIDER, _ISIN_PROVIDER_TRIED
+    if _ISIN_PROVIDER_TRIED:
+        return _ISIN_PROVIDER
+    _ISIN_PROVIDER_TRIED = True
     try:
-        from tradinglib.providers import _read_fmp_key
-        from tradinglib.providers.fmp_provider import FMPProvider
-        provider = FMPProvider(api_key=_read_fmp_key())
-        _FMP_PROVIDER = provider if provider.available else None
+        from tradinglib.providers import get_isin_resolver
+        _ISIN_PROVIDER = get_isin_resolver()
     except Exception as e:
-        logger.debug(f"FMP-Fallback nicht verfügbar: {e}")
-        _FMP_PROVIDER = None
-    return _FMP_PROVIDER
+        logger.debug(f"ISIN-Provider-Fallback nicht verfügbar: {e}")
+        _ISIN_PROVIDER = None
+    return _ISIN_PROVIDER
 
 
-def fetch_isin(ticker: str, use_fmp: bool = True) -> str | None:
+def fetch_isin(ticker: str, use_provider: bool = True) -> str | None:
     """Return the ISIN for ticker, or None when unavailable.
 
-    Tries yfinance first; falls back to the FMP company profile, which covers
-    many young US small-caps that yfinance returns no ISIN for.
+    Tries yfinance first; falls back to the configured data provider (FMP or
+    EODHD), which covers many young US small-caps that yfinance returns no
+    ISIN for.
     """
     try:
         isin = yf.Ticker(ticker).isin
@@ -109,16 +111,16 @@ def fetch_isin(ticker: str, use_fmp: bool = True) -> str | None:
     except Exception as e:
         logger.debug(f"{ticker}: yfinance-Fehler — {e}")
 
-    if use_fmp:
-        fmp = _get_fmp()
-        if fmp is not None:
+    if use_provider:
+        provider = _get_isin_provider()
+        if provider is not None:
             try:
-                isin = fmp.profile_isin(ticker)
+                isin = provider.profile_isin(ticker)
                 if isin:
-                    logger.debug(f"{ticker}: ISIN via FMP — {isin}")
+                    logger.debug(f"{ticker}: ISIN via {provider.name} — {isin}")
                     return isin
             except Exception as e:
-                logger.debug(f"{ticker}: FMP-Fehler — {e}")
+                logger.debug(f"{ticker}: {provider.name}-Fehler — {e}")
     return None
 
 

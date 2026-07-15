@@ -427,64 +427,88 @@ class SystemConfig(tools.Db_tools):
                             )
                             _c.commit()
 
-                    providers = ["yahoo", "fmp"]
+                    from tradinglib.providers import PROVIDERS, KEYED_PROVIDERS
+
+                    _PROVIDER_LABELS = {
+                        "yahoo": "Yahoo Finance (default)",
+                        "fmp": "Financial Modeling Prep (FMP)",
+                        "eodhd": "EOD Historical Data (EODHD)",
+                    }
+                    # Short names keep inline labels readable ("EODHD ticker"
+                    # rather than "EOD Historical Data (EODHD) ticker").
+                    _PROVIDER_SHORT = {"fmp": "FMP", "eodhd": "EODHD"}
+                    _PROVIDER_SIGNUP = {
+                        "fmp": "financialmodelingprep.com",
+                        "eodhd": "eodhd.com",
+                    }
+
+                    providers = list(PROVIDERS)
                     cur_provider = _read_app("data_provider", "yahoo")
                     try:
                         p_idx = providers.index(cur_provider)
                     except ValueError:
                         p_idx = 0
                     new_provider = st.selectbox(i18n.t("cfg.data_provider"), providers, p_idx,
-                                                format_func=lambda x: {"yahoo": "Yahoo Finance (default)", "fmp": "Financial Modeling Prep (FMP)"}.get(x, x))
+                                                format_func=lambda x: _PROVIDER_LABELS.get(x, x))
                     _write_app("data_provider", new_provider)
 
-                    if new_provider == "fmp":
+                    if new_provider in KEYED_PROVIDERS:
+                        _pname = new_provider
+                        _plabel = _PROVIDER_SHORT.get(_pname, _pname.upper())
                         # API key is managed via KSP — show status
                         try:
                             from tradinglib.ksplib import Ksp as _Ksp
                             _ksp_creds = _Ksp(storage_path=self._db_path.replace('config.db', ''),
-                                              secrets_path=self._db_path.replace('config.db', '')).get_ksp("fmp")
+                                              secrets_path=self._db_path.replace('config.db', '')).get_ksp(_pname)
                             _ksp_key = (_ksp_creds.get("password", "") if isinstance(_ksp_creds, dict) else "") or ""
                         except Exception:
                             _ksp_key = ""
                         if _ksp_key:
-                            st.success(i18n.t("cfg.fmp_ksp_found"))
+                            st.success(i18n.t("cfg.provider_ksp_found", provider=_pname))
                         else:
-                            st.warning(i18n.t("cfg.fmp_ksp_missing"))
+                            st.warning(i18n.t("cfg.provider_ksp_missing", provider=_pname,
+                                              url=_PROVIDER_SIGNUP.get(_pname, "")))
 
-                        cur_overrides_raw = _read_app("fmp_ticker_overrides", {})
+                        _ov_key = f"{_pname}_ticker_overrides"
+                        cur_overrides_raw = _read_app(_ov_key, {})
                         cur_overrides = cur_overrides_raw if isinstance(cur_overrides_raw, dict) else {}
-                        st.caption(i18n.t("cfg.fmp_overrides_caption"))
+                        st.caption(i18n.t("cfg.provider_overrides_caption", provider=_plabel))
                         col_y, col_f, col_del = st.columns([2, 2, 1])
-                        new_yf = col_y.text_input(i18n.t("cfg.fmp_override_yahoo"), key="_fmp_ov_yf")
-                        new_fmp = col_f.text_input(i18n.t("cfg.fmp_override_fmp"), key="_fmp_ov_fmp")
+                        new_yf = col_y.text_input(i18n.t("cfg.provider_override_yahoo"), key=f"_{_pname}_ov_yf")
+                        new_target = col_f.text_input(i18n.t("cfg.provider_override_target", provider=_plabel),
+                                                      key=f"_{_pname}_ov_target")
                         col_del.write("")
                         col_del.write("")
-                        if col_del.button(i18n.t("cfg.fmp_override_add"), key="_fmp_ov_add"):
-                            if new_yf.strip() and new_fmp.strip():
-                                cur_overrides[new_yf.strip()] = new_fmp.strip()
-                                _write_app("fmp_ticker_overrides", cur_overrides)
+                        if col_del.button(i18n.t("cfg.provider_override_add"), key=f"_{_pname}_ov_add"):
+                            if new_yf.strip() and new_target.strip():
+                                cur_overrides[new_yf.strip()] = new_target.strip()
+                                _write_app(_ov_key, cur_overrides)
                                 st.rerun()
                         if cur_overrides:
-                            for yf_tk, fmp_tk in list(cur_overrides.items()):
+                            for yf_tk, target_tk in list(cur_overrides.items()):
                                 c1, c2, c3 = st.columns([2, 2, 1])
                                 c1.code(yf_tk)
-                                c2.code(fmp_tk)
-                                if c3.button("✕", key=f"_fmp_del_{yf_tk}"):
+                                c2.code(target_tk)
+                                if c3.button("✕", key=f"_{_pname}_del_{yf_tk}"):
                                     del cur_overrides[yf_tk]
-                                    _write_app("fmp_ticker_overrides", cur_overrides)
+                                    _write_app(_ov_key, cur_overrides)
                                     st.rerun()
 
-                        if st.button(i18n.t("cfg.fmp_test_btn"), key="_fmp_test"):
+                        if st.button(i18n.t("cfg.provider_test_btn"), key=f"_{_pname}_test"):
                             if not _ksp_key:
-                                st.error(i18n.t("cfg.fmp_test_no_key"))
+                                st.error(i18n.t("cfg.provider_test_no_key"))
                             else:
                                 try:
-                                    from tradinglib.providers.fmp_provider import FMPProvider
-                                    ok = FMPProvider(api_key=_ksp_key).test_connection()
-                                    if ok:
-                                        st.success(i18n.t("cfg.fmp_test_ok"))
+                                    if _pname == "fmp":
+                                        from tradinglib.providers.fmp_provider import FMPProvider
+                                        ok = FMPProvider(api_key=_ksp_key).test_connection()
                                     else:
-                                        st.error(i18n.t("cfg.fmp_test_fail"))
+                                        from tradinglib.providers.eodhd_provider import EODHDProvider
+                                        ok = EODHDProvider(api_key=_ksp_key).test_connection()
+                                    if ok:
+                                        st.success(i18n.t("cfg.provider_test_ok"))
+                                    else:
+                                        st.error(i18n.t("cfg.provider_test_fail"))
                                 except Exception as _e:
                                     st.error(str(_e))
 
@@ -684,7 +708,7 @@ class SystemConfig(tools.Db_tools):
                     ("Pine Script Export", "pine_exporter"),
                     ("KI-Integration", "ai_client"),
                     ("Signal-Benachrichtigung", "signal_notifier"),
-                    ("Datenquellen (Yahoo / FMP)", "providers"),
+                    ("Datenquellen (Yahoo / FMP / EODHD)", "providers"),
                 ])
 
             with tabs[3]:
@@ -736,5 +760,5 @@ class SystemConfig(tools.Db_tools):
                 ("Sektorrotation / Sector rotation", "sector_rotation_page"),
                 ("Market Map", "market_map"),
                 ("Einmalinvestition / Lump sum", "compound_simulation"),
-                ("Datenquellen (Yahoo / FMP)", "providers"),
+                ("Datenquellen (Yahoo / FMP / EODHD)", "providers"),
             ])

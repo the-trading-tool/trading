@@ -17,6 +17,7 @@ Streamlit-basierte lokale Trading-App (noch nicht produktiv).
 | `tradinglib/tools.py` | Basis-Utilities: `Tools`, `Db_tools` (SQLite-Wrapper), `St_tools`, `ExpressionEvaluator*`, `BuySellSignalGenerator` |
 | `tradinglib/fetch_data.py` | Lokale OHLC-Daten aus SQLite laden + Yahoo-Finance-Fallback |
 | `tradinglib/market_data.py` | Zentraler yfinance-Wrapper mit Caching und lokalem DB-Fallback |
+| `tradinglib/providers/` | Austauschbare Marktdaten-Provider (`yahoo`/`fmp`/`eodhd`) hinter `get_provider()`; aktive Quelle = `_app:data_provider` in `config.db` |
 | `tradinglib/ticker_tools.py` | Ticker-Daten, `OHLCQueryPlanner`, Yahoo-Download |
 | `tradinglib/system_config.py` | App-Konfiguration via `config.db` (erbt von `Db_tools`) |
 | `tradinglib/multi_transaction.py` | Portfolio-Transaktionslogik, Buy/Sell-Signale |
@@ -646,10 +647,12 @@ einschränken (Auslöser: Scalable Capital handelt nicht jeden ^RUT-Small-Cap).
 **ISIN-Quelle / -Lücke:** ISINs liegen in `yf_tickers.db.stocks.ISIN`
 (`backfill_isin.py`), aber nur ~43 % gefüllt — gerade junge Small-Caps (PLUG,
 OKLO, RGTI…) fehlten, weil `yf.Ticker().isin` für sie nichts liefert.
-- `backfill_isin.py fetch_isin()` hat jetzt **FMP-Fallback** (`/v3/profile/{t}`
-  → `isin`) nach yfinance. FMP-Key via KSP-Eintrag `fmp`.
+- `backfill_isin.py fetch_isin()` hat jetzt **Provider-Fallback** nach yfinance.
+  (2026-07-15: nicht mehr FMP-fest — läuft über `get_isin_resolver()`, also FMP
+  *oder* EODHD, je nach aktivem Provider/hinterlegtem Key. Param hieß `use_fmp`,
+  jetzt `use_provider`; Helper `_get_fmp()` → `_get_isin_provider()`.)
 - `tradinglib/providers/fmp_provider.py`: neue Methode `profile_isin(ticker)`
-  (Inverse zu `search_isin`).
+  (Inverse zu `search_isin`); `eodhd_provider.py` bietet beide ebenfalls.
 - `IsinResolver` (in broker_tradability) liest `stocks.ISIN`, lädt Fehlende bei
   Bedarf nach und **schreibt sie zurück** → Lücke schließt sich progressiv.
 
@@ -684,3 +687,73 @@ Selektion auf Werte **mit gültiger ISIN** beschränkt — als Näherung für
 ist als Funktion/CLI nutzbar, aber noch **nicht** in den Live-Signal-Loop
 eingehängt (Integrationspunkt: vor dem Trade-Insert). Scalable-Pfad braucht den
 lokalen Proxy (Login/2FA, Session wird wiederverwendet).
+
+---
+
+## Neu in dieser Session (2026-07-15) — EODHD als dritter Datenprovider
+
+Die Provider-Schicht kennt jetzt **drei** Quellen: `yahoo` (Default), `fmp`, `eodhd`.
+Downstream (`market_data.py`, `fetch_data.py`, `get_asset_data.py`) blieb unverändert —
+alles läuft weiter über `get_provider()`.
+
+**`tradinglib/providers/eodhd_provider.py`** (neu, an `fmp_provider.py` angelehnt):
+`download()`, `ticker_history()`, `search_isin()`, `profile_isin()`, `test_connection()`.
+Key via KSP-Eintrag `eodhd`/`password`, Overrides unter `_app:eodhd_ticker_overrides`.
+
+**Ticker-Format — der Hauptunterschied zu FMP.** EODHD verlangt **immer**
+`CODE.EXCHANGE`, auch für US-Werte (`AAPL` allein liefert nichts). Indizes, Krypto
+und FX laufen über virtuelle Exchanges:
+
+| Yahoo | EODHD |
+|---|---|
+| `AAPL` | `AAPL.US` (Suffix wird angehängt) |
+| `SAP.DE` | `SAP.XETRA` |
+| `VOD.L` | `VOD.LSE` |
+| `^GSPC`, `^GDAXI` | `GSPC.INDX`, `GDAXI.INDX` |
+| `BTC-USD` | `BTC-USD.CC` |
+| `EURUSD=X` / `JPY=X` | `EURUSD.FOREX` / `USDJPY.FOREX` |
+| `CT=F` (Futures) | kein verlässliches Äquivalent → Override nötig |
+
+Die meisten Börsensuffixe sind identisch (`.PA`, `.MI`, `.SW`, `.TO`, `.HK` …) →
+`_SUFFIX_MAP` enthält **nur** die echten Abweichungen (`.DE→.XETRA`, `.L→.LSE`,
+`.AX→.AU`, `.WA→.WAR`, `.KS→.KO`, `.SS→.SHG`, `.SZ→.SHE`, `.KL→.KLSE`, `.BD→.BUD`)
+— Quelle ist die offizielle EODHD-Exchange-Liste, nicht geraten. Unsichere Kandidaten
+(`.T`, `.NS`, `.BO`, `.SI`) sind bewusst **nicht** gemappt → über Overrides lösen.
+`_eodhd_to_yahoo()` ist die Umkehrung (für die ISIN-Auflösung, deren Konsumenten
+Yahoo-Ticker erwarten).
+
+**Intervalle:** EODHD liefert intraday nur `1m`/`5m`/`1h`. Statt stillschweigend
+5m-Kerzen zurückzugeben, wenn `15m` angefragt wurde, wird die nächstfeinere
+Auflösung geholt und **lokal resampled** (`_resample_ohlcv`, O=first/H=max/L=min/
+C=last/V=sum). Startdatum wird an die Historien-Limits geklemmt (1m ≈ 120 d,
+5m ≈ 600 d, 1h ≈ 7200 d). `1d`/`1wk`/`1mo` → EOD-Endpoint mit `period=d/w/m`.
+
+**Refactorings drumherum (Verhalten für Bestands-FMP-Nutzer unverändert):**
+- `providers/__init__.py`: `_read_fmp_key` → generisches `_read_provider_key(name)`
+  (der alte Name bleibt als Wrapper, `backfill_isin.py` importiert ihn). Neu:
+  `KEYED_PROVIDERS`/`PROVIDERS`, `_build_keyed_provider()`, `get_eodhd_provider()`.
+  Fehlender Key → weiterhin stiller Fallback auf Yahoo (nur Log-Eintrag).
+- **`get_isin_resolver()`** (neu): ISIN-Auflösung war auf FMP verdrahtet
+  (`scalable_import.py`, `backfill_isin.py`). Jetzt gewinnt der **aktive**
+  Datenprovider, sonst der andere mit Key → ein EODHD-Key allein genügt, kein
+  Zusatz-FMP-Key mehr nötig. Bei `data_provider = yahoo`/`fmp` bleibt FMP erster
+  Kandidat → Bestandsverhalten identisch.
+- `system_config.py`: der FMP-Block ist jetzt **ein** generischer Pfad über
+  `KEYED_PROVIDERS` (Key-Status, Overrides, 🔌-Test). Locale-Keys `cfg.fmp_*` →
+  `cfg.provider_*` mit `{provider}`-Platzhalter (de+en). Die FMP-Texte rendern
+  wortgleich wie vorher; für Inline-Labels wird der Kurzname genutzt
+  (`EODHD-Ticker`, nicht `EOD Historical Data (EODHD)-Ticker`).
+- HELP `providers.html`/`providers_en.html` um EODHD-Abschnitt erweitert
+  (Ticker-Tabelle, Intervalle, Rate-Limits, ISIN-Hinweis); Labels „Datenquellen
+  (Yahoo / FMP / EODHD)" in `index.html`, `setup_scheduler*.html`, `system_config.py`.
+
+**⚠ Noch nicht gegen die Live-API getestet** — im Dev-Env ist kein EODHD-Key
+hinterlegt. Verifiziert wurde mit gemockten Responses (Ticker-Mapping hin/zurück,
+EOD-/Intraday-Shaping, 5m→15m-Resampling, MultiIndex-Form, ISIN-Suche inkl.
+Primary-Listing-Auswahl, Fallback ohne Key). Endpoints/Feldnamen stammen aus der
+aktuellen EODHD-Doku. **Erster echter Call = eigentlicher Test:** Key als
+KSP-Eintrag `eodhd` anlegen → 🏵-Konfiguration → 🔌 Verbindung testen.
+
+**Rate-Limits:** EODHD-Free nur **20 Anfragen/Tag** (reines Testkontingent — ein
+`get_asset_data.py`-Lauf sprengt das sofort), kostenpflichtig 100.000/Tag. Für
+echte Hintergrund-Jobs ist FMP-Free (250/Tag) praktikabler.
