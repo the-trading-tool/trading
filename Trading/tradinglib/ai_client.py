@@ -38,6 +38,31 @@ GeminiRateLimitError = AiRateLimitError
 
 # ── Helper function ───────────────────────────────────────────────────────────
 
+# Any 1–50 char unit repeated 5+ times in a row (`.` never crosses newlines).
+_REPEAT_RE = re.compile(r'(.{1,50}?)\1{4,}')
+
+
+def _collapse_repetition(text: str) -> str:
+    """Guard against LLM repetition loops in a generated answer.
+
+    Some models get stuck emitting the same short token over and over
+    ("nach-nach-nach…"), filling the response with garbage. Any unit that repeats
+    5+ times consecutively AND forms a run longer than 60 chars is trimmed to three
+    copies + an ellipsis; shorter/legitimate repeats (e.g. "!!!", a "---" rule) are
+    left untouched. Applied to every AI answer at the single chokepoint below.
+    """
+    if not text:
+        return text
+
+    def _repl(m):
+        run = m.group(0)
+        if len(run) < 60:          # leave short, likely-legit repeats alone
+            return run
+        return m.group(1) * 3 + ' […] '
+
+    return _REPEAT_RE.sub(_repl, text)
+
+
 def _parse_retry_delay(error_text: str, default: int = 65) -> int:
     """Extract retryDelay seconds from an API error text."""
     match = re.search(r"retryDelay['\"]:\s*['\"](\d+)s", error_text)
@@ -174,6 +199,8 @@ class GroqProvider(BaseProvider):
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.7,
                         max_tokens=max_tokens,
+                        # Discourage token-repetition loops (e.g. "nach-nach-nach…").
+                        frequency_penalty=0.3,
                     )
                     logger.info("Groq: OK via %s (attempt %d)", model, attempt)
                     return resp.choices[0].message.content, model
@@ -370,6 +397,7 @@ class AiClient:
         for prov in self._providers:
             try:
                 text, model        = prov.generate(question, max_tokens=max_tokens)
+                text               = _collapse_repetition(text)   # LLM loop guard
                 self.answer        = text
                 self.model_used    = model
                 self.provider_name = prov.name

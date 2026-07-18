@@ -457,6 +457,40 @@ def _compute_4weeks_snapshot(df: pd.DataFrame, interval: str, close_now: float) 
 
 # ── Daten + Indikatoren ───────────────────────────────────────────────────────
 
+def _result_from_df(df: pd.DataFrame, display_id: str, interval: str) -> dict:
+    """Build a market-overview result dict from an already-computed OHLC+indicator df.
+
+    Shared by _compute_for_symbol (market overview — fetches the df itself) and the
+    single-asset analysis tab in the Asset Viewer (reuses the chart's df, no re-fetch),
+    so both judge an asset by exactly the same indicator extraction / snippet logic.
+    """
+    close = df['Close'].dropna()
+    if close.empty:
+        return {'ticker': display_id, 'error': 'Keine Kursdaten'}
+
+    last_date  = str(df.index[-1])[:10]
+    last_close = round(float(close.iloc[-1]), 4)
+
+    week_ret  = round((float(close.iloc[-1]) / float(close.iloc[-6])  - 1) * 100, 2) if len(close) >= 6  else None
+    month_ret = round((float(close.iloc[-1]) / float(close.iloc[-22]) - 1) * 100, 2) if len(close) >= 22 else None
+
+    ind = _extract_indicator_values(df)
+    _ensure_core_indicators(df, ind)   # RSI + ATR immer verfügbar
+
+    return {
+        'ticker':            display_id,
+        'datum':             last_date,
+        'close':             last_close,
+        'week_ret':          week_ret,
+        'month_ret':         month_ret,
+        'indicator_values':  ind,
+        'trend_snippets':    _compute_trend_snippets(df, interval),
+        'extended_snippets': _compute_extended_snippets(df, interval),
+        'snapshot_4w':       _compute_4weeks_snapshot(df, interval, last_close),
+        'interval':          interval,
+    }
+
+
 def _compute_for_symbol(
     display_id: str, yf_ticker: str, interval: str,
     period: str, indicators: list, sys_conf,
@@ -480,32 +514,7 @@ def _compute_for_symbol(
         if df is None or df.empty:
             return {'ticker': display_id, 'error': 'Keine Daten verfügbar'}
 
-        close = df['Close'].dropna()
-        if close.empty:
-            return {'ticker': display_id, 'error': 'Keine Kursdaten'}
-
-        # Datum aus Index lesen
-        last_date = str(df.index[-1])[:10]
-        last_close = round(float(close.iloc[-1]), 4)
-
-        week_ret  = round((float(close.iloc[-1]) / float(close.iloc[-6])  - 1) * 100, 2) if len(close) >= 6  else None
-        month_ret = round((float(close.iloc[-1]) / float(close.iloc[-22]) - 1) * 100, 2) if len(close) >= 22 else None
-
-        ind = _extract_indicator_values(df)
-        _ensure_core_indicators(df, ind)   # RSI + ATR immer verfügbar
-
-        return {
-            'ticker':           display_id,
-            'datum':            last_date,
-            'close':            last_close,
-            'week_ret':         week_ret,
-            'month_ret':        month_ret,
-            'indicator_values':   ind,
-            'trend_snippets':     _compute_trend_snippets(df, interval),
-            'extended_snippets':  _compute_extended_snippets(df, interval),
-            'snapshot_4w':        _compute_4weeks_snapshot(df, interval, last_close),
-            'interval':           interval,
-        }
+        return _result_from_df(df, display_id, interval)
 
     except Exception as exc:
         logger.error(
@@ -741,8 +750,27 @@ def _build_market_prompt(
     headlines: dict | None = None,
     sections: dict | None = None,
     freetext: str | None = None,
+    asset_info: str | None = None,
+    market_status: str | None = None,
+    signals: str | None = None,
+    seasonality: str | None = None,
+    single_asset: bool = False,
+    primary_ticker: str | None = None,
+    membership_note: str | None = None,
 ) -> str:
-    """Multi-Asset Regime & Risk Model — hierarchisch strukturierter Analyse-Prompt."""
+    """Multi-Asset Regime & Risk Model — hierarchisch strukturierter Analyse-Prompt.
+
+    asset_info: optionaler vorformatierter Stammdaten-/Fundamental-Block (z.B.
+    Geschäftsbeschreibung + Kennzahlen aus asset_info), der vor der Analyse-Aufgabe
+    eingefügt wird. Wird von der Einzel-Asset-Analyse im Asset Viewer genutzt.
+    market_status: optionaler Index-Breadth-/Frühwarn-Statusblock (derselbe Hinweis
+    wie das Banner unter dem Trend-Chart), der als Marktkontext übergeben wird.
+    signals: optionaler Block mit Buy/Sell-Signalen + zugrunde liegender Formel.
+    seasonality: optionaler Saisonalitäts-Zusammenfassungsblock.
+    single_asset: True → Intro und Analyse-Aufgabe sind auf EIN Ziel-Asset zugeschnitten
+    (statt Multi-Asset-Makro-Bild). primary_ticker = das Analyse-Ziel; membership_note =
+    optionaler Hinweis, in welchem Leitindex das Asset enthalten ist.
+    """
     meta    = {s[0]: (s[2], s[3]) for s in symbol_meta}
     today   = datetime.now().strftime('%d.%m.%Y')
     _regime = {0.0: 'Seitwärts', 1.0: 'Bullenmarkt', 2.0: 'Bärenmarkt'}
@@ -759,44 +787,91 @@ def _build_market_prompt(
     if n_data != n_total:
         count_line += f" (davon {n_data} mit verfügbaren Daten, {n_total - n_data} mit FEHLER)"
 
-    lines = [
-        # Output language follows the user's app language; the scaffold below stays
-        # German (internal engineering text), only the AI's response language changes.
-        t('mv.prompt_lang_directive'),
-        "",
-        "Du bist ein quantitativer Multi-Asset-Stratege.",
-        "Deine Aufgabe ist INTERPRETATION, nicht Wiederholung: Verbinde die Assets zu einem",
-        "kohärenten Makro-Bild und leite handlungsrelevante Implikationen ab. Rohzahlen nur,",
-        "wenn sie eine Aussage BELEGEN — kein Vorlesen der Daten.",
-        f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
-        count_line,
-        "Regeln:",
-        f"  • Werte ALLE {n_total} Märkte aus (keine eigene Vorauswahl, Anzahl NICHT begrenzen).",
-        "  • Nutze NUR die gelieferten Daten (Marktdaten + Korrelationen). Erfinde keine externen "
-        "Fakten, News oder Kursziele.",
-        "  • Echte Widersprüche als KONFLIKT benennen, aber EINORDNEN (welches Signal wiegt schwerer "
-        "und warum) — nicht nur auflisten.",
-        "  • SEMANTIK beachten: ^TNX = 10J-RENDITE (steigende Rendite = fallender Anleihepreis = "
-        "Zinsdruck/Straffung → tendenziell RISK-OFF für Aktien/Gold, NICHT 'risk-on'). ZN=F = "
-        "Anleihe-PREIS (invers zu ^TNX). Gold/Silber/Kupfer als Metall-Komplex zusammen lesen; "
-        "^TNX und ZN=F als EIN Zins-Thema behandeln (nicht doppelt zählen).",
-        "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
-        "Korrelationen die stark vom Ø-Wert abweichen — dort liegt die eigentliche Information.",
-        "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung"
-        + (" (Ausnahme: DEPOT-PROFIL am Ende)." if inc.get('depot_55plus', True) else "."),
-        "",
-        "════════════════════════════════════════",
-        "MARKTDATEN",
-        "════════════════════════════════════════",
-        "",
-    ]
+    if single_asset:
+        # Einzel-Asset-Framing: EIN Ziel-Asset, der Rest (z.B. Leitindex) ist Kontext.
+        primary = primary_ticker or (results[0]['ticker'] if results else '')
+        lines = [
+            t('mv.prompt_lang_directive'),
+            "",
+            "Du bist ein quantitativer Aktien-/Asset-Analyst.",
+            "Deine Aufgabe: Analysiere das FOLGENDE EINZELNE ASSET umfassend und handlungsorientiert —",
+            "technisch (Trend/Momentum/Volatilität/Regime), fundamental (Kennzahlen) und im Kontext",
+            "seines Marktumfelds (Leitindex + Marktbreite). INTERPRETATION statt Wiederholung; Rohzahlen",
+            "nur, wenn sie eine Aussage BELEGEN.",
+            f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
+            f"Analysiertes Asset (ZIEL): {primary}",
+        ]
+        if membership_note:
+            lines.append(membership_note)
+        lines += [
+            "Regeln:",
+            "  • Analyse-ZIEL ist AUSSCHLIESSLICH das oben genannte Asset. Ein evtl. mitgelieferter Index/"
+            "weitere Werte sind reiner MARKTUMFELD-Kontext, kein eigenes Analyseziel.",
+            "  • Nutze NUR die gelieferten Daten. Erfinde keine externen Fakten, News oder Kursziele.",
+            "  • Echte Widersprüche (z.B. günstige Bewertung vs. technischer Abwärtstrend) als KONFLIKT "
+            "benennen und EINORDNEN — welches Signal wiegt schwerer und warum.",
+            "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
+            "Kompression/Breakout — dort liegt die eigentliche Information.",
+            "  • MA-POSITION KONSISTENT halten (siehe [1-TREND]-Block): Kipp-, Warn- und "
+            "Bestätigungssignale MÜSSEN zur tatsächlichen Kurs-vs-MA-Lage passen. Liegt der Kurs "
+            "bereits UNTER einer MA (z.B. SMA200), ist ein 'Durchbruch darunter' KEIN gültiges "
+            "Signal — dann ist die RÜCKEROBERUNG (Break darüber) das bullische Bestätigungssignal, "
+            "und der bärische Trigger ist der VERLUST einer tieferliegenden Unterstützung (SMA50/20, "
+            "sup_support, Pivot S1). Über einer MA gilt es spiegelbildlich. Niemals ein 'wieder unter' "
+            "eine MA schreiben, unter der der Kurs schon steht.",
+            "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung.",
+            "",
+            "════════════════════════════════════════",
+            "MARKTDATEN",
+            "════════════════════════════════════════",
+            "",
+        ]
+    else:
+        lines = [
+            # Output language follows the user's app language; the scaffold below stays
+            # German (internal engineering text), only the AI's response language changes.
+            t('mv.prompt_lang_directive'),
+            "",
+            "Du bist ein quantitativer Multi-Asset-Stratege.",
+            "Deine Aufgabe ist INTERPRETATION, nicht Wiederholung: Verbinde die Assets zu einem",
+            "kohärenten Makro-Bild und leite handlungsrelevante Implikationen ab. Rohzahlen nur,",
+            "wenn sie eine Aussage BELEGEN — kein Vorlesen der Daten.",
+            f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
+            count_line,
+            "Regeln:",
+            f"  • Werte ALLE {n_total} Märkte aus (keine eigene Vorauswahl, Anzahl NICHT begrenzen).",
+            "  • Nutze NUR die gelieferten Daten (Marktdaten + Korrelationen). Erfinde keine externen "
+            "Fakten, News oder Kursziele.",
+            "  • Echte Widersprüche als KONFLIKT benennen, aber EINORDNEN (welches Signal wiegt schwerer "
+            "und warum) — nicht nur auflisten.",
+            "  • SEMANTIK beachten: ^TNX = 10J-RENDITE (steigende Rendite = fallender Anleihepreis = "
+            "Zinsdruck/Straffung → tendenziell RISK-OFF für Aktien/Gold, NICHT 'risk-on'). ZN=F = "
+            "Anleihe-PREIS (invers zu ^TNX). Gold/Silber/Kupfer als Metall-Komplex zusammen lesen; "
+            "^TNX und ZN=F als EIN Zins-Thema behandeln (nicht doppelt zählen).",
+            "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
+            "Korrelationen die stark vom Ø-Wert abweichen — dort liegt die eigentliche Information.",
+            "  • MA-POSITION KONSISTENT halten (siehe [1-TREND] je Asset): Kipp-/Warn-/Bestätigungs"
+            "signale müssen zur tatsächlichen Kurs-vs-MA-Lage passen. Liegt der Kurs bereits UNTER "
+            "einer MA (z.B. SMA200), ist ein 'Durchbruch darunter' KEIN gültiges Signal — dann ist die "
+            "RÜCKEROBERUNG (Break darüber) bullisch und der bärische Trigger der VERLUST einer tiefer"
+            "liegenden Unterstützung. Über einer MA spiegelbildlich. Nie 'wieder unter' eine MA "
+            "schreiben, unter der der Kurs schon steht.",
+            "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung"
+            + (" (Ausnahme: DEPOT-PROFIL am Ende)." if inc.get('depot_55plus', True) else "."),
+            "",
+            "════════════════════════════════════════",
+            "MARKTDATEN",
+            "════════════════════════════════════════",
+            "",
+        ]
 
     for r in results:
         ticker = r['ticker']
         name, cat = meta.get(ticker, (ticker, ''))
+        ctx_tag = "  (KONTEXT — Leitindex/Marktumfeld, NICHT das Analyseziel)" if r.get('context') else ""
 
         if r.get('error'):
-            lines += [f"─── {ticker} | {name} ───", f"FEHLER: {r['error']}", ""]
+            lines += [f"─── {ticker} | {name}{ctx_tag} ───", f"FEHLER: {r['error']}", ""]
             continue
 
         close     = r['close']
@@ -805,7 +880,7 @@ def _build_market_prompt(
         month_str = f"{r['month_ret']:+.1f}%" if r['month_ret'] is not None else "n/a"
 
         lines += [
-            f"─── {ticker} | {name} | {cat} ───",
+            f"─── {ticker} | {name} | {cat}{ctx_tag} ───",
             f"Kurs: {close}  |  Stand: {r['datum']}  |  1W: {week_str}  |  1M: {month_str}",
         ]
 
@@ -987,7 +1062,115 @@ def _build_market_prompt(
         if _corr_block:
             lines.append(_corr_block)
 
+    # ── Index-Status / Marktbreite (Einzel-Asset-Analyse) ──────────────────────
+    if market_status and market_status.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "INDEX-STATUS / MARKTBREITE (Frühwarn-Banner des zugehörigen Index)",
+            "Score-Skala 0–100; höherer Frühwarn-Score = mehr Stress. Kontext, kein Einzelwert-Vorlesen.",
+            "════════════════════════════════════════",
+            "",
+            market_status.strip(),
+            "",
+        ]
+
+    # ── Unternehmens-/Asset-Info (Einzel-Asset-Analyse) ────────────────────────
+    if asset_info and asset_info.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "UNTERNEHMENS- / ASSET-INFO (Stammdaten + Fundamental-Kennzahlen)",
+            "════════════════════════════════════════",
+            "",
+            asset_info.strip(),
+            "",
+        ]
+
+    # ── Chart-Signale + Formel (Einzel-Asset-Analyse) ──────────────────────────
+    if signals and signals.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "CHART-SIGNALE (Buy/Sell des Trend-Charts) + zugrunde liegende Formel",
+            "════════════════════════════════════════",
+            "",
+            signals.strip(),
+            "",
+        ]
+
+    # ── Saisonalität (Einzel-Asset-Analyse) ────────────────────────────────────
+    if seasonality and seasonality.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "SAISONALITÄT (historische Jahresverläufe, aktuelle Position im Jahr)",
+            "════════════════════════════════════════",
+            "",
+            seasonality.strip(),
+            "",
+        ]
+
     # ── Analyse-Aufgabe ────────────────────────────────────────────────────────
+    if single_asset:
+        primary = primary_ticker or (results[0]['ticker'] if results else '')
+        lines += [
+            "════════════════════════════════════════",
+            "ANALYSE-AUFGABE",
+            "════════════════════════════════════════",
+            f"Ziel: {primary}",
+            "",
+            "TEIL 1 — ASSET-THESE (zuerst! 3–5 Sätze, das Wichtigste oben):",
+            f"  • Was ist der dominante Treiber JETZT für {primary}? Verbinde technisches Bild "
+            "(Trend/Momentum/Volatilität/Regime), fundamentale Lage (Bewertung/Profitabilität/Bilanz) "
+            "und Marktumfeld (Leitindex/Marktbreite) zu EINER kohärenten These — belege mit 2–3 Werten.",
+            "  • 1 Satz: Welches Signal würde diese These KIPPEN?",
+            "",
+            f"TEIL 2 — TECHNISCHE EVIDENZ (Ziel {primary}; ein evtl. Leitindex NUR als 1 klar "
+            "markierte Kontext-Zeile, nicht als Analyseziel):",
+            "  Format: <ticker>: <bull/bear/sideways> · Mom <stark/neutral/schwach> · Vol "
+            "<hoch/normal/niedrig> · Regime <risk-on/off/unklar> · Auffälligkeit: <Extremwert/"
+            "Vorzeichenwechsel oder '—'>",
+            "  Schwellen (VERBINDLICH): Trend bull=Kurs>SMA50 UND >SMA200 · bear=<SMA50 UND <SMA200 · "
+            "sonst sideways.  Momentum(RSI14): stark≥60 · neutral 40–59 · schwach<40 (MACD-Hist "
+            "bestätigt +/−; widerspricht es → neutral + KONFLIKT).  Volatilität(ATR% Kurs): niedrig<1.5 "
+            "· normal 1.5–3.0 · hoch>3.0.  Regime nur bei eindeutiger Ausrichtung, sonst 'unklar'.",
+        ]
+        if asset_info:
+            lines += [
+                "",
+                "TEIL 3 — FUNDAMENTALE EINORDNUNG:",
+                "  • Bewertung (günstig/fair/teuer) anhand KGV/EV-EBITDA/KBV/KUV im Verhältnis zur "
+                "Ertragslage; Qualität (Margen, ROE, Umsatzwachstum) und Bilanzrisiko (Debt/Equity, "
+                "Current Ratio). Benenne den zentralen Konflikt Bewertung ↔ Qualität, falls vorhanden.",
+            ]
+        if seasonality:
+            lines += [
+                "",
+                "TEIL 4 — SAISONALITÄT:",
+                "  • Stützt oder widerspricht das saisonale Muster die technische These? Ordne "
+                "Aufwärts-Wahrscheinlichkeit und Ø-Forward-Return ein (nicht nur nennen).",
+            ]
+        if signals:
+            lines += [
+                "",
+                "TEIL 5 — SIGNALLAGE:",
+                "  • Bewerte die im Signale-Block genannten Buy/Sell-Signale samt Formel: steht "
+                "aktuell ein Signal an, und wie tragfähig ist es angesichts Trend/Regime/Fundamental? "
+                "Konflikt zwischen Signal und Gesamtbild ausdrücklich benennen.",
+            ]
+        lines += [
+            "",
+            f"FAZIT — 2–3 Sätze, datenbasiert, zu {primary} (KEIN pauschaler Kauf-/Verkaufsrat): "
+            "Chancen vs. Risiken, und worauf als Nächstes zu achten ist.",
+        ]
+        # Freitext + Rückgabe: die Multi-Asset-Zusatzblöcke unten überspringen.
+        if freetext and freetext.strip():
+            lines += [
+                "",
+                "════════════════════════════════════════",
+                "INDIVIDUELLE ZUSATZFRAGEN / ANWEISUNGEN",
+                "════════════════════════════════════════",
+                freetext.strip(),
+            ]
+        return "\n".join(lines)
+
     lines += [
         "════════════════════════════════════════",
         "ANALYSE-AUFGABE",
@@ -1113,6 +1296,175 @@ _SECTION_DEFAULTS: dict[str, tuple[str, bool]] = {
     'trend_compare':      ('Trendvergleich & Umschichtung',           True),
     'depot_55plus':       ('Depot-Profil 55+',                        True),
 }
+
+# Section-Preset für die Einzel-Asset-Analyse (Asset-Viewer-Tab). Die portfolio-
+# bezogenen Abschnitte des Market Overview (Cross-Asset-Korrelationen, Global Summary,
+# 4-Wochen-Umschichtung, Depot 55+) sind AUS — sie ergeben nur über viele Assets Sinn —
+# während alle Pro-Asset-Kriterien (Trend, Momentum, Volatilität, Regime, Pivots,
+# Snippets, 4-Wochen-Vergleich) AN bleiben, damit ein einzelnes Asset nach demselben
+# Maßstab beurteilt wird wie im Market Overview.
+_SINGLE_ASSET_SECTIONS: dict[str, bool] = {
+    'regime_optional':   True,
+    'pivot':             True,
+    'support_resist':    True,
+    'snippets':          True,
+    'extended_snippets': True,
+    'compare_4w':        True,
+    'headlines':         False,
+    'correlations':      False,
+    'global_summary':    False,
+    'trend_compare':     False,
+    'depot_55plus':      False,
+}
+
+
+def build_single_asset_prompt(
+    df: pd.DataFrame, display_id: str, name: str, category: str,
+    interval: str, period: str,
+    sections: dict | None = None,
+    asset_info: str | None = None,
+    market_status: str | None = None,
+    signals: str | None = None,
+    seasonality: str | None = None,
+    parent_index: tuple | None = None,
+    indicators: list | None = None,
+    sys_conf=None,
+    freetext: str | None = None,
+) -> str:
+    """Builds the AI prompt for a SINGLE asset, reusing the market-overview prompt
+    scaffold (same per-asset criteria / thresholds) with a single-asset framing.
+
+    df: already-computed OHLC + indicator DataFrame from the chart (no re-fetch).
+    asset_info:    optional pre-formatted fundamentals/business-summary block.
+    market_status: optional index breadth / early-warning status block.
+    signals:       optional buy/sell-signals + formula block.
+    seasonality:   optional seasonality summary block.
+    parent_index:  optional (display_id, yf_ticker, name) of the leading index the
+                   asset belongs to — computed as a CONTEXT data block + membership note.
+    freetext:      optional individual user question appended at the end.
+    """
+    result = _result_from_df(df, display_id, interval)
+    result['name']     = name
+    result['category'] = category
+    results     = [result]
+    symbol_meta = [(display_id, display_id, name, category)]
+    membership_note = None
+
+    # Leitindex als Kontext-Datenblock (eigene OHLC/Indikatoren), plus Membership-Hinweis.
+    if parent_index and sys_conf is not None:
+        try:
+            idx_id, idx_yf = parent_index[0], parent_index[1]
+            idx_name = parent_index[2] if len(parent_index) > 2 else idx_id
+            idx_res = _compute_for_symbol(
+                idx_id, idx_yf, interval, period, list(indicators or []), sys_conf
+            )
+            idx_res['name']     = idx_name
+            idx_res['category'] = 'Index'
+            idx_res['context']  = True
+            results.append(idx_res)
+            symbol_meta.append((idx_id, idx_yf, idx_name, 'Index'))
+            membership_note = (f"Zugehörigkeit: {display_id} ist Bestandteil des Leitindex "
+                               f"{idx_id} ({idx_name}) — dessen Daten sind als KONTEXT beigefügt.")
+        except Exception:
+            logger.warning("single-asset: parent index compute failed", exc_info=True)
+
+    sec = sections if sections is not None else dict(_SINGLE_ASSET_SECTIONS)
+    return _build_market_prompt(
+        results, symbol_meta, interval, period, indicators=[],
+        headlines=None, sections=sec, freetext=freetext,
+        asset_info=asset_info, market_status=market_status,
+        signals=signals, seasonality=seasonality,
+        single_asset=True, primary_ticker=display_id, membership_note=membership_note,
+    )
+
+
+def render_single_asset_ai(
+    df: pd.DataFrame, display_id: str, name: str, category: str,
+    interval: str, period: str,
+    asset_info: str | None = None,
+    market_status: str | None = None,
+    signals: str | None = None,
+    seasonality: str | None = None,
+    parent_index: tuple | None = None,
+    indicators: list | None = None,
+    sys_conf=None,
+    username: str = 'admin',
+    region=st,
+) -> None:
+    """Self-contained single-asset AI analysis UI for the Asset Viewer tab.
+
+    Two-step flow inside the caller's fragment:
+      1. free-text question + "Analyse starten" button
+      2. on click → build prompt (reusing the market-overview logic) → AiClient →
+         cache result in session_state (keyed per ticker so switching assets resets).
+    """
+    result_key = f'_asset_ai_result_{display_id}'
+    cached     = st.session_state.get(result_key)
+
+    region.caption(t('asset_ai.intro'))
+
+    freetext = region.text_area(
+        t('asset_ai.freetext_label'),
+        value='',
+        height=80,
+        placeholder=t('asset_ai.freetext_placeholder'),
+        key=f'_asset_ai_freetext_{display_id}',
+    )
+
+    if region.button(t('asset_ai.run_button'), type='primary', key=f'_asset_ai_btn_{display_id}'):
+        if df is None or df.empty:
+            region.warning(t('asset_ai.no_data'))
+            return
+        prompt = build_single_asset_prompt(
+            df, display_id, name, category, interval, period,
+            asset_info=asset_info, market_status=market_status,
+            signals=signals, seasonality=seasonality,
+            parent_index=parent_index, indicators=indicators, sys_conf=sys_conf,
+            freetext=freetext,
+        )
+        with st.spinner(t('mv.spinner_ai')):   # module-level: writes into the active tab context
+            try:
+                client   = AiClient(username=username)
+                analysis = client.run_question(prompt, max_tokens=2800)
+                st.session_state[result_key] = {
+                    'analysis':     analysis,
+                    'model':        client.model_used,
+                    'provider_log': client.provider_log,
+                    'prompt':       prompt,
+                    'ts':           datetime.now().strftime('%d.%m.%Y %H:%M'),
+                }
+                cached = st.session_state[result_key]
+            except AiRateLimitError as exc:
+                region.error(t('mv.err_ratelimit', error=exc))
+                return
+            except AiProviderError as exc:
+                region.error(t('mv.err_provider', error=exc))
+                return
+            except Exception as exc:
+                logger.exception("asset_ai: unexpected AI error")
+                region.error(t('mv.err_unexpected', error=exc))
+                return
+
+    if cached:
+        region.markdown("---")
+        provider_log = cached.get('provider_log', [])
+        if provider_log:
+            parts = []
+            for e in provider_log:
+                if e['status'] == 'ok':
+                    parts.append(f"✅ **{e['provider']}** · `{e['model']}`")
+                else:
+                    err = (e.get('error') or '')[:80]
+                    parts.append(f"❌ ~~{e['provider']}~~ — {err}")
+            region.markdown("  →  ".join(parts))
+        region.markdown(t('asset_ai.result_header', ts=cached.get('ts', '?')))
+        region.markdown(cached.get('analysis', ''))
+        # Write to the expander's own handle — bare region.* would target the tab, not
+        # the expander, so the prompt would spill out below it.
+        _exp = region.expander(t('asset_ai.prompt_debug'), expanded=False)
+        _p = cached.get('prompt', '')
+        _exp.caption(t('asset_ai.prompt_length', chars=f"{len(_p):,}", tokens=f"{len(_p)//4:,}"))
+        _exp.code(_p, language='text')
 
 
 # ── Streamlit-Seite ────────────────────────────────────────────────────────────

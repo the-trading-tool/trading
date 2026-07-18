@@ -4,7 +4,7 @@ from tradinglib import ( tiny_chart as tc, search as sr,
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
 from tradinglib.i18n import t, current_language
 from tradinglib.premium_availability import PAPER_TRADING_AVAILABLE, SEASONALITY_AVAILABLE
-from tradinglib.license_manager import has_feature, FEATURE_SEASONALITY
+from tradinglib.license_manager import has_feature, FEATURE_SEASONALITY, FEATURE_STRATEGY_ENGINE
 import streamlit as st
 import streamlit_nested_layout
 import datetime as dt
@@ -119,6 +119,269 @@ class render_mainpage(fetch_data.FetchData):
         except Exception:
             pass
         return ''
+
+    def _build_asset_info_block(self, ticker: str, info_text: str = '') -> str:
+        """Compact business-summary + fundamentals text for the AI analysis tab.
+
+        Read straight from asset_info (self.data) via get_ticker_value — the same
+        source as the Kennzahlen tab. Only non-empty fields are included; margin/
+        growth/return fields are stored as fractions and shown as %. Large numbers
+        are abbreviated (Mrd/Mio). Returns '' when nothing is available.
+        """
+        def _g(key, digits=2):
+            try:
+                v = self.get_ticker_value(ticker, key, digits=digits)
+            except Exception:
+                return None
+            if v is None or v == '' or v == 0:
+                return None
+            if isinstance(v, float) and v != v:   # NaN
+                return None
+            return v
+
+        def _pct(key):   # fraction field (0.0133 → 1.33 %)
+            v = _g(key, digits=6)
+            return None if v is None else f"{round(v * 100, 2)}%"
+
+        def _aspct(key):  # field ALREADY stored in percent (0.47 = 0.47 %) — no rescale
+            v = _g(key, digits=4)
+            return None if v is None else f"{v}%"
+
+        def _big(key):
+            v = _g(key, digits=2)
+            if v is None:
+                return None
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return None
+            a = abs(f)
+            if a >= 1e9:
+                return f"{f / 1e9:.1f} Mrd"
+            if a >= 1e6:
+                return f"{f / 1e6:.1f} Mio"
+            return f"{f:g}"
+
+        lines: list[str] = []
+
+        if info_text:
+            lines.append(str(info_text).strip())
+            lines.append("")
+
+        def _row(label, pairs):
+            parts = [f"{lbl} {val}" for lbl, val in pairs if val is not None]
+            if parts:
+                lines.append(f"{label}: " + " · ".join(parts))
+
+        meta = [(lbl, _g(k)) for lbl, k in
+                [('Typ', 'quoteType'), ('Sektor', 'sector'), ('Branche', 'industry'),
+                 ('Land', 'country'), ('Währung', 'currency')]]
+        _row("Stammdaten", meta)
+
+        _row("Bewertung", [
+            ('Fwd-KGV', _g('forwardPE')), ('KGV', _g('trailingPE')),
+            ('PEG', _g('trailingPegRatio')), ('KBV', _g('priceToBook')),
+            ('KUV', _g('priceToSalesTrailing12Months')),
+            ('EV/EBITDA', _g('enterpriseToEbitda')),
+        ])
+        _row("Größe", [
+            ('MarketCap', _big('marketCap')), ('EnterpriseValue', _big('enterpriseValue')),
+            ('FreeCashflow', _big('freeCashflow')),
+        ])
+        _row("Profitabilität", [
+            ('Nettomarge', _pct('profitMargins')), ('Bruttomarge', _pct('grossMargins')),
+            ('EBITDA-Marge', _pct('ebitdaMargins')), ('ROE', _pct('returnOnEquity')),
+            ('ROA', _pct('returnOnAssets')), ('Umsatzwachstum', _pct('revenueGrowth')),
+        ])
+        _row("Bilanz", [
+            ('Debt/Equity', _g('debtToEquity')), ('Current Ratio', _g('currentRatio')),
+        ])
+        _row("Analysten", [
+            ('Kursziel-Ø', _g('targetMeanPrice')), ('Rating', _g('recommendationKey')),
+            ('Rating-Ø', _g('recommendationMean')), ('#Analysten', _g('numberOfAnalystOpinions')),
+        ])
+        _row("Dividende", [
+            # dividendYield is stored ALREADY in percent (4.68 = 4.68 %) — do not rescale;
+            # payoutRatio is a fraction (0.24 → 24 %).
+            ('Rendite', _aspct('dividendYield')), ('Rate', _g('dividendRate')),
+            ('Payout', _pct('payoutRatio')),
+        ])
+        # ETF / Fonds — ytdReturn / netExpenseRatio are already in percent.
+        _row("Fonds", [
+            ('Volumen', _big('netAssets') or _big('totalAssets')),
+            ('TER', _aspct('netExpenseRatio')), ('YTD', _aspct('ytdReturn')),
+            ('Anbieter', _g('fundFamily')),
+        ])
+
+        return "\n".join(lines).strip()
+
+    def _build_market_stress_text(self, index_name) -> str:
+        """Plain-text form of the Trend-tab breadth early-warning banner, for the AI.
+
+        Reuses compute_market_stress (same data as the on-screen banner) and renders a
+        compact German status block. Returns '' for non-index assets or when no breadth
+        data is available. Computed independently of the 'show_regime' display toggle so
+        the AI still receives the index-status context the user pointed at.
+        """
+        try:
+            from tradinglib.regime_data_engine import compute_market_stress
+            if not index_name or not str(index_name).startswith('^'):
+                return ''
+            s = compute_market_stress(index_name)
+        except Exception:
+            logger.debug('market-stress text skipped', exc_info=True)
+            return ''
+        if not s:
+            return ''
+
+        def _num(key, fmt='{:.0f}'):
+            v = s.get(key)
+            try:
+                return fmt.format(float(v))
+            except (TypeError, ValueError):
+                return '?'
+
+        idx    = str(index_name).lstrip('^') or str(index_name)
+        level  = s.get('level')
+        rec    = s.get('recovery_level', 'none')
+        lines  = [f"Index: {idx}"]
+        if level in ('warning', 'elevated'):
+            lines.append(f"Frühwarn-Status: {level} (Frühwarn-Score {_num('score')}/100)")
+        elif rec in ('turning', 'building'):
+            lines.append(f"Erholungs-Status: {rec} (Erholungs-Score {_num('recovery_score')}/100)")
+        else:
+            state = ('ruhig/gesund' if s.get('bull', 0) > s.get('bear', 0)
+                     else 'gedämpft/ausgewaschen')
+            lines.append(f"Status: {state} (Frühwarn-Score {_num('score')}/100)")
+        lines.append(
+            f"Marktbreite: Bull {_num('bull')}% · Bär {_num('bear')}% · "
+            f"Seitwärts {_num('side')}%  (Basis {s.get('n', '?')} Werte, Stand {s.get('as_of', '?')})"
+        )
+        if s.get('divergence'):
+            lines.append(
+                f"⚠ Divergenz: Index {_num('index_change', '{:+.1f}')}% in ~10 Tagen, "
+                "aber die Marktbreite verschlechtert sich."
+            )
+        return "\n".join(lines)
+
+    def _build_signals_text(self) -> str:
+        """Buy/Sell signals of the trend chart + the formulas that generated them.
+
+        Reads the buy_close/sell_close columns from the chart df (self.df — a price
+        wherever a signal fired, NaN otherwise) and the buy_query/sell_query formulas
+        from config. Returns '' when the chart df has no signal columns.
+        """
+        df = self.df
+        if df is None or getattr(df, 'empty', True):
+            return ''
+        has_date = 'Date' in df.columns
+        lines: list[str] = []
+
+        buy_q  = self.sys_conf.get_value('buy_query', '')
+        sell_q = self.sys_conf.get_value('sell_query', '')
+        if buy_q:
+            lines.append(f"Buy-Formel:  {buy_q}")
+        if sell_q:
+            lines.append(f"Sell-Formel: {sell_q}")
+
+        def _fmt_date(row):
+            d = row['Date'] if has_date else row.name
+            try:
+                return str(d)[:10]
+            except Exception:
+                return str(d)
+
+        def _recent(col, label, n=5):
+            if col not in df.columns:
+                return
+            sub = df[df[col].notna()]
+            if sub.empty:
+                lines.append(f"{label}: keine im dargestellten Zeitraum.")
+                return
+            parts = []
+            for _, row in sub.tail(n).iterrows():
+                try:
+                    parts.append(f"{_fmt_date(row)} @ {round(float(row[col]), 2)}")
+                except Exception:
+                    continue
+            lines.append(f"{label}: {len(sub)} im Zeitraum, zuletzt {', '.join(parts)}")
+
+        _recent('buy_close', 'Buy-Signale')
+        _recent('sell_close', 'Sell-Signale')
+
+        # Ist auf der letzten Kerze aktuell ein Signal aktiv?
+        try:
+            last = df.iloc[-1]
+            last_date = _fmt_date(last)
+            active = []
+            if 'buy_close' in df.columns and pd.notna(last.get('buy_close')):
+                active.append('BUY')
+            if 'sell_close' in df.columns and pd.notna(last.get('sell_close')):
+                active.append('SELL')
+            if active:
+                lines.append(f"Aktuell (letzte Kerze {last_date}): {' & '.join(active)}-Signal aktiv.")
+            else:
+                lines.append(f"Aktuell (letzte Kerze {last_date}): kein neues Signal.")
+        except Exception:
+            pass
+
+        return "\n".join(lines)
+
+    def _render_asset_report_button(self, region, ticker, longname, interval, period,
+                                    info_text, asset_info_block, signals_block, season_block,
+                                    seasonality_enabled=False):
+        """Build + offer the self-contained HTML report (Trend chart, key data, info,
+        seasonality, AI analysis) for download; the user prints it to PDF in the browser.
+
+        Built on demand (button) and cached in session_state per ticker — the report
+        inlines plotly.js (~large) and builds a seasonality figure, so it must not run
+        on every rerun.
+        """
+        region.markdown("---")
+        region.caption(t('asset_ai.report_hint'))
+        report_key = f'_asset_report_html_{ticker}'
+
+        if region.button(t('asset_ai.report_button'), key=f'_rep_btn_{ticker}'):
+            with st.spinner(t('asset_ai.report_spinner')):
+                try:
+                    from tradinglib import asset_report as ar
+                    # Seasonality chart only with the FEATURE_SEASONALITY license.
+                    season_fig = None
+                    if seasonality_enabled:
+                        try:
+                            season_fig = sn.build_seasonality_figure(ticker, longname)
+                        except Exception:
+                            logger.debug("seasonality figure failed", exc_info=True)
+                    ai = st.session_state.get(f'_asset_ai_result_{ticker}') or {}
+                    labels = {k: t(f'report.{k}') for k in
+                              ('title', 'trend', 'keydata', 'info', 'seasonality',
+                               'signals', 'ai', 'generated', 'footer')}
+                    trend_fig = self.t_chart.fig if getattr(self, 't_chart', None) else None
+                    html_doc = ar.build_asset_report_html(
+                        ticker=ticker, name=longname, interval=interval, period=period,
+                        generated_ts=dt.datetime.now().strftime('%d.%m.%Y %H:%M'),
+                        trend_fig=trend_fig,
+                        keydata_text=self._build_asset_info_block(self.ticker, ''),
+                        info_text=info_text or '',
+                        season_fig=season_fig, season_text=season_block or '',
+                        signals_text=signals_block or '',
+                        ai_analysis=ai.get('analysis', ''), ai_ts=ai.get('ts', ''),
+                        ai_model=ai.get('model', ''),
+                        labels=labels,
+                    )
+                    st.session_state[report_key] = html_doc
+                except Exception as exc:
+                    logger.exception("asset report build failed")
+                    region.error(t('mv.err_unexpected', error=exc))
+
+        if st.session_state.get(report_key):
+            safe = str(ticker).replace('^', '').replace('/', '_').replace('=', '_')
+            region.download_button(
+                t('asset_ai.report_download'),
+                data=st.session_state[report_key].encode('utf-8'),
+                file_name=f"{safe}_report.html",
+                mime='text/html', key=f'_rep_dl_{ticker}',
+            )
 
     def _inject_justetf_auto_open(self, ticker: str, url: str, tab_label: str) -> None:
         """Open justETF in a new tab on the first click on the Info tab per ticker/session.
@@ -734,11 +997,16 @@ class render_mainpage(fetch_data.FetchData):
                         news_articles = []
 
                     seasonality_enabled = SEASONALITY_AVAILABLE and has_feature(FEATURE_SEASONALITY) and sn is not None
+                    # AI analysis tab — only with a Strategy-Engine license. Passes the same
+                    # metrics + info + index-status the user sees to the AI (market_overview logic).
+                    ai_enabled = has_feature(FEATURE_STRATEGY_ENGINE)
 
                     # "Kennzahlen" / "Key Data" holds both headline rows (price/close/
                     # currency/open/low/high/52-week range/ratios) — right after Trend
                     # so it stays close to the default view.
                     tab_list = [t('main.tab_trend'), t('main.tab_overview')]
+                    if ai_enabled:
+                        tab_list.append(t('main.tab_ai'))
                     if seasonality_enabled:
                         tab_list.append(t('main.tab_seasonality'))
                     if has_info:
@@ -755,6 +1023,7 @@ class render_mainpage(fetch_data.FetchData):
                     tab_iter = iter(pp_right.tabs(tab_list))
                     tab_trend = next(tab_iter)
                     tab_overview = next(tab_iter)
+                    tab_ai = next(tab_iter) if ai_enabled else None
                     tab_seasonality = next(tab_iter) if seasonality_enabled else None
                     tab_info = next(tab_iter) if has_info else None
                     tab_income_sheet = next(tab_iter) if not income_df.empty else None
@@ -808,6 +1077,70 @@ class render_mainpage(fetch_data.FetchData):
                         if self.sys_conf.get_value("pine_export", False):
                             self.multi_selector.render_pine_export()
                         _spin.empty()
+
+                    if tab_ai is not None:
+                        with tab_ai:
+                            _spin.markdown(_tab_overlay(t('main.tab_ai')), unsafe_allow_html=True)
+                            try:
+                                from tradinglib import market_overview_page as mo
+
+                                is_index = str(ticker_selected).startswith('^')
+                                # Leitindex nur für Einzelwerte (nicht für Indizes/Gruppen selbst).
+                                parent_index = None
+                                idx_name = fts.index_name
+                                if (not is_index and idx_name and str(idx_name).startswith('^')):
+                                    idx_yf = mo._YF_TICKER_MAP.get(idx_name, idx_name)
+                                    parent_index = (idx_name, idx_yf, str(idx_name).lstrip('^'))
+                                # Breadth-Status: für Einzelwert vom Leitindex, für einen Index von sich selbst.
+                                stress_src = idx_name if (idx_name and str(idx_name).startswith('^')) else \
+                                             (ticker_selected if is_index else None)
+
+                                asset_info_block    = self._build_asset_info_block(self.ticker, info_text)
+                                market_status_block = self._build_market_stress_text(stress_src)
+                                signals_block       = self._build_signals_text()
+                                # Seasonality is a max-history fetch → cache per ticker so it
+                                # is computed once, not on every fragment rerun.
+                                # Seasonality is a licensed feature → only feed it to the AI/report
+                                # when FEATURE_SEASONALITY is active (seasonality_enabled).
+                                season_block = ''
+                                if seasonality_enabled:
+                                    _sk = f'_asset_ai_season_{ticker_selected}'
+                                    if _sk not in st.session_state:
+                                        try:
+                                            st.session_state[_sk] = sn.compute_seasonality_summary(ticker_selected)
+                                        except Exception:
+                                            logger.debug("seasonality summary failed", exc_info=True)
+                                            st.session_state[_sk] = ''
+                                    season_block = st.session_state[_sk]
+                                category = (self.get_ticker_value(self.ticker, 'sector')
+                                            or (str(idx_name) if idx_name else '') or quote_type or '')
+                                indicators = [i for i in (list(self.overlays) + list(self.oszilators))
+                                              if i != 'bar']
+
+                                mo.render_single_asset_ai(
+                                    self.df, ticker_selected, ticker_selected_longname,
+                                    str(category), interval, period,
+                                    asset_info=asset_info_block,
+                                    market_status=market_status_block,
+                                    signals=signals_block,
+                                    seasonality=season_block,
+                                    parent_index=parent_index,
+                                    indicators=indicators,
+                                    sys_conf=self.sys_conf,
+                                    username=self.username,
+                                    region=tab_ai,
+                                )
+
+                                # ── HTML-Report (Print → PDF) ─────────────────────────
+                                self._render_asset_report_button(
+                                    tab_ai, ticker_selected, ticker_selected_longname,
+                                    interval, period, info_text, asset_info_block,
+                                    signals_block, season_block, seasonality_enabled,
+                                )
+                            except Exception as exc:
+                                logger.exception("asset AI tab failed")
+                                tab_ai.error(t('mv.err_unexpected', error=exc))
+                            _spin.empty()
 
                     if tab_seasonality is not None:
                         with tab_seasonality:
