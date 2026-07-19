@@ -514,7 +514,33 @@ class SystemConfig(tools.Db_tools):
 
                 with st.expander(i18n.t("cfg.ai_models_header"), expanded=False):
                     st.caption(i18n.t("cfg.ai_models_caption"))
-                    from tradinglib.ai_client import _ANTHROPIC_MODELS, _GROQ_MODELS, _GEMINI_MODELS, _GITHUB_MODELS
+                    from tradinglib.ai_client import (
+                        _ANTHROPIC_MODELS, _GROQ_MODELS, _GEMINI_MODELS, _GITHUB_MODELS,
+                        merge_provider_order,
+                    )
+
+                    # ── Provider-Reihenfolge (global; identisch zur Market-Overview-Seite,
+                    #    schreibt denselben config.db-Key 'ai_provider_order') ──────────────
+                    _all_providers = ['claude', 'groq', 'github', 'gemini', 'ollama']
+                    _prov_labels   = {p: i18n.t(f'mv.prov.{p}') for p in _all_providers}
+                    _saved_order   = self.get_value('ai_provider_order', _all_providers)
+                    if not isinstance(_saved_order, list):
+                        _saved_order = _all_providers
+                    _saved_order = merge_provider_order(_saved_order, _all_providers)
+                    st.markdown(i18n.t("mv.provider_order_head"))
+                    st.caption(i18n.t("mv.provider_order_caption"))
+                    _new_order = st.multiselect(
+                        i18n.t("mv.provider_order_label"),
+                        options=_all_providers,
+                        default=_saved_order,
+                        format_func=lambda p: _prov_labels.get(p, p),
+                        key='_cfg_provider_order',
+                    )
+                    # Abgewählte Provider als Fallback hinten anhängen (kein Signalverlust).
+                    _full_order = _new_order + [p for p in _all_providers if p not in _new_order]
+                    if _full_order != _saved_order:
+                        self.set_value('ai_provider_order', _full_order)
+                    st.markdown("---")
 
                     def _models_input(cfg_key, default_models, label):
                         cur = self.get_value(cfg_key, None)
