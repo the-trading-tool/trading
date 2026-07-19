@@ -1277,6 +1277,8 @@
   "mv.err_provider": "AI provider error:\n\n{error}",
   "mv.err_unexpected": "Unexpected error: {error}",
   "asset_ai.intro": "AI analysis of this asset based on all key figures, the info details and the index status — using the same criteria as the Market Overview. Optionally add your own question.",
+  "asset_ai.compact_toggle": "Compact prompt (saves tokens, for free models)",
+  "asset_ai.compact_help": "Trims the business summary to ~2 sentences, the leading-index/^TNX context to a one-liner and news to the top 3 (no links). OFF = full prompt with all details (more tokens).",
   "asset_ai.freetext_label": "Individual question / instruction (optional)",
   "asset_ai.freetext_placeholder": "e.g. What is the risk/reward over a 3-month horizon? What should I watch out for?",
   "asset_ai.run_button": "🤖 Start AI analysis",

@@ -761,6 +761,7 @@ def _build_market_prompt(
     primary_name: str = '',
     primary_market: str = '',
     membership_note: str | None = None,
+    compact: bool = False,
 ) -> str:
     """Multi-Asset Regime & Risk Model — hierarchisch strukturierter Analyse-Prompt.
 
@@ -779,6 +780,8 @@ def _build_market_prompt(
     today   = datetime.now().strftime('%d.%m.%Y')
     _regime = {0.0: 'Seitwärts', 1.0: 'Bullenmarkt', 2.0: 'Bärenmarkt'}
     inc     = sections or {}   # Abkürzung für bedingte Includes
+    if compact:                # Kompakt: lange Trend-Snippets weglassen (Token sparen)
+        inc = {**inc, 'extended_snippets': False}
 
     # Anzahl der ausgewählten Märkte explizit an die KI übergeben, damit sie ALLE
     # auswertet und nicht von einer angenommenen Zahl ausgeht / eigenständig begrenzt.
@@ -899,6 +902,31 @@ def _build_market_prompt(
         ind       = r.get('indicator_values', {})
         week_str  = f"{r['week_ret']:+.1f}%"  if r['week_ret']  is not None else "n/a"
         month_str = f"{r['month_ret']:+.1f}%" if r['month_ret'] is not None else "n/a"
+
+        # Kompakt: Kontext-Assets (Leitindex, ^TNX) als EIN-Zeiler statt vollem Block.
+        if compact and r.get('context'):
+            _ma = []
+            for _lbl, _col in (('SMA50', 'sma50'), ('SMA200', 'sma200')):
+                _v = ind.get(_col)
+                if _v and close:
+                    _ma.append(f"{'>' if close > _v else '<'}{_lbl}")
+            _xtra = []
+            if ind.get('rsi') is not None:
+                _xtra.append(f"RSI {ind['rsi']}")
+            if ind.get('markov_regime') is not None:
+                _xtra.append(f"Markov {_regime.get(ind['markov_regime'], ind['markov_regime'])}")
+            if ind.get('ewo') is not None:
+                _xtra.append(f"ewo {ind['ewo']:+.1f}")
+            if ind.get('macd_diff') is not None:
+                _xtra.append(f"MACD-Hist {ind['macd_diff']:+.2f}")
+            lines += [
+                f"─── {ticker} | {name} | {cat} (KONTEXT, kompakt) ───",
+                f"Kurs {close} | 1W {week_str} | 1M {month_str}"
+                + (" | Trend " + " ".join(_ma) if _ma else "")
+                + (" | " + " · ".join(_xtra) if _xtra else ""),
+                "",
+            ]
+            continue
 
         lines += [
             f"─── {ticker} | {name} | {cat}{ctx_tag} ───",
@@ -1446,6 +1474,43 @@ def get_rate_context(interval: str = '1d', period: str = '1y', sys_conf=None) ->
         return ''
 
 
+def _compact_asset_info(text: str) -> str:
+    """Kompakt: Geschäftsbeschreibung auf ~2 Sätze kürzen, Fundamental-Kennzahlen behalten."""
+    if not text or not text.strip():
+        return text
+    import re as _re
+    lines = text.split('\n')
+    idx = next((i for i, l in enumerate(lines) if l.startswith('Stammdaten:')), None)
+    if idx is None:
+        summary, rest = text.strip(), ''
+    else:
+        summary = '\n'.join(lines[:idx]).strip()
+        rest    = '\n'.join(lines[idx:]).strip()
+    if summary:
+        sents   = _re.split(r'(?<=[.!?])\s+', summary)
+        summary = ' '.join(sents[:2]).strip()
+        if len(summary) > 400:
+            summary = summary[:400].rsplit(' ', 1)[0] + ' …'
+    return (summary + ('\n\n' + rest if rest else '')).strip()
+
+
+def _compact_news(text: str, max_items: int = 3) -> str:
+    """Kompakt: News auf die Top-N reduzieren und die URL-Zeilen weglassen
+    (die KI kann Links ohnehin nicht öffnen; im Report bleiben sie klickbar)."""
+    if not text or not text.strip():
+        return text
+    kept, count = [], 0
+    for line in text.split('\n'):
+        if line.strip().startswith('http'):
+            continue
+        if line.startswith('['):
+            count += 1
+            if count > max_items:
+                break
+        kept.append(line)
+    return '\n'.join(kept).strip()
+
+
 def build_single_asset_prompt(
     df: pd.DataFrame, display_id: str, name: str, category: str,
     interval: str, period: str,
@@ -1461,6 +1526,7 @@ def build_single_asset_prompt(
     sys_conf=None,
     include_tnx: bool = True,
     market: str = '',
+    compact: bool = False,
     freetext: str | None = None,
 ) -> str:
     """Builds the AI prompt for a SINGLE asset, reusing the market-overview prompt
@@ -1518,6 +1584,10 @@ def build_single_asset_prompt(
         except Exception:
             logger.warning("single-asset: TNX context compute failed", exc_info=True)
 
+    if compact:
+        asset_info = _compact_asset_info(asset_info)
+        news       = _compact_news(news)
+
     sec = sections if sections is not None else dict(_SINGLE_ASSET_SECTIONS)
     return _build_market_prompt(
         results, symbol_meta, interval, period, indicators=[],
@@ -1527,6 +1597,7 @@ def build_single_asset_prompt(
         news=news,
         single_asset=True, primary_ticker=display_id,
         primary_name=name, primary_market=market, membership_note=membership_note,
+        compact=compact,
     )
 
 
@@ -1566,6 +1637,13 @@ def render_single_asset_ai(
         key=f'_asset_ai_freetext_{display_id}',
     )
 
+    # Kompakter Prompt (Default): kürzt Business-Summary, Leitindex/^TNX-Kontext und News
+    # → passt in die knappen Free-Tier-Limits (Groq TPM, GitHub Input-Cap). Aus = voll.
+    compact = region.toggle(
+        t('asset_ai.compact_toggle'), value=True,
+        key='_asset_ai_compact', help=t('asset_ai.compact_help'),
+    )
+
     if region.button(t('asset_ai.run_button'), type='primary', key=f'_asset_ai_btn_{display_id}'):
         if df is None or df.empty:
             region.warning(t('asset_ai.no_data'))
@@ -1580,7 +1658,7 @@ def render_single_asset_ai(
             signals=signals, seasonality=seasonality, sector_rotation=sector_rotation,
             news=news,
             parent_index=parent_index, indicators=indicators, sys_conf=sys_conf,
-            market=market, freetext=freetext,
+            market=market, compact=compact, freetext=freetext,
         )
         with st.spinner(t('mv.spinner_ai')):   # module-level: writes into the active tab context
             try:

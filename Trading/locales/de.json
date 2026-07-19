@@ -1277,6 +1277,8 @@
   "mv.err_provider": "KI-Provider-Fehler:\n\n{error}",
   "mv.err_unexpected": "Unerwarteter Fehler: {error}",
   "asset_ai.intro": "KI-Analyse dieses Assets auf Basis aller Kennzahlen, der Info-Angaben und des Index-Status — nach denselben Kriterien wie im Market Overview. Optional eine eigene Frage ergänzen.",
+  "asset_ai.compact_toggle": "Kompakter Prompt (spart Tokens, für kostenlose Modelle)",
+  "asset_ai.compact_help": "Kürzt Geschäftsbeschreibung auf ~2 Sätze, Leitindex/^TNX-Kontext auf einen Ein-Zeiler und News auf die Top 3 (ohne Links). AUS = voller Prompt mit allen Details (mehr Tokens).",
   "asset_ai.freetext_label": "Individuelle Frage / Anweisung (optional)",
   "asset_ai.freetext_placeholder": "z. B. Wie ist das Chance-Risiko-Verhältnis auf Sicht von 3 Monaten? Worauf sollte ich achten?",
   "asset_ai.run_button": "🤖 KI-Analyse starten",
