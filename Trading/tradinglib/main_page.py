@@ -309,9 +309,30 @@ class render_mainpage(fetch_data.FetchData):
         _recent('buy_close', 'Buy-Signale')
         _recent('sell_close', 'Sell-Signale')
 
-        # Ist auf der letzten Kerze aktuell ein Signal aktiv?
         try:
             last = df.iloc[-1]
+
+            # Aktuelle Werte der in den Formeln referenzierten Spalten mitgeben, damit die
+            # KI die Bedingungen korrekt zuordnen kann, statt Schwellen/Spalten zu erraten
+            # (sonst hat sie nur die kryptische Boolean-Formel ohne Zahlen → Halluzination,
+            # z.B. rsi>=72 fälschlich der Buy- statt der Sell-Formel zugeordnet).
+            import re
+            _kw = {'and', 'or', 'not', 'True', 'False', 'abs', 'min', 'max'}
+            ref_cols = set(re.findall(r'[A-Za-z_][A-Za-z0-9_]*', f"{buy_q} {sell_q}"))
+            val_parts = []
+            for c in sorted(ref_cols):
+                if c in _kw or c not in df.columns:
+                    continue
+                v = last.get(c)
+                if pd.notna(v):
+                    try:
+                        val_parts.append(f"{c}={round(float(v), 4)}")
+                    except (TypeError, ValueError):
+                        pass
+            if val_parts:
+                lines.append("Formel-Spalten aktuell (letzte Kerze): " + ", ".join(val_parts))
+
+            # Ist auf der letzten Kerze aktuell ein Signal aktiv? (VERBINDLICHE Aussage)
             last_date = _fmt_date(last)
             active = []
             if 'buy_close' in df.columns and pd.notna(last.get('buy_close')):
@@ -327,9 +348,64 @@ class render_mainpage(fetch_data.FetchData):
 
         return "\n".join(lines)
 
+    def _collect_news_items(self, ticker, articles=None, max_items=5):
+        """Top-N news items with VADER title sentiment for the AI prompt + report.
+
+        Returns [{title, link, published, compound, sentiment}], newest first. Reuses
+        the already-fetched `articles` when passed (no second RSS fetch). Empty on error.
+        """
+        try:
+            yns  = se.YahooNewsSentiment(ticker)
+            arts = articles if articles is not None else yns.fetch_news()
+        except Exception:
+            logger.debug("news fetch failed", exc_info=True)
+            return []
+        if not arts:
+            return []
+
+        def _dt(s):
+            try:
+                return dt.datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %z")
+            except Exception:
+                return dt.datetime.min.replace(tzinfo=dt.timezone.utc)
+        try:
+            arts = sorted(arts, key=lambda a: _dt(a.get('published', '')), reverse=True)
+        except Exception:
+            pass
+
+        sia = getattr(yns, 'sia', None)
+        items = []
+        for a in arts[:max_items]:
+            title, compound, label = a.get('title', ''), 0.0, 'neutral'
+            if sia:
+                try:
+                    compound = round(sia.polarity_scores(title)['compound'], 2)
+                    label = ('positiv' if compound >= 0.05 else
+                             'negativ' if compound <= -0.05 else 'neutral')
+                except Exception:
+                    pass
+            items.append({'title': title, 'link': a.get('link', ''),
+                          'published': (a.get('published', '') or '')[:25],
+                          'compound': compound, 'sentiment': label})
+        return items
+
+    @staticmethod
+    def _build_news_text(items):
+        """Format news items into a compact prompt block (title + sentiment + date + link)."""
+        if not items:
+            return ''
+        lines = []
+        for it in items:
+            lines.append(f"[{it['sentiment'].upper()} {it['compound']:+.2f}] "
+                         f"{it['title']} ({it['published']})")
+            if it.get('link'):
+                lines.append(f"  {it['link']}")
+        return "\n".join(lines)
+
     def _render_asset_report_button(self, region, ticker, longname, interval, period,
                                     info_text, asset_info_block, signals_block, season_block,
-                                    seasonality_enabled=False):
+                                    seasonality_enabled=False, market='', asset_sector='',
+                                    news_items=None):
         """Build + offer the self-contained HTML report (Trend chart, key data, info,
         seasonality, AI analysis) for download; the user prints it to PDF in the browser.
 
@@ -357,9 +433,25 @@ class render_mainpage(fetch_data.FetchData):
                               ('title', 'trend', 'keydata', 'info', 'seasonality',
                                'signals', 'ai', 'generated', 'footer')}
                     trend_fig = self.t_chart.fig if getattr(self, 't_chart', None) else None
+                    from tradinglib import market_overview_page as mo
+                    rate_context = mo.get_rate_context(interval, period, self.sys_conf)
+                    # Marktkontext: Sektor-Rotation (cached) + Cross-Asset-Korrelationen.
+                    context_parts = []
+                    _sr = mo.build_sector_rotation_text(asset_sector)
+                    if _sr:
+                        context_parts.append("Sektor-Rotation (RRG vs. Markt):\n" + _sr)
+                    try:
+                        _corr = mo._correlation_prompt_block()
+                        if _corr:
+                            context_parts.append(_corr)
+                    except Exception:
+                        pass
+                    context_text = "\n\n".join(context_parts)
                     html_doc = ar.build_asset_report_html(
                         ticker=ticker, name=longname, interval=interval, period=period,
                         generated_ts=dt.datetime.now().strftime('%d.%m.%Y %H:%M'),
+                        market=market, rate_context=rate_context, context_text=context_text,
+                        news_items=news_items or [],
                         trend_fig=trend_fig,
                         keydata_text=self._build_asset_info_block(self.ticker, ''),
                         info_text=info_text or '',
@@ -1117,25 +1209,47 @@ class render_mainpage(fetch_data.FetchData):
                                 indicators = [i for i in (list(self.overlays) + list(self.oszilators))
                                               if i != 'bar']
 
+                                # Lesbarer Name (shortName-Fallback) + Markt für Prompt & Report.
+                                def _clean(v):
+                                    s = str(v).strip()
+                                    return '' if s in ('', '0', 'None', 'nan') else s
+                                display_name = (_clean(ticker_selected_longname)
+                                                or _clean(self.get_ticker_value(self.ticker, 'shortName'))
+                                                or _clean(self.get_ticker_value(self.ticker, 'longName')))
+                                market = (_clean(idx_name)
+                                          or _clean(self.get_ticker_value(self.ticker, 'fullExchangeName'))
+                                          or _clean(self.get_ticker_value(self.ticker, 'exchange'))
+                                          or _clean(category))
+                                # Raw Yahoo sector (for the SECTOR_ETF_MAP → sector-rotation match).
+                                asset_sector = _clean(self.get_ticker_value(self.ticker, 'sector'))
+                                # Top-5 news (reuse the already-fetched news_articles — no re-fetch).
+                                news_items = self._collect_news_items(ticker_selected, news_articles)
+                                news_block = self._build_news_text(news_items)
+
                                 mo.render_single_asset_ai(
-                                    self.df, ticker_selected, ticker_selected_longname,
+                                    self.df, ticker_selected, display_name or ticker_selected,
                                     str(category), interval, period,
                                     asset_info=asset_info_block,
                                     market_status=market_status_block,
                                     signals=signals_block,
                                     seasonality=season_block,
+                                    news=news_block,
                                     parent_index=parent_index,
                                     indicators=indicators,
                                     sys_conf=self.sys_conf,
+                                    market=market,
+                                    asset_sector=asset_sector,
                                     username=self.username,
                                     region=tab_ai,
                                 )
 
                                 # ── HTML-Report (Print → PDF) ─────────────────────────
                                 self._render_asset_report_button(
-                                    tab_ai, ticker_selected, ticker_selected_longname,
+                                    tab_ai, ticker_selected, display_name or ticker_selected,
                                     interval, period, info_text, asset_info_block,
                                     signals_block, season_block, seasonality_enabled,
+                                    market=market, asset_sector=asset_sector,
+                                    news_items=news_items,
                                 )
                             except Exception as exc:
                                 logger.exception("asset AI tab failed")

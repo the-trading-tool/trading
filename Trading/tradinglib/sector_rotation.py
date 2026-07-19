@@ -518,3 +518,47 @@ class SectorRotation:
         if self._summary is None:
             self.build_summary()
         return self._summary
+
+
+def sector_context_text(summary, asset_etf: str = '', asset_sector: str = '') -> str:
+    """Format a sector-rotation summary DataFrame into a compact German text block for
+    the single-asset AI analysis / report.
+
+    Groups the sectors by RRG quadrant (Leading → Lagging) and, if the target asset's
+    sector ETF is given, appends a line highlighting where that sector stands. Returns
+    '' for an empty/missing summary.
+    """
+    if summary is None or getattr(summary, 'empty', True):
+        return ''
+    try:
+        df = summary.sort_values(by='RS_Ratio', ascending=False)
+    except Exception:
+        df = summary
+
+    from collections import defaultdict
+    groups: dict[str, list] = defaultdict(list)
+    for _, r in df.iterrows():
+        try:
+            groups[r['Status']].append(
+                f"{r['Sector']} ({r['RS_Ratio']:.1f}/{r['RS_Momentum']:.1f})")
+        except Exception:
+            continue
+
+    lines: list[str] = []
+    for status in ('Leading', 'Improving', 'Weakening', 'Lagging'):
+        if groups.get(status):
+            lines.append(f"  {status}: " + ", ".join(groups[status]))
+
+    if asset_etf:
+        row = df[df['ETF'] == asset_etf]
+        if not row.empty:
+            r = row.iloc[0]
+            lines.append(
+                f"» Sektor des Ziel-Assets: {r['Sector']} — Status {r['Status']} "
+                f"(RS-Ratio {r['RS_Ratio']:.1f}, RS-Momentum {r['RS_Momentum']:.1f}, "
+                f"RSC-Trend {r['RSC_Trend']}, über SMA200: {r['Above_SMA200']})")
+        elif asset_sector:
+            lines.append(f"» Sektor des Ziel-Assets: {asset_sector} — kein direktes "
+                         "RRG-Match im US-Sektor-Set.")
+
+    return "\n".join(lines)

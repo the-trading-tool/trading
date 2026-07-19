@@ -514,7 +514,7 @@ class SystemConfig(tools.Db_tools):
 
                 with st.expander(i18n.t("cfg.ai_models_header"), expanded=False):
                     st.caption(i18n.t("cfg.ai_models_caption"))
-                    from tradinglib.ai_client import _GROQ_MODELS, _GEMINI_MODELS, _GITHUB_MODELS
+                    from tradinglib.ai_client import _ANTHROPIC_MODELS, _GROQ_MODELS, _GEMINI_MODELS, _GITHUB_MODELS
 
                     def _models_input(cfg_key, default_models, label):
                         cur = self.get_value(cfg_key, None)
@@ -528,6 +528,7 @@ class SystemConfig(tools.Db_tools):
                         names = [m.strip() for m in raw.split(',') if m.strip()]
                         self.set_value(cfg_key, names or list(default_models))
 
+                    _models_input('ai_models_anthropic', _ANTHROPIC_MODELS, i18n.t("cfg.ai_models_claude"))
                     _models_input('ai_models_groq', _GROQ_MODELS, i18n.t("cfg.ai_models_groq"))
                     _models_input('ai_models_gemini', _GEMINI_MODELS, i18n.t("cfg.ai_models_gemini"))
                     _models_input('ai_models_github', _GITHUB_MODELS, i18n.t("cfg.ai_models_github"))

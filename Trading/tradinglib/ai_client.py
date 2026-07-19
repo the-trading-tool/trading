@@ -230,6 +230,82 @@ class GroqProvider(BaseProvider):
         )
 
 
+# ── Anthropic (Claude) Provider ───────────────────────────────────────────────
+# SDK:      pip install anthropic
+# KSP-Key:  'anthropic'  (user = API-Key von console.anthropic.com)
+# Modelle:  claude-sonnet-5 (Primär) → claude-haiku-4-5 (Fallback)
+#           Für maximale Analysetiefe alternativ 'claude-opus-4-8'
+#           (Override via config.db key 'ai_models_anthropic').
+
+_ANTHROPIC_MODELS      = ['claude-sonnet-5', 'claude-haiku-4-5']
+_ANTHROPIC_MAX_RETRIES = 2
+_ANTHROPIC_MAX_WAIT    = 60
+
+
+class ClaudeProvider(BaseProvider):
+    name = 'claude'
+
+    def __init__(self, api_key: str, models: list[str] | None = None):
+        """Initialize the Anthropic client with the given API key.
+
+        models: ordered list of model names to try, falling back to
+        _ANTHROPIC_MODELS when not given (or empty). Overridable via
+        config.db key 'ai_models_anthropic' (see _resolve_models).
+        """
+        try:
+            import anthropic
+            self.client = anthropic.Anthropic(api_key=api_key)
+        except ImportError as exc:
+            raise AiProviderError(
+                "anthropic-Paket nicht installiert: "
+                ".venv/Scripts/python.exe -m pip install anthropic"
+            ) from exc
+        self.models = models or list(_ANTHROPIC_MODELS)
+
+    def generate(self, prompt: str, max_tokens: int = 1024) -> tuple[str, str]:
+        """Send prompt to Claude, cycling through models and retrying on rate-limit errors.
+
+        Returns (text, model_name). Raises AiRateLimitError when all models are exhausted.
+        The response content is a list of blocks — only the 'text' blocks are joined.
+        """
+        import anthropic
+        last_exc = None
+        for model in self.models:
+            for attempt in range(1, _ANTHROPIC_MAX_RETRIES + 1):
+                try:
+                    resp = self.client.messages.create(
+                        model=model,
+                        max_tokens=max_tokens,
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    text = "".join(
+                        b.text for b in resp.content if getattr(b, 'type', None) == 'text'
+                    )
+                    logger.info("Claude: OK via %s (attempt %d)", model, attempt)
+                    return text, model
+                # RateLimitError / NotFoundError are subclasses of APIStatusError → catch first.
+                except anthropic.RateLimitError as exc:
+                    last_exc = exc
+                    delay = _parse_retry_delay(str(exc), default=30)
+                    if delay > _ANTHROPIC_MAX_WAIT or attempt >= _ANTHROPIC_MAX_RETRIES:
+                        logger.warning("Claude: quota on %s — next model", model)
+                        break
+                    logger.warning("Claude: rate limit on %s, wait %ds", model, delay)
+                    time.sleep(delay)
+                    continue
+                except anthropic.NotFoundError as exc:   # falsche Modell-ID → nächstes Modell
+                    last_exc = exc
+                    logger.warning("Claude: %s unavailable (%s) — next model", model, str(exc)[:80])
+                    break
+                except anthropic.APIConnectionError as exc:
+                    raise AiProviderError(f"Claude Netzwerkfehler: {exc}") from exc
+                except anthropic.APIStatusError as exc:
+                    raise AiProviderError(f"Claude: {exc}") from exc
+        raise AiRateLimitError(
+            f"Claude: alle Modelle erschöpft. Letzter Fehler: {last_exc}"
+        )
+
+
 # ── GitHub Models Provider ────────────────────────────────────────────────────
 # Endpoint: https://models.inference.ai.azure.com  (OpenAI-kompatibel)
 # Token:    GitHub PAT (Settings → Developer settings → Personal access tokens → kein Scope nötig)
@@ -387,7 +463,14 @@ class AiClient:
         self.provider_name = self._providers[0].name if self._providers else ''
 
     def run_question(self, question: str, max_tokens: int = 1024) -> str:
-        """Send a question to the first available provider, falling back on AiRateLimitError.
+        """Send a question to the first available provider, falling back to the next
+        one on ANY failure (rate limit, missing/invalid key, auth/config error, or an
+        unexpected exception). The error is only propagated after every provider fails.
+
+        Providers without a stored key are already excluded when the chain is built
+        (see _build_provider) — this runtime fallback additionally covers a key that
+        exists but is rejected at call time, so one misconfigured provider never
+        aborts the whole request.
 
         Populates self.provider_log with one entry per attempted provider:
           {'provider': str, 'model': str|None, 'status': 'ok'|'failed', 'error': str|None}
@@ -406,15 +489,24 @@ class AiClient:
                     'status': 'ok', 'error': None,
                 })
                 return text
-            except AiRateLimitError as exc:
+            except (AiRateLimitError, AiProviderError) as exc:
                 err_short = str(exc)[:120]
-                logger.warning("AiClient: %s exhausted — trying next provider", prov.name)
+                logger.warning("AiClient: %s failed (%s) — trying next provider",
+                               prov.name, err_short)
                 errors.append(f"{prov.name}: {exc}")
                 self.provider_log.append({
                     'provider': prov.name, 'model': None,
                     'status': 'failed', 'error': err_short,
                 })
-            # AiProviderError (config error) is propagated directly — no fallback
+            except Exception as exc:   # unerwartet → trotzdem zum nächsten Provider
+                err_short = str(exc)[:120]
+                logger.warning("AiClient: %s unexpected error (%s) — trying next provider",
+                               prov.name, err_short, exc_info=True)
+                errors.append(f"{prov.name}: {exc}")
+                self.provider_log.append({
+                    'provider': prov.name, 'model': None,
+                    'status': 'failed', 'error': err_short,
+                })
         raise AiRateLimitError(
             "Alle Provider erschöpft.\n\n" + "\n".join(errors)
         )
@@ -446,6 +538,14 @@ def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
         creds = ksp.get_ksp(name)
         return (creds.get('url', '') if isinstance(creds, dict) else '') or default
 
+    if provider == 'claude':
+        key = _get_key('anthropic')
+        if not key:
+            raise AiProviderError(
+                "Anthropic API-Key fehlt. Bitte unter 'anthropic' in den API Credentials eintragen."
+            )
+        return ClaudeProvider(api_key=key)
+
     if provider == 'groq':
         key = _get_key('groq')
         if not key:
@@ -467,8 +567,15 @@ def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
             )
         return GeminiProvider(api_key=key)
 
-    # ── auto: Groq → Gemini → Ollama ─────────────────────────────────────────
+    # ── auto: Claude → Groq → Gemini → Ollama ────────────────────────────────
     errors = []
+
+    anthropic_key = _get_key('anthropic')
+    if anthropic_key:
+        try:
+            return ClaudeProvider(api_key=anthropic_key)
+        except AiProviderError as e:
+            errors.append(f"Claude: {e}")
 
     groq_key = _get_key('groq')
     if groq_key:
@@ -499,6 +606,24 @@ def _resolve_provider(provider: str, username: str = 'admin') -> BaseProvider:
         "  • Ollama (lokal):    https://ollama.com → 'ollama serve' starten\n\n"
         + "\n".join(errors)
     )
+
+
+def merge_provider_order(saved: list, reference: list) -> list:
+    """Merge a saved provider order with the reference default.
+
+    Keeps the user's saved relative order for providers they already ranked, but
+    inserts any provider MISSING from `saved` at its reference-order position —
+    so a newly-added provider like 'claude' (first in the reference) lands FIRST
+    instead of being blindly appended at the end. Unknown names are dropped.
+    """
+    ref_index = {p: i for i, p in enumerate(reference)}
+    merged = [p for p in (saved or []) if p in ref_index]
+    for p in reference:
+        if p in merged:
+            continue
+        pos = next((i for i, q in enumerate(merged) if ref_index[q] > ref_index[p]), len(merged))
+        merged.insert(pos, p)
+    return merged
 
 
 def _resolve_models(cfg, key: str, default: list[str]) -> list[str]:
@@ -553,6 +678,14 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         return _get_key('ollama') or _OLLAMA_DEFAULT_MODEL
 
     # ── Explicit single providers ─────────────────────────────────────────────
+    if provider == 'claude':
+        key = _get_key('anthropic')
+        if not key:
+            raise AiProviderError(
+                "Anthropic API-Key fehlt. Bitte unter 'anthropic' in den API Credentials eintragen."
+            )
+        return [ClaudeProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_anthropic', _ANTHROPIC_MODELS))]
+
     if provider == 'groq':
         key = _get_key('groq')
         if not key:
@@ -584,21 +717,22 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
         return [OllamaProvider(url=url, model=_get_ollama_model())]
 
     # ── auto: collect providers in configured order ──────────────────────────
-    # Default: groq → github → gemini → ollama
+    # Default: claude → groq → github → gemini → ollama
     # Overridable via config.db key 'ai_provider_order' (list of names)
-    _DEFAULT_ORDER = ['groq', 'github', 'gemini', 'ollama']
+    _DEFAULT_ORDER = ['claude', 'groq', 'github', 'gemini', 'ollama']
     cfg_order = cfg.get_value('ai_provider_order', _DEFAULT_ORDER)
     if not isinstance(cfg_order, list) or not cfg_order:
-        cfg_order = _DEFAULT_ORDER
-    # Ensure all known providers are considered
-    # (not in the list = appended at the end)
-    for p in _DEFAULT_ORDER:
-        if p not in cfg_order:
-            cfg_order.append(p)
+        cfg_order = list(_DEFAULT_ORDER)
+    # Merge in any provider missing from the saved order at its default position
+    # (so a newly-added provider like 'claude' lands FIRST, not appended last).
+    cfg_order = merge_provider_order(cfg_order, _DEFAULT_ORDER)
 
     def _build_provider(name: str) -> BaseProvider | None:
         """Instantiate a provider by name; returns None if key is missing or unavailable."""
         try:
+            if name == 'claude':
+                key = _get_key('anthropic')
+                return ClaudeProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_anthropic', _ANTHROPIC_MODELS)) if key else None
             if name == 'groq':
                 key = _get_key('groq')
                 return GroqProvider(api_key=key, models=_resolve_models(cfg, 'ai_models_groq', _GROQ_MODELS)) if key else None
@@ -612,7 +746,7 @@ def _resolve_provider_list(provider: str, username: str = 'admin') -> list[BaseP
                 url   = _get_url('ollama', _OLLAMA_DEFAULT_URL)
                 prov  = OllamaProvider(url=url, model=_get_ollama_model())
                 return prov if prov.is_available() else None
-        except AiProviderError as exc:
+        except Exception as exc:   # kaputter/fehlender Eintrag → Provider still überspringen
             logger.warning("%s not available: %s", name, exc)
         return None
 

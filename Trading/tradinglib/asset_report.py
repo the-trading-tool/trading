@@ -195,6 +195,11 @@ table.md th { background: #f4f6fa; }
 .ai code { background: #f2f4f8; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
 pre.mono { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 12px;
        background: #f6f8fb; padding: 10px 12px; border-radius: 6px; }
+ul.news { list-style: none; margin: 0; padding: 0; }
+ul.news li { padding: 7px 0; border-top: 1px solid #f0f2f6; font-size: 13.5px; }
+ul.news li:first-child { border-top: none; }
+ul.news a { color: #2158c4; text-decoration: none; }
+ul.news .newsmeta { color: #8b93a3; font-size: 11.5px; margin-top: 2px; }
 .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e3e7ee;
        color: #8b93a3; font-size: 11px; }
 @media print {
@@ -207,9 +212,10 @@ pre.mono { white-space: pre-wrap; font-family: Consolas, monospace; font-size: 1
 
 def build_asset_report_html(
     *, ticker: str, name: str = '', interval: str = '', period: str = '',
-    generated_ts: str = '',
+    generated_ts: str = '', market: str = '', rate_context: str = '',
     trend_fig=None, keydata_text: str = '', info_text: str = '',
     season_fig=None, season_text: str = '', signals_text: str = '',
+    context_text: str = '', news_items: list | None = None,
     ai_analysis: str = '', ai_ts: str = '', ai_model: str = '',
     labels: dict | None = None,
 ) -> str:
@@ -224,6 +230,8 @@ def build_asset_report_html(
         'info':        'Unternehmens-/Asset-Info',
         'seasonality': 'Saisonalität',
         'signals':     'Signale',
+        'context':     'Marktkontext (Korrelationen & Sektor-Rotation)',
+        'news':        'Nachrichten (Top 5)',
         'ai':          'KI-Analyse',
         'generated':   'Erstellt',
         'footer':      'Automatisch generierter Report — keine Anlageberatung.',
@@ -231,10 +239,15 @@ def build_asset_report_html(
     if labels:
         L.update(labels)
 
+    # Header: shortName as title (fallback ticker); ticker + market + rate context in subtitle.
     head = html.escape(name or ticker)
     subparts = [html.escape(ticker)]
+    if market:
+        subparts.append(f"Markt: {html.escape(market)}")
     if interval or period:
         subparts.append(html.escape(f"{interval}/{period}"))
+    if rate_context:
+        subparts.append(f"10J US-Rendite: {html.escape(rate_context)}")
     if generated_ts:
         subparts.append(f"{L['generated']}: {html.escape(generated_ts)}")
 
@@ -269,7 +282,27 @@ def build_asset_report_html(
         parts.append(f'<section><h2>{L["signals"]}</h2>'
                      f'<pre class="mono">{html.escape(signals_text.strip())}</pre></section>')
 
-    # 6. AI analysis
+    # 6. Market context (correlations + sector rotation)
+    if context_text and context_text.strip():
+        parts.append(f'<section><h2>{L["context"]}</h2>'
+                     f'<pre class="mono">{html.escape(context_text.strip())}</pre></section>')
+
+    # 7. News (Top 5, clickable links + title sentiment)
+    if news_items:
+        _dot = {'positiv': '#27ae60', 'negativ': '#e74c3c', 'neutral': '#7f8c8d'}
+        rows = ''
+        for it in news_items:
+            col = _dot.get(it.get('sentiment', 'neutral'), '#7f8c8d')
+            title = html.escape(it.get('title', ''))
+            link = html.escape(it.get('link', ''))
+            title_html = f'<a href="{link}" target="_blank" rel="noopener">{title}</a>' if link else title
+            meta = html.escape(f"{it.get('sentiment', '')} {it.get('compound', 0):+.2f} · "
+                               f"{it.get('published', '')}")
+            rows += (f'<li><span style="color:{col}">●</span> {title_html}'
+                     f'<div class="newsmeta">{meta}</div></li>')
+        parts.append(f'<section><h2>{L["news"]}</h2><ul class="news">{rows}</ul></section>')
+
+    # 8. AI analysis
     if ai_analysis and ai_analysis.strip():
         meta = []
         if ai_ts:

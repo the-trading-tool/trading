@@ -754,8 +754,12 @@ def _build_market_prompt(
     market_status: str | None = None,
     signals: str | None = None,
     seasonality: str | None = None,
+    sector_rotation: str | None = None,
+    news: str | None = None,
     single_asset: bool = False,
     primary_ticker: str | None = None,
+    primary_name: str = '',
+    primary_market: str = '',
     membership_note: str | None = None,
 ) -> str:
     """Multi-Asset Regime & Risk Model — hierarchisch strukturierter Analyse-Prompt.
@@ -787,6 +791,12 @@ def _build_market_prompt(
     if n_data != n_total:
         count_line += f" (davon {n_data} mit verfügbaren Daten, {n_total - n_data} mit FEHLER)"
 
+    # ^TNX (10J-US-Rendite) ist nur dann referenzierbar/semantisch einführbar, wenn es
+    # wirklich als Asset in den Daten steht (Market Overview: meist ausgewählt; Einzel-
+    # Asset: als Zins-Kontext mitgeliefert). Sonst würde der [4-MAKRO]-Verweis unten auf
+    # einen nicht existierenden Block zeigen und Zins-Halluzinationen einladen.
+    has_tnx = any(r.get('ticker') == '^TNX' for r in results)
+
     if single_asset:
         # Einzel-Asset-Framing: EIN Ziel-Asset, der Rest (z.B. Leitindex) ist Kontext.
         primary = primary_ticker or (results[0]['ticker'] if results else '')
@@ -799,7 +809,9 @@ def _build_market_prompt(
             "seines Marktumfelds (Leitindex + Marktbreite). INTERPRETATION statt Wiederholung; Rohzahlen",
             "nur, wenn sie eine Aussage BELEGEN.",
             f"Auswertungsdatum: {today}  |  Intervall: {interval}  |  Zeitraum: {period}",
-            f"Analysiertes Asset (ZIEL): {primary}",
+            f"Analysiertes Asset (ZIEL): {primary}"
+            + (f" — {primary_name}" if primary_name else "")
+            + (f"  |  Markt: {primary_market}" if primary_market else ""),
         ]
         if membership_note:
             lines.append(membership_note)
@@ -820,6 +832,15 @@ def _build_market_prompt(
             "sup_support, Pivot S1). Über einer MA gilt es spiegelbildlich. Niemals ein 'wieder unter' "
             "eine MA schreiben, unter der der Kurs schon steht.",
             "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung.",
+        ]
+        if has_tnx:
+            lines.append(
+                "  • ^TNX (als KONTEXT mitgeliefert) = Rendite 10-jähriger US-Staatsanleihen (in %). "
+                "Steigende Rendite = Zinsdruck/Straffung → tendenziell RISK-OFF (Gegenwind für "
+                "Aktien/Gold/Krypto); fallende Rendite = Lockerung → risk-on. Als ZINS-UMFELD für das "
+                "Ziel-Asset einordnen (nicht als Kurs/Preis lesen, nicht als Analyseziel)."
+            )
+        lines += [
             "",
             "════════════════════════════════════════",
             "MARKTDATEN",
@@ -927,9 +948,9 @@ def _build_market_prompt(
             lines.append("  ATR: nicht verfügbar")
 
         # ── [4-MAKRO] Zinskontext ─────────────────────────────────────────────
-        # TNX ist als eigenes Asset in den Daten — kein doppelter Block nötig.
-        # Für alle anderen Assets: Hinweis dass TNX-Kontext aus dem TNX-Block kommt.
-        if ticker != '^TNX':
+        # Verweis nur, wenn ^TNX wirklich als Block vorhanden ist (has_tnx) — sonst
+        # zeigt er ins Leere. TNX selbst bekommt keinen Selbstverweis.
+        if has_tnx and ticker != '^TNX':
             lines.append("[4-MAKRO → Zinskontext: siehe ^TNX-Block]")
 
         # ── [5-OPTIONALE REGIME-DATEN] ────────────────────────────────────────
@@ -1057,10 +1078,12 @@ def _build_market_prompt(
             lines.append("")
 
     # ── Cross-Asset-Korrelationen ──────────────────────────────────────────────
+    has_corr = False
     if inc.get('correlations', True):
         _corr_block = _correlation_prompt_block()
         if _corr_block:
             lines.append(_corr_block)
+            has_corr = True
 
     # ── Index-Status / Marktbreite (Einzel-Asset-Analyse) ──────────────────────
     if market_status and market_status.strip():
@@ -1104,6 +1127,33 @@ def _build_market_prompt(
             "════════════════════════════════════════",
             "",
             seasonality.strip(),
+            "",
+        ]
+
+    # ── Sektor-Rotation (Einzel-Asset-Analyse) ─────────────────────────────────
+    if sector_rotation and sector_rotation.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "SEKTOR-ROTATION (RRG — relative Stärke der Sektoren vs. Markt)",
+            "RS-Ratio/Momentum um 100: Leading (>100/>100) · Weakening (>100/<100) · "
+            "Improving (<100/>100) · Lagging (<100/<100).",
+            "════════════════════════════════════════",
+            "",
+            sector_rotation.strip(),
+            "",
+        ]
+
+    # ── Nachrichten (Einzel-Asset-Analyse) ─────────────────────────────────────
+    if news and news.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "NACHRICHTEN (Top 5, Yahoo Finance RSS — Titel + VADER-Sentiment)",
+            "Compound: +1.0=sehr positiv · 0=neutral · -1.0=sehr negativ · ±0.05=Schwelle.",
+            "Hinweis: Nur die TITEL + Sentiment bewerten — die Artikel-Links können NICHT "
+            "geöffnet werden (kein Web-Zugriff). Keine Inhalte erfinden.",
+            "════════════════════════════════════════",
+            "",
+            news.strip(),
             "",
         ]
 
@@ -1151,10 +1201,34 @@ def _build_market_prompt(
             lines += [
                 "",
                 "TEIL 5 — SIGNALLAGE:",
-                "  • Bewerte die im Signale-Block genannten Buy/Sell-Signale samt Formel: steht "
-                "aktuell ein Signal an, und wie tragfähig ist es angesichts Trend/Regime/Fundamental? "
+                "  • Ob AKTUELL ein Signal ansteht, sagt die 'Aktuell'-Zeile im Signale-Block "
+                "VERBINDLICH — leite das NICHT selbst aus der Formel ab. Nutze die Formeln plus die "
+                "'Formel-Spalten aktuell'-Werte NUR zur ERKLÄRUNG (welche Bedingung ist erfüllt/nicht).",
+                "  • Zitiere Bedingungen NUR wörtlich aus der jeweils richtigen Formel. Ordne KEINE "
+                "Bedingung der falschen Formel zu und erfinde KEINE Schwellen, die dort nicht stehen "
+                "(z.B. 'rsi>=72' steht in der SELL-, NICHT in der Buy-Formel). Fehlt der Wert einer "
+                "Spalte, sag 'nicht angegeben' statt zu raten.",
+                "  • Tragfähigkeit des letzten Signals angesichts Trend/Regime/Fundamental einordnen; "
                 "Konflikt zwischen Signal und Gesamtbild ausdrücklich benennen.",
             ]
+        if has_corr or sector_rotation or news:
+            _ctx = ["", "TEIL 6 — MARKTUMFELD-KONTEXT (Einbettung in das größere Bild):"]
+            if has_corr:
+                _ctx.append(
+                    "  • Cross-Asset-Korrelationen: In welchem Risk-Regime (risk-on/off, Entkopplung) "
+                    "steht der Markt, und was bedeutet das FÜR DIESES Asset (z.B. High-Beta-Risk, "
+                    "sicherer Hafen, zinssensitiv)?")
+            if sector_rotation:
+                _ctx.append(
+                    "  • Sektor-Rotation: Steht der Sektor des Assets relativ VORNE (Leading/Improving) "
+                    "oder HINTEN (Weakening/Lagging)? Rückenwind oder Gegenwind für den Einzelwert — "
+                    "erhärtet oder relativiert das die These?")
+            if news:
+                _ctx.append(
+                    "  • Nachrichten: Passt das Titel-Sentiment der aktuellen Meldungen zur technischen "
+                    "These? Nenne news-getriebene Chancen/Risiken — bewerte NUR die gelieferten Titel "
+                    "(keine Link-Inhalte, keine erfundenen Fakten).")
+            lines += _ctx
         lines += [
             "",
             f"FAZIT — 2–3 Sätze, datenbasiert, zu {primary} (KEIN pauschaler Kauf-/Verkaufsrat): "
@@ -1311,11 +1385,65 @@ _SINGLE_ASSET_SECTIONS: dict[str, bool] = {
     'extended_snippets': True,
     'compare_4w':        True,
     'headlines':         False,
-    'correlations':      False,
+    'correlations':      True,    # Cross-Asset-Korrelationen als Makro-Regime-Kontext
     'global_summary':    False,
     'trend_compare':     False,
     'depot_55plus':      False,
 }
+
+
+def _get_sector_summary():
+    """Sector-rotation summary (market-wide, same for every asset) — computed once per
+    session and cached in session_state, since build_summary() fetches ~12 ETFs (~15s)."""
+    key = '_sector_rotation_summary'
+    if key not in st.session_state:
+        try:
+            from tradinglib.sector_rotation import SectorRotation
+            st.session_state[key] = SectorRotation().build_summary()
+        except Exception:
+            logger.warning("sector rotation summary failed", exc_info=True)
+            st.session_state[key] = None
+    return st.session_state[key]
+
+
+def build_sector_rotation_text(asset_sector: str) -> str:
+    """Sector-rotation context block for a single asset (via its Yahoo sector → ETF).
+
+    Returns '' when the asset has no sector (crypto/index/commodity) or no data.
+    Uses the market-wide summary (US sectors as the global RRG reference), matched to
+    the asset's sector by ETF ticker to avoid GICS-vs-Yahoo naming mismatches.
+    """
+    if not asset_sector:
+        return ''
+    summ = _get_sector_summary()
+    if summ is None or getattr(summ, 'empty', True):
+        return ''
+    try:
+        from tradinglib.sector_stocks import SECTOR_ETF_MAP
+        from tradinglib import sector_rotation as _srot
+        etf = SECTOR_ETF_MAP.get(asset_sector, '')
+        return _srot.sector_context_text(summ, asset_etf=etf, asset_sector=asset_sector)
+    except Exception:
+        logger.debug("build_sector_rotation_text failed", exc_info=True)
+        return ''
+
+
+def get_rate_context(interval: str = '1d', period: str = '1y', sys_conf=None) -> str:
+    """Kurzer Zins-Kontext-String (^TNX = Rendite 10J US-Staatsanleihen) für den Report,
+    z.B. '4.35% (1M -1.2%)'. Leerer String bei fehlendem sys_conf oder Fehler."""
+    if sys_conf is None:
+        return ''
+    try:
+        r = _compute_for_symbol('^TNX', '^TNX', interval, period, [], sys_conf)
+        if r.get('error') or r.get('close') is None:
+            return ''
+        s = f"{r['close']}%"
+        if r.get('month_ret') is not None:
+            s += f" (1M {r['month_ret']:+.1f}%)"
+        return s
+    except Exception:
+        logger.debug("get_rate_context failed", exc_info=True)
+        return ''
 
 
 def build_single_asset_prompt(
@@ -1326,9 +1454,13 @@ def build_single_asset_prompt(
     market_status: str | None = None,
     signals: str | None = None,
     seasonality: str | None = None,
+    sector_rotation: str | None = None,
+    news: str | None = None,
     parent_index: tuple | None = None,
     indicators: list | None = None,
     sys_conf=None,
+    include_tnx: bool = True,
+    market: str = '',
     freetext: str | None = None,
 ) -> str:
     """Builds the AI prompt for a SINGLE asset, reusing the market-overview prompt
@@ -1341,6 +1473,8 @@ def build_single_asset_prompt(
     seasonality:   optional seasonality summary block.
     parent_index:  optional (display_id, yf_ticker, name) of the leading index the
                    asset belongs to — computed as a CONTEXT data block + membership note.
+    include_tnx:   attach ^TNX (10y US Treasury yield) as a compact rate-environment
+                   context block (unless the target asset IS ^TNX).
     freetext:      optional individual user question appended at the end.
     """
     result = _result_from_df(df, display_id, interval)
@@ -1368,13 +1502,31 @@ def build_single_asset_prompt(
         except Exception:
             logger.warning("single-asset: parent index compute failed", exc_info=True)
 
+    # ^TNX (Rendite 10J US-Staatsanleihen) als kompakter Zins-Umfeld-Kontext — außer das
+    # Ziel-Asset IST ^TNX. indicators=[] hält den Block schlank (Yield-Level + 1W/1M-Change
+    # + Kern-Momentum), das reicht als Makro-/Zinskontext.
+    if include_tnx and str(display_id) != '^TNX' and sys_conf is not None:
+        try:
+            tnx = _compute_for_symbol('^TNX', '^TNX', interval, period, [], sys_conf)
+            if not tnx.get('error'):
+                _tnx_name = '10J US-Staatsanleihe (Rendite)'
+                tnx['name']     = _tnx_name
+                tnx['category'] = 'Zins USA'
+                tnx['context']  = True
+                results.append(tnx)
+                symbol_meta.append(('^TNX', '^TNX', _tnx_name, 'Zins USA'))
+        except Exception:
+            logger.warning("single-asset: TNX context compute failed", exc_info=True)
+
     sec = sections if sections is not None else dict(_SINGLE_ASSET_SECTIONS)
     return _build_market_prompt(
         results, symbol_meta, interval, period, indicators=[],
         headlines=None, sections=sec, freetext=freetext,
         asset_info=asset_info, market_status=market_status,
-        signals=signals, seasonality=seasonality,
-        single_asset=True, primary_ticker=display_id, membership_note=membership_note,
+        signals=signals, seasonality=seasonality, sector_rotation=sector_rotation,
+        news=news,
+        single_asset=True, primary_ticker=display_id,
+        primary_name=name, primary_market=market, membership_note=membership_note,
     )
 
 
@@ -1385,9 +1537,12 @@ def render_single_asset_ai(
     market_status: str | None = None,
     signals: str | None = None,
     seasonality: str | None = None,
+    news: str | None = None,
     parent_index: tuple | None = None,
     indicators: list | None = None,
     sys_conf=None,
+    market: str = '',
+    asset_sector: str = '',
     username: str = 'admin',
     region=st,
 ) -> None:
@@ -1415,12 +1570,17 @@ def render_single_asset_ai(
         if df is None or df.empty:
             region.warning(t('asset_ai.no_data'))
             return
+        # Sector rotation is expensive (~15s, ~12 ETF fetches) → compute only here on
+        # click (cached market-wide per session), never on every tab rerun.
+        with st.spinner(t('mv.spinner_ai')):
+            sector_rotation = build_sector_rotation_text(asset_sector)
         prompt = build_single_asset_prompt(
             df, display_id, name, category, interval, period,
             asset_info=asset_info, market_status=market_status,
-            signals=signals, seasonality=seasonality,
+            signals=signals, seasonality=seasonality, sector_rotation=sector_rotation,
+            news=news,
             parent_index=parent_index, indicators=indicators, sys_conf=sys_conf,
-            freetext=freetext,
+            market=market, freetext=freetext,
         )
         with st.spinner(t('mv.spinner_ai')):   # module-level: writes into the active tab context
             try:
@@ -1643,14 +1803,15 @@ class MarketOverviewPage:
         with st.expander(t('mv.data_selection'), expanded=False):
 
             # ── Provider-Reihenfolge ──────────────────────────────────────────
-            _all_providers  = ['groq', 'github', 'gemini', 'ollama']
+            _all_providers  = ['claude', 'groq', 'github', 'gemini', 'ollama']
             _prov_labels    = {p: t(f'mv.prov.{p}') for p in _all_providers}
+            from tradinglib.ai_client import merge_provider_order
             saved_order = self.sys_conf.get_value('ai_provider_order', _all_providers)
             if not isinstance(saved_order, list):
                 saved_order = _all_providers
-            # Nur bekannte Namen; fehlende ans Ende
-            saved_order = [p for p in saved_order if p in _all_providers] + \
-                          [p for p in _all_providers if p not in saved_order]
+            # Bekannte Namen behalten; fehlende (z.B. neu: claude) an ihrer
+            # Default-Position einfügen (claude → vorne, nicht ans Ende).
+            saved_order = merge_provider_order(saved_order, _all_providers)
 
             st.markdown(t('mv.provider_order_head'))
             st.caption(t('mv.provider_order_caption'))
