@@ -827,13 +827,14 @@ def _build_market_prompt(
             "benennen und EINORDNEN — welches Signal wiegt schwerer und warum.",
             "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
             "Kompression/Breakout — dort liegt die eigentliche Information.",
-            "  • MA-POSITION KONSISTENT halten (siehe [1-TREND]-Block): Kipp-, Warn- und "
-            "Bestätigungssignale MÜSSEN zur tatsächlichen Kurs-vs-MA-Lage passen. Liegt der Kurs "
-            "bereits UNTER einer MA (z.B. SMA200), ist ein 'Durchbruch darunter' KEIN gültiges "
-            "Signal — dann ist die RÜCKEROBERUNG (Break darüber) das bullische Bestätigungssignal, "
-            "und der bärische Trigger ist der VERLUST einer tieferliegenden Unterstützung (SMA50/20, "
-            "sup_support, Pivot S1). Über einer MA gilt es spiegelbildlich. Niemals ein 'wieder unter' "
-            "eine MA schreiben, unter der der Kurs schon steht.",
+            "  • MA-POSITION KONSISTENT halten: Für Szenarien NUR die im [1-TREND]-Block unter "
+            "'HAUPTREGIME (VERBINDLICH)' bereits ausformulierten Bestätigungs-/Invalidierungs-Trigger "
+            "verwenden — erfinde KEINE eigene >/<-Richtung. Ein 'fortgesetzter Abwärtstrend' bedeutet "
+            "Kurs BLEIBT UNTER SMA200 (schreibe nie '(>SMA200)' dafür); eine Rückeroberung ÜBER SMA200 "
+            "ist IMMER bullisch (nie bärisch). Liegt der Kurs bereits UNTER einer MA, ist ein "
+            "'Durchbruch darunter' KEIN gültiges Signal — der bärische Trigger ist der VERLUST einer "
+            "tieferliegenden Unterstützung (SMA50/20, sup_support, Pivot S1). Über einer MA "
+            "spiegelbildlich. Niemals einen Szenario-Tag schreiben, der der Ist-Lage widerspricht.",
             "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung.",
         ]
         if has_tnx:
@@ -874,12 +875,13 @@ def _build_market_prompt(
             "^TNX und ZN=F als EIN Zins-Thema behandeln (nicht doppelt zählen).",
             "  • EXTREME zuerst: RSI ≥ 80 (überkauft) / ≤ 20 (überverkauft), Vorzeichenwechsel, "
             "Korrelationen die stark vom Ø-Wert abweichen — dort liegt die eigentliche Information.",
-            "  • MA-POSITION KONSISTENT halten (siehe [1-TREND] je Asset): Kipp-/Warn-/Bestätigungs"
-            "signale müssen zur tatsächlichen Kurs-vs-MA-Lage passen. Liegt der Kurs bereits UNTER "
-            "einer MA (z.B. SMA200), ist ein 'Durchbruch darunter' KEIN gültiges Signal — dann ist die "
-            "RÜCKEROBERUNG (Break darüber) bullisch und der bärische Trigger der VERLUST einer tiefer"
-            "liegenden Unterstützung. Über einer MA spiegelbildlich. Nie 'wieder unter' eine MA "
-            "schreiben, unter der der Kurs schon steht.",
+            "  • MA-POSITION KONSISTENT halten: Für Szenarien je Asset NUR die im [1-TREND]-Block "
+            "unter 'HAUPTREGIME (VERBINDLICH)' ausformulierten Trigger verwenden — KEINE eigene "
+            ">/<-Richtung erfinden. 'Fortgesetzter Abwärtstrend' = Kurs BLEIBT UNTER SMA200 (nie "
+            "'(>SMA200)'); Rückeroberung ÜBER SMA200 ist IMMER bullisch. Liegt der Kurs bereits UNTER "
+            "einer MA, ist ein 'Durchbruch darunter' KEIN gültiges Signal; der bärische Trigger ist der "
+            "VERLUST einer tieferliegenden Unterstützung. Über einer MA spiegelbildlich. Nie einen "
+            "Szenario-Tag schreiben, der der Ist-Lage widerspricht.",
             "  • Gib KEINE pauschale Anlageberatung — datenbasierte Einordnung"
             + (" (Ausnahme: DEPOT-PROFIL am Ende)." if inc.get('depot_55plus', True) else "."),
             "",
@@ -936,15 +938,45 @@ def _build_market_prompt(
         # ── [1-TREND] MA-Positionierung ───────────────────────────────────────
         lines.append("[1-TREND — MA-Positionierung → Hauptregime]")
         ma_found = False
+        _ma_vals = {}
         for label, col in [('SMA20', 'sma20'), ('SMA50', 'sma50'), ('SMA200', 'sma200')]:
             v = ind.get(col)
             if v and close:
                 pct = (close - v) / v * 100
                 pos = 'ÜBER' if pct > 0 else 'UNTER'
                 lines.append(f"  {label}: {v}  → Kurs {abs(pct):.1f}% {pos} {label}")
+                _ma_vals[label] = v
                 ma_found = True
         if not ma_found:
             lines.append("  MA-Daten: nicht verfügbar")
+        else:
+            # VERBINDLICHER Regime-Fakt + fertig ausformulierte Trigger. Die KI soll diese
+            # Richtung WÖRTLICH übernehmen, statt eine eigene >/<-Richtung zu erfinden —
+            # verhindert die MA-Vorzeichen-Inversion ('Abwärtstrend (>SMA200)' oder
+            # 'Rückeroberung >SMA200 = bärisch'). SMA200 = dominante Trennlinie Bulle/Bär.
+            _s200 = _ma_vals.get('SMA200')
+            if _s200 and close:
+                if close < _s200:
+                    _s50 = _ma_vals.get('SMA50')
+                    if _s50 and _s50 < close:
+                        _lower = f"SMA50 {_s50}"
+                    elif ind.get('sup_support'):
+                        _lower = f"sup_support {ind.get('sup_support')}"
+                    else:
+                        _lower = "die nächste tiefere Unterstützung"
+                    lines += [
+                        f"  → HAUPTREGIME (VERBINDLICH): BÄRISCH — Kurs {close} liegt UNTER SMA200 {_s200}.",
+                        f"    · bärische Bestätigung = Schlusskurs UNTER {_lower} (tieferliegend).",
+                        f"    · bullische Invalidierung = Rückeroberung, Schlusskurs ÜBER SMA200 {_s200}.",
+                    ]
+                else:
+                    _res = ind.get('sup_resistance')
+                    _upper = f"sup_resistance {_res}" if _res else "das nächste höhere Widerstandsniveau"
+                    lines += [
+                        f"  → HAUPTREGIME (VERBINDLICH): BULLISCH — Kurs {close} liegt ÜBER SMA200 {_s200}.",
+                        f"    · bullische Bestätigung = Schlusskurs ÜBER {_upper} (höherliegend).",
+                        f"    · bärische Invalidierung = Schlusskurs UNTER SMA200 {_s200}.",
+                    ]
 
         # ── [2-MOMENTUM] RSI + MACD ───────────────────────────────────────────
         lines.append("[2-MOMENTUM — RSI + MACD]")
