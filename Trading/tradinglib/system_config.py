@@ -382,6 +382,16 @@ class SystemConfig(tools.Db_tools):
             self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
             self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
             self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
+            # Globaler harter Stop-Loss in % unter dem Einstandskurs für die Multi-
+            # Strategies-Berechnung (0 = aus, gilt für alle Indizes). Ein per-Index-
+            # Feld 'stop_loss' im multi_transactions-Dict überschreibt diesen Wert.
+            try:
+                _sl_default = float(self.get_value('stop_loss_pct', 0) or 0)
+            except (TypeError, ValueError):
+                _sl_default = 0.0
+            self.set_value('stop_loss_pct', st.number_input(
+                i18n.t("cfg.stop_loss_pct"), min_value=0.0, max_value=100.0,
+                value=_sl_default, step=1.0, help=i18n.t("cfg.stop_loss_pct_help")))
 
         if self.is_admin:
             with tabs[3]:
