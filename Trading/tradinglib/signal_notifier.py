@@ -34,11 +34,17 @@ def _load_buys(date_str: str) -> pd.DataFrame:
     year = date_str[:4]
     db = tools.Db_tools(db_path=_DB_PATH, database_name=f"trades{year}.db")
     try:
+        # "Offen" = noch nicht verkauft. Verlässlicher Indikator ist das fehlende
+        # Verkaufsvolumen (sellVolume IS NULL OR = 0). Der frühere Filter prüfte
+        # zusätzlich `sellDate IS NULL`, aber offene Positionen tragen als sellDate
+        # einen Platzhalter (= aktuelles Datum) und sellVolume = NULL — dadurch griff
+        # `sellDate IS NULL OR sellVolume = 0` bei genau diesen frischen Buys nicht
+        # (NULL = 0 ist in SQL nicht wahr) und es kam nie ein Buy-Signal durch.
         return pd.read_sql_query(
             """SELECT ticker, longName, stockIndex, Strategy,
                       buyDate, buyPrice, buyVolume, buyValue, currency
                FROM trades
-               WHERE buyDate LIKE ? AND (sellDate IS NULL OR sellVolume = 0)
+               WHERE buyDate LIKE ? AND (sellVolume IS NULL OR sellVolume = 0)
                ORDER BY buyDate DESC""",
             db.conn, params=(f"{date_str}%",),
         )
