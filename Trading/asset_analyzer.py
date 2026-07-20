@@ -587,6 +587,18 @@ class TradingApp:
                     pass
         renderer = ChartsGridRenderer()
         (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
+
+        # Batch HTML-Reports für die (Monitored-)Assets — sequenziell, resumebar
+        # nach AI-Limits. Nur mit strategy_engine-Lizenz (wie der Einzel-Asset-KI-Tab).
+        try:
+            from tradinglib import batch_reports as br
+            br.render_batch_report_ui(
+                st, tickers, self.sys_config, self.username,
+                interval, period, overlays, oszilators,
+            )
+        except Exception as _e:
+            logging.getLogger(__name__).debug("batch report UI failed: %s", _e, exc_info=True)
+
         if show_assets:
             asset_index = '^GDAXI'
             try:

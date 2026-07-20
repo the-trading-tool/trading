@@ -467,11 +467,12 @@ class render_mainpage(fetch_data.FetchData):
                     region.error(t('mv.err_unexpected', error=exc))
 
         if st.session_state.get(report_key):
-            safe = str(ticker).replace('^', '').replace('/', '_').replace('=', '_')
+            from tradinglib.batch_reports import report_filename
+            short = self.get_ticker_value(self.ticker, 'shortName') or longname or ticker
             region.download_button(
                 t('asset_ai.report_download'),
                 data=st.session_state[report_key].encode('utf-8'),
-                file_name=f"{safe}_report.html",
+                file_name=report_filename(ticker, short),
                 mime='text/html', key=f'_rep_dl_{ticker}',
             )
 
