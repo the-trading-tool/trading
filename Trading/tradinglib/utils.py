@@ -60,6 +60,16 @@ class DataUtils():
     # simple in-memory cache for exchange rates to avoid duplicate yfinance calls
     _xrate_cache: dict = {}
 
+    @staticmethod
+    def _is_currency_code(c) -> bool:
+        """True nur für plausible ISO-artige Währungscodes (alphabetisch, 2–5 Zeichen).
+
+        Filtert die Sentinels 0/'0'/''/None (fehlende currency-Spalte) heraus, die
+        sonst zu unsinnigen FX-Tickern wie 'EUR0=X' führen. 'GBp' (Pence) passt, da
+        weiterhin rein alphabetisch.
+        """
+        return isinstance(c, str) and c.strip().isalpha() and 2 <= len(c.strip()) <= 5
+
     @classmethod
     def get_exchange_rate(cls, symbol: str = 'EUR', system_currency: str = 'EUR', period: str = '1d', interval: str = '1m') -> float:
         """Return exchange rate for symbol->system_currency using yfinance with a small in-memory cache.
@@ -67,6 +77,11 @@ class DataUtils():
         Kept intentionally minimal: returns 1 on any failure to avoid exceptions bubbling.
         """
         if symbol == system_currency:
+            return 1.0
+        # Ungültiges Währungs-Sentinel (0/'0'/''/None) NICHT in einen FX-Ticker
+        # bauen — sonst entstehen Yahoo-Fehlabfragen wie "EUR0=X" (404). Ohne
+        # gültigen Code gibt es keine Umrechnung -> Faktor 1.0.
+        if not cls._is_currency_code(symbol) or not cls._is_currency_code(system_currency):
             return 1.0
 
         key = (symbol, system_currency, period, interval)
@@ -94,7 +109,11 @@ class DataUtils():
         Returns 1.0 on failure.
         """
         if currency == local_currency:
-            return 1.0  
+            return 1.0
+        # Siehe get_exchange_rate: ungültiges Sentinel -> keine Umrechnung,
+        # kein "0EUR=X"/"EUR0=X"-Fehlabruf.
+        if not cls._is_currency_code(currency) or not cls._is_currency_code(local_currency):
+            return 1.0
         try:
             # normalize date
             if hasattr(date_obj, 'date'):
