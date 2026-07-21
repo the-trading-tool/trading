@@ -165,15 +165,45 @@ def _build_sell_message(row: dict) -> str:
 
 # ── Hauptlogik ────────────────────────────────────────────────────────────────
 
+def _latest_signal_date() -> str | None:
+    """Neuestes Signal-Datum (Buy oder Sell) aus trades{aktuelles Jahr}.db.
+
+    Der Backtest datiert Signale auf die **letzte verfügbare Kurskerze** — das ist
+    typischerweise der vorige Handelstag, NICHT das Wanduhr-'heute' (Kursdaten sind
+    meist T-1, und an Wochenenden/Feiertagen noch älter). Würde der Notifier auf
+    dt.now() filtern, fände er an einem solchen Lauf nichts und meldete still nichts.
+    Daher wird das jüngste in den Trades vorhandene Datum als Default genutzt.
+    """
+    year = dt.datetime.now().strftime("%Y")
+    db = tools.Db_tools(db_path=_DB_PATH, database_name=f"trades{year}.db")
+    try:
+        row = db.conn.execute(
+            "SELECT MAX(d) FROM ("
+            "  SELECT MAX(buyDate) AS d FROM trades "
+            "  UNION ALL "
+            "  SELECT MAX(sellDate) AS d FROM trades WHERE sellVolume > 0"
+            ")"
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0])[:10]
+    except Exception as exc:
+        logger.warning("signal_notifier: latest-date lookup failed: %s", exc)
+    finally:
+        db.conn.close()
+    return None
+
+
 def run(username: str = "admin", date_str: str | None = None, force: bool = False,
         system_currency: str = "") -> tuple[int, int]:
-    """Alerts für Buys und Sells des Tages senden.
+    """Alerts für Buys und Sells des jüngsten Signal-Tages senden.
 
     Returns:
         (buy_count, sell_count) — Anzahl gesendeter Nachrichten
     """
     if date_str is None:
-        date_str = dt.datetime.now().strftime("%Y-%m-%d")
+        # Nicht dt.now() — die Signale tragen das Datum der letzten Kurskerze
+        # (i. d. R. T-1). Fällt keine Ableitung an (leere DB), auf heute zurück.
+        date_str = _latest_signal_date() or dt.datetime.now().strftime("%Y-%m-%d")
 
     logger.info("signal_notifier: run for %s (force=%s)", date_str, force)
 
