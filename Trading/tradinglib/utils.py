@@ -70,14 +70,45 @@ class DataUtils():
         """
         return isinstance(c, str) and c.strip().isalpha() and 2 <= len(c.strip()) <= 5
 
+    @staticmethod
+    def normalize_currency(code):
+        """Map minor-unit quote currencies to their major unit: return (major_code, factor).
+
+        Yahoo quotes some listings in minor units (LSE: 'GBp'/'GBX' = pence,
+        JSE: 'ZAc' = SA cents, TASE: 'ILA' = agorot). price_major = price / factor.
+        Regular codes are returned uppercased with factor 1.0.
+        """
+        if not isinstance(code, str) or not code.strip():
+            return code, 1.0
+        c = code.strip()
+        cu = c.upper()
+        # 'GBp' is case-sensitive vs the major 'GBP'; 'GBX'/'ZAC'/'ILA' have no major-unit collision
+        if c == 'GBp' or cu == 'GBX':
+            return 'GBP', 100.0
+        if c == 'ZAc' or cu == 'ZAC':
+            return 'ZAR', 100.0
+        if cu == 'ILA':
+            return 'ILS', 100.0
+        return cu, 1.0
+
     @classmethod
     def get_exchange_rate(cls, symbol: str = 'EUR', system_currency: str = 'EUR', period: str = '1d', interval: str = '1m') -> float:
         """Return exchange rate for symbol->system_currency using yfinance with a small in-memory cache.
+
+        Convention: rate = units of *symbol* per 1 *system_currency* (Yahoo ticker
+        ``{SYS}{SYM}=X``), i.e. price_system = price_symbol / rate.
+        Minor-unit currencies (GBp/GBX pence, ...) are converted via their major
+        unit: rate('GBp') = rate('GBP') * 100.
 
         Kept intentionally minimal: returns 1 on any failure to avoid exceptions bubbling.
         """
         if symbol == system_currency:
             return 1.0
+        # Pence & Co. auf die Hauptwährung abbilden (GBp -> GBP * 100)
+        major, factor = cls.normalize_currency(symbol)
+        if factor != 1.0:
+            return cls.get_exchange_rate(symbol=major, system_currency=system_currency,
+                                         period=period, interval=interval) * factor
         # Ungültiges Währungs-Sentinel (0/'0'/''/None) NICHT in einen FX-Ticker
         # bauen — sonst entstehen Yahoo-Fehlabfragen wie "EUR0=X" (404). Ohne
         # gültigen Code gibt es keine Umrechnung -> Faktor 1.0.
@@ -107,9 +138,17 @@ class DataUtils():
         This downloads a small window around the requested date and picks the Close
         value for the requested day. Results are cached in-memory by (currency, local_currency, date).
         Returns 1.0 on failure.
+
+        Convention (inverse of get_exchange_rate!): rate = units of *local_currency*
+        per 1 *currency* (Yahoo ticker ``{CUR}{LOCAL}=X``), i.e. amount_local =
+        amount_currency * rate. Minor units: rate('GBp') = rate('GBP') / 100.
         """
         if currency == local_currency:
             return 1.0
+        # Pence & Co. auf die Hauptwährung abbilden (GBp -> GBP / 100)
+        major, factor = cls.normalize_currency(currency)
+        if factor != 1.0:
+            return cls.get_exchange_rate_for_date(date_obj, major, local_currency) / factor
         # Siehe get_exchange_rate: ungültiges Sentinel -> keine Umrechnung,
         # kein "0EUR=X"/"EUR0=X"-Fehlabruf.
         if not cls._is_currency_code(currency) or not cls._is_currency_code(local_currency):

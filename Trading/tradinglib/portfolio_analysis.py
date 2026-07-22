@@ -16,7 +16,7 @@ import streamlit as st
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tradinglib import tools
-from tradinglib.utils import get_display_name
+from tradinglib.utils import DataUtils, get_display_name
 from tradinglib.i18n import t as _t
 
 logger = logging.getLogger(__name__)
@@ -191,8 +191,8 @@ def _compute_parity_weights(series_dict: dict, window: int = 30) -> pd.Series:
 
 def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
     """
-    Look up longName and current price from asset_info.db for the given tickers.
-    Returns {TICKER: {'longName': str, 'currentPrice': float}}.
+    Look up longName, current price and listing currency from asset_info.db for the given tickers.
+    Returns {TICKER: {'longName': str, 'currentPrice': float, 'currency': str}}.
     Silently falls back to {} if the DB is unreachable.
     """
     if not tickers:
@@ -204,7 +204,7 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
             ph = ','.join(['?'] * len(tickers))
             df = pd.read_sql_query(
                 f'SELECT ticker, symbol, longName, shortName, '
-                f'currentPrice, regularMarketPrice, previousClose '
+                f'currentPrice, regularMarketPrice, previousClose, currency '
                 f'FROM asset_info '
                 f'WHERE ticker IN ({ph}) OR symbol IN ({ph}) '
                 f'ORDER BY timestamp DESC',
@@ -236,13 +236,44 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
                 row.get('regularMarketPrice') or
                 row.get('previousClose') or 0.0
             )
+            cur = row.get('currency')
             result[t] = {
                 'longName':     str(long_name).strip() if long_name else '',
                 'currentPrice': float(cur_price) if cur_price else 0.0,
+                'currency':     str(cur).strip() if isinstance(cur, str) else '',
             }
     except Exception:
         pass
     return result
+
+
+def _listing_currency(ticker: str, info_map: dict) -> str:
+    """Listing (quote) currency of a ticker — asset_info first, Yahoo info as fallback.
+
+    NOT the trade currency from trades.db: a Scalable buy is booked in EUR while
+    the resolved Yahoo listing may quote in GBp/USD. Returns '' when unknown.
+    """
+    cur = (info_map.get(ticker, {}) or {}).get('currency', '')
+    if cur and str(cur).lower() not in ('none', 'nan'):
+        return str(cur).strip()
+    try:
+        from tradinglib import market_data as md
+        info = md.ticker_info(ticker) or {}
+        cur = info.get('currency') or ''
+        return str(cur).strip()
+    except Exception:
+        return ''
+
+
+def _price_to_system(price: float, listing_cur: str, system_currency: str) -> float:
+    """Convert a price from its listing currency (incl. GBp pence) to the system currency."""
+    try:
+        if not price or not listing_cur:
+            return price
+        rate = DataUtils.get_exchange_rate(symbol=listing_cur, system_currency=system_currency)
+        return float(price) / (rate or 1.0)
+    except Exception:
+        return price
 
 
 def _fetch_fx_daily(currency: str, system_currency: str, daily: pd.DatetimeIndex,
@@ -301,8 +332,12 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
         return pd.DataFrame()
 
     sys_cur = (system_currency or 'EUR').upper()
-    currency_map = {k: (str(v).upper().strip() or sys_cur)
-                    for k, v in (currency_map or {}).items()}
+    # Normalize listing currencies; keep the minor-unit factor (GBp -> GBP, /100)
+    _norm = {k: DataUtils.normalize_currency(str(v).strip())
+             for k, v in (currency_map or {}).items()}
+    currency_map = {k: (m if m and m not in ('NAN', 'NONE') else sys_cur)
+                    for k, (m, _f) in _norm.items()}
+    cur_factor = {k: f for k, (_m, f) in _norm.items()}
     if '_cur' not in ev.columns:
         ev['_cur'] = sys_cur
     ev['_cur'] = ev['_cur'].astype(str).str.upper().str.strip().replace(
@@ -355,7 +390,7 @@ def _build_portfolio_history(events: pd.DataFrame, db_path: str = 'database',
         if s is None:
             continue
         close = s.reindex(daily).ffill().bfill()
-        native_val = held * close
+        native_val = held * close / (cur_factor.get(t) or 1.0)
         val_sys = _to_sys(native_val, currency_map.get(t, sys_cur)).fillna(0.0)
         value_total = value_total.add(val_sys, fill_value=0.0)
 
@@ -704,6 +739,13 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     if fb:
                         current_prices[t] = fb
 
+            # Convert listing-currency prices (incl. GBp pence) into the system
+            # currency — cost basis from trades.db is already in system currency.
+            for t in tickers_open:
+                cur = _listing_currency(t, info_map)
+                if cur and cur != system_currency and current_prices.get(t):
+                    current_prices[t] = _price_to_system(current_prices[t], cur, system_currency)
+
             agg['current_price']  = agg['ticker'].map(current_prices).fillna(0)
             agg['current_value']  = agg['shares'] * agg['current_price']
             agg['unrealized_pnl'] = agg['current_value'] - agg['buy_value']
@@ -906,7 +948,10 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             '_signed_sh':  np.where(_bs[act_col] == 'buy',  _bs['_shares'],      -_bs['_shares']),
             '_signed_val': np.where(_bs[act_col] == 'buy',  _bs['_value'].abs(), -_bs['_value'].abs()),
         })
-        # Currency per ticker (first reliable trade currency) for price conversion
+        # Currency per ticker for price conversion. Prices come from the ticker's
+        # LISTING (yf_*.db / Yahoo), so the listing currency from asset_info wins;
+        # the trade currency is only a fallback (a Scalable buy is booked in EUR
+        # even when the resolved listing quotes in GBp/USD).
         def _first_currency(s):
             for x in s:
                 xs = str(x).upper().strip()
@@ -914,6 +959,11 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     return xs
             return system_currency
         currency_map = _bs.groupby('_ticker')['_currency'].apply(_first_currency).to_dict()
+        _hist_info = _lookup_asset_info(list(currency_map.keys()), db_path)
+        for _t_key in list(currency_map.keys()):
+            _lc = _listing_currency(_t_key, _hist_info)
+            if _lc:
+                currency_map[_t_key] = _lc
         with st.spinner(_t('ota.history_loading')):
             hist = _build_portfolio_history(events, db_path,
                                             system_currency=system_currency,

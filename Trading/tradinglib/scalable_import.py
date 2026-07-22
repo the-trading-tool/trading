@@ -18,7 +18,9 @@ import streamlit as st
 from tradinglib import tools
 from tradinglib import tiny_chart as tc
 from tradinglib import system_config as sysconf
-from tradinglib.portfolio_analysis import _fetch_close_series_for_portfolio
+from tradinglib.portfolio_analysis import (_fetch_close_series_for_portfolio,
+                                           _listing_currency, _lookup_asset_info,
+                                           _price_to_system)
 
 logger = logging.getLogger(__name__)
 
@@ -193,15 +195,139 @@ def _write_isin_ticker(tickers_db: str, symbol: str, isin: str) -> None:
         logger.debug(f'Could not write ISIN→ticker to yf_tickers.db: {e}')
 
 
+# EUR-Listing-Präferenz: gettex-nah zuerst (München), dann Liquidität (XETRA), Regionalbörsen
+_EUR_EXCHANGE_PREF = ('MUN', 'GER', 'FRA', 'STU', 'DUS', 'HAM', 'BER')
+
+_ISIN_OVERRIDES_KEY = '_app:isin_ticker_overrides'
+
+
+def _read_isin_overrides(db_path: str = 'database') -> dict:
+    """Manual ISIN→ticker overrides from config.db (authoritative, survive backfills)."""
+    import json as _json
+    try:
+        cfg = tools.Tools().get_path(path=db_path, file_name='config.db')
+        with tools.open_db(cfg, readonly=True) as conn:
+            row = conn.execute("SELECT value FROM config WHERE key=?", (_ISIN_OVERRIDES_KEY,)).fetchone()
+        if row and row[0]:
+            val = _json.loads(row[0])
+            if isinstance(val, dict):
+                return {str(k).strip().upper(): str(v).strip().upper() for k, v in val.items()}
+    except Exception as e:
+        logger.debug(f'Could not read ISIN overrides: {e}')
+    return {}
+
+
+def _write_isin_override(isin: str, symbol: str, db_path: str = 'database') -> None:
+    """Persist a manual ISIN→ticker override in config.db (merge into existing dict)."""
+    import json as _json
+    try:
+        overrides = _read_isin_overrides(db_path)
+        overrides[isin.strip().upper()] = symbol.strip().upper()
+        cfg = tools.Tools().get_path(path=db_path, file_name='config.db')
+        with tools.open_db(cfg) as conn:
+            conn.execute(
+                "INSERT INTO config (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (_ISIN_OVERRIDES_KEY, _json.dumps(overrides)),
+            )
+    except Exception as e:
+        logger.warning(f'Could not write ISIN override {isin}→{symbol}: {e}')
+
+
+def _quote_currency(symbol: str) -> str:
+    """Quote (listing) currency of a Yahoo symbol, '' when unknown."""
+    try:
+        from tradinglib import market_data as md
+        info = md.ticker_info(symbol) or {}
+        return str(info.get('currency') or '').strip()
+    except Exception:
+        return ''
+
+
+def _prefer_currency_listing(symbol: str, isin: str, want_currency: str = 'EUR') -> str:
+    """Plausibility step after ISIN resolution: prefer a listing quoting in *want_currency*.
+
+    Yahoo resolves an ISIN to the primary listing (e.g. Centrica → CNA.L in GBp),
+    while Scalable/gettex trades in EUR. If the resolved listing quotes in a
+    different currency, search Yahoo by company name for a German/EUR listing
+    (Munich ≈ gettex first) and verify the candidate via its ISIN. Falls back to
+    the original symbol when nothing verifiable is found.
+    """
+    try:
+        from tradinglib.utils import DataUtils
+        cur = _quote_currency(symbol)
+        major, _f = DataUtils.normalize_currency(cur)
+        if not cur or major == (want_currency or 'EUR').upper():
+            return symbol
+
+        from tradinglib import market_data as md
+        import yfinance as yf
+        info = md.ticker_info(symbol) or {}
+        # longName ('Centrica plc') findet Cross-Listings; shortName der LSE
+        # ('CENTRICA PLC ORD 6 14/81P') matcht in der Yahoo-Suche oft nichts
+        name = (info.get('longName') or info.get('shortName') or '').strip()
+        if not name:
+            return symbol
+
+        quotes = []
+        try:
+            quotes = yf.Search(name, max_results=25).quotes or []
+        except Exception:
+            return symbol
+
+        candidates = [
+            q for q in quotes
+            if q.get('quoteType') == 'EQUITY' and q.get('exchange') in _EUR_EXCHANGE_PREF
+        ]
+        candidates.sort(key=lambda q: _EUR_EXCHANGE_PREF.index(q.get('exchange')))
+
+        for q in candidates:
+            cand = str(q.get('symbol') or '').strip().upper()
+            if not cand or cand == symbol:
+                continue
+            # verify identity via ISIN (name search may hit similar companies)
+            try:
+                cand_isin = str(yf.Ticker(cand).isin or '').strip().upper()
+            except Exception:
+                cand_isin = ''
+            if cand_isin and cand_isin not in ('-', 'NONE') :
+                if cand_isin == isin:
+                    logger.info(f'ISIN {isin}: prefer {want_currency} listing {cand} over {symbol} ({cur})')
+                    return cand
+                continue
+            # no ISIN available on the candidate — verify by converted price instead
+            try:
+                cand_cur = _quote_currency(cand)
+                if (cand_cur or '').upper() != (want_currency or 'EUR').upper():
+                    continue
+                cand_info = md.ticker_info(cand) or {}
+                p_cand = float(cand_info.get('regularMarketPrice') or cand_info.get('previousClose') or 0)
+                p_orig = float(info.get('regularMarketPrice') or info.get('previousClose') or 0)
+                rate = DataUtils.get_exchange_rate(symbol=cur, system_currency=want_currency)
+                p_conv = p_orig / (rate or 1.0)
+                if p_cand > 0 and p_conv > 0 and 0.85 <= (p_cand / p_conv) <= 1.15:
+                    logger.info(f'ISIN {isin}: prefer {want_currency} listing {cand} over {symbol} ({cur}, price-verified)')
+                    return cand
+            except Exception:
+                continue
+    except Exception as e:
+        logger.debug(f'_prefer_currency_listing failed for {symbol}/{isin}: {e}')
+    return symbol
+
+
 def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     """
     Look up Yahoo Finance ticker for an ISIN.
 
     Resolution order:
+      0.  config.db '_app:isin_ticker_overrides'  (manual overrides, authoritative)
       1.  yf_tickers.db → stocks table  (primary local source; ISIN column)
       1b. FMP ISIN search               (network; better for EU ISINs than Yahoo)
       2.  yfinance: yf.Ticker(isin).info['symbol']  (network fallback)
-    Resolved tickers (1b/2) are written back to yf_tickers.db for future lookups.
+    Network results (1b/2) pass a currency plausibility step: when the primary
+    listing quotes in a foreign currency (e.g. GBp on the LSE), a EUR listing
+    (Munich ≈ gettex first) is preferred. Resolved tickers are written back to
+    yf_tickers.db for future lookups.
 
     Fallback: return isin unchanged.
     """
@@ -212,6 +338,11 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
     isin = isin.strip().upper()
 
     tickers_db = tools.Tools().get_path(path=db_path, file_name='yf_tickers.db')
+
+    # ── 0. manual overrides (config.db) ───────────────────────────────────
+    override = _read_isin_overrides(db_path).get(isin)
+    if override:
+        return override
 
     # ── 1. yf_tickers.db / stocks ─────────────────────────────────────────
     try:
@@ -232,6 +363,7 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
         if provider is not None:
             symbol = (provider.search_isin(isin) or '').strip().upper()
             if symbol and symbol != isin:
+                symbol = _prefer_currency_listing(symbol, isin)
                 _write_isin_ticker(tickers_db, symbol, isin)
                 return symbol
     except Exception as e:
@@ -243,6 +375,7 @@ def _resolve_isin_to_ticker(isin: str, db_path: str = 'database') -> str:
         info = yf.Ticker(isin).info
         symbol = (info.get('symbol') or '').strip().upper()
         if symbol and symbol != isin:
+            symbol = _prefer_currency_listing(symbol, isin)
             _write_isin_ticker(tickers_db, symbol, isin)
             return symbol
     except Exception:
@@ -355,6 +488,16 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
             except Exception:
                 prices[t] = 0.0
 
+    # Convert listing-currency prices (incl. GBp pence) into the trade currency
+    # (Scalable books in EUR even when the resolved listing quotes in GBp/USD).
+    info_map = _lookup_asset_info(tickers, db_path)
+    trade_cur = pos.set_index('ticker')['currency'].astype(str).str.upper().str.strip().to_dict()
+    for t in tickers:
+        cur = _listing_currency(t, info_map)
+        want = trade_cur.get(t) or 'EUR'
+        if cur and cur.upper() != want and prices.get(t):
+            prices[t] = _price_to_system(prices[t], cur, want)
+
     pos['current_price']  = pos['ticker'].map(prices).fillna(0.0)
     pos['current_value']  = pos['shares'] * pos['current_price']
     # Unrealized P&L on the open remaining position only (shares * avg_price as cost basis)
@@ -366,6 +509,67 @@ def _compute_open_positions(trades_df: pd.DataFrame, db_path: str = 'database') 
 
     # FIFO order: oldest position first
     return pos.sort_values('first_buy', ascending=True).reset_index(drop=True)
+
+
+def _render_ticker_correction(region=st, db_path: str = 'database'):
+    """Manual listing correction for imported positions.
+
+    Assigns a different Yahoo listing to a position (e.g. CENB.MU instead of
+    CNA.L to get gettex-like EUR quotes). Updates trades.db, stores an
+    authoritative override in config.db and refreshes the yf_tickers.db mapping
+    so future imports resolve to the corrected ticker directly.
+    """
+    import sqlite3 as _sq
+    trades_db = tools.Tools().get_path(path=db_path, file_name='trades.db')
+    try:
+        with _sq.connect(trades_db) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT ticker, isin, longName FROM trades "
+                "WHERE isin IS NOT NULL AND isin != '' AND isin != 'None' "
+                "ORDER BY ticker"
+            ).fetchall()
+    except Exception:
+        rows = []
+    if not rows:
+        return
+
+    with region.expander('🛠 Ticker korrigieren (falsches Listing?)'):
+        st.caption(
+            'Ordnet einer importierten Position ein anderes Yahoo-Listing zu — '
+            'z. B. **CENB.MU** (München/EUR, gettex-nah) statt **CNA.L** (London/GBp). '
+            'Wirkt auf bestehende Trades und alle künftigen Importe dieser ISIN.'
+        )
+        options = {f'{t} — {ln or ""} ({i})': (t, i) for t, i, ln in rows}
+        sel = st.selectbox('Position', list(options.keys()), key='tickfix_sel')
+        new_tk = st.text_input('Neuer Yahoo-Ticker', key='tickfix_new', placeholder='z. B. CENB.MU').strip().upper()
+        if not new_tk:
+            return
+        try:
+            from tradinglib import market_data as md
+            info = md.ticker_info(new_tk) or {}
+        except Exception:
+            info = {}
+        if not (info.get('currency') or info.get('shortName')):
+            st.warning(f'Kein Yahoo-Datensatz für „{new_tk}" gefunden.')
+            return
+        price = info.get('regularMarketPrice') or info.get('previousClose') or '—'
+        st.info(
+            f'**{new_tk}**: {info.get("shortName") or info.get("longName") or "?"} — '
+            f'{price} {info.get("currency") or "?"} ({info.get("exchange") or "?"})'
+        )
+        if st.button('Übernehmen', key='tickfix_apply'):
+            old_tk, isin = options[sel]
+            n = 0
+            try:
+                with _sq.connect(trades_db) as conn:
+                    cur = conn.execute('UPDATE trades SET ticker=? WHERE isin=?', (new_tk, isin))
+                    n = cur.rowcount
+            except Exception as e:
+                st.error(f'trades.db konnte nicht aktualisiert werden: {e}')
+                return
+            _write_isin_override(isin, new_tk, db_path)
+            _write_isin_ticker(tools.Tools().get_path(path=db_path, file_name='yf_tickers.db'), new_tk, isin)
+            st.success(f'{n} Trade-Zeile(n) {old_tk} → {new_tk} aktualisiert (ISIN {isin}).')
 
 
 @st.dialog('Chart', width='large')
@@ -614,6 +818,9 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         'Nur Zeilen mit Status **Executed** werden verarbeitet.'
     )
 
+    # Manuelle Listing-Korrektur — auch ohne neuen Upload erreichbar
+    _render_ticker_correction(r, db_path)
+
     uploaded = r.file_uploader(
         'Scalable Capital CSV hochladen',
         type=['csv'],
@@ -704,6 +911,26 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
     # ── Pre-compute open positions (with current price) ────────────────────
     with st.spinner('Lade aktuelle Kurse für offene Positionen …'):
         open_pos_df = _compute_open_positions(trades_df, db_path)
+
+    # ── Kurs-Plausibilität: aktueller Kurs vs. Ø-Kaufkurs ──────────────────
+    # Weicht der (bereits währungs-konvertierte) aktuelle Kurs um mehr als
+    # Faktor 2 vom Kaufkurs ab, ist meist das falsche Listing aufgelöst
+    # (z. B. GBp-Notierung statt EUR) → Hinweis auf die Korrektur oben.
+    if not open_pos_df.empty and {'current_price', 'avg_price'} <= set(open_pos_df.columns):
+        _plaus = open_pos_df[(open_pos_df['current_price'] > 0) & (open_pos_df['avg_price'] > 0)].copy()
+        _plaus['_ratio'] = _plaus['current_price'] / _plaus['avg_price']
+        _plaus = _plaus[(_plaus['_ratio'] > 2.0) | (_plaus['_ratio'] < 0.5)]
+        if not _plaus.empty:
+            r.warning(
+                f'⚠️ Kurs-Plausibilität: Bei {len(_plaus)} Position(en) weicht der aktuelle Kurs '
+                'um mehr als Faktor 2 vom Kaufkurs ab — möglicherweise ist das falsche '
+                'Börsen-Listing aufgelöst (z. B. London/GBp statt gettex/EUR). '
+                'Ticker über „🛠 Ticker korrigieren" oben prüfen.'
+            )
+            st.dataframe(
+                _plaus[[c for c in ('ticker', 'longname', 'avg_price', 'current_price') if c in _plaus.columns]],
+                hide_index=True, use_container_width=True,
+            )
 
     # ── Preview tabs ──────────────────────────────────────────────────────
     tab_op, tab_t, tab_d, tab_i, tab_f, tab_tf = r.tabs([
