@@ -747,6 +747,7 @@
   "mt.calc_btn": "Transaktionen berechnen",
   "mt.reset_btn": "Zurücksetzen",
   "mt.calc_hint": "\"Transaktionen berechnen\" drücken, um Simulationen zu starten. Eigene Trades können zuvor im Import/Export-Bereich hochgeladen werden.",
+  "mt.cache_notice": "↩︎ Ergebnis aus Cache (Eingaben unverändert) — Downloads rechnen nicht neu. Für Neuberechnung \"Transaktionen berechnen\" drücken.",
   "mt.strategy_header": "Strategie: {name}",
   "mt.no_data_for_year": "keine Daten für {year} (Kurshistorie unvollständig)",
   "mt.performance_header": "Performance für Investment in: {id}",
