@@ -87,5 +87,16 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <h2>Automation</h2>
 <p>The CLI trading agent <code>run_agent.py</code> uses the same broker connection and can execute signals unattended (e.g. via the scheduler) – see the help for <b>Trading agent (run_agent.py)</b> in the "CLI scripts" tab.</p>
+
+<h2>Position guard (independent of the strategy)</h2>
+<p>By default, open positions are only closed via the sell conditions of the <b>enabled</b> strategies. If a strategy is deleted or disabled, its positions would otherwise never get a sell signal and run indefinitely. The <b>"Position guard (paper/live trading)"</b> switch in <a href="?help=system_config">Settings</a> (<code>paper_position_guard</code>) closes this gap, using the global <b>Hard stop-loss (%)</b> value (<code>stop_loss_pct</code>):</p>
+<table>
+<tr><th style="width:28%">Mode</th><th>Effect</th></tr>
+<tr><td><b>No action</b> (default)</td><td>no intervention – only the ATR buy-stop and sell conditions.</td></tr>
+<tr><td><b>Hard %-stop</b></td><td>on buy, a stop at <code>entry × (1 − %/100)</code> is attached as a <b>GTC broker order</b> (instead of ATR) → broker-side, fires even if the strategy is deleted or the app is down. Additionally, every agent run checks all existing positions against the same threshold.</td></tr>
+<tr><td><b>Close orphaned positions</b></td><td>positions whose named strategy is no longer enabled are liquidated (external/imported and manual "quick" positions are left untouched).</td></tr>
+<tr><td><b>Hard %-stop + orphan close</b></td><td>both combined.</td></tr>
+</table>
+<div class="info">The buy-stop is broker-side (works even without a running agent); the sell net and orphan close require a running agent cycle. In dry-run nothing is actually closed.</div>
 </body>
 </html>

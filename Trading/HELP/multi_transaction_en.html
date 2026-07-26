@@ -36,6 +36,9 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><code>invest</code></td><td>Starting capital for this index (in <code>currency</code> or the system currency)</td></tr>
 <tr><td><code>currency</code></td><td>Settlement currency; <code>ANY</code> = no conversion</td></tr>
 <tr><td><code>order_by</code></td><td>Sort column for selecting the top names (e.g. <code>sortino</code>, <code>overallValueTrend</code>)</td></tr>
+<tr><td><code>stop_loss</code> <small style="color:#888">optional</small></td><td>Hard stop-loss in % for this index only; overrides the global <code>stop_loss_pct</code> from Settings. Sells once the daily low touches <code>entry × (1 − %/100)</code> (0 = off). Covers positions that would otherwise never get a sell signal.</td></tr>
+<tr><td><code>trailing_stop</code> <small style="color:#888">optional</small></td><td>Trailing stop in % below the highest close since entry (moves up with the price; 0 = off).</td></tr>
+<tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Restricts this index to names with a valid ISIN; overrides the global switch.</td></tr>
 </table>
 
 <h2>Usage</h2>
@@ -46,6 +49,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Reset:</b> discards the computed results again</li>
   <li><b>Show transaction detail trend &amp; data:</b> shows a detail view per index with metrics, a trade table and a price chart</li>
 </ul>
+
+<div class="info"><b>Result cache:</b> after computing, the result is cached (keyed on strategy config, year, date, currency). An <b>Excel download or other UI interactions then no longer trigger an expensive recompute</b> – a "Cached result" note is shown. A real recompute only starts via <b>"Compute transactions"</b> or when an input (config/year/date/currency) changes.</div>
 
 <div class="warn">A name is bought <b>only once globally</b>: if an earlier strategy has already added a ticker to the portfolio, a new buy signal for the same ticker in a later strategy is ignored (prevents duplicate positions across strategies).</div>
 

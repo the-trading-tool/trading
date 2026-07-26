@@ -392,6 +392,16 @@ class SystemConfig(tools.Db_tools):
             self.set_value('stop_loss_pct', st.number_input(
                 i18n.t("cfg.stop_loss_pct"), min_value=0.0, max_value=100.0,
                 value=_sl_default, step=1.0, help=i18n.t("cfg.stop_loss_pct_help")))
+            # Positions-Schutz fürs Paper/Live Trading: was passiert mit offenen
+            # Positionen unabhängig davon, ob die eröffnende Strategie noch existiert.
+            # 'none' = heutiges Verhalten (nur ATR-Kauf-Stop + Sell-Bedingungen).
+            _guard_opts = ['none', 'stop', 'orphan', 'stop_orphan']
+            _guard_cur = self.get_value('paper_position_guard', 'none')
+            _guard_idx = _guard_opts.index(_guard_cur) if _guard_cur in _guard_opts else 0
+            self.set_value('paper_position_guard', st.selectbox(
+                i18n.t("cfg.paper_position_guard"), _guard_opts, index=_guard_idx,
+                format_func=lambda v: i18n.t(f"cfg.paper_guard_{v}"),
+                help=i18n.t("cfg.paper_position_guard_help")))
 
         if self.is_admin:
             with tabs[3]:

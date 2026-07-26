@@ -144,6 +144,21 @@ Der Tab <b>Admin</b> wird nur Admin-Benutzern angezeigt.</p>
   <td><b>Trailing Stop aktiviert</b> <small style="color:#888">trailing_stop_enabled</small></td>
   <td>Aktiviert die Trailing-Stop-Logik für Live-/Paper-Trading-Positionen, die vom Trading-Agenten eröffnet wurden.</td>
 </tr>
+<tr>
+  <td><b>Harter Stop-Loss (%) für Multi Strategies</b> <small style="color:#888">stop_loss_pct</small></td>
+  <td>Globaler harter Stop-Loss für die Multi-Strategies-Berechnung: verkauft ein Asset, sobald das <b>Tages-Low</b> um diesen Prozentsatz unter den Einstandskurs fällt (0 = aus, z. B. 10 = Verkauf bei −10 %). Fill am Stop-Level, bei Gap-Down am Open. Fix am Kaufkurs verankert (zieht NICHT mit dem Kurs mit, anders als der Trailing Stop). Deckt Positionen ab, die sonst nie ein Verkaufssignal bekämen. Pro Strategie/Index per Feld <code>stop_loss</code> im Transaktions-JSON überschreibbar. Denselben Wert nutzt der Positions-Schutz im Paper/Live Trading (siehe unten).</td>
+</tr>
+<tr>
+  <td><b>Positions-Schutz (Paper/Live Trading)</b> <small style="color:#888">paper_position_guard</small></td>
+  <td>Schützt offene Broker-Positionen <b>unabhängig davon, ob die eröffnende Strategie noch existiert</b> — schließt sonst die Lücke, dass Positionen einer gelöschten/deaktivierten Strategie nie ein Verkaufssignal mehr bekommen. Nutzt den globalen Wert <code>stop_loss_pct</code>. Vier Modi:
+    <ul>
+      <li><b>Keine Aktion</b> (Standard): kein Eingriff — nur der bisherige ATR-Kauf-Stop und die Sell-Bedingungen der Strategien.</li>
+      <li><b>Harter %-Stop</b>: beim Kauf wird ein Stop bei <code>Einstand × (1 − %/100)</code> als <b>GTC-Broker-Order</b> mitgeschickt (statt ATR) → der Broker hält den Stop, er greift auch bei gelöschter Strategie oder App-Ausfall. Zusätzlich prüft jeder Agent-Lauf alle Bestandspositionen gegen dieselbe Schwelle (Sell-Netz).</li>
+      <li><b>Verwaiste Positionen schließen</b>: Positionen, deren <i>benannte</i> Strategie nicht mehr aktiviert ist, werden glattgestellt (externe/importierte und manuelle „quick"-Positionen bleiben unangetastet).</li>
+      <li><b>Harter %-Stop + Orphan-Close</b>: beides kombiniert.</li>
+    </ul>
+    Der Kauf-Stop ist broker-seitig (auch ohne laufenden Agenten wirksam); Sell-Netz und Orphan-Close benötigen einen laufenden Agent-Zyklus. Im Paper-Modus (Dry-Run) wird nichts real geschlossen.</td>
+</tr>
 </table>
 
 <h2>Admin (nur Admin-Benutzer)</h2>

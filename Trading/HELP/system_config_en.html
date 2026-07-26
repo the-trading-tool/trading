@@ -144,6 +144,21 @@ The <b>Admin</b> tab is only shown to admin users.</p>
   <td><b>Trailing stop enabled</b> <small style="color:#888">trailing_stop_enabled</small></td>
   <td>Enables the trailing-stop logic for live/paper trading positions opened by the trading agent.</td>
 </tr>
+<tr>
+  <td><b>Hard stop-loss (%) for Multi Strategies</b> <small style="color:#888">stop_loss_pct</small></td>
+  <td>Global hard stop-loss for the Multi Strategies backtest: sells an asset once its <b>daily low</b> falls this percentage below the entry price (0 = off, e.g. 10 = sell at −10%). Filled at the stop level, or at the open on a gap-down. Fixed at the buy price (does NOT move up with the price, unlike the trailing stop). Covers positions that would otherwise never get a sell signal. Overridable per strategy/index via a <code>stop_loss</code> field in the transactions JSON. The same value is used by the paper/live position guard (see below).</td>
+</tr>
+<tr>
+  <td><b>Position guard (paper/live trading)</b> <small style="color:#888">paper_position_guard</small></td>
+  <td>Protects open broker positions <b>regardless of whether the strategy that opened them still exists</b> — closes the gap where positions of a deleted/disabled strategy never get a sell signal again. Uses the global <code>stop_loss_pct</code> value. Four modes:
+    <ul>
+      <li><b>No action</b> (default): no intervention — only the existing ATR buy-stop and the strategies' sell conditions.</li>
+      <li><b>Hard %-stop</b>: on buy, a stop at <code>entry × (1 − %/100)</code> is attached as a <b>GTC broker order</b> (instead of ATR) → the broker holds the stop, so it fires even if the strategy is later deleted or the app is down. Additionally, every agent run checks all existing positions against the same threshold (sell net).</li>
+      <li><b>Close orphaned positions</b>: positions whose <i>named</i> strategy is no longer enabled are liquidated (external/imported and manual "quick" positions are left untouched).</li>
+      <li><b>Hard %-stop + orphan close</b>: both combined.</li>
+    </ul>
+    The buy-stop is broker-side (works even without a running agent); the sell net and orphan close require a running agent cycle. In paper mode (dry-run) nothing is actually closed.</td>
+</tr>
 </table>
 
 <h2>Admin (admin users only)</h2>

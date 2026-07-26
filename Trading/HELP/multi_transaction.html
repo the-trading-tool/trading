@@ -36,6 +36,9 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><code>invest</code></td><td>Startkapital für diesen Index (in <code>currency</code> bzw. Systemwährung)</td></tr>
 <tr><td><code>currency</code></td><td>Abrechnungswährung; <code>ANY</code> = keine Umrechnung</td></tr>
 <tr><td><code>order_by</code></td><td>Sortierspalte zur Auswahl der Top-Titel (z.&nbsp;B. <code>sortino</code>, <code>overallValueTrend</code>)</td></tr>
+<tr><td><code>stop_loss</code> <small style="color:#888">optional</small></td><td>Harter Stop-Loss in % nur für diesen Index; überschreibt den globalen Wert <code>stop_loss_pct</code> aus den Einstellungen. Verkauft, sobald das Tages-Low <code>Einstand × (1 − %/100)</code> berührt (0 = aus). Deckt Positionen ab, die sonst nie ein Verkaufssignal bekämen.</td></tr>
+<tr><td><code>trailing_stop</code> <small style="color:#888">optional</small></td><td>Trailing-Stop in % unter dem höchsten Close seit Einstieg (zieht mit dem Kurs mit; 0 = aus).</td></tr>
+<tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Beschränkt diesen Index auf Werte mit gültiger ISIN; überschreibt den globalen Schalter.</td></tr>
 </table>
 
 <h2>Bedienung</h2>
@@ -46,6 +49,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Zurücksetzen:</b> verwirft die berechneten Ergebnisse wieder</li>
   <li><b>Transaktionsdetails Trend &amp; Daten anzeigen:</b> blendet pro Index eine Detailansicht mit Kennzahlen, Trade-Tabelle und Kursverlauf-Chart ein</li>
 </ul>
+
+<div class="info"><b>Ergebnis-Cache:</b> Nach dem Berechnen wird das Ergebnis zwischengespeichert (gekeyt auf Strategie-Config, Jahr, Datum, Währung). Ein <b>Excel-Download oder andere Bedienschritte lösen dann keine teure Neuberechnung mehr aus</b> – es erscheint der Hinweis „Ergebnis aus Cache". Eine echte Neuberechnung startet nur über <b>„Transaktionen berechnen"</b> oder wenn sich eine Eingabe (Config/Jahr/Datum/Währung) ändert.</div>
 
 <div class="warn">Ein Titel wird <b>nur einmal global</b> gekauft: Hat eine frühere Strategie einen Ticker bereits ins Portfolio aufgenommen, wird ein erneutes Kaufsignal für denselben Ticker in einer späteren Strategie ignoriert (verhindert Doppelpositionen über Strategien hinweg).</div>
 
