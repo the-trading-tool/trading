@@ -642,13 +642,15 @@ class render_mainpage(fetch_data.FetchData):
             pass
 
         # ── 2. Strategy Engine (trades{year}.db) ─────────────────────────────
-        # Aggregate all open rows into ONE averaged entry per source; collect closed summary.
+        # Pro STRATEGIE-Name gruppieren, damit die konkrete Strategie (z. B.
+        # "Value Trend ^2") angezeigt wird statt des generischen "Strategy".
         try:
             year = dt.datetime.now().year
             db_file = _tools.get_path('database', f'trades{year}.db')
             with sqlite3.connect(db_file) as conn:
                 strat_df = pd.read_sql_query(
-                    "SELECT buyPrice, buyDate, sellDate, sellPrice, sellVolume FROM trades WHERE ticker=?",
+                    "SELECT Strategy, buyPrice, buyDate, sellDate, sellPrice, sellVolume "
+                    "FROM trades WHERE ticker=?",
                     conn, params=(ticker,)
                 )
             if not strat_df.empty:
@@ -657,27 +659,19 @@ class render_mainpage(fetch_data.FetchData):
                 # NICHT zur Unterscheidung — sonst würden gehaltene Positionen
                 # fälschlich als "Closed" gezeigt.
                 _sv = pd.to_numeric(strat_df['sellVolume'], errors='coerce').fillna(0)
-                open_rows   = strat_df[_sv == 0]
-                closed_rows = strat_df[_sv > 0]
-
-                if not open_rows.empty:
-                    avg_entry = open_rows['buyPrice'].mean()
-                    avg_now   = open_rows['sellPrice'].dropna().mean()  # Mark-to-Market (heute)
+                strat_df = strat_df.assign(_open=(_sv == 0).values)
+                strat_df['Strategy'] = strat_df['Strategy'].fillna('Strategy').astype(str)
+                # Je (Strategie, offen/geschlossen) eine aggregierte Position.
+                for (sname, is_open), grp in strat_df.groupby(['Strategy', '_open'], sort=False):
+                    avg_entry = grp['buyPrice'].mean()
+                    avg_exit  = grp['sellPrice'].dropna().mean()  # bei offen = Mark-to-Market
                     positions.append({
-                        'source': 'Strategy', 'entry': float(avg_entry),
-                        'exit': float(avg_now) if pd.notna(avg_now) else None,
-                        'open': True, 'count': len(open_rows),
-                        'since': str(open_rows['buyDate'].min())[:10],
-                    })
-
-                if not closed_rows.empty:
-                    avg_entry = closed_rows['buyPrice'].mean()
-                    avg_exit  = closed_rows['sellPrice'].dropna().mean()
-                    positions.append({
-                        'source': 'Strategy', 'entry': float(avg_entry),
+                        'source': sname or 'Strategy',
+                        'entry': float(avg_entry),
                         'exit': float(avg_exit) if pd.notna(avg_exit) else None,
-                        'open': False, 'count': len(closed_rows),
-                        'since': str(closed_rows['buyDate'].min())[:10],
+                        'open': bool(is_open),
+                        'count': len(grp),
+                        'since': str(grp['buyDate'].min())[:10],
                     })
         except Exception:
             pass
