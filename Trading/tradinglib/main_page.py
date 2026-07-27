@@ -648,19 +648,26 @@ class render_mainpage(fetch_data.FetchData):
             db_file = _tools.get_path('database', f'trades{year}.db')
             with sqlite3.connect(db_file) as conn:
                 strat_df = pd.read_sql_query(
-                    "SELECT buyPrice, sellDate, sellPrice FROM trades WHERE ticker=?",
+                    "SELECT buyPrice, buyDate, sellDate, sellPrice, sellVolume FROM trades WHERE ticker=?",
                     conn, params=(ticker,)
                 )
             if not strat_df.empty:
-                open_mask = strat_df['sellDate'].isna() | strat_df['sellDate'].isin(['', 'None', 'nan'])
-                open_rows   = strat_df[open_mask]
-                closed_rows = strat_df[~open_mask]
+                # "Offen" = KEIN Verkaufsvolumen. sellDate ist bei offenen Positionen
+                # nur ein Platzhalter (= aktuelles Datum, Mark-to-Market), taugt also
+                # NICHT zur Unterscheidung — sonst würden gehaltene Positionen
+                # fälschlich als "Closed" gezeigt.
+                _sv = pd.to_numeric(strat_df['sellVolume'], errors='coerce').fillna(0)
+                open_rows   = strat_df[_sv == 0]
+                closed_rows = strat_df[_sv > 0]
 
                 if not open_rows.empty:
                     avg_entry = open_rows['buyPrice'].mean()
+                    avg_now   = open_rows['sellPrice'].dropna().mean()  # Mark-to-Market (heute)
                     positions.append({
                         'source': 'Strategy', 'entry': float(avg_entry),
-                        'exit': None, 'open': True, 'count': len(open_rows),
+                        'exit': float(avg_now) if pd.notna(avg_now) else None,
+                        'open': True, 'count': len(open_rows),
+                        'since': str(open_rows['buyDate'].min())[:10],
                     })
 
                 if not closed_rows.empty:
@@ -670,6 +677,7 @@ class render_mainpage(fetch_data.FetchData):
                         'source': 'Strategy', 'entry': float(avg_entry),
                         'exit': float(avg_exit) if pd.notna(avg_exit) else None,
                         'open': False, 'count': len(closed_rows),
+                        'since': str(closed_rows['buyDate'].min())[:10],
                     })
         except Exception:
             pass
@@ -698,7 +706,12 @@ class render_mainpage(fetch_data.FetchData):
             entry = pos['entry']
             src   = pos['source']
             count = pos.get('count', 1)
-            label = f"{src} Entry: {entry:.2f}" if count == 1 else f"{src} Entry: {entry:.2f} (×{count})"
+            label = f"{src} Entry: {entry:.2f}"
+            _ex = pos.get('exit')
+            if _ex and entry:
+                label += f" ({(_ex / entry - 1) * 100:+.1f}%)"
+            if count > 1:
+                label += f" (×{count})"
             if entry and entry > 0:
                 self.t_chart._add_hline_outside(
                     y=entry,
@@ -1148,25 +1161,47 @@ class render_mainpage(fetch_data.FetchData):
                         if _ppos:
                             _open  = [p for p in _ppos if p['open']]
                             _closed = [p for p in _ppos if not p['open']]
+
+                            def _pct(p):
+                                _e = p.get('entry'); _x = p.get('exit')
+                                return (_x / _e - 1) * 100 if (_e and _x) else None
+
                             if _open:
+                                # Offene (gehaltene) Positionen: Einstieg, aktueller
+                                # Mark-to-Market und unrealisierter G/V; wenn bekannt
+                                # auch „gehalten seit". Grüner Badge.
                                 _parts = []
                                 for p in _open:
                                     _cnt = p.get('count', 1)
-                                    _lbl = f"{p['source']}: Invested: Entry: {p['entry']:.2f}"
+                                    _lbl = f"{p['source']}: held · entry {p['entry']:.2f}"
+                                    _x = p.get('exit'); _pc = _pct(p)
+                                    if _x and _pc is not None:
+                                        _lbl += f" → now {_x:.2f} ({_pc:+.1f}% unrealised)"
+                                    if p.get('since'):
+                                        _lbl += f" · since {p['since']}"
                                     if _cnt > 1:
                                         _lbl += f" (×{_cnt})"
                                     _parts.append(_lbl)
-                                tab_trend.success('  |  '.join(_parts))
+                                tab_trend.success('🟢 Open: ' + '  |  '.join(_parts))
                             if _closed:
+                                # Abgeschlossene Round-Trips: Einstieg → Ausstieg und
+                                # realisierter G/V.
                                 _parts = []
                                 for p in _closed:
                                     _cnt = p.get('count', 1)
-                                    _exit_str = f" → Exit: {p['exit']:.2f}" if p.get('exit') else ''
-                                    _lbl = f"{p['source']}: Entry: {p['entry']:.2f}{_exit_str}"
+                                    _x = p.get('exit'); _pc = _pct(p)
+                                    _exit_str = ''
+                                    if _x:
+                                        _exit_str = f" → exit {_x:.2f}"
+                                        if _pc is not None:
+                                            _exit_str += f" ({_pc:+.1f}% realised)"
+                                    _lbl = f"{p['source']}: entry {p['entry']:.2f}{_exit_str}"
+                                    if p.get('since'):
+                                        _lbl += f" · from {p['since']}"
                                     if _cnt > 1:
                                         _lbl += f" (×{_cnt})"
                                     _parts.append(_lbl)
-                                tab_trend.info(f"Closed: {'  |  '.join(_parts)}")
+                                tab_trend.info('⚪ Closed: ' + '  |  '.join(_parts))
                         if self.sys_conf.get_value("pine_export", False):
                             self.multi_selector.render_pine_export()
                         _spin.empty()
