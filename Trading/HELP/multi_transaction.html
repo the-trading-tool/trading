@@ -52,7 +52,9 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Ergebnis-Cache:</b> Nach dem Berechnen wird das Ergebnis zwischengespeichert (gekeyt auf Strategie-Config, Jahr, Datum, Währung). Ein <b>Excel-Download oder andere Bedienschritte lösen dann keine teure Neuberechnung mehr aus</b> – es erscheint der Hinweis „Ergebnis aus Cache". Eine echte Neuberechnung startet nur über <b>„Transaktionen berechnen"</b> oder wenn sich eine Eingabe (Config/Jahr/Datum/Währung) ändert.</div>
 
-<div class="warn">Ein Titel wird <b>nur einmal global</b> gekauft: Hat eine frühere Strategie einen Ticker bereits ins Portfolio aufgenommen, wird ein erneutes Kaufsignal für denselben Ticker in einer späteren Strategie ignoriert (verhindert Doppelpositionen über Strategien hinweg).</div>
+<div class="warn">Ein Titel wird <b>nicht gleichzeitig doppelt</b> gehalten: Hält eine früher verarbeitete Strategie/Index einen Ticker bereits, werden Kaufsignale für denselben Ticker in einer späteren Strategie/Index <b>an den überlappenden Tagen</b> ignoriert (zeitscharf, verhindert Doppelpositionen über Strategien UND Indizes hinweg). Sequentielle Wiederkäufe nach einem Verkauf bleiben erlaubt; die Reihenfolge in der Config entscheidet, wer den Titel bekommt.</div>
+
+<div class="info"><b>Datenqualitäts-Prüfung:</b> Nach der Berechnung werden gehandelte Ticker mit <b>inkonsistentem OHLC</b> (Tages-<code>close</code> außerhalb <code>[Low, High]</code>) als potenzielle Datenfehler ausgewiesen — typisch bei unbereinigten Splits (<code>close</code> ~6× High) oder Pence/Pfund bei <code>.L</code>-Werten (~100×). Solche Bars <b>überspringt der Simulator</b> (sonst entstünden Phantom-Trades, z. B. −83 % durch Kauf zum falschen Kurs + Hard-Stop gegen das korrekte Low). Die Treffer landen in <code>data_quality.db</code>; ein Warnblock zeigt Ursache und Bereinigungs-Befehle. <b>Hinweis:</b> Ein Neu-Einlesen hilft nur, wenn der Datenprovider inzwischen korrekt liefert — ein echter Quell-Fehler braucht einen manuellen Override.</div>
 
 <h2>Auswertung</h2>
 <ul>
