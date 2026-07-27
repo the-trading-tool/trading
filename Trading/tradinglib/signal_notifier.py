@@ -19,6 +19,7 @@ import pandas as pd
 
 from tradinglib import tools
 from tradinglib.pushover_notifier import PushoverNotifier
+from tradinglib.utils import DataUtils
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +78,16 @@ def _load_sells(date_str: str) -> pd.DataFrame:
 
 
 def _load_sim(ticker: str) -> dict:
-    """stop_loss und take_profit aus asset_simulation_all.db."""
+    """stop_loss, take_profit + native Währung aus asset_simulation_all.db.
+
+    Wichtig: stop_loss/take_profit stehen in der NATIVEN Währung des Tickers
+    (z. B. GBp/Pence bei LSE), nicht in der Systemwährung — die `currency`-Spalte
+    wird mitgelesen, damit der Buy-Text sie korrekt umrechnen kann.
+    """
     db = tools.Db_tools(db_path=_DB_PATH, database_name="asset_simulation_all.db")
     try:
         df = pd.read_sql_query(
-            "SELECT stop_loss, take_profit FROM asset_simulation WHERE ticker = ? ORDER BY Date DESC LIMIT 1",
+            "SELECT stop_loss, take_profit, currency FROM asset_simulation WHERE ticker = ? ORDER BY Date DESC LIMIT 1",
             db.conn, params=(ticker,),
         )
         return df.iloc[0].to_dict() if not df.empty else {}
@@ -128,14 +134,34 @@ def _build_buy_message(row: dict, sim: dict, ai_text: str, system_currency: str 
     currency  = row.get("currency", "")
     cur_label = system_currency or currency
 
+    # buyPrice/buyValue (aus trades.db) stehen bereits in der Systemwährung, aber
+    # stop_loss/take_profit (aus asset_simulation) in der NATIVEN Währung des
+    # Tickers (z. B. GBp/Pence bei LSE). Ohne Umrechnung erschienen SL/TP grob
+    # falsch (AAF.L: 388 GBp mit EUR-Label statt 4,54 EUR). Daher auf die
+    # Systemwährung umrechnen: price_system = price_native / rate (GBp->GBP*100
+    # wird in get_exchange_rate intern behandelt).
+    sl = sim.get("stop_loss")
+    tp = sim.get("take_profit")
+    sim_ccy = str(sim.get("currency") or "")
+    if system_currency and sim_ccy and sim_ccy != system_currency:
+        try:
+            rate = DataUtils.get_exchange_rate(symbol=sim_ccy, system_currency=system_currency)
+            if rate:
+                if sl is not None:
+                    sl = float(sl) / rate
+                if tp is not None:
+                    tp = float(tp) / rate
+        except Exception:
+            logger.debug("signal_notifier: SL/TP fx conversion failed for %s", ticker, exc_info=True)
+
     lines = [
         f"{ticker}  {row.get('longName', ticker)}",
         f"Strategie: {row.get('Strategy', '')}",
         f"Index: {row.get('stockIndex', '')}",
         f"Kurs: {_fmt(row.get('buyPrice'))} {currency}",
         f"Volumen: {_fmt(row.get('buyVolume'), 0)}  Wert: {_fmt(row.get('buyValue'))} {currency}",
-        f"Stop-Loss: {_fmt(sim.get('stop_loss'))} {cur_label}",
-        f"Take-Profit: {_fmt(sim.get('take_profit'))} {cur_label}",
+        f"Stop-Loss: {_fmt(sl)} {cur_label}",
+        f"Take-Profit: {_fmt(tp)} {cur_label}",
     ]
     if ai_text:
         summary = ai_text[:_AI_TEXT_LIMIT].rsplit(" ", 1)[0]
