@@ -19,6 +19,7 @@ import pandas as pd
 from tradinglib import tools
 from tradinglib.ai_client import AiClient, AiRateLimitError, AiProviderError
 from tradinglib import system_config as sysconf
+from tradinglib.utils import DataUtils
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,23 @@ class BannerAiGenerator:
             if not ohlc_df.empty else ''
         )
 
+        # buy_price kommt aus trades.db in der Systemwährung, der restliche
+        # Preiskontext (sim 'Preis'-Gruppe, OHLC-Tabelle) aber aus
+        # asset_simulation/yf in der NATIVEN Ticker-Währung. Ohne Angleichung
+        # mischt der KI-Prompt Währungen (LSE: Kauf 4,09 EUR neben Kurs 334 /
+        # Ziel 388 GBp) → irreführende Tipps. Da der Rest nativ ist, buy_price
+        # auf die native Währung zurückrechnen (buy_native = buy_system * rate).
+        buy_price = trade_row.get('buyPrice', '')
+        try:
+            native_ccy = self._native_currency(ticker)
+            sys_ccy = str(self.sys_conf.get_value('system_currency') or '')
+            if buy_price not in ('', None) and native_ccy and sys_ccy and native_ccy != sys_ccy:
+                rate = DataUtils.get_exchange_rate(symbol=native_ccy, system_currency=sys_ccy)
+                if rate:
+                    buy_price = round(float(buy_price) * rate, 4)
+        except Exception:
+            logger.debug("banner_ai: buy_price currency alignment failed", exc_info=True)
+
         return {
             # Base info
             **asset_info,
@@ -154,7 +172,7 @@ class BannerAiGenerator:
             'stockIndex':   trade_row.get('stockIndex', ''),
             'strategy_name': trade_row.get('Strategy', ''),
             'buy_date':     trade_row.get('buyDate', ''),
-            'buy_price':    trade_row.get('buyPrice', ''),
+            'buy_price':    buy_price,
 
             # Strategy conditions
             'buy_query':    strat_ctx.get('buy', self.sys_conf.get_value('buy_query', '')),
@@ -197,6 +215,25 @@ class BannerAiGenerator:
         if df.empty:
             return None
         return df.iloc[0].to_dict()
+
+    def _native_currency(self, ticker: str) -> str:
+        """Native listing currency of the ticker from asset_info.db (z. B. GBp bei
+        LSE). Kanonische Quelle für die buy_price-Angleichung im Prompt-Kontext;
+        `_load_sim_row` strippt die currency-Spalte bewusst (`_SIM_SKIP_COLS`)."""
+        try:
+            db = tools.Db_tools(db_path=_DB_PATH, database_name='asset_info.db')
+            try:
+                df = pd.read_sql_query(
+                    "SELECT currency FROM asset_info WHERE ticker = ? LIMIT 1",
+                    db.conn, params=(ticker,),
+                )
+                if not df.empty and df.iloc[0]['currency']:
+                    return str(df.iloc[0]['currency'])
+            finally:
+                db.conn.close()
+        except Exception:
+            logger.debug("banner_ai: native currency lookup failed for %s", ticker, exc_info=True)
+        return ''
 
     def _load_sim_row(self, ticker: str) -> dict:
         """Return the full simulation row for ticker from asset_simulation_all.db."""
