@@ -788,6 +788,8 @@
   "mt.col_view": "View",
   "mt.simulation_header": "Simulation",
   "mt.potential_gain_header": "Potential Gain",
+  "mt.equity_curve_title": "Portfolio value (mark-to-market)",
+  "mt.drawdown_title": "Drawdown %",
   "mt.buy_header": "Buy",
   "mt.sell_header": "Sell",
   "mt.summary_header": "Investment summary:",
