@@ -332,6 +332,26 @@ class Headlines(tt.TickerTools):
             return None
         return f"{v:+.{digits}f} %" if plus else f"{v:.{digits}f} %"
 
+    def _sys_price(self, value, prefix='≈ '):
+        """System-currency equivalent of a native price, e.g. '≈ 4.07 EUR'.
+
+        Returns None when the ticker already trades in the system currency (no
+        conversion needed) or when there is no usable value/rate. Used to show
+        the EUR value next to native prices (Kurs, Take-Profit, Stop-Loss, …).
+        Convention wie überall: price_system = price_native / x_rate.
+        """
+        try:
+            if value in (None, '') or not self.currency \
+                    or self.currency == self.system_currency:
+                return None
+            rate = self.x_rate or 1
+            if not rate:
+                return None
+            v = float(value) / rate
+        except (TypeError, ValueError):
+            return None
+        return f"{prefix}{round(v, max(getattr(self, 'digits', 2), 2))} {self.system_currency}"
+
     @staticmethod
     def _item(label, value, delta=None, help=None, delta_color='normal'):
         """Build a metric tuple, or None when there is no value to show."""
@@ -514,13 +534,19 @@ class Headlines(tt.TickerTools):
         if self.delta_pct is not None:
             col = 'var(--text-success)' if self.delta_pct >= 0 else 'var(--text-danger)'
             delta_html = f"<span style='font-size:16px;color:{col};margin-left:8px'>{self.delta_pct:+.2f} %</span>"
+        # EUR-Gegenwert (Systemwährung) neben dem nativen Kurs, wenn der Ticker
+        # in einer Fremdwährung notiert (z. B. GBp bei LSE).
+        _close_sys = self._sys_price(self.close_price)
+        close_sys_html = (
+            f"<span style='font-size:14px;color:var(--text-muted);margin-left:6px'>{_close_sys}</span>"
+            if _close_sys else '')
         reg.markdown(
             f"<div style='display:flex;align-items:baseline;justify-content:space-between;"
             f"gap:12px;margin-bottom:2px'>"
             f"<span><span style='font-size:22px;font-weight:500'>{name}</span> "
             f"<span style='font-size:14px;color:var(--text-muted)'>{meta}</span></span>"
             f"<span style='font-size:22px;font-weight:500'>{self.close_price} {self.currency or ''}"
-            f"{delta_html}</span></div>",
+            f"{close_sys_html}{delta_html}</span></div>",
             unsafe_allow_html=True)
 
         # --- Signal (proprietary scores) --------------------------------
@@ -539,22 +565,34 @@ class Headlines(tt.TickerTools):
         hist = self._load_score_history(symbol)
         ovt_dir = self._dir_delta(hist.get('ovt'))
         overall_dir = self._dir_delta(hist.get('overall'))
+        # Preis-Kennzahlen: nativer Wert + EUR-Gegenwert (Systemwährung) als
+        # graue Sub-Zeile (nur wenn Fremdwährung, sonst None -> keine Sub-Zeile).
+        _tp  = self._sig_val('take_profit', self.digits)
+        _sl  = self._sig_val('stop_loss', self.digits)
+        _sup = self._sig_val('sup_support', self.digits)
+        _res = self._sig_val('sup_resistance', self.digits)
+        _atr = self._sig_val('atr', self.digits)
         signal_items = [
             self._item(t('keydata.ovt'), ovt, delta=ovt_dir, delta_color='off',
                        help=t('keydata.ovt_help')),
             self._item(t('keydata.overall_trend'), self._sig_val('overallTrend'),
                        delta=overall_dir, delta_color='off'),
             self._item(t('keydata.trend_dwm'), trend_dwm),
-            self._item(t('keydata.take_profit'), self._sig_val('take_profit', self.digits)),
-            self._item(t('keydata.stop_loss'), self._sig_val('stop_loss', self.digits)),
+            self._item(t('keydata.take_profit'), _tp,
+                       delta=self._sys_price(_tp), delta_color='off'),
+            self._item(t('keydata.stop_loss'), _sl,
+                       delta=self._sys_price(_sl), delta_color='off'),
             self._buy_volume_item(),
-            self._item(t('keydata.support'), self._sig_val('sup_support', self.digits)),
-            self._item(t('keydata.resistance'), self._sig_val('sup_resistance', self.digits)),
+            self._item(t('keydata.support'), _sup,
+                       delta=self._sys_price(_sup), delta_color='off'),
+            self._item(t('keydata.resistance'), _res,
+                       delta=self._sys_price(_res), delta_color='off'),
             self._item(t('keydata.regime'), regime_name),
             self._item(t('keydata.sharpe'), self._sig_val('sharpe')),
             self._item(t('keydata.sortino'), self._sig_val('sortino')),
             self._item(t('keydata.volatility'), self._pct(self._sig_val('vola'))),
-            self._item(t('keydata.atr'), self._sig_val('atr', self.digits)),
+            self._item(t('keydata.atr'), _atr,
+                       delta=self._sys_price(_atr), delta_color='off'),
         ]
         self._grid(reg, t('keydata.signal'), signal_items, per_row=6)
 
