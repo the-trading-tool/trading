@@ -135,3 +135,47 @@ class FearGreedPage:
             st.markdown(t('fg.methodology_md'))
 
         st.info(t('fg.macro_note'))
+
+
+def render_compact_scale(index: str = "^SPX", region=st) -> None:
+    """Kompakte Fear-&-Greed-Skala (horizontale Bullet-Gauge) zum Einbetten in
+    andere Seiten (z. B. Market Map). Rendert nichts, wenn für den Index keine
+    ausreichenden Daten vorliegen (z. B. 'ANY' oder Nicht-Index-Auswahl)."""
+    if not index or not str(index).startswith("^"):
+        return
+    try:
+        result = _compute_cached(index, dt.date.today().isoformat())
+    except Exception:
+        return
+    score = result.get("score")
+    if score is None or (isinstance(score, float) and score != score):
+        return
+    band = t(_BAND_KEYS.get(result.get("label", ""), "fg.band_neutral"))
+    col = _color(score)
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number={"font": {"size": 20}, "suffix": " / 100"},
+        gauge={
+            "shape": "bullet",
+            "axis": {"range": [0, 100], "tickvals": [0, 25, 45, 55, 75, 100]},
+            "bar": {"color": col, "thickness": 0.55},
+            "steps": [
+                {"range": [0, 25],   "color": "rgba(198,40,40,0.18)"},
+                {"range": [25, 45],  "color": "rgba(239,108,0,0.16)"},
+                {"range": [45, 55],  "color": "rgba(158,158,158,0.16)"},
+                {"range": [55, 75],  "color": "rgba(124,179,66,0.16)"},
+                {"range": [75, 100], "color": "rgba(46,125,50,0.18)"},
+            ],
+            "threshold": {"line": {"color": col, "width": 3},
+                          "thickness": 0.85, "value": score},
+        },
+    ))
+    fig.update_layout(height=90, margin=dict(t=6, b=6, l=10, r=10))
+    region.markdown(
+        f"<div style='font-size:14px;margin-bottom:-4px'>"
+        f"<b>{t('fg.title')} — {str(index).lstrip('^')}</b> · "
+        f"<span style='color:{col};font-weight:600'>{band}</span></div>",
+        unsafe_allow_html=True)
+    region.plotly_chart(fig, use_container_width=True,
+                        config={"displayModeBar": False}, key=f"_fg_mini_{index}")

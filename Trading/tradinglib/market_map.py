@@ -684,6 +684,14 @@ class DataVisualizer(tt.TickerTools):
             st.error(t('mm.no_data'))
             return
 
+        # Kompakte Fear-&-Greed-Skala für den gewählten Index (Marktstimmung auf
+        # einen Blick, über der Treemap). Rendert nur bei ^-Index mit Mitgliedern.
+        try:
+            from tradinglib.fear_greed_page import render_compact_scale
+            render_compact_scale(self.index_column, region=st)
+        except Exception:
+            pass
+
         # Market Map (Treemap) – outside the expanders, at the top of the page
         fig, treemap_df, price_col = self.generate_treemap(combined_df, order_by)
         st.plotly_chart(fig, use_container_width=True)
