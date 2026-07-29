@@ -1522,7 +1522,7 @@
   "keydata.sector_section": "Sector comparison",
   "keydata.sector": "Sector",
   "keydata.sector_rank": "OVT rank",
-  "keydata.sector_rank_help": "Rank {rank}/{n} in {sector}",
+  "keydata.sector_rank_help": "Beats {beats} % of {sector}; rank 1 = highest OVT",
   "keydata.sector_rsc": "vs {etf} (3M)",
   "keydata.sector_rsc_help": "Relative strength: asset 3M return minus {etf} ({rsc:+.1f} pp)",
   "keydata.sector_pe": "P/E vs sector",

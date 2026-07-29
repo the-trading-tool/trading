@@ -747,15 +747,23 @@ class Headlines(tt.TickerTools):
         items = [self._item(t('keydata.sector'), sector, help=etf)]
 
         # A) OVT percentile rank within the sector
-        ovt = self._sig_val('overallValueTrend')
-        vals = stats.get('ovt_values') or []
-        if ovt is not None and vals:
-            arr = np.asarray(vals, dtype=float)
-            better = int((arr > ovt).sum())
-            top_pct = round(better / len(arr) * 100)
-            items.append(self._item(
-                t('keydata.sector_rank'), f"Top {top_pct} %",
-                help=t('keydata.sector_rank_help', rank=better + 1, n=n, sector=sector)))
+        # Rank 1 = highest score (best). Show the rank directly (unambiguous) and
+        # the share of the sector this asset beats in the tooltip — avoids the
+        # "Top 95 %" phrasing that reads like a top performer when it is not.
+        def _rank_item(label, value, sector_values):
+            if value is None or not sector_values:
+                return None
+            arr = np.asarray(sector_values, dtype=float)
+            m = len(arr)
+            if m == 0:
+                return None
+            rank = int((arr > value).sum()) + 1
+            beats = round((arr < value).mean() * 100)
+            return self._item(label, f"{rank}/{m}",
+                              help=t('keydata.sector_rank_help', beats=beats, sector=sector))
+
+        items.append(_rank_item(t('keydata.sector_rank'),
+                                self._sig_val('overallValueTrend'), stats.get('ovt_values')))
 
         # C) Relative strength vs the sector ETF over 3 months (local-only)
         if etf and self._ret_3m is not None:

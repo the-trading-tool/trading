@@ -268,11 +268,12 @@ class Ovt(_indicator._Indicator):
             fill='tozeroy', fillcolor='rgba(0,128,128,0.12)',
         ))
 
-        # EMA of the value trend.
+        # EMA of the value trend — solid dark grey so it stays readable over the
+        # teal value-trend fill (the previous dotted light grey was near-invisible).
         self.fig.add_trace(go.Scatter(
             x=x, y=self.df[f'ovtEma{span}'],
             name=f'Value EMA{span}', showlegend=False,
-            mode='lines', line=dict(color='grey', width=1, dash='dot'),
+            mode='lines', line=dict(color='dimgray', width=1.5),
         ))
 
         # Technical trend.

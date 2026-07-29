@@ -1522,7 +1522,7 @@
   "keydata.sector_section": "Sektor-Vergleich",
   "keydata.sector": "Sektor",
   "keydata.sector_rank": "OVT-Rang",
-  "keydata.sector_rank_help": "Rang {rank}/{n} in {sector}",
+  "keydata.sector_rank_help": "Besser als {beats} % in {sector}; Rang 1 = höchste OVT",
   "keydata.sector_rsc": "vs {etf} (3M)",
   "keydata.sector_rsc_help": "Relative Stärke: 3M-Rendite des Assets minus {etf} ({rsc:+.1f} pp)",
   "keydata.sector_pe": "KGV vs Sektor",
