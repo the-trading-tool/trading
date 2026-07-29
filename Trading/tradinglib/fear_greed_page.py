@@ -104,7 +104,7 @@ class FearGreedPage:
 
     # ── Einstieg ──────────────────────────────────────────────────────────────
     def render(self):
-        st.markdown(f"## 😱📊🤑 {t('fg.title')}")
+        st.markdown(f"## {t('fg.title')}")
         st.caption(t('fg.subtitle'))
 
         col_idx, col_btn = st.columns([0.5, 0.5])
