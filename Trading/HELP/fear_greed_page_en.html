@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fear &amp; Greed Index – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Fear &amp; Greed Index <small style="font-size:.6em;color:#888">fear_greed_page.py</small></h1>
+
+<p>The <b>Fear &amp; Greed Index</b> condenses seven market signals into <b>a single value
+from 0 to 100</b>. It measures not price direction but the <b>sentiment</b> behind it:
+<b>0 = extreme fear</b> (panic selling, cheap valuations), <b>100 = extreme greed</b>
+(complacency, overbought markets). Meant as a contrarian compass – extremes often mark
+turning points.</p>
+
+<table>
+<tr><th>Range</th><th>Reading</th></tr>
+<tr><td>0–24</td><td>Extreme Fear</td></tr>
+<tr><td>25–44</td><td>Fear</td></tr>
+<tr><td>45–55</td><td>Neutral</td></tr>
+<tr><td>56–75</td><td>Greed</td></tr>
+<tr><td>76–100</td><td>Extreme Greed</td></tr>
+</table>
+
+<h2>The seven components &amp; their sources</h2>
+<table>
+<tr><th>Component</th><th>What it measures</th><th>Data source</th></tr>
+<tr><td><b>Momentum</b></td><td>Index above/below its SMA125 – normalised against its own
+  history. Far above the average = greed.</td><td><code>yf_&lt;index&gt;</code> (daily close)</td></tr>
+<tr><td><b>Breadth</b></td><td>Average of % of members above SMA200, % with RSI&nbsp;&gt;&nbsp;50
+  and the bullish share (Markov regime). Broad participation = greed.</td><td><code>asset_simulation</code>
+  (all index members)</td></tr>
+<tr><td><b>52-week strength</b></td><td>Share of members near their 52-week high.</td>
+  <td><code>asset_simulation</code> (<code>lyHigh</code>)</td></tr>
+<tr><td><b>Volatility</b></td><td>VIX relative to its 1-year range. High VIX = fear
+  (inverted).</td><td><code>yf_^VIX</code></td></tr>
+<tr><td><b>Term structure</b></td><td>VIX vs. VIX3M. When the curve tips into backwardation
+  (short-term dearer than 3M), fear rises. <b>Substitutes the classic put/call ratio</b>,
+  which is not available from the data source.</td><td><code>yf_^VIX</code>, <code>yf_^VIX3M</code></td></tr>
+<tr><td><b>Safe haven</b></td><td>20-day return of the index minus TLT (Treasuries).
+  Stocks beating bonds = greed.</td><td><code>yf_&lt;index&gt;</code>, <code>yf_TLT</code></td></tr>
+<tr><td><b>Junk-bond demand</b></td><td>20-day return of HYG (high yield) minus LQD
+  (investment grade). Tight credit spreads = risk appetite.</td><td><code>yf_HYG</code>, <code>yf_LQD</code></td></tr>
+</table>
+
+<h2>How the value is built</h2>
+<ul>
+  <li><b>Breadth components</b> are taken directly as a percentage across the index
+      members (e.g. 71 % above SMA200 → 71 points).</li>
+  <li><b>Macro components</b> (VIX, term structure, safe haven, junk bond) are normalised
+      against their <b>own history</b> – via z-score or percentile – and mapped to 0–100.</li>
+  <li>The composite is the <b>equal-weighted mean</b> of all available components. If a
+      series is missing, the average is taken over the rest.</li>
+</ul>
+
+<h2>Usage</h2>
+<ul>
+  <li><b>Index selector:</b> breadth is computed locally for the chosen index
+      (^SPX, ^GDAXI, ^FTSE, …).</li>
+  <li><b>Gauge:</b> the composite with a fear&nbsp;→&nbsp;greed colour scale.</li>
+  <li><b>Component bars:</b> each sub-value with a short rationale (e.g. "VIX 18.2
+      (64th percentile)").</li>
+  <li><b>🔄 Refresh:</b> forces a recompute (otherwise cached per day).</li>
+</ul>
+
+<div class="info">Breadth is local to each index; the macro series (VIX, bonds, credit)
+are US/global and serve as a risk backdrop – even for a European or Asian index.</div>
+
+<div class="warn">The index is a <b>sentiment gauge, not a buy or sell signal</b>. If a
+macro series (e.g. VIX3M) is not loaded up to date, the index uses the latest available
+value – a routine data fetch keeps it fresh.</div>
+
+</body>
+</html>

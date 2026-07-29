@@ -31,6 +31,7 @@ DEFAULT_SIDEBAR_ITEMS = {
     'rotation': False,
     'market_overview': False,
     'correlation': False,
+    'fear_greed': True,
     'asset': True,
     'summary': False,
     'performance': False,
@@ -50,7 +51,7 @@ DEFAULT_SIDEBAR_ITEMS = {
 # (group label i18n key, [item keys in the group]) — drives both the admin
 # checkbox editor and the sidebar's own render order.
 SIDEBAR_MENU_GROUPS = [
-    ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation']),
+    ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed']),
     ('nav.group_assets', ['asset', 'summary', 'performance', 'compound']),
     ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades']),
     ('nav.group_admin', ['admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine']),
@@ -61,6 +62,7 @@ SIDEBAR_ITEM_LABEL_KEYS = {
     'rotation': 'nav.sector_rotation',
     'market_overview': 'nav.market_overview',
     'correlation': 'nav.correlation',
+    'fear_greed': 'nav.fear_greed',
     'asset': 'nav.asset_viewer',
     'summary': 'nav.asset_summary',
     'performance': 'nav.performance',
@@ -279,7 +281,7 @@ class SystemConfig(tools.Db_tools):
         # Entry page on a fresh load (mobile always overrides this with the Asset
         # Viewer). Keys mirror _START_PAGE_ROUTES in asset_analyzer.py.
         start_pages = ['dashboard', 'asset', 'summary', 'performance',
-                       'own_trades', 'market_overview', 'marketmap', 'rotation']
+                       'own_trades', 'market_overview', 'marketmap', 'rotation', 'fear_greed']
 
         idx_b_select = self.get_idx_selected(b_select, 'logging',1)
         idx_rt_select = self.get_idx_selected(b_select, 'rt_prices',1)
@@ -741,6 +743,7 @@ class SystemConfig(tools.Db_tools):
                     ("Market Map", "market_map"),
                     ("Sektorrotation", "sector_rotation_page"),
                     ("Korrelationsindex", "correlation_index_page"),
+                    ("Fear & Greed Index", "fear_greed_page"),
                     ("Regime Flow", "regime_flow_page"),
                     ("Performance", "performance_details"),
                     ("Asset-Übersicht", "all_assets"),

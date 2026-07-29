@@ -88,6 +88,7 @@ _START_PAGE_ROUTES = {
     'market_overview': {'market_overview': 'true'},
     'marketmap':       {'marketmap': 'true'},
     'rotation':        {'rotation': 'true'},
+    'fear_greed':      {'fear_greed': 'true'},
 }
 
 # Server-side mobile detection via the request User-Agent. Not 100 % (recent
@@ -738,6 +739,7 @@ class TradingApp:
             with st.sidebar.expander(t('nav.group_market'), expanded=False):
                 _nav(t('nav.market_overview'), market_overview='true')
                 _nav(t('nav.correlation'), correlation='true')
+                _nav(t('nav.fear_greed'), fear_greed='true')
                 _nav(t('nav.sector_rotation'), rotation='true')
                 _nav(t('nav.market_map'), marketmap='true')
 
@@ -760,7 +762,7 @@ class TradingApp:
             _sb_items = sysconf.SystemConfig.sidebar_menu_config().get_sidebar_items()
 
             # ── Markt ──────────────────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'market_overview', 'correlation')):
+            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed')):
                 with st.sidebar.expander(t('nav.group_market'), expanded=False):
                     if _sb_items.get('marketmap'):
                         _nav(t('nav.market_map'), marketmap='true')
@@ -770,6 +772,8 @@ class TradingApp:
                         _nav(t('nav.market_overview'), market_overview='true')
                     if _sb_items.get('correlation'):
                         _nav(t('nav.correlation'), correlation='true')
+                    if _sb_items.get('fear_greed'):
+                        _nav(t('nav.fear_greed'), fear_greed='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
             if any(_sb_items.get(k) for k in ('asset', 'summary', 'performance', 'compound')):
@@ -1084,6 +1088,14 @@ class TradingApp:
                             CorrelationIndexPage(username=self.username).render()
                         except Exception as e:
                             st.error(t('error.load_correlation', error=e))
+                elif parms.get('fear_greed'):
+                    self.set_page_config(t('page.fear_greed'))
+                    with st.spinner(t('page.fear_greed') + " …"):
+                        try:
+                            from tradinglib.fear_greed_page import FearGreedPage
+                            FearGreedPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_fear_greed', error=e))
                 elif parms.get('compound'):
                     self.set_page_config(t('page.compound_simulation'))
                     with st.spinner(t('page.compound_simulation') + " …"):
