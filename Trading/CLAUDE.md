@@ -768,3 +768,38 @@ KSP-Eintrag `eodhd` anlegen → 🏵-Konfiguration → 🔌 Verbindung testen.
 **Rate-Limits:** EODHD-Free nur **20 Anfragen/Tag** (reines Testkontingent — ein
 `get_asset_data.py`-Lauf sprengt das sofort), kostenpflichtig 100.000/Tag. Für
 echte Hintergrund-Jobs ist FMP-Free (250/Tag) praktikabler.
+
+---
+
+## Neu in dieser Session (2026-07-29) — `ovt`-Indikator (Overall (Value) Trend)
+
+Neuer Oszillator [`tradinglib/indicator/ovt.py`](tradinglib/indicator/ovt.py)
+(Klasse `Ovt`), der die Engine-Scores `overallTrend` (technisch) und
+`overallValueTrend` (Value/Fundamental) — plus `ovtEma{span}` (EMA über
+`overallValueTrend`, gleiche Semantik wie `OvtEmaUpdater`) — **live** als
+Sub-Plot bereitstellt. **Hybrid A+B, ohne Logik-Duplizierung:**
+
+- **B (autoritativ):** liest `overallTrend`/`overallValueTrend` direkt aus
+  `asset_simulation_*.db` per `ticker`+Datum, über mehrere Jahres-DBs
+  (`asset_simulation_.db` = aktuelles Jahr, sonst `_{year}.db`). Verifiziert:
+  **100 % exakter Match** gegen die gespeicherten Werte (AAOI, 145 Zeilen).
+- **A (Fallback):** für Bars *ohne* gespeicherten Wert (aktueller/Intraday-Bar
+  oder nie simulierter Ticker) ruft `data()` **`asset_perf2.score_df` selbst**
+  auf (derselbe vektorisierte Scorer). Nur die live fehlenden Skalare
+  (`vola`/`sharpe`/`sortino`/`logVola`/`wkTrend`/`roa` + `asset_info`-
+  Fundamentals) werden mit denselben Helfern (`indicator.sharpe_ratio`,
+  `log_return`, `trend_pct_df`, `asset_perf2.get_roa`) rekonstruiert.
+  `score_df`/`get_roa` werden **lazy** importiert → kein Zirkularimport (das
+  Modul liegt selbst im `indicator`-Paket).
+
+**Nutzung:** erscheint automatisch in der Oszillator-Auswahl (Auto-Discovery).
+Spalten `overallTrend`/`overallValueTrend`/`ovtEma9` sind **namensgleich zur
+Backtest-Engine** → Buy/Sell-Formeln laufen live *und* im Backtest identisch.
+Kein `INDICATOR_BACKFILL_MAP`-Eintrag nötig (die Spalten existieren in
+`asset_simulation` bereits über `asset_perf2`).
+
+**Einschränkung (bewusst):** Der A-Tail ist eine Näherung — `macd_trend_wk/mo`
+und `moTrend` liegen live nicht vor, `score_df` zählt deren Gewicht bei Wert 0
+→ leichte Dämpfung der *unsimulierten* Randbars. Historie über B ist exakt. Für
+besten Tail ewo/macd/adx/rsi/heikin mit-aktivieren (sonst sieht `score_df` auch
+deren Spalten als 0).
