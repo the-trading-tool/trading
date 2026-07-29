@@ -21,6 +21,7 @@ import os
 import math
 import sqlite3
 import logging
+import datetime as dt
 
 import numpy as np
 import pandas as pd
@@ -71,28 +72,50 @@ def _members(index: str) -> list[str]:
         con.close()
 
 
-def _member_snapshot(index: str) -> pd.DataFrame:
-    """Letzte asset_simulation-Zeile je Indexmitglied (Breadth-Basis)."""
+def _breadth_timeseries(index: str, start_year: int = 2020) -> pd.DataFrame:
+    """Tägliche Breadth-Anteile (0..1) über die Indexmitglieder als MEHRJAHRES-
+    Zeitreihe, damit der aktuelle Wert gegen seine eigene Historie (inkl. der
+    Bärenmärkte 2020/2022) perzentil-normiert werden kann — statt als Rohprozent,
+    der im Bullenmarkt systematisch über-liest.
+
+    WICHTIG: `asset_simulation_all.db` enthält nur das laufende Jahr. Die Historie
+    kommt aus den Jahres-DBs `asset_simulation_{YYYY}.db` (2020–Vorjahr), das
+    laufende Jahr aus `_all.db`. Alle mit AVG(CASE …) je Handelstag aggregiert und
+    zusammengefügt. `near_high`/`near_low` (lyHigh/lyLow) → Netto 52W-Hochs−Tiefs.
+    """
     members = _members(index)
     if not members:
         return pd.DataFrame()
-    con = sqlite3.connect(_p("asset_simulation_all.db"))
-    try:
-        ph = ",".join("?" * len(members))
-        df = pd.read_sql_query(
-            f"""SELECT ticker, close, sma200, sma50, rsi, markov_regime, lyHigh
-                FROM asset_simulation
-                WHERE ticker IN ({ph})
-                  AND Date = (SELECT MAX(Date) FROM asset_simulation a2
-                              WHERE a2.ticker = asset_simulation.ticker)""",
-            con, params=members)
-    except Exception:
+    ph = ",".join("?" * len(members))
+    q = f"""SELECT Date,
+               AVG(CASE WHEN sma200 > 0 AND close > sma200 THEN 1.0 ELSE 0 END) AS above200,
+               AVG(CASE WHEN rsi > 50 THEN 1.0 ELSE 0 END)                       AS rsi50,
+               AVG(CASE WHEN markov_regime = 1 THEN 1.0 ELSE 0 END)              AS bull,
+               AVG(CASE WHEN markov_regime = 2 THEN 1.0 ELSE 0 END)              AS bear,
+               AVG(CASE WHEN lyHigh > 0 AND close >= 0.95 * lyHigh THEN 1.0 ELSE 0 END) AS near_high,
+               AVG(CASE WHEN lyLow  > 0 AND close <= 1.05 * lyLow  THEN 1.0 ELSE 0 END) AS near_low
+            FROM asset_simulation
+            WHERE ticker IN ({ph})
+            GROUP BY Date ORDER BY Date"""
+    cur_year = dt.date.today().year
+    frames = []
+    for yr in range(start_year, cur_year + 1):
+        name = "asset_simulation_all.db" if yr == cur_year else f"asset_simulation_{yr}.db"
+        p = _p(name)
+        if not os.path.exists(p):
+            continue
+        con = sqlite3.connect(p)
+        try:
+            frames.append(pd.read_sql_query(q, con, params=members))
+        except Exception:
+            logger.debug("breadth ts: query failed for %s", name, exc_info=True)
+        finally:
+            con.close()
+    if not frames:
         return pd.DataFrame()
-    finally:
-        con.close()
-    for c in ("close", "sma200", "sma50", "rsi", "markov_regime", "lyHigh"):
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
+    df = pd.concat(frames, ignore_index=True).drop_duplicates("Date").sort_values("Date")
+    for c in ("above200", "rsi50", "bull", "bear", "near_high", "near_low"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
     return df
 
 
@@ -130,11 +153,6 @@ def _ret(series: pd.Series, days: int = 20) -> pd.Series:
 
 # ── Komponenten ───────────────────────────────────────────────────────────────
 
-def _pct(mask: pd.Series) -> float:
-    m = mask.dropna()
-    return float(100.0 * m.mean()) if len(m) else float("nan")
-
-
 def compute(index: str = "^SPX") -> dict:
     comps: dict[str, float] = {}
     detail: dict[str, str] = {}
@@ -150,19 +168,30 @@ def compute(index: str = "^SPX") -> dict:
             comps["momentum"] = _logistic(z)
             detail["momentum"] = f"{index} {dev.iloc[-1]*100:+.1f}% vs SMA{win_ma}"
 
-    # 2. Breadth + 3. 52W-Stärke aus dem Mitglieder-Snapshot
-    snap = _member_snapshot(index)
-    if not snap.empty:
-        above200 = _pct(snap["close"] > snap["sma200"])
-        rsi50 = _pct(snap["rsi"] > 50)
-        bull = _pct(snap["markov_regime"] == 1)
-        bear = _pct(snap["markov_regime"] == 2)
-        bull_share = 100.0 * bull / (bull + bear) if (bull + bear) else 50.0
-        comps["breadth"] = float(np.nanmean([above200, rsi50, bull_share]))
-        detail["breadth"] = f"{above200:.0f}% >SMA200, {rsi50:.0f}% RSI>50, {bull_share:.0f}% Bull-Anteil"
-        near_high = _pct(snap["close"] >= 0.90 * snap["lyHigh"])
-        comps["strength_52w"] = near_high
-        detail["strength_52w"] = f"{near_high:.0f}% nahe 52W-Hoch"
+    # 2. Breadth + 3. 52W-Stärke — HISTORISCH NORMIERT (Perzentil ggü. eigener
+    #    Mehrjahres-Historie) statt Rohprozent. Grund: 71 % > SMA200 sind im
+    #    Bullenmarkt normal, nicht "Gier" — erst der Vergleich mit der eigenen
+    #    Verteilung macht daraus ein Stimmungssignal (wie bei CNN).
+    bts = _breadth_timeseries(index)
+    if not bts.empty and len(bts) >= 60:
+        w = len(bts)
+        bull_share = bts["bull"] / (bts["bull"] + bts["bear"]).replace(0, np.nan)
+        p_above = _pct_rank_last(bts["above200"], win=w)
+        p_rsi = _pct_rank_last(bts["rsi50"], win=w)
+        p_bull = _pct_rank_last(bull_share, win=w)
+        parts = [p for p in (p_above, p_rsi, p_bull) if p is not None]
+        if parts:
+            comps["breadth"] = 100.0 * float(np.mean(parts))
+            detail["breadth"] = (f"{bts['above200'].iloc[-1]*100:.0f}% >SMA200 · "
+                                 f"Perzentil {100*np.mean(parts):.0f}%")
+        # 52W-Stärke: Netto neue 52W-Hochs minus Tiefs (via lyHigh/lyLow),
+        # historisch perzentil-normiert — ersetzt das saturierende "% nahe Hoch".
+        net = bts["near_high"] - bts["near_low"]
+        p_net = _pct_rank_last(net, win=w)
+        if p_net is not None:
+            comps["strength_52w"] = 100.0 * p_net
+            detail["strength_52w"] = (f"Netto 52W-Hochs−Tiefs "
+                                      f"{net.iloc[-1]*100:+.0f}pp · Perzentil {100*p_net:.0f}%")
 
     # 4. Volatilität: VIX invertiert
     vix = _series("^VIX")

@@ -39,8 +39,9 @@ extreme Werte markieren oft Wendepunkte.</p>
 <tr><td><b>Marktbreite</b></td><td>Mittel aus % der Mitglieder über SMA200, % mit RSI&nbsp;&gt;&nbsp;50
   und dem Bullen-Anteil (Markov-Regime). Breite Beteiligung = Gier.</td><td><code>asset_simulation</code>
   (alle Indexmitglieder)</td></tr>
-<tr><td><b>52-Wochen-Stärke</b></td><td>Anteil der Mitglieder nahe ihrem 52-Wochen-Hoch.</td>
-  <td><code>asset_simulation</code> (<code>lyHigh</code>)</td></tr>
+<tr><td><b>52-Wochen-Stärke</b></td><td>Netto neue 52-Wochen-Hochs minus Tiefs
+  (perzentil-normiert gegen die eigene Mehrjahres-Historie).</td>
+  <td><code>asset_simulation</code> (<code>lyHigh</code>/<code>lyLow</code>)</td></tr>
 <tr><td><b>Volatilität</b></td><td>VIX relativ zu seiner 1-Jahres-Spanne. Hoher VIX = Angst
   (invertiert).</td><td><code>yf_^VIX</code></td></tr>
 <tr><td><b>Terminstruktur</b></td><td>VIX gegen VIX3M. Kippt die Kurve in Backwardation
@@ -54,11 +55,14 @@ extreme Werte markieren oft Wendepunkte.</p>
 
 <h2>Wie der Wert entsteht</h2>
 <ul>
-  <li><b>Marktbreite-Komponenten</b> werden direkt als Prozentanteil über die
-      Indexmitglieder gebildet (z. B. 71 % über SMA200 → 71 Punkte).</li>
-  <li><b>Makro-Komponenten</b> (VIX, Terminstruktur, Safe-Haven, Junk-Bond) werden gegen
-      ihre <b>eigene Historie</b> normiert – per z-Score bzw. Perzentil – und auf 0–100
-      abgebildet.</li>
+  <li><b>Jede</b> Komponente wird gegen ihre <b>eigene Mehrjahres-Historie</b> normiert
+      (Perzentil bzw. z-Score → 0–100). Wichtig bei der Marktbreite: 71 % über SMA200
+      klingen nach Gier, sind im Bullenmarkt aber normal – erst der Vergleich mit der
+      Historie (inkl. der Bärenmärkte 2020/2022, ~6,5 Jahre) macht daraus ein
+      Stimmungssignal (z. B. 71 % → 68. Perzentil → 68 Punkte).</li>
+  <li>Die Breadth-Historie stammt aus den Jahres-DBs <code>asset_simulation_{JAHR}.db</code>
+      (2020–Vorjahr) plus dem laufenden Jahr aus <code>_all.db</code> – Letzteres allein
+      enthält nur das aktuelle Jahr und würde jeden Aufwärtsmarkt als „Gier" lesen.</li>
   <li>Der Gesamtwert ist der <b>gleichgewichtete Mittelwert</b> aller verfügbaren
       Komponenten. Fehlt eine Reihe, wird über die restlichen gemittelt.</li>
 </ul>

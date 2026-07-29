@@ -39,8 +39,9 @@ turning points.</p>
 <tr><td><b>Breadth</b></td><td>Average of % of members above SMA200, % with RSI&nbsp;&gt;&nbsp;50
   and the bullish share (Markov regime). Broad participation = greed.</td><td><code>asset_simulation</code>
   (all index members)</td></tr>
-<tr><td><b>52-week strength</b></td><td>Share of members near their 52-week high.</td>
-  <td><code>asset_simulation</code> (<code>lyHigh</code>)</td></tr>
+<tr><td><b>52-week strength</b></td><td>Net new 52-week highs minus lows
+  (percentile-normalised against its own multi-year history).</td>
+  <td><code>asset_simulation</code> (<code>lyHigh</code>/<code>lyLow</code>)</td></tr>
 <tr><td><b>Volatility</b></td><td>VIX relative to its 1-year range. High VIX = fear
   (inverted).</td><td><code>yf_^VIX</code></td></tr>
 <tr><td><b>Term structure</b></td><td>VIX vs. VIX3M. When the curve tips into backwardation
@@ -54,10 +55,14 @@ turning points.</p>
 
 <h2>How the value is built</h2>
 <ul>
-  <li><b>Breadth components</b> are taken directly as a percentage across the index
-      members (e.g. 71 % above SMA200 → 71 points).</li>
-  <li><b>Macro components</b> (VIX, term structure, safe haven, junk bond) are normalised
-      against their <b>own history</b> – via z-score or percentile – and mapped to 0–100.</li>
+  <li><b>Every</b> component is normalised against its <b>own multi-year history</b>
+      (percentile or z-score → 0–100). This matters for breadth: 71 % above SMA200
+      sounds greedy but is normal in a bull market – only the comparison with history
+      (including the 2020/2022 bear markets, ~6.5 years) turns it into a sentiment
+      signal (e.g. 71 % → 68th percentile → 68 points).</li>
+  <li>The breadth history comes from the yearly databases <code>asset_simulation_{YEAR}.db</code>
+      (2020–last year) plus the current year from <code>_all.db</code> – the latter alone
+      only holds the current year and would read every uptrend as "greed".</li>
   <li>The composite is the <b>equal-weighted mean</b> of all available components. If a
       series is missing, the average is taken over the rest.</li>
 </ul>
