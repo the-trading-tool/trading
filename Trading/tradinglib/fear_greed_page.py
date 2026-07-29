@@ -171,13 +171,11 @@ def render_compact_scale(index: str = "^SPX", region=st) -> None:
                           "thickness": 0.85, "value": score},
         },
     ))
-    fig.update_layout(height=90, margin=dict(t=6, b=6, l=10, r=10))
-    # Halbe Breite: in die linke von zwei Spalten rendern.
-    half, _ = region.columns(2)
-    half.markdown(
+    fig.update_layout(height=46, margin=dict(t=4, b=4, l=10, r=10))
+    region.markdown(
         f"<div style='font-size:14px;margin-bottom:-4px'>"
         f"<b>{t('fg.title')} — {str(index).lstrip('^')}</b> · "
         f"<span style='color:{col};font-weight:600'>{band}</span></div>",
         unsafe_allow_html=True)
-    half.plotly_chart(fig, use_container_width=True,
-                      config={"displayModeBar": False}, key=f"_fg_mini_{index}")
+    region.plotly_chart(fig, use_container_width=True,
+                        config={"displayModeBar": False}, key=f"_fg_mini_{index}")
