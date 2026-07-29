@@ -803,3 +803,17 @@ und `moTrend` liegen live nicht vor, `score_df` zählt deren Gewicht bei Wert 0
 → leichte Dämpfung der *unsimulierten* Randbars. Historie über B ist exakt. Für
 besten Tail ewo/macd/adx/rsi/heikin mit-aktivieren (sonst sieht `score_df` auch
 deren Spalten als 0).
+
+**⚠️ Oszillatoren dürfen keine Layout-Annotationen via `_add_hline_outside`
+setzen.** Bug gefunden: `_add_hline_outside` erzeugt eine Annotation mit
+`xref='paper'`/`x=0.0`. Der **Overlay**-Pfad in `tiny_chart` (Zeile ~344ff.)
+überträgt Annotationen bewusst **ohne** `row/col` und erhält `xref='paper'` —
+darum funktioniert der Helper bei Overlays (`sup`/`gan`/`fib`/`pre`/`pvt`). Der
+**Sub-Plot-Pfad** (Zeile ~674) überträgt sie dagegen mit
+`add_annotation(an, row=1, col=1)`, wodurch Plotly `xref='paper'`→`'x'`
+umschreibt → `x=0.0` wird zur Epoch-Datumskoordinate **1970-01-01** und streckt
+die geteilte `type="date"`-Achse (gesamter Chart 1970→heute, Daten rechts
+zusammengequetscht). `ovt` nutzt deshalb reine `add_hline`-Referenzlinien (nur
+Shapes, die als `x{row} domain` sauber übertragen werden). Latent: der Sub-Plot-
+Annotations-Pfad in `tiny_chart` ist generell fehlerhaft (homed nach `row=1`
+statt `row=row` + xref-Override) — bisher ohne Konsumenten.

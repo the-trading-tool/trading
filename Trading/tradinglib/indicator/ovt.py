@@ -282,7 +282,13 @@ class Ovt(_indicator._Indicator):
             mode='lines', line=dict(color=self.color_trend, width=2),
         ))
 
-        # Reference levels in the left margin (parent-class helper).
-        self._add_hline_outside(0, 'neutral', line_color='grey')
-        self._add_hline_outside(50, 'bullish', line_color='green')
-        self._add_hline_outside(-50, 'bearish', line_color='firebrick')
+        # Reference levels — plain hlines only (shapes transfer to the sub-plot as
+        # 'x{row} domain' → safe). NOTE: do NOT use _add_hline_outside here: that
+        # helper emits a layout *annotation* with xref='paper'/x=0.0, and the
+        # oscillator sub-plot path in tiny_chart re-homes annotations via
+        # add_annotation(row=1, col=1), which rewrites xref='paper'→'x' — turning
+        # x=0.0 into the epoch date 1970-01-01 and stretching the shared date axis.
+        # (The overlay path handles this correctly; the sub-plot path does not.)
+        self.fig.add_hline(y=0, line_width=1, line_dash='dot', line_color='grey')
+        self.fig.add_hline(y=50, line_width=1, line_dash='dot', line_color='green')
+        self.fig.add_hline(y=-50, line_width=1, line_dash='dot', line_color='firebrick')
