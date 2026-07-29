@@ -89,6 +89,7 @@ Roh-OHLC ist in `asset_simulation` als **`Open`/`High`/`Low`/`close`** verfügba
 | Alte(r) Name(n) | Neuer Name | Indikator |
 |---|---|---|
 | `RelVol_Ratio`, `RelVol_Current`, `RelVol_Past`, `AdjVolume` | `relvol_ratio`, `relvol_current`, `relvol_past`, `relvol_adj_vol` | relvol |
+| — | `relvol_direction` | relvol (neu) |
 | `plus_di`, `minus_di`, `adx_plus_di`, `adx_minus_di` | `adx_plus`, `adx_minus` | adx |
 | — | `adx_angle` | adx (neu) |
 | — | `momentum_ema_angle` | stoch/indicator (neu) |
@@ -152,6 +153,16 @@ Timeframe (1d/1wk/1mo) separat; `asset_perf2.py` liest lediglich den letzten Wer
 der Spalte `relvol_ratio` aus `df_weekly`/`df_monthly` (analog zu `ewo_wk`/`ewo_mo`
 aus `ewo.py`). Es war also keine zusätzliche Berechnung in `relvol.py` nötig,
 sondern nur die Vereinheitlichung der pdict-Schlüssel.
+
+Neu: `relvol_direction` (+ `_wk`/`_mo`) zeigt an, **ob** das Relativvolumen von
+Käufen oder Verkäufen ausgelöst wurde: `+1` = Close>Open (kauf-getrieben),
+`-1` = Close<Open (verkauf-getrieben), `0` = Doji. Deckt sich mit der Balkenfarbe
+in `relvol.add_fig()`. In Formeln nutzbar wie `relvol_ratio > 1.5 & relvol_direction
+> 0`. Verdrahtung identisch zu `relvol_ratio`: Spalte in `relvol.py`, pdict +
+`INDICATOR_BACKFILL_MAP['relvol']` in `asset_perf2.py`; `_wk`/`_mo` kommen aus der
+Pro-Timeframe-Instanziierung (kein TF-Backfill-Eintrag → nur beim vollen `init`,
+nicht via `/backfill:relvol`). Neue DB-Spalten legen `bulk_upsert_dicts` bzw.
+`_ensure_sim_columns` selbst an — kein manuelles `ALTER TABLE` nötig.
 
 ### Trend-Scores nach ewo.py / macd.py verlagert
 

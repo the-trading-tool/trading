@@ -38,7 +38,7 @@ INDICATOR_BACKFILL_MAP: dict = {
     'dema':    ['dema_ema_fast', 'dema_ema_slow', 'dema_buy', 'dema_sell'],
     'hor':     ['hor_val', 'hor_threshold'],
     'sup':     ['sup_support', 'sup_resistance'],
-    'relvol':  ['relvol_ratio'],
+    'relvol':  ['relvol_ratio', 'relvol_direction'],
     'atc':     ['atc_top_high', 'atc_bot_low'],
     'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
@@ -749,6 +749,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         relVol = DataUtils.safe_last(df, 'relvol_ratio', default=0)
         wkRelVol = DataUtils.safe_last(df_weekly, 'relvol_ratio', default=0)
         moRelVol = DataUtils.safe_last(df_monthly, 'relvol_ratio', default=0)
+        relVolDir = DataUtils.safe_last(df, 'relvol_direction', default=0)
+        wkRelVolDir = DataUtils.safe_last(df_weekly, 'relvol_direction', default=0)
+        moRelVolDir = DataUtils.safe_last(df_monthly, 'relvol_direction', default=0)
         atc_top_high = DataUtils.safe_last(df, 'atc_top_high', default=0)
         atc_bot_low = DataUtils.safe_last(df, 'atc_bot_low', default=0)
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
@@ -767,6 +770,9 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict["relvol_ratio"] = relVol
         pdict["relvol_ratio_wk"] = wkRelVol
         pdict["relvol_ratio_mo"] = moRelVol
+        pdict["relvol_direction"] = relVolDir
+        pdict["relvol_direction_wk"] = wkRelVolDir
+        pdict["relvol_direction_mo"] = moRelVolDir
         pdict['currency'] = get_ticker_value(ticker, 'currency')
         pdict['ath'] = df_monthly['Close'].max() if (df_monthly is not None and not df_monthly.empty and 'Close' in df_monthly.columns) else 0
         pdict['dTrend'] = indicator.trend_pct_df(df)

@@ -83,6 +83,17 @@ class Relvol(_indicator._Indicator):
         df['relvol_ratio'] = df['relvol_current'] / df['relvol_past']
         df['relvol_ratio'] = df['relvol_ratio'].replace([np.inf, -np.inf], np.nan)
         df['relvol_ratio'] = df['relvol_ratio'].fillna(1)
+
+        # Direction of the (relative) volume: was it driven by buyers or sellers?
+        # +1 = up candle (buy-driven), -1 = down candle (sell-driven), 0 = doji/flat.
+        # Uses Close vs Open, matching the bull/bear bar coloring in add_fig().
+        # Exposed as a column so buy/sell formulas can qualify the ratio, e.g.
+        #   relvol_ratio > 1.5 & relvol_direction > 0   -> high volume on buying
+        #   relvol_ratio > 1.5 & relvol_direction < 0   -> high volume on selling
+        df['relvol_direction'] = np.where(
+            df['Close'] > df['Open'], 1,
+            np.where(df['Close'] < df['Open'], -1, 0),
+        )
         return df
 
     # ----------------------------------------------------------------------
