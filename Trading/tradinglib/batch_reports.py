@@ -182,7 +182,7 @@ def build_report_html_for_ticker(
             market=market, compact=compact, freetext='',
         )
         client = AiClient(username=username)
-        ai_analysis = client.run_question(prompt, max_tokens=2800)  # may raise
+        ai_analysis = client.run_question(prompt, max_tokens=2800, groq_brevity=True)  # may raise
         ai_model    = client.model_used
         ai_ts       = dt.datetime.now().strftime('%d.%m.%Y %H:%M')
         ai_ok       = True

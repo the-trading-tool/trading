@@ -165,6 +165,35 @@ _GROQ_MODELS = [
 _GROQ_MAX_RETRIES = 2
 _GROQ_MAX_WAIT    = 60
 
+# Groq-Free-Modelle brechen die Ausgabe gern am Output-Token-Limit ab (finish_reason
+# 'length') → mitten im Satz. Dieses Präfix erzwingt eine KOMPAKTE, Fazit-zuerst-
+# Antwort mit Wortobergrenze: selbst bei einem Abschnitt steht die Kernaussage zuerst
+# und die Antwort passt sicher ins Budget. Nur Groq vorangestellt (andere Provider
+# schneiden nicht ab und bekommen die volle Analyse).
+_GROQ_BREVITY_PREFIX = (
+    "WICHTIG — AUSGABE-BUDGET (strikt): Antworte KOMPAKT und VOLLSTÄNDIG.\n"
+    "1) Beginne mit einem FAZIT von 2–3 Sätzen (Kernaussage + Bias bullisch/"
+    "bärisch/neutral + wichtigster Konflikt).\n"
+    "2) Danach höchstens 5 knappe Stichpunkte zu den stärksten Treibern.\n"
+    "3) Insgesamt MAXIMAL ~220 Wörter. Keine Einleitung, kein Nacherzählen der "
+    "Rohdaten, keine Tabellen.\n"
+    "4) Beende JEDEN Satz — brich niemals mitten im Satz oder Wort ab; lieber "
+    "weniger Punkte, dafür abgeschlossen.\n"
+    "────────────────────────────────────────\n\n"
+)
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """Cut a truncated completion back to the last complete sentence/bullet so it does
+    not end mid-word. Used only when Groq reports finish_reason == 'length'."""
+    if not text:
+        return text
+    cut = max(text.rfind('. '), text.rfind('.\n'), text.rfind('!'),
+              text.rfind('?'), text.rfind('…'), text.rfind('\n'))
+    if cut > len(text) * 0.5:          # only trim if a sentence boundary is reasonably late
+        return text[:cut + 1].rstrip()
+    return text.rstrip()
+
 
 class GroqProvider(BaseProvider):
     name = 'groq'
@@ -202,8 +231,14 @@ class GroqProvider(BaseProvider):
                         # Discourage token-repetition loops (e.g. "nach-nach-nach…").
                         frequency_penalty=0.3,
                     )
+                    choice = resp.choices[0]
+                    text   = choice.message.content or ''
+                    if getattr(choice, 'finish_reason', None) == 'length':
+                        # Am Token-Limit abgeschnitten → auf letzten ganzen Satz kürzen.
+                        logger.warning("Groq: %s hit output limit — trimmed to last sentence", model)
+                        text = _trim_to_last_sentence(text)
                     logger.info("Groq: OK via %s (attempt %d)", model, attempt)
-                    return resp.choices[0].message.content, model
+                    return text, model
                 except Exception as exc:
                     err = str(exc)
                     last_exc = exc
@@ -462,10 +497,16 @@ class AiClient:
         self._providers    = _resolve_provider_list(provider, username)
         self.provider_name = self._providers[0].name if self._providers else ''
 
-    def run_question(self, question: str, max_tokens: int = 1024) -> str:
+    def run_question(self, question: str, max_tokens: int = 1024,
+                     groq_brevity: bool = False) -> str:
         """Send a question to the first available provider, falling back to the next
         one on ANY failure (rate limit, missing/invalid key, auth/config error, or an
         unexpected exception). The error is only propagated after every provider fails.
+
+        groq_brevity: for single-asset analyses, prepend a Fazit-first / word-cap
+        directive ONLY to the Groq request so it fits the free-tier output budget and
+        stays useful even if truncated. Multi-asset callers leave it False to avoid
+        over-compressing (Groq output is still trimmed to the last full sentence).
 
         Providers without a stored key are already excluded when the chain is built
         (see _build_provider) — this runtime fallback additionally covers a key that
@@ -479,7 +520,9 @@ class AiClient:
         errors: list[str] = []
         for prov in self._providers:
             try:
-                text, model        = prov.generate(question, max_tokens=max_tokens)
+                q = (_GROQ_BREVITY_PREFIX + question
+                     if (groq_brevity and prov.name == 'groq') else question)
+                text, model        = prov.generate(q, max_tokens=max_tokens)
                 text               = _collapse_repetition(text)   # LLM loop guard
                 self.answer        = text
                 self.model_used    = model

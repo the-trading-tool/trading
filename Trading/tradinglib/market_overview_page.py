@@ -1695,7 +1695,7 @@ def render_single_asset_ai(
         with st.spinner(t('mv.spinner_ai')):   # module-level: writes into the active tab context
             try:
                 client   = AiClient(username=username)
-                analysis = client.run_question(prompt, max_tokens=2800)
+                analysis = client.run_question(prompt, max_tokens=2800, groq_brevity=True)
                 st.session_state[result_key] = {
                     'analysis':     analysis,
                     'model':        client.model_used,
