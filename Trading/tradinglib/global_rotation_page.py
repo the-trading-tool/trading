@@ -41,6 +41,12 @@ def _compute_flows_cached(day: str) -> dict:
     return gr.compute(gr.ASSETS_ALL)  # Cross-Asset (Zu-/Abfluss-Balken)
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _compute_universe_cached(day: str, universe: str) -> dict:
+    # RRG je Anlageklasse (eigener EUR-Korb-Benchmark → vergleichbare Vola).
+    return gr.compute(gr.UNIVERSES.get(universe, gr.EQUITIES))
+
+
 class GlobalRotationPage:
     def __init__(self, username: str = "", db_path: str = "database"):
         self.username = username
@@ -142,7 +148,16 @@ class GlobalRotationPage:
         tab_rrg, tab_flows, tab_pairs = st.tabs(
             [t("gr.tab_rrg"), t("gr.tab_flows"), t("gr.tab_pairs")])
         with tab_rrg:
-            self._rrg(markets)
+            uni = st.radio(
+                t("gr.rrg_universe"), options=["equity", "commodity", "crypto"],
+                format_func=lambda k: t(f"gr.uni_{k}"), horizontal=True,
+                key="_gr_rrg_uni")
+            ures = _compute_universe_cached(dt.date.today().isoformat(), uni)
+            umarkets = ures.get("markets", [])
+            if len(umarkets) >= 2:
+                self._rrg(umarkets)
+            else:
+                st.info(t("gr.rrg_empty"))
         with tab_flows:
             # Cross-Asset: Aktien + Metalle + Rohstoffe + Krypto, nach Klasse gefärbt.
             st.caption(t("gr.flows_note"))

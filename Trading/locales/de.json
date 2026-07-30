@@ -1572,5 +1572,10 @@
   "cfg.start_page_opt.global_rotation": "Global Rotation",
   "cfg.start_page_opt.asset_search": "Asset-Suche",
   "gr.class_legend": "🟦 Aktien · 🟨 Metalle · 🟫 Rohstoffe · 🟪 Krypto",
-  "gr.flows_note": "Zu-/Abfluss über alle Anlageklassen (Mansfield RSC vs. gleichgewichtetem Cross-Asset-Korb) — positiv = Kapital rotiert dorthin."
+  "gr.flows_note": "Zu-/Abfluss über alle Anlageklassen (Mansfield RSC vs. gleichgewichtetem Cross-Asset-Korb) — positiv = Kapital rotiert dorthin.",
+  "gr.rrg_universe": "Anlageklasse",
+  "gr.uni_equity": "Aktien",
+  "gr.uni_commodity": "Rohstoffe & Metalle",
+  "gr.uni_crypto": "Krypto",
+  "gr.rrg_empty": "Zu wenige Werte für einen RRG in dieser Klasse."
 }

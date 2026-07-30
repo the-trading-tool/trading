@@ -52,6 +52,10 @@ _CROSS_ASSETS = [
 
 EQUITIES = _MARKETS
 ASSETS_ALL = _MARKETS + _CROSS_ASSETS
+# Anlageklassen-Universen für den RRG (Scatter nur unter vergleichbarer Vola sinnvoll)
+COMMODITIES_METALS = [a for a in _CROSS_ASSETS if a[3] in ("Metal", "Commodity")]
+CRYPTO = [a for a in _CROSS_ASSETS if a[3] == "Crypto"]
+UNIVERSES = {"equity": EQUITIES, "commodity": COMMODITIES_METALS, "crypto": CRYPTO}
 
 _QUADRANTS = {  # (rs_ratio>=100, rs_mom>=100) → Label
     (True, True):   "Leading",
