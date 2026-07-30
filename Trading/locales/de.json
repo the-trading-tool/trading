@@ -1567,5 +1567,8 @@
   "as.no_results": "Keine Treffer für „{query}\".",
   "as.count": "{n} Treffer",
   "as.open_btn": "Öffnen →",
-  "as.error": "Suche fehlgeschlagen: {error}"
+  "as.error": "Suche fehlgeschlagen: {error}",
+  "cfg.start_page_opt.fear_greed": "Fear & Greed Index",
+  "cfg.start_page_opt.global_rotation": "Global Rotation",
+  "cfg.start_page_opt.asset_search": "Asset-Suche"
 }

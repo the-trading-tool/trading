@@ -1567,5 +1567,8 @@
   "as.no_results": "No results for \"{query}\".",
   "as.count": "{n} results",
   "as.open_btn": "Open →",
-  "as.error": "Search failed: {error}"
+  "as.error": "Search failed: {error}",
+  "cfg.start_page_opt.fear_greed": "Fear & Greed Index",
+  "cfg.start_page_opt.global_rotation": "Global Rotation",
+  "cfg.start_page_opt.asset_search": "Asset Search"
 }
