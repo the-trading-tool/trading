@@ -610,23 +610,79 @@ class StockDataSaver(TickerTools):
         import logging
         _log = logging.getLogger(__name__)
         failed_intervals = []
+        daily_requested = False   # wurde 1d (day_data) überhaupt angefragt?
+        daily_stunted = False     # Yahoo lieferte für 1d nur ≤ 5 / keine Zeilen
 
         for interval in intervals:
             _log.debug("Fetching data for interval: %s", interval)
             period = periods[intervals.index(interval)]
             try:
+                is_daily = self.get_table_name(interval) == 'day_data'
+            except Exception:
+                is_daily = False
+            if is_daily:
+                daily_requested = True
+            try:
                 data = self.fetch_data_dl(interval, period=period, force_remote=force_remote)
                 if data is None or (hasattr(data, 'empty') and data.empty):
                     _log.warning("No data for %s interval=%s (ticker unknown or delisted)", self.ticker, interval)
                     failed_intervals.append(interval)
+                    if is_daily:
+                        daily_stunted = True
                 else:
                     self.save_to_db(data, interval)
+                    # Manche Yahoo-Symbole (z. B. Vola-Indizes wie ^VIXEQ) liefern
+                    # auf Tagesbasis KEINE Historie, nur die letzte Kerze
+                    # ("period must be one of: 1d, 5d") → ≤ 5 Zeilen = verkümmert.
+                    if is_daily and len(data) <= 5:
+                        daily_stunted = True
             except Exception:
                 _log.warning("Download failed for %s interval=%s", self.ticker, interval)
                 failed_intervals.append(interval)
+                if is_daily:
+                    daily_stunted = True
             time.sleep(0.8)
 
+        # Fallback: fehlende Tageshistorie aus den (längeren) Stundendaten
+        # resampeln, statt sie dauerhaft leer zu lassen. Läuft NUR wenn 1d
+        # angefragt und verkümmert war → normale Ticker bleiben unberührt.
+        if daily_requested and daily_stunted:
+            try:
+                n = self._backfill_daily_from_hourly()
+                if n:
+                    _log.info("%s: Tageshistorie aus Stundendaten resampled (%d Kerzen) — Yahoo liefert kein 1d.", self.ticker, n)
+                    if '1d' in failed_intervals:
+                        failed_intervals.remove('1d')
+            except Exception:
+                _log.debug("daily-from-hourly backfill failed for %s", self.ticker, exc_info=True)
+
         return failed_intervals
+
+    def _backfill_daily_from_hourly(self, min_rows: int = 20) -> int:
+        """Fallback für Symbole ohne Yahoo-Tageshistorie: baut Tageskerzen aus
+        ``h60_data`` (O=first/H=max/L=min/C=last/V=sum) und upsertet sie via
+        ``INSERT OR REPLACE`` in ``day_data``. Nutzt die im DB akkumulierte
+        Stundenhistorie (nicht nur den aktuellen Fetch). Gibt die Zahl der
+        geschriebenen Tageskerzen zurück (0 = zu wenig Stundendaten / nichts)."""
+        try:
+            h = pd.read_sql_query(
+                "SELECT Date, Open, High, Low, Close, Volume FROM h60_data", self.conn)
+        except Exception:
+            return 0
+        if h.empty or len(h) < min_rows:
+            return 0
+        h['Date'] = pd.to_datetime(h['Date'], errors='coerce')
+        h = h.dropna(subset=['Date']).set_index('Date').sort_index()
+        for c in ('Open', 'High', 'Low', 'Close', 'Volume'):
+            h[c] = pd.to_numeric(h[c], errors='coerce')
+        daily = h.resample('1D').agg(
+            {'Open': 'first', 'High': 'max', 'Low': 'min',
+             'Close': 'last', 'Volume': 'sum'}).dropna(subset=['Close'])
+        if daily.empty:
+            return 0
+        daily.index.name = 'Date'
+        self.save_to_db(daily, '1d')
+        return len(daily)
 
     def get_data(self, interval):
         """Read all stored OHLCV rows for the given interval from SQLite."""
