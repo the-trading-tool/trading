@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Global Rotation – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Global Rotation <small style="font-size:.6em;color:#888">global_rotation_page.py</small></h1>
+
+<p>Zeigt, <b>wohin Kapital zwischen den großen Märkten rotiert</b> — als <b>Proxy über
+relative Stärke</b>. Echte Fondsflüsse (EPFR, ETF-Creation/Redemption) stehen nicht in
+den Daten; relative Stärke ist der etablierte Ersatz.</p>
+
+<h2>Aufbereitung</h2>
+<ul>
+  <li>Jeder Markt-Index wird über sein FX-Paar in <b>EUR</b> umgerechnet — die
+      Währungsbewegung selbst ist Teil des Kapitalflusses (z. B. EUR-Aufwertung =
+      Zufluss in EUR-Assets).</li>
+  <li>Benchmark ist ein <b>gleichgewichteter EUR-Korb</b> der Märkte selbst (kein
+      externer Ticker).</li>
+  <li>Quellen: Index-Tageskurse (<code>yf_^…</code>), FX-Paare
+      (<code>{CCY}EUR=X</code>, <code>EURUSD=X</code>, <code>GBPUSD=X</code>). Märkte
+      ohne verfügbare FX-Reihe werden übersprungen.</li>
+</ul>
+
+<h2>Die drei Ansichten</h2>
+<table>
+<tr><th>Tab</th><th>Was es zeigt</th></tr>
+<tr><td><b>RRG</b></td><td>Relative Rotation Graph: JdK <b>RS-Ratio</b> (x) und
+  <b>RS-Momentum</b> (y). Jeder Markt rotiert durch vier Quadranten. Der Schweif zeigt
+  die Richtung der letzten Wochen.</td></tr>
+<tr><td><b>Zu-/Abfluss</b></td><td><b>Mansfield RSC</b> je Markt (relative Stärke vs.
+  Korb, geglättet): positiv = Zufluss-Proxy (grün), negativ = Abfluss (rot).</td></tr>
+<tr><td><b>Paar-Matrix</b></td><td>Relative Stärke <b>Markt gegen Markt</b> über mehrere
+  Wochen — die konkreten „Staffelübergaben" (US↔EU↔JP↔HK). Positiv (grün) = Zeilen-Markt
+  hat den Spalten-Markt geschlagen.</td></tr>
+</table>
+
+<h2>Die RRG-Quadranten</h2>
+<table>
+<tr><th>Quadrant</th><th>Bedeutung</th></tr>
+<tr><td><b>Führend</b> (oben rechts)</td><td>stark <i>und</i> steigend — Kapital ist hier</td></tr>
+<tr><td><b>Abschwächend</b> (unten rechts)</td><td>noch stark, aber drehend — Kapital beginnt abzufließen</td></tr>
+<tr><td><b>Zurückfallend</b> (unten links)</td><td>schwach und fallend — gemieden</td></tr>
+<tr><td><b>Aufholend</b> (oben links)</td><td>noch schwach, aber steigend — Kapital kommt an</td></tr>
+</table>
+
+<div class="info">Die Kennzahlen sind <b>identisch zur Sektor-Rotation</b>
+(JdK RS-Ratio/RS-Momentum, Mansfield RSC) — hier nur auf Markt-Indizes statt
+Sektor-ETFs angewandt.</div>
+
+<div class="warn">Relative Stärke ist ein <b>Proxy, kein Kauf-/Verkaufssignal</b>.
+Outperformance kann auch aus Gewinnen statt Flows stammen; exakte gerichtete Beträge
+sind nicht messbar.</div>
+
+</body>
+</html>
