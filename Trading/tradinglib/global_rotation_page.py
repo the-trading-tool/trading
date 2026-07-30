@@ -26,10 +26,19 @@ _QUAD_LABEL = {
     "Lagging": "gr.q_lagging", "Improving": "gr.q_improving",
 }
 
+# Farbe je Anlageklasse (Cross-Asset-Balken)
+_CLASS_COLOR = {"Equity": "#1f77b4", "Metal": "#C9A227",
+                "Commodity": "#8D6E63", "Crypto": "#7E57C2"}
+
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _compute_cached(day: str) -> dict:
-    return gr.compute()
+    return gr.compute()               # nur Aktien (RRG + Paar-Matrix)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _compute_flows_cached(day: str) -> dict:
+    return gr.compute(gr.ASSETS_ALL)  # Cross-Asset (Zu-/Abfluss-Balken)
 
 
 class GlobalRotationPage:
@@ -82,20 +91,23 @@ class GlobalRotationPage:
         fig.update_layout(height=520, margin=dict(t=10, b=10, l=10, r=10))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-    # ── Zu-/Abfluss (Mansfield RSC) ───────────────────────────────────────────
+    # ── Zu-/Abfluss (Mansfield RSC), cross-asset, nach Klasse gefärbt ─────────
     def _flows(self, markets: list):
-        rows = [m for m in markets if m["rsc"] is not None]
+        rows = [m for m in markets if m.get("rsc") is not None]
         rows.sort(key=lambda m: m["rsc"])
-        labels = [f"{m['code']} · {m['index']}" for m in rows]
+        labels = [m["code"] for m in rows]
         vals = [m["rsc"] for m in rows]
-        colors = ["#2E7D32" if v >= 0 else "#C62828" for v in vals]
-        fig = go.Figure(go.Bar(x=vals, y=labels, orientation="h",
-                               marker_color=colors,
-                               hovertemplate="RSC %{x:.2f}%<extra></extra>"))
+        colors = [_CLASS_COLOR.get(m.get("class"), "#455A64") for m in rows]
+        cls = [m.get("class", "") for m in rows]
+        fig = go.Figure(go.Bar(
+            x=vals, y=labels, orientation="h", marker_color=colors,
+            customdata=cls,
+            hovertemplate="%{y} (%{customdata}): RSC %{x:+.2f}%<extra></extra>"))
         fig.add_vline(x=0, line_color="rgba(150,150,150,0.6)", line_width=1)
-        fig.update_layout(height=40 + 34 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
+        fig.update_layout(height=40 + 30 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
                           xaxis_title=t("gr.rsc_axis"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.caption(t("gr.class_legend"))
 
     # ── Paarweise relative Stärke ─────────────────────────────────────────────
     def _pairs(self, mat, pair_weeks: int):
@@ -132,7 +144,10 @@ class GlobalRotationPage:
         with tab_rrg:
             self._rrg(markets)
         with tab_flows:
-            self._flows(markets)
+            # Cross-Asset: Aktien + Metalle + Rohstoffe + Krypto, nach Klasse gefärbt.
+            st.caption(t("gr.flows_note"))
+            flows = _compute_flows_cached(dt.date.today().isoformat())
+            self._flows(flows.get("markets", []))
         with tab_pairs:
             if result.get("pair_matrix") is not None:
                 self._pairs(result["pair_matrix"], result.get("pair_weeks", 13))

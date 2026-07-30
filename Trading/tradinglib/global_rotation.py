@@ -27,17 +27,31 @@ logger = logging.getLogger(__name__)
 
 _DB = os.environ.get("TradingDB") or "database"
 
-# (Kürzel, Index-Ticker, Notierungswährung)
+# (Kürzel, Ticker, Notierungswährung, Anlageklasse)
 _MARKETS = [
-    ("US", "^SPX",   "USD"),
-    ("EU", "^GDAXI", "EUR"),
-    ("UK", "^FTSE",  "GBP"),
-    ("CH", "^SSMI",  "CHF"),
-    ("JP", "^N225",  "JPY"),
-    ("HK", "^HSI",   "HKD"),
-    ("ES", "^IBEX",  "EUR"),
-    ("KR", "^KS11",  "KRW"),
+    ("US", "^SPX",   "USD", "Equity"),
+    ("EU", "^GDAXI", "EUR", "Equity"),
+    ("UK", "^FTSE",  "GBP", "Equity"),
+    ("CH", "^SSMI",  "CHF", "Equity"),
+    ("JP", "^N225",  "JPY", "Equity"),
+    ("HK", "^HSI",   "HKD", "Equity"),
+    ("ES", "^IBEX",  "EUR", "Equity"),
+    ("KR", "^KS11",  "KRW", "Equity"),
 ]
+
+# Cross-Asset-Ergänzung (Metalle/Rohstoffe in USD → via EURUSD; Krypto schon EUR).
+# `=F`-Futures sind aktuell (Falle: abgelaufene Kontrakte, z. B. CT=F, gemieden).
+_CROSS_ASSETS = [
+    ("Gold",     "GC=F",    "USD", "Metal"),
+    ("Silber",   "SI=F",    "USD", "Metal"),
+    ("Brent",    "BZ=F",    "USD", "Commodity"),
+    ("Kupfer",   "HG=F",    "USD", "Commodity"),
+    ("Bitcoin",  "BTC-EUR", "EUR", "Crypto"),
+    ("Ethereum", "ETH-EUR", "EUR", "Crypto"),
+]
+
+EQUITIES = _MARKETS
+ASSETS_ALL = _MARKETS + _CROSS_ASSETS
 
 _QUADRANTS = {  # (rs_ratio>=100, rs_mom>=100) → Label
     (True, True):   "Leading",
@@ -129,14 +143,14 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
     eur_w: dict[str, pd.Series] = {}
     meta: dict[str, tuple] = {}
     skipped = []
-    for code, index, ccy in markets:
+    for code, index, ccy, cls in markets:
         d = _eur_daily(index, ccy)
         w = _weekly(d)
         if len(w) < 55:                 # ~1 Jahr Wochen nötig
             skipped.append((code, index, ccy))
             continue
         eur_w[code] = w
-        meta[code] = (index, ccy)
+        meta[code] = (index, ccy, cls)
     if len(eur_w) < 2:
         return {"markets": [], "skipped": skipped, "pair_matrix": None,
                 "n": 0}
@@ -168,6 +182,7 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
             "code": code,
             "index": meta[code][0],
             "currency": meta[code][1],
+            "class": meta[code][2],
             "quadrant": _QUADRANTS[(cr >= 100, cm >= 100)],
             "rs_ratio": cr,
             "rs_momentum": cm,
