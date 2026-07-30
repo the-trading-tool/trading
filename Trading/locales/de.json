@@ -1530,5 +1530,6 @@
   "keydata.sector_margin": "Marge vs Sektor",
   "keydata.sector_margin_help": "Sektor-Median Netto-Marge {med} %",
   "keydata.buy_volume": "Kaufvolumen",
-  "keydata.buy_volume_help": "≈ {shares} Stück · {total} {cur} / {n} Positionen, invers-Vola-gewichtet (Basis {base} {cur})"
+  "keydata.buy_volume_help": "≈ {shares} Stück · {total} {cur} / {n} Positionen, invers-Vola-gewichtet (Basis {base} {cur})",
+  "fg.history_header": "Verlauf"
 }

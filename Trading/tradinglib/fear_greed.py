@@ -153,12 +153,43 @@ def _ret(series: pd.Series, days: int = 20) -> pd.Series:
 
 # ── Komponenten ───────────────────────────────────────────────────────────────
 
-def compute(index: str = "^SPX") -> dict:
+def _read_bundle(index: str) -> dict:
+    """Liest alle Eingangsreihen EINMAL (für effizienten Mehrfach-Score, z. B.
+    Backfill über viele Stichtage)."""
+    return {
+        "idx":   _series(index),
+        "vix":   _series("^VIX"),
+        "vix3m": _series("^VIX3M"),
+        "tlt":   _series("TLT"),
+        "hyg":   _series("HYG"),
+        "lqd":   _series("LQD"),
+        "bts":   _breadth_timeseries(index),
+    }
+
+
+def compute(index: str = "^SPX", as_of: str | None = None) -> dict:
+    """Fear & Greed Score für ``index``. ``as_of`` (YYYY-MM-DD) berechnet den
+    Wert rückwirkend NUR aus Daten bis zu diesem Tag (kein Lookahead) — für die
+    Historie/Backfill."""
+    return _score(index, _read_bundle(index), as_of)
+
+
+def _score(index: str, b: dict, as_of: str | None = None) -> dict:
     comps: dict[str, float] = {}
     detail: dict[str, str] = {}
 
+    # Alle Reihen auf den Stichtag beschneiden (as_of=None → alles).
+    _cut = pd.Timestamp(as_of) if as_of else None
+    def _sl(s):
+        return s[s.index <= _cut] if (_cut is not None and s is not None and not s.empty) else s
+    idx = _sl(b["idx"])
+    vix = _sl(b["vix"]); vix3m = _sl(b["vix3m"])
+    tlt = _sl(b["tlt"]); hyg = _sl(b["hyg"]); lqd = _sl(b["lqd"])
+    bts = b["bts"]
+    if _cut is not None and bts is not None and not bts.empty:
+        bts = bts[pd.to_datetime(bts["Date"], errors="coerce") <= _cut]
+
     # 1. Momentum: Index-Close vs SMA125
-    idx = _series(index)
     if len(idx) >= 60:
         win_ma = min(125, len(idx) // 2)
         sma = idx.rolling(win_ma).mean()
@@ -172,7 +203,6 @@ def compute(index: str = "^SPX") -> dict:
     #    Mehrjahres-Historie) statt Rohprozent. Grund: 71 % > SMA200 sind im
     #    Bullenmarkt normal, nicht "Gier" — erst der Vergleich mit der eigenen
     #    Verteilung macht daraus ein Stimmungssignal (wie bei CNN).
-    bts = _breadth_timeseries(index)
     if not bts.empty and len(bts) >= 60:
         w = len(bts)
         bull_share = bts["bull"] / (bts["bull"] + bts["bear"]).replace(0, np.nan)
@@ -194,14 +224,12 @@ def compute(index: str = "^SPX") -> dict:
                                       f"{net.iloc[-1]*100:+.0f}pp · Perzentil {100*p_net:.0f}%")
 
     # 4. Volatilität: VIX invertiert
-    vix = _series("^VIX")
     pr = _pct_rank_last(vix)
     if pr is not None:
         comps["volatility"] = 100.0 * (1.0 - pr)
         detail["volatility"] = f"VIX {vix.iloc[-1]:.1f} (Perzentil {pr*100:.0f}%)"
 
     # 5. Terminstruktur: VIX/VIX3M invertiert (Backwardation = Angst)
-    vix3m = _series("^VIX3M")
     if not vix.empty and not vix3m.empty:
         j = pd.concat([vix.rename("v"), vix3m.rename("v3")], axis=1).dropna()
         if len(j) >= 30:
@@ -217,7 +245,6 @@ def compute(index: str = "^SPX") -> dict:
     #    einzelner Risk-on-Schub pegt die Komponente auf ~90) — ein Quartal ist
     #    das robustere Stimmungsmaß.
     _W = 60
-    tlt = _series("TLT")
     if len(idx) > _W + 5 and len(tlt) > _W + 5:
         j = pd.concat([_ret(idx, _W).rename("a"), _ret(tlt, _W).rename("b")], axis=1).dropna()
         spread = (j["a"] - j["b"])
@@ -227,7 +254,6 @@ def compute(index: str = "^SPX") -> dict:
             detail["safe_haven"] = f"Index−TLT {_W}T {spread.iloc[-1]*100:+.1f}pp"
 
     # 7. Junk-Bond: HYG minus LQD Rendite über 60 Handelstage (dito robuster).
-    hyg, lqd = _series("HYG"), _series("LQD")
     if len(hyg) > _W + 5 and len(lqd) > _W + 5:
         j = pd.concat([_ret(hyg, _W).rename("a"), _ret(lqd, _W).rename("b")], axis=1).dropna()
         spread = (j["a"] - j["b"])
@@ -318,19 +344,109 @@ def log_history(indices=None, db_name: str = "fear_greed.db", date: str | None =
         con.close()
 
 
+_FG_HISTORY_DDL = '''CREATE TABLE IF NOT EXISTS fg_history (
+        date TEXT, "index" TEXT, score REAL, label TEXT,
+        momentum REAL, breadth REAL, strength_52w REAL, volatility REAL,
+        term_structure REAL, safe_haven REAL, junk_demand REAL,
+        n_components INTEGER, computed_at TEXT,
+        PRIMARY KEY (date, "index"))'''
+
+_FG_INSERT = '''INSERT INTO fg_history
+        (date, "index", score, label, momentum, breadth, strength_52w,
+         volatility, term_structure, safe_haven, junk_demand,
+         n_components, computed_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(date, "index") DO UPDATE SET
+        score=excluded.score, label=excluded.label,
+        momentum=excluded.momentum, breadth=excluded.breadth,
+        strength_52w=excluded.strength_52w, volatility=excluded.volatility,
+        term_structure=excluded.term_structure, safe_haven=excluded.safe_haven,
+        junk_demand=excluded.junk_demand, n_components=excluded.n_components,
+        computed_at=excluded.computed_at'''
+
+
+def _write_history_row(con, day: str, index: str, r: dict) -> None:
+    c = r.get("components", {})
+    con.execute(_FG_INSERT,
+        (day, index, r.get("score"), r.get("label"),
+         c.get("momentum"), c.get("breadth"), c.get("strength_52w"),
+         c.get("volatility"), c.get("term_structure"), c.get("safe_haven"),
+         c.get("junk_demand"), r.get("n_components"),
+         dt.datetime.now().isoformat(timespec="seconds")))
+
+
+def read_history(index: str = "^SPX", db_name: str = "fear_greed.db") -> pd.DataFrame:
+    """Verlauf (date, score, label) für einen Index aus fg_history — für den
+    Zeitreihen-Chart auf der Seite. Leer, wenn noch nichts geloggt wurde."""
+    con = sqlite3.connect(_p(db_name))
+    try:
+        return pd.read_sql_query(
+            'SELECT date, score, label FROM fg_history WHERE "index"=? ORDER BY date',
+            con, params=(index,))
+    except Exception:
+        return pd.DataFrame()
+    finally:
+        con.close()
+
+
+def backfill_history(indices=None, days: int = 180, db_name: str = "fear_greed.db") -> int:
+    """Einmalige Rückrechnung: für die letzten ``days`` Handelstage je Index einen
+    historischen Score (``compute(as_of=…)``, kein Lookahead) berechnen und in
+    fg_history upserten — damit die Verlaufskurve sofort gefüllt ist. Liest die
+    Reihen je Index EINMAL und scort dann in-memory über die Stichtage."""
+    indices = indices or _HISTORY_INDICES
+    con = sqlite3.connect(_p(db_name))
+    try:
+        con.execute(_FG_HISTORY_DDL)
+        total = 0
+        for ix in indices:
+            try:
+                b = _read_bundle(ix)
+            except Exception:
+                logger.warning("fg backfill: bundle failed for %s", ix, exc_info=True)
+                continue
+            ser = b.get("idx")
+            if ser is None or ser.empty:
+                continue
+            for day in [str(d)[:10] for d in ser.index][-days:]:
+                r = _score(ix, b, as_of=day)
+                sc = r.get("score")
+                if sc is None or (isinstance(sc, float) and math.isnan(sc)):
+                    continue
+                _write_history_row(con, day, ix, r)
+                total += 1
+            con.commit()
+        logger.info("fear_greed backfill: %d Zeilen für %d Indizes", total, len(indices))
+        return total
+    finally:
+        con.close()
+
+
 if __name__ == "__main__":
     import sys
     args = sys.argv[1:]
     index = "^SPX"
     single = False
     do_log = False
+    do_backfill = False
+    bf_days = 180
     for a in args:
         al = a.lower()
         if al.startswith("/index:"):
             index = a.split(":", 1)[1]; single = True
         elif al in ("/log", "log"):
             do_log = True
-    if do_log:
+        elif al.startswith("/backfill"):
+            do_backfill = True
+            if ":" in al:
+                try:
+                    bf_days = int(a.split(":", 1)[1])
+                except ValueError:
+                    pass
+    if do_backfill:
+        n = backfill_history([index] if single else None, days=bf_days)
+        print(f"fear_greed: {n} historische Zeile(n) in fg_history geschrieben ({bf_days}T).")
+    elif do_log:
         n = log_history([index] if single else None)
         print(f"fear_greed: {n} Zeile(n) in fg_history geloggt.")
     else:

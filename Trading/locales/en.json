@@ -1530,5 +1530,6 @@
   "keydata.sector_margin": "Margin vs sector",
   "keydata.sector_margin_help": "Sector median net margin {med} %",
   "keydata.buy_volume": "Buy volume",
-  "keydata.buy_volume_help": "≈ {shares} shares · {total} {cur} / {n} positions, inverse-vol weighted (base {base} {cur})"
+  "keydata.buy_volume_help": "≈ {shares} shares · {total} {cur} / {n} positions, inverse-vol weighted (base {base} {cur})",
+  "fg.history_header": "History"
 }

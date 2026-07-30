@@ -102,6 +102,32 @@ class FearGreedPage:
             c2.progress(int(max(0, min(100, val))) / 100.0,
                         text=f"{val:.0f} / 100  ·  {detail.get(key, '')}")
 
+    def _history(self, index: str):
+        """Zeitreihe des Scores aus fg_history mit Angst/Gier-Band-Hintergrund.
+        Rendert nichts, solange < 2 Punkte geloggt sind."""
+        hist = fg.read_history(index)
+        if hist.empty or len(hist) < 2:
+            return
+        st.markdown(f"##### {t('fg.history_header')}")
+        fig = go.Figure()
+        for lo, hi, c in [(0, 25, "rgba(198,40,40,0.10)"), (25, 45, "rgba(239,108,0,0.09)"),
+                          (45, 55, "rgba(158,158,158,0.09)"), (55, 75, "rgba(124,179,66,0.09)"),
+                          (75, 100, "rgba(46,125,50,0.10)")]:
+            fig.add_hrect(y0=lo, y1=hi, fillcolor=c, line_width=0, layer="below")
+        fig.add_trace(go.Scatter(
+            x=list(hist["date"]), y=list(hist["score"]), mode="lines",
+            line=dict(color="#455A64", width=2), name="Score",
+            hovertemplate="%{x|%d.%m.%Y}: %{y:.0f}<extra></extra>"))
+        _lastx, _lasty = hist["date"].iloc[-1], float(hist["score"].iloc[-1])
+        fig.add_trace(go.Scatter(
+            x=[_lastx], y=[_lasty], mode="markers",
+            marker=dict(color=_color(_lasty), size=10), showlegend=False,
+            hovertemplate="%{y:.0f}<extra></extra>"))
+        fig.update_yaxes(range=[0, 100], tickvals=[0, 25, 45, 55, 75, 100])
+        fig.update_layout(height=260, margin=dict(t=8, b=8, l=10, r=10), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True,
+                        config={"displayModeBar": False}, key=f"_fg_hist_{index}")
+
     # ── Einstieg ──────────────────────────────────────────────────────────────
     def render(self):
         st.markdown(f"## {t('fg.title')}")
@@ -129,6 +155,9 @@ class FearGreedPage:
             self._components(result)
 
         st.caption(t('fg.count_note', n=result.get("n_components", 0)))
+
+        # ── Verlauf (Zeitreihe aus fg_history) ─────────────────────────────────
+        self._history(index)
 
         # ── Prosa: Quellen & Methodik ──────────────────────────────────────────
         with st.expander(t('fg.methodology_header'), expanded=False):
