@@ -46,8 +46,16 @@ _CROSS_ASSETS = [
     ("Silber",   "SI=F",    "USD", "Metal"),
     ("Brent",    "BZ=F",    "USD", "Commodity"),
     ("Kupfer",   "HG=F",    "USD", "Commodity"),
-    ("Bitcoin",  "BTC-EUR", "EUR", "Crypto"),
-    ("Ethereum", "ETH-EUR", "EUR", "Crypto"),
+    # Krypto (schon EUR). Stablecoins (USDC/USDT) bewusst ausgelassen — USD-gepeggt,
+    # würden den Krypto-Korb verzerren und zeigen keine echte Rotation.
+    ("BTC",      "BTC-EUR",  "EUR", "Crypto"),
+    ("ETH",      "ETH-EUR",  "EUR", "Crypto"),
+    ("BNB",      "BNB-EUR",  "EUR", "Crypto"),
+    ("SOL",      "SOL-EUR",  "EUR", "Crypto"),
+    ("XRP",      "XRP-EUR",  "EUR", "Crypto"),
+    ("DOGE",     "DOGE-EUR", "EUR", "Crypto"),
+    ("TRX",      "TRX-EUR",  "EUR", "Crypto"),
+    ("XMR",      "XMR-EUR",  "EUR", "Crypto"),
 ]
 
 EQUITIES = _MARKETS
