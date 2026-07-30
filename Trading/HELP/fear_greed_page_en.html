@@ -47,9 +47,9 @@ turning points.</p>
 <tr><td><b>Term structure</b></td><td>VIX vs. VIX3M. When the curve tips into backwardation
   (short-term dearer than 3M), fear rises. <b>Substitutes the classic put/call ratio</b>,
   which is not available from the data source.</td><td><code>yf_^VIX</code>, <code>yf_^VIX3M</code></td></tr>
-<tr><td><b>Safe haven</b></td><td>20-day return of the index minus TLT (Treasuries).
+<tr><td><b>Safe haven</b></td><td>60-day return of the index minus TLT (Treasuries).
   Stocks beating bonds = greed.</td><td><code>yf_&lt;index&gt;</code>, <code>yf_TLT</code></td></tr>
-<tr><td><b>Junk-bond demand</b></td><td>20-day return of HYG (high yield) minus LQD
+<tr><td><b>Junk-bond demand</b></td><td>60-day return of HYG (high yield) minus LQD
   (investment grade). Tight credit spreads = risk appetite.</td><td><code>yf_HYG</code>, <code>yf_LQD</code></td></tr>
 </table>
 

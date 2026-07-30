@@ -212,25 +212,29 @@ def compute(index: str = "^SPX") -> dict:
                 detail["term_structure"] = (f"VIX/VIX3M {ratio.iloc[-1]:.2f} "
                                             f"(Stand {j.index[-1].date()})")
 
-    # 6. Safe-Haven: Index- minus TLT-20T-Rendite
+    # 6. Safe-Haven: Index- minus TLT-Rendite über 60 Handelstage (≈ Quartal).
+    #    60T statt 20T bewusst: das 20-Tage-Fenster ist zu sprunghaft (ein
+    #    einzelner Risk-on-Schub pegt die Komponente auf ~90) — ein Quartal ist
+    #    das robustere Stimmungsmaß.
+    _W = 60
     tlt = _series("TLT")
-    if len(idx) > 25 and len(tlt) > 25:
-        j = pd.concat([_ret(idx).rename("a"), _ret(tlt).rename("b")], axis=1).dropna()
+    if len(idx) > _W + 5 and len(tlt) > _W + 5:
+        j = pd.concat([_ret(idx, _W).rename("a"), _ret(tlt, _W).rename("b")], axis=1).dropna()
         spread = (j["a"] - j["b"])
         z = _zscore_last(spread)
         if z is not None:
             comps["safe_haven"] = _logistic(z)
-            detail["safe_haven"] = f"Index−TLT 20T {spread.iloc[-1]*100:+.1f}pp"
+            detail["safe_haven"] = f"Index−TLT {_W}T {spread.iloc[-1]*100:+.1f}pp"
 
-    # 7. Junk-Bond: HYG minus LQD 20T-Rendite
+    # 7. Junk-Bond: HYG minus LQD Rendite über 60 Handelstage (dito robuster).
     hyg, lqd = _series("HYG"), _series("LQD")
-    if len(hyg) > 25 and len(lqd) > 25:
-        j = pd.concat([_ret(hyg).rename("a"), _ret(lqd).rename("b")], axis=1).dropna()
+    if len(hyg) > _W + 5 and len(lqd) > _W + 5:
+        j = pd.concat([_ret(hyg, _W).rename("a"), _ret(lqd, _W).rename("b")], axis=1).dropna()
         spread = (j["a"] - j["b"])
         z = _zscore_last(spread)
         if z is not None:
             comps["junk_demand"] = _logistic(z)
-            detail["junk_demand"] = f"HYG−LQD 20T {spread.iloc[-1]*100:+.1f}pp"
+            detail["junk_demand"] = f"HYG−LQD {_W}T {spread.iloc[-1]*100:+.1f}pp"
 
     score = float(np.nanmean(list(comps.values()))) if comps else float("nan")
     return {"index": index, "score": round(score, 1), "label": _label(score),
