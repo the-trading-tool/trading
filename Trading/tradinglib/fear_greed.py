@@ -256,16 +256,88 @@ def _label(score: float) -> str:
     return "Extreme Greed"
 
 
+# ── Historie loggen (Scheduler) ───────────────────────────────────────────────
+
+# Indizes, die täglich in die Historie geschrieben werden (Breadth ist je Index
+# lokal; die Makro-Komponenten sind US/global). Reihenfolge = UI-Auswahl.
+_HISTORY_INDICES = ["^SPX", "^RUT", "^GDAXI", "^MDAXI", "^SDAXI",
+                    "^N225", "^FTSE", "^IBEX", "^SSMI"]
+
+
+def log_history(indices=None, db_name: str = "fear_greed.db", date: str | None = None) -> int:
+    """Berechnet den Fear & Greed Index je Index und schreibt eine Tages-Zeile
+    in ``fear_greed.db`` / Tabelle ``fg_history`` (Upsert auf (date, index) —
+    ein erneuter Lauf am selben Tag aktualisiert). Für den Scheduler gedacht.
+    Gibt die Zahl geschriebener Zeilen zurück.
+    """
+    indices = indices or _HISTORY_INDICES
+    day = date or dt.date.today().isoformat()
+    con = sqlite3.connect(_p(db_name))
+    try:
+        con.execute(
+            '''CREATE TABLE IF NOT EXISTS fg_history (
+                   date TEXT, "index" TEXT, score REAL, label TEXT,
+                   momentum REAL, breadth REAL, strength_52w REAL, volatility REAL,
+                   term_structure REAL, safe_haven REAL, junk_demand REAL,
+                   n_components INTEGER, computed_at TEXT,
+                   PRIMARY KEY (date, "index"))''')
+        written = 0
+        for ix in indices:
+            try:
+                r = compute(ix)
+            except Exception:
+                logger.warning("fear_greed log: compute failed for %s", ix, exc_info=True)
+                continue
+            score = r.get("score")
+            if score is None or (isinstance(score, float) and math.isnan(score)):
+                continue
+            c = r.get("components", {})
+            con.execute(
+                '''INSERT INTO fg_history
+                       (date, "index", score, label, momentum, breadth, strength_52w,
+                        volatility, term_structure, safe_haven, junk_demand,
+                        n_components, computed_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(date, "index") DO UPDATE SET
+                       score=excluded.score, label=excluded.label,
+                       momentum=excluded.momentum, breadth=excluded.breadth,
+                       strength_52w=excluded.strength_52w, volatility=excluded.volatility,
+                       term_structure=excluded.term_structure, safe_haven=excluded.safe_haven,
+                       junk_demand=excluded.junk_demand, n_components=excluded.n_components,
+                       computed_at=excluded.computed_at''',
+                (day, ix, score, r.get("label"),
+                 c.get("momentum"), c.get("breadth"), c.get("strength_52w"),
+                 c.get("volatility"), c.get("term_structure"), c.get("safe_haven"),
+                 c.get("junk_demand"), r.get("n_components"),
+                 dt.datetime.now().isoformat(timespec="seconds")))
+            written += 1
+        con.commit()
+        logger.info("fear_greed: %d Zeile(n) für %s geloggt (%s)", written, day, db_name)
+        return written
+    finally:
+        con.close()
+
+
 if __name__ == "__main__":
     import sys
+    args = sys.argv[1:]
     index = "^SPX"
-    for a in sys.argv[1:]:
-        if a.lower().startswith("/index:"):
-            index = a.split(":", 1)[1]
-    r = compute(index)
-    print(f"\n  Silvesto Fear & Greed — {r['index']}")
-    print(f"  ────────────────────────────────")
-    print(f"  SCORE: {r['score']}/100  →  {r['label']}   ({r['n_components']} Komponenten)\n")
-    for k, v in r["components"].items():
-        print(f"    {k:16s} {v:5.1f}   {r['detail'].get(k,'')}")
-    print()
+    single = False
+    do_log = False
+    for a in args:
+        al = a.lower()
+        if al.startswith("/index:"):
+            index = a.split(":", 1)[1]; single = True
+        elif al in ("/log", "log"):
+            do_log = True
+    if do_log:
+        n = log_history([index] if single else None)
+        print(f"fear_greed: {n} Zeile(n) in fg_history geloggt.")
+    else:
+        r = compute(index)
+        print(f"\n  Silvesto Fear & Greed — {r['index']}")
+        print(f"  ────────────────────────────────")
+        print(f"  SCORE: {r['score']}/100  →  {r['label']}   ({r['n_components']} Komponenten)\n")
+        for k, v in r["components"].items():
+            print(f"    {k:16s} {v:5.1f}   {r['detail'].get(k,'')}")
+        print()
