@@ -1571,7 +1571,7 @@
   "cfg.start_page_opt.fear_greed": "Fear & Greed Index",
   "cfg.start_page_opt.global_rotation": "Global Rotation",
   "cfg.start_page_opt.asset_search": "Asset-Suche",
-  "gr.class_legend": "🟦 Aktien · 🟨 Metalle · 🟧 Energie · 🟩 Agrar · 🟪 Krypto",
+  "gr.class_legend": "🟦 Aktien · 🟫 Anleihen · 🟨 Metalle · 🟧 Energie · 🟩 Agrar · 🟪 Krypto",
   "gr.flows_note": "Zu-/Abfluss über alle Anlageklassen (Mansfield RSC vs. gleichgewichtetem Cross-Asset-Korb) — positiv = Kapital rotiert dorthin.",
   "gr.rrg_universe": "Anlageklasse",
   "gr.uni_equity": "Aktien",
@@ -1580,5 +1580,6 @@
   "gr.rrg_empty": "Zu wenige Werte für einen RRG in dieser Klasse.",
   "gr.uni_metal": "Metalle",
   "gr.uni_energy": "Energie",
-  "gr.uni_agri": "Agrar"
+  "gr.uni_agri": "Agrar",
+  "gr.uni_bond": "Anleihen"
 }

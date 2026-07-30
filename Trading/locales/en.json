@@ -1571,7 +1571,7 @@
   "cfg.start_page_opt.fear_greed": "Fear & Greed Index",
   "cfg.start_page_opt.global_rotation": "Global Rotation",
   "cfg.start_page_opt.asset_search": "Asset Search",
-  "gr.class_legend": "🟦 Equities · 🟨 Metals · 🟧 Energy · 🟩 Agri · 🟪 Crypto",
+  "gr.class_legend": "🟦 Equities · 🟫 Bonds · 🟨 Metals · 🟧 Energy · 🟩 Agri · 🟪 Crypto",
   "gr.flows_note": "In-/outflow across all asset classes (Mansfield RSC vs. equal-weighted cross-asset basket) — positive = capital rotating there.",
   "gr.rrg_universe": "Asset class",
   "gr.uni_equity": "Equities",
@@ -1580,5 +1580,6 @@
   "gr.rrg_empty": "Too few assets for an RRG in this class.",
   "gr.uni_metal": "Metals",
   "gr.uni_energy": "Energy",
-  "gr.uni_agri": "Agri"
+  "gr.uni_agri": "Agri",
+  "gr.uni_bond": "Bonds"
 }

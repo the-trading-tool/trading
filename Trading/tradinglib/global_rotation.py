@@ -44,6 +44,11 @@ _MARKETS = [
 # vergleichbare Vola haben. `=F`-Frische wird beim Import über den Resample-Fallback
 # gehalten; ZN=F (T-Note) bewusst raus (= Anleihe, kein Rohstoff).
 _CROSS_ASSETS = [
+    # Anleihen (US-Treasury/Credit-ETFs, USD → via EURUSD): Duration + Credit
+    ("TLT", "TLT", "USD", "Bond"),   # 20+J Treasury
+    ("IEF", "IEF", "USD", "Bond"),   # 7-10J Treasury
+    ("LQD", "LQD", "USD", "Bond"),   # Investment Grade
+    ("HYG", "HYG", "USD", "Bond"),   # High Yield
     # Metalle
     ("Gold",      "GC=F", "USD", "Metal"),
     ("Silver",    "SI=F", "USD", "Metal"),
@@ -84,6 +89,7 @@ def _by_class(cls):
 CRYPTO = _by_class("Crypto")
 UNIVERSES = {
     "equity": EQUITIES,
+    "bond":   _by_class("Bond"),
     "metal":  _by_class("Metal"),
     "energy": _by_class("Energy"),
     "agri":   _by_class("Agri"),

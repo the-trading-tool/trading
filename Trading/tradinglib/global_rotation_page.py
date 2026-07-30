@@ -27,8 +27,8 @@ _QUAD_LABEL = {
 }
 
 # Farbe je Anlageklasse (Cross-Asset-Balken)
-_CLASS_COLOR = {"Equity": "#1f77b4", "Metal": "#C9A227", "Energy": "#E64A19",
-                "Agri": "#689F38", "Crypto": "#7E57C2"}
+_CLASS_COLOR = {"Equity": "#1f77b4", "Bond": "#795548", "Metal": "#C9A227",
+                "Energy": "#E64A19", "Agri": "#689F38", "Crypto": "#7E57C2"}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -150,7 +150,7 @@ class GlobalRotationPage:
         with tab_rrg:
             uni = st.radio(
                 t("gr.rrg_universe"),
-                options=["equity", "metal", "energy", "agri", "crypto"],
+                options=["equity", "bond", "metal", "energy", "agri", "crypto"],
                 format_func=lambda k: t(f"gr.uni_{k}"), horizontal=True,
                 key="_gr_rrg_uni")
             ures = _compute_universe_cached(dt.date.today().isoformat(), uni)
