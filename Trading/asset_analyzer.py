@@ -90,6 +90,7 @@ _START_PAGE_ROUTES = {
     'rotation':        {'rotation': 'true'},
     'fear_greed':      {'fear_greed': 'true'},
     'global_rotation': {'global_rotation': 'true'},
+    'asset_search':    {'asset_search': 'true'},
 }
 
 # Server-side mobile detection via the request User-Agent. Not 100 % (recent
@@ -733,6 +734,7 @@ class TradingApp:
 
             with st.sidebar.expander(t('nav.group_assets'), expanded=False):
                 _nav(t('nav.asset_viewer'), asset='true')
+                _nav(t('nav.asset_search'), asset_search='true')
                 _nav(t('nav.compound_simulation'), compound='true')
                 _nav(t('nav.performance'), locked=True, performance='true')
                 _nav(t('nav.asset_summary'), locked=True, summary='true')
@@ -780,10 +782,12 @@ class TradingApp:
                         _nav(t('nav.global_rotation'), global_rotation='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('asset', 'summary', 'performance', 'compound')):
+            if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'summary', 'performance', 'compound')):
                 with st.sidebar.expander(t('nav.group_assets'), expanded=True):
                     if _sb_items.get('asset'):
                         _nav(t('nav.asset_viewer'), asset='true')
+                    if _sb_items.get('asset_search'):
+                        _nav(t('nav.asset_search'), asset_search='true')
                     if _sb_items.get('summary'):
                         _nav(t('nav.asset_summary'), summary='true')
                         _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
@@ -1108,6 +1112,14 @@ class TradingApp:
                             GlobalRotationPage(username=self.username).render()
                         except Exception as e:
                             st.error(t('error.load_global_rotation', error=e))
+                elif parms.get('asset_search'):
+                    self.set_page_config(t('page.asset_search'))
+                    with st.spinner(t('page.asset_search') + " …"):
+                        try:
+                            from tradinglib.asset_search_page import AssetSearchPage
+                            AssetSearchPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_asset_search', error=e))
                 elif parms.get('compound'):
                     self.set_page_config(t('page.compound_simulation'))
                     with st.spinner(t('page.compound_simulation') + " …"):

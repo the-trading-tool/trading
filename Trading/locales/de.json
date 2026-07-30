@@ -1554,5 +1554,18 @@
   "gr.pairs_note": "Positiv (grün) = Markt der Zeile hat den der Spalte über {weeks} Wochen outperformt — Proxy dafür, dass Kapital dorthin rotiert.",
   "gr.methodology_header": "ℹ️ Quellen & Methodik",
   "gr.proxy_note": "Echte Fondsflüsse stehen nicht in den Daten — dies ist ein etablierter Proxy über relative Stärke, kein Kauf-/Verkaufssignal.",
-  "gr.methodology_md": "**Global Rotation** zeigt, wohin Kapital zwischen den großen Märkten rotiert — als **Proxy über relative Stärke**, denn echte Fondsflüsse (EPFR, ETF-Flows) liegen nicht vor.\n\n**Aufbereitung:** Jeder Markt-Index wird über sein FX-Paar in **EUR** umgerechnet (die Währungsbewegung selbst ist Teil des Kapitalflusses). Benchmark ist ein **gleichgewichteter EUR-Korb** der Märkte selbst.\n\n**Kennzahlen** (identisch zur Sektor-Rotation):\n\n- **RRG (Relative Rotation Graph)** — JdK RS-Ratio (x) und RS-Momentum (y). Jeder Markt rotiert durch vier Quadranten: *Führend* (stark & steigend), *Abschwächend* (stark, aber drehend), *Zurückfallend* (schwach), *Aufholend* (schwach, aber steigend). Der Schweif zeigt die Richtung.\n- **Mansfield RSC** — geglättete relative Stärke vs. Korb: positiv = Zufluss-Proxy, negativ = Abfluss.\n- **Paar-Matrix** — relative Stärke Markt gegen Markt über mehrere Wochen: die konkreten „Staffelübergaben\" (US↔EU↔JP↔HK).\n\n**Quellen:** Index-Tageskurse (`yf_^…`), FX-Paare (`{CCY}EUR=X`, `EURUSD=X`, `GBPUSD=X`). Märkte ohne verfügbare FX-Reihe werden übersprungen.\n\n**Grenze:** Relative Stärke ist ein Proxy — Outperformance kann auch aus Gewinnen statt Flows stammen; exakte gerichtete Beträge sind nicht messbar."
+  "gr.methodology_md": "**Global Rotation** zeigt, wohin Kapital zwischen den großen Märkten rotiert — als **Proxy über relative Stärke**, denn echte Fondsflüsse (EPFR, ETF-Flows) liegen nicht vor.\n\n**Aufbereitung:** Jeder Markt-Index wird über sein FX-Paar in **EUR** umgerechnet (die Währungsbewegung selbst ist Teil des Kapitalflusses). Benchmark ist ein **gleichgewichteter EUR-Korb** der Märkte selbst.\n\n**Kennzahlen** (identisch zur Sektor-Rotation):\n\n- **RRG (Relative Rotation Graph)** — JdK RS-Ratio (x) und RS-Momentum (y). Jeder Markt rotiert durch vier Quadranten: *Führend* (stark & steigend), *Abschwächend* (stark, aber drehend), *Zurückfallend* (schwach), *Aufholend* (schwach, aber steigend). Der Schweif zeigt die Richtung.\n- **Mansfield RSC** — geglättete relative Stärke vs. Korb: positiv = Zufluss-Proxy, negativ = Abfluss.\n- **Paar-Matrix** — relative Stärke Markt gegen Markt über mehrere Wochen: die konkreten „Staffelübergaben\" (US↔EU↔JP↔HK).\n\n**Quellen:** Index-Tageskurse (`yf_^…`), FX-Paare (`{CCY}EUR=X`, `EURUSD=X`, `GBPUSD=X`). Märkte ohne verfügbare FX-Reihe werden übersprungen.\n\n**Grenze:** Relative Stärke ist ein Proxy — Outperformance kann auch aus Gewinnen statt Flows stammen; exakte gerichtete Beträge sind nicht messbar.",
+  "nav.asset_search": "Asset-Suche",
+  "page.asset_search": "Asset-Suche",
+  "error.load_asset_search": "Fehler beim Laden der Asset-Suche: {error}",
+  "as.title": "Asset-Suche",
+  "as.subtitle": "Assets per Volltextsuche finden und direkt im Asset Viewer öffnen.",
+  "as.input_label": "Suche (Ticker oder Name)",
+  "as.placeholder": "z. B. Apple, SAP, ^SPX, TLT …",
+  "as.limit": "Max. Treffer",
+  "as.hint": "Tippe einen Ticker oder Firmennamen ein.",
+  "as.no_results": "Keine Treffer für „{query}\".",
+  "as.count": "{n} Treffer",
+  "as.open_btn": "Öffnen →",
+  "as.error": "Suche fehlgeschlagen: {error}"
 }

@@ -34,6 +34,7 @@ DEFAULT_SIDEBAR_ITEMS = {
     'fear_greed': True,
     'global_rotation': True,
     'asset': True,
+    'asset_search': True,
     'summary': False,
     'performance': False,
     'compound': False,
@@ -53,7 +54,7 @@ DEFAULT_SIDEBAR_ITEMS = {
 # checkbox editor and the sidebar's own render order.
 SIDEBAR_MENU_GROUPS = [
     ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed', 'global_rotation']),
-    ('nav.group_assets', ['asset', 'summary', 'performance', 'compound']),
+    ('nav.group_assets', ['asset', 'asset_search', 'summary', 'performance', 'compound']),
     ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades']),
     ('nav.group_admin', ['admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine']),
 ]
@@ -66,6 +67,7 @@ SIDEBAR_ITEM_LABEL_KEYS = {
     'fear_greed': 'nav.fear_greed',
     'global_rotation': 'nav.global_rotation',
     'asset': 'nav.asset_viewer',
+    'asset_search': 'nav.asset_search',
     'summary': 'nav.asset_summary',
     'performance': 'nav.performance',
     'compound': 'nav.compound_simulation',
@@ -283,7 +285,7 @@ class SystemConfig(tools.Db_tools):
         # Entry page on a fresh load (mobile always overrides this with the Asset
         # Viewer). Keys mirror _START_PAGE_ROUTES in asset_analyzer.py.
         start_pages = ['dashboard', 'asset', 'summary', 'performance',
-                       'own_trades', 'market_overview', 'marketmap', 'rotation', 'fear_greed', 'global_rotation']
+                       'own_trades', 'market_overview', 'marketmap', 'rotation', 'fear_greed', 'global_rotation', 'asset_search']
 
         idx_b_select = self.get_idx_selected(b_select, 'logging',1)
         idx_rt_select = self.get_idx_selected(b_select, 'rt_prices',1)
@@ -741,6 +743,7 @@ class SystemConfig(tools.Db_tools):
             with tabs[1]:
                 self._render_help_pages([
                     ("Asset Details", "main_page"),
+                    ("Asset-Suche", "asset_search_page"),
                     ("Dashboard", "banner_page"),
                     ("Market Map", "market_map"),
                     ("Sektorrotation", "sector_rotation_page"),

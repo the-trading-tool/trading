@@ -1554,5 +1554,18 @@
   "gr.pairs_note": "Positive (green) = the row market outperformed the column market over {weeks} weeks — a proxy for capital rotating there.",
   "gr.methodology_header": "ℹ️ Sources & methodology",
   "gr.proxy_note": "Actual fund flows are not in the data — this is an established relative-strength proxy, not a buy/sell signal.",
-  "gr.methodology_md": "**Global Rotation** shows where capital rotates between the major markets — as a **relative-strength proxy**, since actual fund flows (EPFR, ETF flows) are not available.\n\n**Preparation:** each market index is converted to **EUR** via its FX pair (the currency move itself is part of the capital flow). The benchmark is an **equal-weighted EUR basket** of the markets themselves.\n\n**Metrics** (identical to sector rotation):\n\n- **RRG (Relative Rotation Graph)** — JdK RS-Ratio (x) and RS-Momentum (y). Each market rotates through four quadrants: *Leading* (strong & rising), *Weakening* (strong but turning), *Lagging* (weak), *Improving* (weak but rising). The tail shows the direction.\n- **Mansfield RSC** — smoothed relative strength vs. the basket: positive = inflow proxy, negative = outflow.\n- **Pair matrix** — relative strength market vs. market over several weeks: the concrete hand-offs (US↔EU↔JP↔HK).\n\n**Sources:** index daily prices (`yf_^…`), FX pairs (`{CCY}EUR=X`, `EURUSD=X`, `GBPUSD=X`). Markets without an available FX series are skipped.\n\n**Limitation:** relative strength is a proxy — outperformance can stem from earnings rather than flows; exact directed amounts are not measurable."
+  "gr.methodology_md": "**Global Rotation** shows where capital rotates between the major markets — as a **relative-strength proxy**, since actual fund flows (EPFR, ETF flows) are not available.\n\n**Preparation:** each market index is converted to **EUR** via its FX pair (the currency move itself is part of the capital flow). The benchmark is an **equal-weighted EUR basket** of the markets themselves.\n\n**Metrics** (identical to sector rotation):\n\n- **RRG (Relative Rotation Graph)** — JdK RS-Ratio (x) and RS-Momentum (y). Each market rotates through four quadrants: *Leading* (strong & rising), *Weakening* (strong but turning), *Lagging* (weak), *Improving* (weak but rising). The tail shows the direction.\n- **Mansfield RSC** — smoothed relative strength vs. the basket: positive = inflow proxy, negative = outflow.\n- **Pair matrix** — relative strength market vs. market over several weeks: the concrete hand-offs (US↔EU↔JP↔HK).\n\n**Sources:** index daily prices (`yf_^…`), FX pairs (`{CCY}EUR=X`, `EURUSD=X`, `GBPUSD=X`). Markets without an available FX series are skipped.\n\n**Limitation:** relative strength is a proxy — outperformance can stem from earnings rather than flows; exact directed amounts are not measurable.",
+  "nav.asset_search": "Asset Search",
+  "page.asset_search": "Asset Search",
+  "error.load_asset_search": "Failed to render Asset Search: {error}",
+  "as.title": "Asset Search",
+  "as.subtitle": "Find assets by full-text search and open them directly in the Asset Viewer.",
+  "as.input_label": "Search (ticker or name)",
+  "as.placeholder": "e.g. Apple, SAP, ^SPX, TLT …",
+  "as.limit": "Max results",
+  "as.hint": "Type a ticker or company name.",
+  "as.no_results": "No results for \"{query}\".",
+  "as.count": "{n} results",
+  "as.open_btn": "Open →",
+  "as.error": "Search failed: {error}"
 }
