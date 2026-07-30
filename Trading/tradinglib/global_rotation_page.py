@@ -27,8 +27,8 @@ _QUAD_LABEL = {
 }
 
 # Farbe je Anlageklasse (Cross-Asset-Balken)
-_CLASS_COLOR = {"Equity": "#1f77b4", "Metal": "#C9A227",
-                "Commodity": "#8D6E63", "Crypto": "#7E57C2"}
+_CLASS_COLOR = {"Equity": "#1f77b4", "Metal": "#C9A227", "Energy": "#E64A19",
+                "Agri": "#689F38", "Crypto": "#7E57C2"}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -110,7 +110,7 @@ class GlobalRotationPage:
             customdata=cls,
             hovertemplate="%{y} (%{customdata}): RSC %{x:+.2f}%<extra></extra>"))
         fig.add_vline(x=0, line_color="rgba(150,150,150,0.6)", line_width=1)
-        fig.update_layout(height=40 + 30 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
+        fig.update_layout(height=40 + 22 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
                           xaxis_title=t("gr.rsc_axis"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.caption(t("gr.class_legend"))
@@ -149,7 +149,8 @@ class GlobalRotationPage:
             [t("gr.tab_rrg"), t("gr.tab_flows"), t("gr.tab_pairs")])
         with tab_rrg:
             uni = st.radio(
-                t("gr.rrg_universe"), options=["equity", "commodity", "crypto"],
+                t("gr.rrg_universe"),
+                options=["equity", "metal", "energy", "agri", "crypto"],
                 format_func=lambda k: t(f"gr.uni_{k}"), horizontal=True,
                 key="_gr_rrg_uni")
             ures = _compute_universe_cached(dt.date.today().isoformat(), uni)

@@ -39,13 +39,31 @@ _MARKETS = [
     ("KR", "^KS11",  "KRW", "Equity"),
 ]
 
-# Cross-Asset-Ergänzung (Metalle/Rohstoffe in USD → via EURUSD; Krypto schon EUR).
-# `=F`-Futures sind aktuell (Falle: abgelaufene Kontrakte, z. B. CT=F, gemieden).
+# Cross-Asset-Ergänzung. Metalle/Rohstoffe (=F-Futures) in USD → via EURUSD; Krypto
+# schon EUR. Klassen fein aufgeteilt (Metal/Energy/Agri), damit die RRG-Scatter
+# vergleichbare Vola haben. `=F`-Frische wird beim Import über den Resample-Fallback
+# gehalten; ZN=F (T-Note) bewusst raus (= Anleihe, kein Rohstoff).
 _CROSS_ASSETS = [
-    ("Gold",     "GC=F",    "USD", "Metal"),
-    ("Silber",   "SI=F",    "USD", "Metal"),
-    ("Brent",    "BZ=F",    "USD", "Commodity"),
-    ("Kupfer",   "HG=F",    "USD", "Commodity"),
+    # Metalle
+    ("Gold",      "GC=F", "USD", "Metal"),
+    ("Silver",    "SI=F", "USD", "Metal"),
+    ("Platinum",  "PL=F", "USD", "Metal"),
+    ("Palladium", "PA=F", "USD", "Metal"),
+    ("Copper",    "HG=F", "USD", "Metal"),
+    # Energie
+    ("Brent",     "BZ=F", "USD", "Energy"),
+    ("NatGas",    "NG=F", "USD", "Energy"),
+    ("HeatOil",   "HO=F", "USD", "Energy"),
+    ("Gasoline",  "RB=F", "USD", "Energy"),
+    # Agrar
+    ("Corn",      "ZC=F", "USD", "Agri"),
+    ("Wheat",     "ZW=F", "USD", "Agri"),
+    ("Soybean",   "ZS=F", "USD", "Agri"),
+    ("Sugar",     "SB=F", "USD", "Agri"),
+    ("Coffee",    "KC=F", "USD", "Agri"),
+    ("Cocoa",     "CC=F", "USD", "Agri"),
+    ("Cotton",    "CT=F", "USD", "Agri"),
+    ("Cattle",    "LE=F", "USD", "Agri"),
     # Krypto (schon EUR). Stablecoins (USDC/USDT) bewusst ausgelassen — USD-gepeggt,
     # würden den Krypto-Korb verzerren und zeigen keine echte Rotation.
     ("BTC",      "BTC-EUR",  "EUR", "Crypto"),
@@ -61,9 +79,16 @@ _CROSS_ASSETS = [
 EQUITIES = _MARKETS
 ASSETS_ALL = _MARKETS + _CROSS_ASSETS
 # Anlageklassen-Universen für den RRG (Scatter nur unter vergleichbarer Vola sinnvoll)
-COMMODITIES_METALS = [a for a in _CROSS_ASSETS if a[3] in ("Metal", "Commodity")]
-CRYPTO = [a for a in _CROSS_ASSETS if a[3] == "Crypto"]
-UNIVERSES = {"equity": EQUITIES, "commodity": COMMODITIES_METALS, "crypto": CRYPTO}
+def _by_class(cls):
+    return [a for a in _CROSS_ASSETS if a[3] == cls]
+CRYPTO = _by_class("Crypto")
+UNIVERSES = {
+    "equity": EQUITIES,
+    "metal":  _by_class("Metal"),
+    "energy": _by_class("Energy"),
+    "agri":   _by_class("Agri"),
+    "crypto": CRYPTO,
+}
 
 _QUADRANTS = {  # (rs_ratio>=100, rs_mom>=100) → Label
     (True, True):   "Leading",
