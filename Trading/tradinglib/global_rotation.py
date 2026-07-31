@@ -30,7 +30,8 @@ _DB = os.environ.get("TradingDB") or "database"
 # (Kürzel, Ticker, Notierungswährung, Anlageklasse)
 _MARKETS = [
     ("US", "^SPX",   "USD", "Equity"),
-    ("EU", "^GDAXI", "EUR", "Equity"),
+    ("DE", "^GDAXI", "EUR", "Equity"),
+    ("FR", "^FCHI",  "EUR", "Equity"),
     ("UK", "^FTSE",  "GBP", "Equity"),
     ("CH", "^SSMI",  "CHF", "Equity"),
     ("JP", "^N225",  "JPY", "Equity"),
