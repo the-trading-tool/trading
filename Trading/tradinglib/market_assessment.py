@@ -85,7 +85,8 @@ def _block_rotation(ticker: str) -> dict | None:
             return None
         return {
             "home": ({"code": home["code"], "quadrant": home["quadrant"],
-                      "rsc": home.get("rsc")} if home else None),
+                      "rsc": home.get("rsc"), "rsc_prev": home.get("rsc_prev")}
+                     if home else None),
             "leader": ({"code": leader["code"], "rsc": leader["rsc"],
                         "cls": leader.get("class")} if leader else None),
             "laggard": ({"code": laggard["code"], "rsc": laggard["rsc"],
@@ -133,9 +134,13 @@ def _block_sector(ticker: str) -> dict | None:
         engine.fetch_all()
         ranked = []
         for name, etf in uni["etfs"].items():
-            rsc = engine.calc_mansfield_rsc(etf)
-            if rsc is not None and not (isinstance(rsc, float) and np.isnan(rsc)):
-                ranked.append((name, float(rsc)))
+            s = engine.calc_mansfield_rsc_series(etf)
+            if s is None or s.empty:
+                continue
+            cur = float(s.iloc[-1])
+            prev = float(s.iloc[-2]) if len(s) >= 2 else None
+            if not np.isnan(cur):
+                ranked.append((name, cur, prev))
         if not ranked:
             return None
         ranked.sort(key=lambda x: x[1], reverse=True)
@@ -202,6 +207,15 @@ _CLASS_KEYS = {
 }
 
 
+def _rsc_text(cur, prev) -> str | None:
+    """RSC-Zeile: aktueller Wert plus Wochen-Veränderung (Δ, in pp)."""
+    if cur is None:
+        return None
+    if prev is not None:
+        return t("ma.rsc_delta_change", val=f"{cur:+.1f}", chg=f"{cur - prev:+.1f}")
+    return t("ma.rsc_delta", val=f"{cur:+.1f}")
+
+
 def _fg_color(score: float) -> str:
     if score < 25:
         return "#C62828"
@@ -264,10 +278,9 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
     home = rot_b.get("home") if rot_b else None
     if home:
         quad = t(_QUAD_KEYS.get(home["quadrant"], "gr.q_lagging"))
-        rsc = home.get("rsc")
-        delta = (t("ma.rsc_delta", val=f"{rsc:+.1f}") if rsc is not None else "")
+        delta = _rsc_text(home.get("rsc"), home.get("rsc_prev"))
         c2.metric(t("ma.rotation_label", code=home["code"]), quad,
-                  delta=delta or None, delta_color="off")
+                  delta=delta, delta_color="off")
     else:
         c2.metric(t("ma.rotation_label", code=tk), t("ma.na"))
 
@@ -283,9 +296,9 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
     # 4. Sector Rotation (führender Sektor)
     sec_b = data.get("sector")
     if sec_b:
-        name, rsc = sec_b["leader"]
+        name, rsc, prev = sec_b["leader"]
         c4.metric(t("ma.sector_label"), name,
-                  delta=t("ma.rsc_delta", val=f"{rsc:+.1f}"), delta_color="off")
+                  delta=_rsc_text(rsc, prev), delta_color="off")
     else:
         c4.metric(t("ma.sector_label"), t("ma.na"))
 
@@ -300,7 +313,7 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         cls = t(_CLASS_KEYS.get(lg.get("cls"), "")) if lg.get("cls") else ""
         bits.append(t("ma.cross_laggard", name=lg["code"], cls=cls, val=f"{lg['rsc']:+.1f}"))
     if sec_b:
-        nm, rsc = sec_b["laggard"]
+        nm, rsc = sec_b["laggard"][0], sec_b["laggard"][1]
         bits.append(t("ma.sector_laggard", name=nm, val=f"{rsc:+.1f}"))
     if bits:
         region.caption(" · ".join(bits))

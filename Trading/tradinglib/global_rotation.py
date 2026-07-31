@@ -216,9 +216,12 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
         rs_ratio = 100 + (rs.ewm(span=10, adjust=False).mean()
                           / rs.ewm(span=40, adjust=False).mean() - 1) * 100
         rs_mom = 100 + (rs_ratio / rs_ratio.ewm(span=5, adjust=False).mean() - 1) * 100
-        # Mansfield RSC (Zufluss/Abfluss-Proxy)
+        # Mansfield RSC (Zufluss/Abfluss-Proxy) — aktueller Wert + Vorwoche
+        # (für die Wochen-Veränderung der Rotation).
         ma = rs.rolling(rsc_weeks).mean()
-        rsc_series = (rs / ma - 1) * 100
+        rsc_clean = ((rs / ma - 1) * 100).dropna()
+        cur_rsc = round(float(rsc_clean.iloc[-1]), 2) if len(rsc_clean) else None
+        prev_rsc = round(float(rsc_clean.iloc[-2]), 2) if len(rsc_clean) >= 2 else None
         cr, cm = float(rs_ratio.iloc[-1]), float(rs_mom.iloc[-1])
         tsl = slice(-(tail_weeks + 1), None)
         out.append({
@@ -231,7 +234,8 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
             "rs_momentum": cm,
             "tail_ratio": rs_ratio.iloc[tsl].round(2).tolist(),
             "tail_momentum": rs_mom.iloc[tsl].round(2).tolist(),
-            "rsc": round(float(rsc_series.iloc[-1]), 2) if pd.notna(rsc_series.iloc[-1]) else None,
+            "rsc": cur_rsc,
+            "rsc_prev": prev_rsc,
         })
     # nach RSC (Zufluss) absteigend sortieren
     out.sort(key=lambda m: (m["rsc"] is None, -(m["rsc"] or 0)))

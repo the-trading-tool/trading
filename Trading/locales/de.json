@@ -1599,5 +1599,6 @@
   "ma.corr_regime_neutral": "entkoppelt",
   "ma.cross_leader": "Stärkster Zufluss: {name} ({cls}) {val}%",
   "ma.cross_laggard": "Stärkster Abfluss: {name} ({cls}) {val}%",
-  "ma.sector_laggard": "Schwächster Sektor: {name} ({val}%)"
+  "ma.sector_laggard": "Schwächster Sektor: {name} ({val}%)",
+  "ma.rsc_delta_change": "RSC {val}% (Δ {chg} pp)"
 }

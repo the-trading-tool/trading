@@ -270,24 +270,33 @@ class SectorRotation:
 
     # ── Indicators ────────────────────────────────────────────────────────────
 
-    def calc_mansfield_rsc(self, ticker: str, period_weeks: int = 30) -> float:
-        """
-        Mansfield Relative Strength Comparison (RSC) vs benchmark.
+    def calc_mansfield_rsc_series(self, ticker: str, period_weeks: int = 30) -> pd.Series:
+        """Full Mansfield RSC time series (weekly) vs benchmark, in %.
 
         RSC = (sector / benchmark) / MA(sector / benchmark, N weeks) − 1, in %.
-        A positive value indicates the sector outperforms its own rolling average
-        relative to the benchmark (genuine capital inflow signal).
+        Empty Series when data is insufficient. Callers that only need the latest
+        value use :meth:`calc_mansfield_rsc`; the series exposes the previous
+        week too (e.g. for a week-over-week change).
         """
         sector_w = self._close_weekly(ticker)
         bench_w = self._close_weekly(self.benchmark)
         aligned = pd.concat([sector_w, bench_w], axis=1, join="inner")
         if aligned.shape[1] < 2 or len(aligned) < period_weeks + 1:
-            return float("nan")
+            return pd.Series(dtype=float)
         aligned.columns = ["sector", "bench"]
         rs = aligned["sector"] / aligned["bench"]
         ma = rs.rolling(period_weeks).mean()
-        rsc = (rs / ma - 1) * 100
-        return float(rsc.iloc[-1])
+        return ((rs / ma - 1) * 100).dropna()
+
+    def calc_mansfield_rsc(self, ticker: str, period_weeks: int = 30) -> float:
+        """
+        Mansfield Relative Strength Comparison (RSC) vs benchmark — latest value.
+
+        A positive value indicates the sector outperforms its own rolling average
+        relative to the benchmark (genuine capital inflow signal).
+        """
+        rsc = self.calc_mansfield_rsc_series(ticker, period_weeks)
+        return float(rsc.iloc[-1]) if not rsc.empty else float("nan")
 
     def calc_cmf(self, ticker: str, period: int = 14) -> float:
         """
