@@ -88,7 +88,7 @@ class GlobalRotationPage:
                 text=[m["code"]], textposition="top center",
                 textfont=dict(size=12, color="#37474F"),
                 name=m["code"],
-                hovertemplate=(f"<b>{m['code']} · {m['index']}</b><br>"
+                hovertemplate=(f"<b>{m['code']} · {m.get('name', m['index'])}</b><br>"
                                f"Quadrant: {t(_QUAD_LABEL[m['quadrant']])}<br>"
                                f"RS-Ratio %{{x:.1f}}<br>RS-Momentum %{{y:.1f}}<extra></extra>"),
                 showlegend=False))
@@ -104,11 +104,12 @@ class GlobalRotationPage:
         labels = [m["code"] for m in rows]
         vals = [m["rsc"] for m in rows]
         colors = [_CLASS_COLOR.get(m.get("class"), "#455A64") for m in rows]
-        cls = [m.get("class", "") for m in rows]
+        customdata = [[m.get("class", ""), m.get("name", m.get("index", ""))] for m in rows]
         fig = go.Figure(go.Bar(
             x=vals, y=labels, orientation="h", marker_color=colors,
-            customdata=cls,
-            hovertemplate="%{y} (%{customdata}): RSC %{x:+.2f}%<extra></extra>"))
+            customdata=customdata,
+            hovertemplate=("%{y} — %{customdata[1]} (%{customdata[0]}): "
+                           "RSC %{x:+.2f}%<extra></extra>")))
         fig.add_vline(x=0, line_color="rgba(150,150,150,0.6)", line_width=1)
         fig.update_layout(height=40 + 22 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
                           xaxis_title=t("gr.rsc_axis"))

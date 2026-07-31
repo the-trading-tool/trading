@@ -132,6 +132,31 @@ def _series(ticker: str) -> pd.Series:
     return s.dropna()
 
 
+def _names(tickers) -> dict:
+    """{ticker: Anzeigename} aus asset_info.db — longName bevorzugt (vollständig),
+    shortName als Fallback (in der DB auf ~30 Zeichen gekürzt). Leer bei Fehler."""
+    tickers = [t for t in dict.fromkeys(tickers) if t]
+    path = _p("asset_info.db")
+    if not tickers or not os.path.exists(path):
+        return {}
+    con = sqlite3.connect(path)
+    try:
+        ph = ",".join("?" for _ in tickers)
+        rows = con.execute(
+            f"SELECT ticker, longName, shortName FROM asset_info "
+            f"WHERE ticker IN ({ph})", list(tickers)).fetchall()
+    except Exception:
+        return {}
+    finally:
+        con.close()
+    out = {}
+    for tk, ln, sn in rows:
+        nm = (ln or sn or "").strip()
+        if nm:
+            out[tk] = nm
+    return out
+
+
 def _eur_per(ccy: str) -> pd.Series | None:
     """Tagesreihe „EUR je 1 Einheit ccy". Nutzt {CCY}EUR=X direkt bzw. komponiert
     USD/GBP über EURUSD=X/GBPUSD=X. None, wenn keine Reihe verfügbar."""
@@ -208,6 +233,7 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
     benchmark = rebased.mean(axis=1)    # equal-weight EUR-Korb
 
     # 3. RRG-Koordinaten + Mansfield-RSC je Markt (Formeln = sector_rotation.py)
+    name_map = _names([meta[c][0] for c in rebased.columns])
     out = []
     for code in rebased.columns:
         sec = rebased[code]
@@ -228,6 +254,7 @@ def compute(markets=None, tail_weeks: int = 8, rsc_weeks: int = 30,
         out.append({
             "code": code,
             "index": meta[code][0],
+            "name": name_map.get(meta[code][0], meta[code][0]),
             "currency": meta[code][1],
             "class": meta[code][2],
             "quadrant": _QUADRANTS[(cr >= 100, cm >= 100)],
