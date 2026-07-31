@@ -550,6 +550,15 @@ div[data-testid="stMetric"] {
             if not self.dashboard_mode:
                 st.title(self.ttl)
 
+            # ── Marktlage-Beurteilung (Sector Rotation · Correlation ·
+            #    Fear & Greed · Global Rotation) für den Default-Ticker ──
+            try:
+                from tradinglib import market_assessment
+                market_assessment.render(region=st, username=self.username,
+                                         db_path=self.db_path)
+            except Exception as _ma_exc:
+                logger.warning("Market assessment render failed: %s", _ma_exc)
+
             year = dt.datetime.now().year
 
             db = tools.Db_tools(db_path=self.db_path, database_name=f'trades{year}.db')
