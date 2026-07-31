@@ -1199,10 +1199,39 @@ class BrokerFactory:
 # ------------------------------------------------------------------ #
 
 def calc_qty(budget_per_position: float, price: float, x_rate: float = 1.0) -> float:
-    """Returns integer share count from a per-position budget and current price."""
+    """Returns integer share count from a per-position budget and current price.
+
+    ``x_rate`` = units of the *price* currency per 1 unit of the *budget*
+    currency (see fx_rate_for_sizing). It bridges a system-currency budget and a
+    native-currency price: qty = int(budget[sys] * x_rate / price[native]).
+    """
     if price <= 0:
         return 0.0
     return max(1.0, float(int(budget_per_position * x_rate / price)))
+
+
+def fx_rate_for_sizing(native_ccy: str, system_ccy: str = 'EUR') -> float:
+    """x_rate for calc_qty: native-currency units per 1 system-currency unit.
+
+    A system-currency budget (e.g. EUR) must not be divided by a native price
+    (e.g. a USD share price) directly — that under-sizes every non-system-
+    currency position by the FX factor. Passing this rate as calc_qty's x_rate
+    converts the budget into the price's currency first
+    (budget_EUR * USD_per_EUR / price_USD = shares).
+
+    Same currency, or any lookup failure, returns 1.0 (no conversion — never
+    worse than the previous, un-converted behaviour).
+    """
+    try:
+        nc = (native_ccy or system_ccy or 'EUR').upper()
+        sc = (system_ccy or 'EUR').upper()
+        if nc == sc:
+            return 1.0
+        from tradinglib.utils import DataUtils
+        rate = DataUtils.get_exchange_rate(symbol=nc, system_currency=sc)
+        return float(rate) if rate and rate > 0 else 1.0
+    except Exception:
+        return 1.0
 
 
 # ------------------------------------------------------------------ #
