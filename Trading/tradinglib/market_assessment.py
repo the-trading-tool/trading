@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 from tradinglib.i18n import t
@@ -151,6 +152,41 @@ def _block_sector(ticker: str) -> dict | None:
         return None
 
 
+def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5) -> list | None:
+    """Cross-Sektor-„Sektor-Schläger": aus den je Sektor fundamental stärksten
+    Aktien (Top nach Overall Value Trend) die ``top_n`` mit der höchsten
+    Outperformance ggü. ihrem eigenen Sektor-ETF (RSC_vs_ETF)."""
+    try:
+        from tradinglib import sector_stocks as ss
+        df, _ = ss.query_best_per_sector(db_path=db_path,
+                                         rank_col="ap.overallValueTrend",
+                                         per_sector=per_sector)
+        if df is None or df.empty:
+            return None
+        df = ss.enrich_with_rsc_multi(df, sector_col="sector_etf", weeks=4)
+        df = df.dropna(subset=["RSC_vs_ETF"])
+        if df.empty:
+            return None
+        df = df.sort_values("RSC_vs_ETF", ascending=False).head(top_n)
+        rows = []
+        for _, r in df.iterrows():
+            rsc = float(r["RSC_vs_ETF"])
+            rows.append({
+                "ticker": r.get("ticker", ""),
+                "name": r.get("longName") or r.get("ticker", ""),
+                "sector": r.get("sector", ""),
+                "etf": r.get("sector_etf", ""),
+                "ovt": (float(r["overallValueTrend"])
+                        if "overallValueTrend" in r and pd.notna(r["overallValueTrend"]) else None),
+                "rsc": round(rsc, 2),
+                "beats": rsc > 0,
+            })
+        return rows or None
+    except Exception as exc:
+        logger.warning("market_assessment: best_stocks block failed: %s", exc)
+        return None
+
+
 # ── Verdichtung ───────────────────────────────────────────────────────────────
 
 _QUAD_SCORE = {"Leading": 1.0, "Improving": 0.5, "Weakening": -0.5, "Lagging": -1.0}
@@ -177,16 +213,18 @@ def _verdict(fg_b, rot_b, sec_b) -> tuple[str, float]:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def assess(ticker: str, day: str) -> dict:
-    """Vier-Block-Marktbeurteilung für ``ticker``. ``day`` hält den Cache
-    tagesaktuell (geht in den Cache-Key ein)."""
+def assess(ticker: str, day: str, db_path: str = "database") -> dict:
+    """Marktbeurteilung für ``ticker``. ``day`` hält den Cache tagesaktuell
+    (geht in den Cache-Key ein)."""
     fg_b = _block_fear_greed(ticker)
     rot_b = _block_rotation(ticker)
     corr_b = _block_correlation()
     sec_b = _block_sector(ticker)
+    best_b = _block_best_stocks(db_path)
     verdict, vscore = _verdict(fg_b, rot_b, sec_b)
     return {"ticker": ticker, "fg": fg_b, "rotation": rot_b, "correlation": corr_b,
-            "sector": sec_b, "verdict": verdict, "verdict_score": vscore}
+            "sector": sec_b, "best_stocks": best_b,
+            "verdict": verdict, "verdict_score": vscore}
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
@@ -241,13 +279,13 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
     try:
         with region.spinner(t("ma.computing")):
             import datetime as dt
-            data = assess(ticker, dt.date.today().isoformat())
+            data = assess(ticker, dt.date.today().isoformat(), db_path)
     except Exception as exc:
         logger.warning("market_assessment.render failed: %s", exc)
         return
 
-    if not any((data.get("fg"), data.get("rotation"),
-                data.get("sector"), data.get("correlation"))):
+    if not any((data.get("fg"), data.get("rotation"), data.get("sector"),
+                data.get("correlation"), data.get("best_stocks"))):
         return
 
     tk = str(ticker).lstrip("^")
@@ -317,4 +355,29 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         bits.append(t("ma.sector_laggard", name=nm, val=f"{rsc:+.1f}"))
     if bits:
         region.caption(" · ".join(bits))
+
+    # ── Sektor-Schläger: Top 5 Aktien, die ihren Sektor am stärksten schlagen ──
+    best = data.get("best_stocks")
+    if best:
+        region.markdown(f"**{t('ma.best_header')}**")
+        region.caption(t("ma.best_caption"))
+        table = pd.DataFrame([{
+            "details": f"/?symbol={r['ticker']}&details=True",
+            t("ma.best_col_stock"): r["name"],
+            t("ma.best_col_sector"): r["sector"],
+            "OVT": r["ovt"],
+            t("ma.best_col_rsc"): r["rsc"],
+            t("ma.best_col_beats"): "✓" if r["beats"] else "✗",
+        } for r in best])
+        region.dataframe(
+            table, use_container_width=True, hide_index=True,
+            column_config={
+                "details": st.column_config.LinkColumn(
+                    "", display_text=t("ma.best_col_view"), width="small"),
+                "OVT": st.column_config.ProgressColumn(
+                    "OVT", min_value=0, max_value=80, format="%.0f", width="small"),
+                t("ma.best_col_rsc"): st.column_config.ProgressColumn(
+                    t("ma.best_col_rsc"), min_value=-20, max_value=20,
+                    format="%+.1f %%", width="small"),
+            })
     region.divider()

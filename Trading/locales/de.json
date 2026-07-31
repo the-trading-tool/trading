@@ -1600,5 +1600,13 @@
   "ma.cross_leader": "Stärkster Zufluss: {name} ({cls}) {val}%",
   "ma.cross_laggard": "Stärkster Abfluss: {name} ({cls}) {val}%",
   "ma.sector_laggard": "Schwächster Sektor: {name} ({val}%)",
-  "ma.rsc_delta_change": "RSC {val}% (Δ {chg} pp)"
+  "ma.rsc_delta_change": "RSC {val}% (Δ {chg} pp)",
+  "ma.best_header": "Sektor-Schläger — Top 5 Aktien",
+  "ma.best_caption": "Fundamental stärkste Aktien je Sektor (Overall Value Trend), die ihren Sektor-ETF über 4 Wochen am deutlichsten schlagen.",
+  "ma.best_col_stock": "Aktie",
+  "ma.best_col_sector": "Sektor",
+  "ma.best_col_rsc": "vs Sektor",
+  "ma.best_col_beats": "Schlägt Sektor",
+  "ma.best_col_view": "Ansehen",
+  "sr.stocks_beats": "Schlägt Sektor"
 }

@@ -620,7 +620,7 @@ class SectorRotationPage:
         )
         show_rsc = c_rsc.toggle(
             f"RSC vs {sector_etf or 'ETF'}",
-            value=False,
+            value=bool(sector_etf),   # Default an, sobald ein Sektor-ETF gemappt ist
             key="stocks_rsc",
             help=etf_help,
             disabled=not sector_etf,
@@ -700,6 +700,13 @@ class SectorRotationPage:
             lambda t: f"/?symbol={t}&details=True"
         ))
         display_df = display_df.rename(columns=_RENAME)
+
+        # ── „Schlägt Sektor" ✓/✗ direkt neben der RSC-Spalte ───────────────────
+        if _rsc_label in display_df.columns:
+            _beats = display_df[_rsc_label].apply(
+                lambda v: "✓" if pd.notna(v) and v > 0 else ("✗" if pd.notna(v) else ""))
+            display_df.insert(display_df.columns.get_loc(_rsc_label) + 1,
+                              _t('sr.stocks_beats'), _beats)
 
         # ── ProgressColumn configs for numeric metrics ─────────────────────────
         _PROG_RANGES: dict[str, tuple[float, float]] = {

@@ -220,6 +220,129 @@ def query_sector_stocks(
     return pd.DataFrame(), "\n".join(debug_lines)
 
 
+def query_best_per_sector(
+    db_path: str = "database",
+    rank_col: str = "ap.overallValueTrend",
+    per_sector: int = 3,
+    sectors: Optional[list] = None,
+) -> tuple[pd.DataFrame, str]:
+    """Top *per_sector* stocks **for every mapped sector** in a single query.
+
+    Uses a window function (ROW_NUMBER partitioned by sector) so the whole
+    cross-sector "best of each sector" set comes back in one DB pass — much
+    faster than looping :func:`query_sector_stocks` per sector. Adds a
+    ``sector`` and ``sector_etf`` column. Empty DataFrame on failure.
+    """
+    if rank_col not in _RANK_COLUMNS:
+        rank_col = "ap.overallValueTrend"
+    sectors = sectors or list(SECTOR_ETF_MAP.keys())
+    ai_expr = ", ".join(_AI_COLS)
+    ph = ", ".join("?" for _ in sectors)
+    debug_lines: list[str] = []
+
+    for db_name in ("asset_simulation_all", "asset_simulation_", "asset_simulation"):
+        sim_file = _db_path(db_path, f"{db_name}.db")
+        info_file = _db_path(db_path, "asset_info.db")
+        debug_lines.append(f"Trying **{db_name}.db** — exists: {os.path.exists(sim_file)}")
+        if not os.path.exists(sim_file):
+            continue
+        try:
+            conn = open_db(sim_file)
+            attach_db(conn, info_file, "info_db")
+            row = conn.execute("SELECT DATE(MAX(Date)) FROM asset_simulation").fetchone()
+            if not row or row[0] is None:
+                conn.close()
+                continue
+            max_date = row[0]
+            query = f"""
+                WITH ranked AS (
+                    SELECT ap.*, {ai_expr},
+                        ROW_NUMBER() OVER (
+                            PARTITION BY ai.sector
+                            ORDER BY CASE WHEN {rank_col} IS NULL THEN 1 ELSE 0 END,
+                                     {rank_col} DESC
+                        ) AS _rn
+                    FROM asset_simulation AS ap
+                    INNER JOIN info_db.asset_info AS ai ON ap.ticker = ai.ticker
+                    WHERE ai.sector IN ({ph})
+                      AND DATE(ap.Date) = ?
+                )
+                SELECT * FROM ranked WHERE _rn <= ?
+            """
+            df = pd.read_sql_query(query, conn, params=(*sectors, max_date, per_sector))
+            conn.close()
+            debug_lines.append(f"  → {len(df)} rows ({max_date})")
+            if not df.empty:
+                df["sector_etf"] = df["sector"].map(SECTOR_ETF_MAP)
+                return df, "\n".join(debug_lines)
+        except Exception as exc:
+            debug_lines.append(f"  → ERROR: {exc}")
+            logger.warning("query_best_per_sector(%s): %s", db_name, exc)
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return pd.DataFrame(), "\n".join(debug_lines)
+
+
+def enrich_with_rsc_multi(
+    df: pd.DataFrame,
+    sector_col: str = "sector_etf",
+    weeks: int = 4,
+) -> pd.DataFrame:
+    """Append ``RSC_vs_ETF`` comparing each stock to **its own** sector ETF.
+
+    Like :func:`enrich_with_rsc`, but the benchmark ETF is taken per row from
+    ``sector_col`` (so a cross-sector list is enriched in a single download of
+    all tickers + all involved ETFs). Positive = stock beats its sector.
+    """
+    if df.empty or "ticker" not in df.columns or sector_col not in df.columns:
+        out = df.copy()
+        out["RSC_vs_ETF"] = float("nan")
+        return out
+
+    tickers = list(df["ticker"].dropna().unique())
+    etfs = list(pd.Series(df[sector_col].dropna().unique()))
+    all_tickers = list(dict.fromkeys(tickers + etfs))
+    n_days = max(weeks * 5, 10)
+    yf_period = "6mo" if weeks > 12 else "3mo"
+
+    try:
+        raw = md.download(tickers=all_tickers, period=yf_period, interval="1d",
+                          auto_adjust=False, progress=False)
+    except Exception as exc:
+        logger.warning("enrich_with_rsc_multi download failed: %s", exc)
+        out = df.copy(); out["RSC_vs_ETF"] = float("nan"); return out
+    if raw is None or raw.empty:
+        out = df.copy(); out["RSC_vs_ETF"] = float("nan"); return out
+
+    def _close(tk):
+        try:
+            s = raw["Close"][tk].dropna() if isinstance(raw.columns, pd.MultiIndex) \
+                else raw["Close"].dropna()
+            return s if not s.empty else None
+        except Exception:
+            return None
+
+    def _ret(s):
+        if s is None or len(s) < n_days + 1:
+            return None
+        return (s.iloc[-1] / s.iloc[-n_days] - 1) * 100
+
+    etf_ret = {e: _ret(_close(e)) for e in etfs}
+
+    def _row_rsc(r):
+        sr = _ret(_close(r["ticker"]))
+        er = etf_ret.get(r[sector_col])
+        if sr is None or er is None:
+            return float("nan")
+        return round(float(sr - er), 2)
+
+    out = df.copy()
+    out["RSC_vs_ETF"] = out.apply(_row_rsc, axis=1)
+    return out
+
+
 def enrich_with_rsc(
     df: pd.DataFrame,
     sector_etf: str,

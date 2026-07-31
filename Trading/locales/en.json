@@ -1600,5 +1600,13 @@
   "ma.cross_leader": "Strongest inflow: {name} ({cls}) {val}%",
   "ma.cross_laggard": "Strongest outflow: {name} ({cls}) {val}%",
   "ma.sector_laggard": "Weakest sector: {name} ({val}%)",
-  "ma.rsc_delta_change": "RSC {val}% (Δ {chg} pp)"
+  "ma.rsc_delta_change": "RSC {val}% (Δ {chg} pp)",
+  "ma.best_header": "Sector Beaters — Top 5 Stocks",
+  "ma.best_caption": "Fundamentally strongest stocks per sector (Overall Value Trend) that beat their sector ETF the most over 4 weeks.",
+  "ma.best_col_stock": "Stock",
+  "ma.best_col_sector": "Sector",
+  "ma.best_col_rsc": "vs sector",
+  "ma.best_col_beats": "Beats sector",
+  "ma.best_col_view": "View",
+  "sr.stocks_beats": "Beats sector"
 }
