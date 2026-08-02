@@ -12,6 +12,7 @@ except ImportError:
     pass
 
 from tradinglib.indicator import _indicator
+from tradinglib.i18n import t
 
 
 class Sqz(_indicator._Indicator):
@@ -438,9 +439,10 @@ class Sqz(_indicator._Indicator):
         sym = 'circle-open' if open_marker else 'circle'
         bull, bear = '#2E7D32', '#C62828'
 
-        def _bubble(mask, color, mk_size, opacity, above, label):
+        def _bubble(mask, color, mk_size, opacity, above, label_key):
             if not bool(mask.any()):
                 return
+            label = t(label_key)
             y = (self.df['High'][mask] * 1.012) if above else (self.df['Low'][mask] * 0.988)
             self.fig.add_trace(go.Scatter(
                 x=self.df.index[mask], y=y, mode='markers',
@@ -451,13 +453,13 @@ class Sqz(_indicator._Indicator):
 
         # Squeeze (Anbahnung) — kleiner, halbtransparent
         c = onset & (phase == 'Contraction')
-        _bubble(c & (self.df['Close'] > ma20), bull, size, 0.55, False, 'Squeeze ▲ Kauf-Bias')
-        _bubble(c & (self.df['Close'] <= ma20), bear, size, 0.55, True, 'Squeeze ▼ Verkauf-Bias')
+        _bubble(c & (self.df['Close'] > ma20), bull, size, 0.55, False, 'sqz.mk_squeeze_buy')
+        _bubble(c & (self.df['Close'] <= ma20), bear, size, 0.55, True, 'sqz.mk_squeeze_sell')
 
         # Expansion (Ausbruch) — größer, voll
         e = onset & (phase == 'Expansion')
-        _bubble(e & (self.df['Close'] > ma20), bull, size + 4, 1.0, False, 'Expansion ▲ Kauf')
-        _bubble(e & (self.df['Close'] <= ma20), bear, size + 4, 1.0, True, 'Expansion ▼ Verkauf')
+        _bubble(e & (self.df['Close'] > ma20), bull, size + 4, 1.0, False, 'sqz.mk_expansion_buy')
+        _bubble(e & (self.df['Close'] <= ma20), bear, size + 4, 1.0, True, 'sqz.mk_expansion_sell')
 
     def add_fig(self, htf_rule=None):
         """Add the indicator traces to the given Plotly figure."""

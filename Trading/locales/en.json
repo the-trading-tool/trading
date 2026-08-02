@@ -1613,5 +1613,9 @@
   "gr.pairs_read": "Read each cell as **row versus column** over {weeks} weeks: **green/positive** = the **row** market was stronger than the **column** market → capital rotates (proxy) **out of the column market into the row market**. **Red/negative** = the reverse. The diagonal stays empty (a market vs itself). Values are mirror-antisymmetric: whatever is green above the diagonal is red when mirrored.",
   "gr.pairs_top": "**Strongest rotation:** from **{frm}** into **{to}** ({val} %) — the single largest edge in the window.",
   "gr.pairs_net": "Averaged across all pairs, **{inflow} attracts the most** ({in_val} %) and **{outflow} gives up the most** ({out_val} %).",
-  "gr.flows_delta_note": "Δ week = change in Mansfield RSC versus the previous week (in percentage points) — positive = inflow accelerating, negative = inflow fading or outflow intensifying."
+  "gr.flows_delta_note": "Δ week = change in Mansfield RSC versus the previous week (in percentage points) — positive = inflow accelerating, negative = inflow fading or outflow intensifying.",
+  "sqz.mk_squeeze_buy": "Squeeze ▲ buy bias",
+  "sqz.mk_squeeze_sell": "Squeeze ▼ sell bias",
+  "sqz.mk_expansion_buy": "Expansion ▲ buy",
+  "sqz.mk_expansion_sell": "Expansion ▼ sell"
 }
