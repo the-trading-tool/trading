@@ -118,6 +118,67 @@ class tiny_chart(gt.GraphTools):
             opacity=0.9,
         )
 
+    def _x_bar_for(self, since):
+        """x-Achsen-Datum (Date-String) des Balkens, **in dem der Kauf liegt** —
+        letzter Balken ≤ ``since``, damit die Entry-Linie am Kauf-Balken selbst
+        beginnt (nicht erst am Folgebalken). Regeln:
+          * Kauf vor dem ersten Balken → erster Balken (Linie über volle Breite).
+          * Kauf nach dem letzten Balken → None (Aufrufer: Fallback volle Breite).
+          * ``since`` unbrauchbar/None → None."""
+        try:
+            d = pd.to_datetime(since, errors='coerce')
+        except Exception:
+            return None
+        if d is None or pd.isna(d):
+            return None
+        try:
+            dser = self.df['Date']
+        except Exception:
+            return None
+        dates = pd.to_datetime(dser, format=self.ftime_str, errors='coerce')
+        valid = dates.dropna()
+        if valid.empty:
+            return None
+        if d > valid.iloc[-1]:
+            return None                      # Kauf nach letztem Balken
+        mask_le = (dates <= d)
+        try:
+            mask_le = mask_le.fillna(False)
+        except Exception:
+            pass
+        if bool(mask_le.any()):
+            pos = len(mask_le) - 1 - int(mask_le.values[::-1].argmax())  # letzter True
+            return dser.iloc[pos]
+        return dser.iloc[0]                  # Kauf vor erstem Balken → volle Breite
+
+    def add_entry_line(self, y, since, text, line_color='#1a9e3f',
+                       line_dash='dash', line_width=2, row=1):
+        """Wie :meth:`_add_hline_outside`, aber die Linie **beginnt am Kaufzeitpunkt**
+        ``since`` (Datum/String) statt über die volle Breite zu laufen. Fällt auf
+        eine volle Linie zurück, wenn ``since`` nicht auf der Achse platzierbar ist
+        (unbekannt oder hinter dem letzten Balken)."""
+        x0 = self._x_bar_for(since)
+        if x0 is None:
+            self._add_hline_outside(y, text, line_color, line_dash, line_width, row)
+            return
+        try:
+            x1 = self.df['Date'].iloc[-1]
+        except Exception:
+            self._add_hline_outside(y, text, line_color, line_dash, line_width, row)
+            return
+        self.fig.add_shape(
+            type='line', x0=x0, x1=x1, y0=y, y1=y,
+            line=dict(color=line_color, dash=line_dash, width=line_width),
+            row=row, col=1,
+        )
+        yref = 'y' if row == 1 else f'y{row}'
+        self.fig.add_annotation(
+            x=1.0, y=y, xref='paper', yref=yref,
+            text=f' {text} ', showarrow=False, xanchor='left', yanchor='middle',
+            bgcolor=line_color, font=dict(color='white', size=13),
+            bordercolor=line_color, borderpad=3, opacity=0.9,
+        )
+
     def get_num_rows(self):
         return DataUtils.get_num_rows(self.df)
 

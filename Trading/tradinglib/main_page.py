@@ -624,16 +624,19 @@ class render_mainpage(fetch_data.FetchData):
             db_file = _tools.get_path('database', 'trades.db')
             with sqlite3.connect(db_file) as conn:
                 raw = pd.read_sql_query(
-                    "SELECT action, price, shares FROM trades WHERE ticker=? ORDER BY timestamp",
+                    "SELECT timestamp, action, price, shares FROM trades WHERE ticker=? ORDER BY timestamp",
                     conn, params=(ticker,)
                 )
             if not raw.empty:
                 buy_rows  = raw[raw['action'] == 'buy']
                 sell_rows = raw[raw['action'] == 'sell']
                 net_shares = buy_rows['shares'].sum() - sell_rows['shares'].sum()
+                # Kaufzeitpunkt = frühester Buy → Entry-Linie startet dort.
+                first_buy = str(buy_rows['timestamp'].min()) if not buy_rows.empty else None
                 if net_shares > 0.001:
                     avg_buy = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
-                    positions.append({'source': 'Own', 'entry': avg_buy, 'exit': None, 'open': True, 'count': 1})
+                    positions.append({'source': 'Own', 'entry': avg_buy, 'exit': None,
+                                      'open': True, 'count': 1, 'since': first_buy})
                 elif not buy_rows.empty and not sell_rows.empty:
                     avg_buy  = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
                     avg_sell = (sell_rows['price'] * sell_rows['shares']).sum() / sell_rows['shares'].sum()
@@ -707,8 +710,11 @@ class render_mainpage(fetch_data.FetchData):
             if count > 1:
                 label += f" (×{count})"
             if entry and entry > 0:
-                self.t_chart._add_hline_outside(
+                # Entry-Linie startet am Kaufzeitpunkt (pos['since']); ohne Datum
+                # (z. B. Paper ohne Entry-Date) fällt add_entry_line auf volle Breite.
+                self.t_chart.add_entry_line(
                     y=entry,
+                    since=pos.get('since'),
                     text=label,
                     line_color='#1a9e3f',
                     line_dash='dash',
