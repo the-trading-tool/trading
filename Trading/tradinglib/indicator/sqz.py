@@ -425,6 +425,44 @@ class Sqz(_indicator._Indicator):
             return '1D'
         return '4h'                # Minuten-Bars
 
+    def _add_phase_markers(self, phase, ma20, tag='LTF', size=12, open_marker=False):
+        """Markiert nur den BEGINN einer Contraction- bzw. Expansion-Phase (nicht
+        jeden Bar). Contraction = Squeeze-Raute unter dem Tief; Expansion = Dreieck
+        in Ausbruchsrichtung (Close vs. MA20) unter dem Tief / über dem Hoch."""
+        onset = phase != phase.shift(1)
+        suf = '-open' if open_marker else ''
+
+        c = onset & (phase == 'Contraction')
+        if bool(c.any()):
+            self.fig.add_trace(go.Scatter(
+                x=self.df.index[c], y=self.df['Low'][c] * 0.99,
+                mode='markers',
+                marker=dict(color='#F9A825', size=size, symbol=f'diamond{suf}',
+                            line=dict(color='white', width=1)),
+                name=f'Squeeze ({tag})', showlegend=False,
+                hovertext=[f'Squeeze-Start · {tag}'] * int(c.sum()), hoverinfo='text'))
+
+        e = onset & (phase == 'Expansion')
+        if bool(e.any()):
+            up = e & (self.df['Close'] > ma20)
+            dn = e & (self.df['Close'] <= ma20)
+            if bool(up.any()):
+                self.fig.add_trace(go.Scatter(
+                    x=self.df.index[up], y=self.df['Low'][up] * 0.985,
+                    mode='markers',
+                    marker=dict(color='#2E7D32', size=size + 1, symbol=f'triangle-up{suf}',
+                                line=dict(color='white', width=1)),
+                    name=f'Expansion ↑ ({tag})', showlegend=False,
+                    hovertext=[f'Expansion aufwärts · {tag}'] * int(up.sum()), hoverinfo='text'))
+            if bool(dn.any()):
+                self.fig.add_trace(go.Scatter(
+                    x=self.df.index[dn], y=self.df['High'][dn] * 1.015,
+                    mode='markers',
+                    marker=dict(color='#C62828', size=size + 1, symbol=f'triangle-down{suf}',
+                                line=dict(color='white', width=1)),
+                    name=f'Expansion ↓ ({tag})', showlegend=False,
+                    hovertext=[f'Expansion abwärts · {tag}'] * int(dn.sum()), hoverinfo='text'))
+
     def add_fig(self, htf_rule=None):
         """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
@@ -447,50 +485,15 @@ class Sqz(_indicator._Indicator):
         self.df['sqz_htf_phase'] = df_high['sqz_phase'].reindex(self.df.index, method='ffill')
 
 
-        # Candlestick-Farben korrekt zuweisen (Color per point nicht direkt möglich, daher mit custom line traces)
-#        for i in range(len(self.df)):
-#                )
-#            )
-
-        colors = {'Contraction': 'orange', 'Expansion': 'red', 'Trend': 'green'}
-        for phase in self.df['sqz_phase'].unique():
-            if phase == "Trend" and not self.show_trend:
-                continue
-            if phase == "Expansion" and not self.show_trend:
-                continue
-            mask = self.df['sqz_phase'] == phase
-            self.fig.add_trace(
-                go.Scatter(
-                    x=self.df.index[mask],
-                    y=self.df['Close'][mask],
-                    mode="markers",
-                    marker=dict(color=colors[phase], size=10),
-                    name=f"{phase} (Low TF)",
-                    showlegend=False,
-                ))
-
-        htf_colors = {
-            'Contraction': 'darkorange',
-            'Expansion': 'purple',
-            'Trend': 'blue'
-        }
-
-        for phase in self.df['sqz_htf_phase'].unique():
-            if phase == "Trend" and not self.show_trend:
-                continue
-            if phase == "Expansion" and not self.show_trend:
-                continue
-            mask = self.df['sqz_htf_phase'] == phase
-            if mask.any():
-                self.fig.add_trace(
-                    go.Scatter(
-                        x=self.df.index[mask],
-                        y=self.df['Close'][mask],
-                        mode="markers",
-                        marker=dict(color=htf_colors[phase], size=10),
-                        name=f"{phase} (High TF)",
-                        showlegend=False,
-                    ))
+        # Phasen-Marker NUR am Phasenbeginn (Onset) statt auf jedem Bar — die
+        # bisherige Punkt-pro-Bar-Logik hat die Kurslinie zugekleistert (v. a. der
+        # HTF-„Trend"). Aussagekräftig sind Contraction (Squeeze) und Expansion
+        # (Ausbruch inkl. Richtung); „Trend" wird gar nicht mehr markiert.
+        ma20 = self.df['Close'].rolling(20).mean()
+        self._add_phase_markers(self.df['sqz_phase'], ma20, tag='LTF', size=12, open_marker=False)
+        if self.show_trend:
+            # HTF-Regime als Bestätigung — größere, hohle Marker (nur bei Bedarf).
+            self._add_phase_markers(self.df['sqz_htf_phase'], ma20, tag='HTF', size=17, open_marker=True)
 
         """
         # --- Verbesserte Volume Delta Marker Logik mit Signifikanzfilter ---
