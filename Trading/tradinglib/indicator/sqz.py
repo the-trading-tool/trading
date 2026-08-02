@@ -439,11 +439,18 @@ class Sqz(_indicator._Indicator):
         sym = 'circle-open' if open_marker else 'circle'
         bull, bear = '#2E7D32', '#C62828'
 
+        # Marker-Abstand an der LOKALEN Volatilität (ATR) ausrichten, NICHT als
+        # fixer %-Preis — sonst schweben die Bubbles bei ruhigen/teuren Werten
+        # (z. B. ZT=F, ^SPX) weit von den Kerzen weg ("im Nirvana").
+        rng = (self.df['High'] - self.df['Low']).abs()
+        off = self.df['sqz_atr'] if 'sqz_atr' in self.df.columns else rng
+        off = (off.fillna(rng).fillna(0.0) * 0.6)
+
         def _bubble(mask, color, mk_size, opacity, above, label_key):
             if not bool(mask.any()):
                 return
             label = t(label_key)
-            y = (self.df['High'][mask] * 1.012) if above else (self.df['Low'][mask] * 0.988)
+            y = (self.df['High'][mask] + off[mask]) if above else (self.df['Low'][mask] - off[mask])
             self.fig.add_trace(go.Scatter(
                 x=self.df.index[mask], y=y, mode='markers',
                 marker=dict(color=color, size=mk_size, symbol=sym, opacity=opacity,
