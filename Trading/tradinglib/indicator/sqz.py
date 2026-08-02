@@ -426,56 +426,38 @@ class Sqz(_indicator._Indicator):
         return '4h'                # Minuten-Bars
 
     def _add_phase_markers(self, phase, ma20, tag='LTF', size=12, open_marker=False):
-        """Markiert nur den BEGINN einer Contraction- bzw. Expansion-Phase (nicht
-        jeden Bar). Contraction = Squeeze-Raute unter dem Tief; Expansion = Dreieck
-        in Ausbruchsrichtung (Close vs. MA20) unter dem Tief / über dem Hoch."""
+        """Markiert nur den BEGINN einer Contraction/Expansion-Phase (nicht jeden
+        Bar) — durchgehend als BUBBLE (Kreis), keine Dreiecke:
+          * Farbe  = Richtung: grün = bullish (Kauf, unter dem Bar),
+                                rot  = bearish (Verkauf, über dem Bar).
+          * Füllung/Größe = Phase: Squeeze = kleiner + halbtransparent (Anbahnung),
+                                    Expansion = größer + voll (bestätigter Ausbruch).
+          * HTF (open_marker) = hohle Bubble.
+        """
         onset = phase != phase.shift(1)
-        suf = '-open' if open_marker else ''
+        sym = 'circle-open' if open_marker else 'circle'
+        bull, bear = '#2E7D32', '#C62828'
 
-        # Squeeze als BUBBLE (Kreis), nach Bias in Kauf/Verkauf getrennt:
-        # grün = Kurs über MA20 (Kauf-Bias), rot = darunter (Verkauf-Bias).
-        # Form (Kreis) unterscheidet den Squeeze von den Expansion-Dreiecken.
+        def _bubble(mask, color, mk_size, opacity, above, label):
+            if not bool(mask.any()):
+                return
+            y = (self.df['High'][mask] * 1.012) if above else (self.df['Low'][mask] * 0.988)
+            self.fig.add_trace(go.Scatter(
+                x=self.df.index[mask], y=y, mode='markers',
+                marker=dict(color=color, size=mk_size, symbol=sym, opacity=opacity,
+                            line=dict(color='white', width=1.5)),
+                name=f'{label} ({tag})', showlegend=False,
+                hovertext=[f'{label} · {tag}'] * int(mask.sum()), hoverinfo='text'))
+
+        # Squeeze (Anbahnung) — kleiner, halbtransparent
         c = onset & (phase == 'Contraction')
-        if bool(c.any()):
-            cu = c & (self.df['Close'] > ma20)
-            cd = c & (self.df['Close'] <= ma20)
-            if bool(cu.any()):
-                self.fig.add_trace(go.Scatter(
-                    x=self.df.index[cu], y=self.df['Low'][cu] * 0.99,
-                    mode='markers',
-                    marker=dict(color='#2E7D32', size=size + 3, symbol=f'circle{suf}',
-                                line=dict(color='white', width=1.5)),
-                    name=f'Squeeze ▲ Kauf-Bias ({tag})', showlegend=False,
-                    hovertext=[f'Squeeze · Kauf-Bias · {tag}'] * int(cu.sum()), hoverinfo='text'))
-            if bool(cd.any()):
-                self.fig.add_trace(go.Scatter(
-                    x=self.df.index[cd], y=self.df['High'][cd] * 1.01,
-                    mode='markers',
-                    marker=dict(color='#C62828', size=size + 3, symbol=f'circle{suf}',
-                                line=dict(color='white', width=1.5)),
-                    name=f'Squeeze ▼ Verkauf-Bias ({tag})', showlegend=False,
-                    hovertext=[f'Squeeze · Verkauf-Bias · {tag}'] * int(cd.sum()), hoverinfo='text'))
+        _bubble(c & (self.df['Close'] > ma20), bull, size, 0.55, False, 'Squeeze ▲ Kauf-Bias')
+        _bubble(c & (self.df['Close'] <= ma20), bear, size, 0.55, True, 'Squeeze ▼ Verkauf-Bias')
 
+        # Expansion (Ausbruch) — größer, voll
         e = onset & (phase == 'Expansion')
-        if bool(e.any()):
-            up = e & (self.df['Close'] > ma20)
-            dn = e & (self.df['Close'] <= ma20)
-            if bool(up.any()):
-                self.fig.add_trace(go.Scatter(
-                    x=self.df.index[up], y=self.df['Low'][up] * 0.985,
-                    mode='markers',
-                    marker=dict(color='#2E7D32', size=size + 1, symbol=f'triangle-up{suf}',
-                                line=dict(color='white', width=1)),
-                    name=f'Expansion ↑ ({tag})', showlegend=False,
-                    hovertext=[f'Expansion aufwärts · {tag}'] * int(up.sum()), hoverinfo='text'))
-            if bool(dn.any()):
-                self.fig.add_trace(go.Scatter(
-                    x=self.df.index[dn], y=self.df['High'][dn] * 1.015,
-                    mode='markers',
-                    marker=dict(color='#C62828', size=size + 1, symbol=f'triangle-down{suf}',
-                                line=dict(color='white', width=1)),
-                    name=f'Expansion ↓ ({tag})', showlegend=False,
-                    hovertext=[f'Expansion abwärts · {tag}'] * int(dn.sum()), hoverinfo='text'))
+        _bubble(e & (self.df['Close'] > ma20), bull, size + 4, 1.0, False, 'Expansion ▲ Kauf')
+        _bubble(e & (self.df['Close'] <= ma20), bear, size + 4, 1.0, True, 'Expansion ▼ Verkauf')
 
     def add_fig(self, htf_rule=None):
         """Add the indicator traces to the given Plotly figure."""
