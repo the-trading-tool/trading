@@ -43,6 +43,27 @@ def _gann_levels(price: float, step: float, n: int, factor: float = 0.0):
     return resistances, supports
 
 
+def _gann_grid_in_range(low: float, high: float, step: float, factor: float,
+                        max_lines: int = 30):
+    """Alle Gann-Gitter-Knoten (Preis = ((m*step)^2)*factor) im Bereich [low, high].
+
+    Deckt dynamisch die sichtbare Preisspanne ab (statt fixer ±N um den letzten
+    Kurs). Bei zu vielen Knoten die der Bereichsmitte nächsten behalten."""
+    f = factor if factor > 0 else _auto_factor((low + high) / 2.0)
+    if f <= 0 or low <= 0:
+        return []
+    m_lo = max(1, math.ceil(math.sqrt(low / f) / step))
+    m_hi = math.floor(math.sqrt(high / f) / step)
+    if m_hi < m_lo:
+        return []
+    ms = list(range(m_lo, m_hi + 1))
+    if len(ms) > max_lines:
+        mid = (m_lo + m_hi) // 2
+        ms = sorted(sorted(ms, key=lambda m: abs(m - mid))[:max_lines])
+    dec = max(0, 2 - int(math.floor(math.log10(max(f, 1e-10)))))
+    return [round((m * step) ** 2 * f, dec) for m in ms]
+
+
 def _fmt(value: float) -> str:
     """Format a numeric price value as a rounded string label."""
     if value >= 10_000:
@@ -106,6 +127,9 @@ class Gan(_indicator._Indicator):
         except Exception:
             pass
 
+        # Beschriftete, kräftige Level: die `levels` nächsten ober-/unterhalb des
+        # aktuellen Kurses (wie bisher, R1/S1 am dicksten).
+        labeled = set()
         for i in range(1, self.levels + 1):
             col_r = f'gan_r{i}'
             col_s = f'gan_s{i}'
@@ -115,20 +139,28 @@ class Gan(_indicator._Indicator):
 
             if col_r in self.df.columns:
                 val = self.df[col_r].iloc[-1]
-                self._add_hline_outside(
-                    y=val,
-                    text=f'GR{i}: {_fmt(val)}',
-                    line_color=rc,
-                    line_dash='dash',
-                    line_width=width,
-                )
-
+                labeled.add(val)
+                self._add_hline_outside(y=val, text=f'GR{i}: {_fmt(val)}',
+                                        line_color=rc, line_dash='dash', line_width=width)
             if col_s in self.df.columns:
                 val = self.df[col_s].iloc[-1]
-                self._add_hline_outside(
-                    y=val,
-                    text=f'GS{i}: {_fmt(val)}',
-                    line_color=sc,
-                    line_dash='dash',
-                    line_width=width,
-                )
+                labeled.add(val)
+                self._add_hline_outside(y=val, text=f'GS{i}: {_fmt(val)}',
+                                        line_color=sc, line_dash='dash', line_width=width)
+
+        # Dynamische Abdeckung: alle weiteren Gann-Knoten in der sichtbaren
+        # Preisspanne als feine, unbeschriftete Linien → das ganze Chart hat sein
+        # Gann-Raster (nicht nur ein Band um den letzten Kurs).
+        try:
+            price = self._anchor_price()
+            low = float(self.df['Low'].min())
+            high = float(self.df['High'].max())
+            f = _auto_factor(price)
+            for val in _gann_grid_in_range(low, high, self.step, f):
+                if val in labeled:
+                    continue
+                color = _R_COLORS[-1] if val > price else _S_COLORS[-1]
+                self.fig.add_hline(y=val, line_width=1, line_dash='dot',
+                                   line_color=color, row=1, col=1)
+        except Exception:
+            pass
