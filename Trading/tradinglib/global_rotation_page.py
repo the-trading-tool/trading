@@ -104,17 +104,27 @@ class GlobalRotationPage:
         labels = [m["code"] for m in rows]
         vals = [m["rsc"] for m in rows]
         colors = [_CLASS_COLOR.get(m.get("class"), "#455A64") for m in rows]
-        customdata = [[m.get("class", ""), m.get("name", m.get("index", ""))] for m in rows]
+
+        def _delta(m):
+            p = m.get("rsc_prev")
+            return round(m["rsc"] - p, 2) if p is not None else None
+        deltas = [_delta(m) for m in rows]
+        dstr = [f"{d:+.2f} pp" if d is not None else "–" for d in deltas]
+        text = [f"Δ {d:+.1f}" if d is not None else "" for d in deltas]
+        customdata = [[m.get("class", ""), m.get("name", m.get("index", "")), ds]
+                      for m, ds in zip(rows, dstr)]
         fig = go.Figure(go.Bar(
             x=vals, y=labels, orientation="h", marker_color=colors,
-            customdata=customdata,
+            customdata=customdata, text=text, textposition="outside",
+            cliponaxis=False, textfont=dict(size=10, color="rgba(120,120,120,0.95)"),
             hovertemplate=("%{y} — %{customdata[1]} (%{customdata[0]}): "
-                           "RSC %{x:+.2f}%<extra></extra>")))
+                           "RSC %{x:+.2f}% · Δ Woche %{customdata[2]}<extra></extra>")))
         fig.add_vline(x=0, line_color="rgba(150,150,150,0.6)", line_width=1)
         fig.update_layout(height=40 + 22 * len(rows), margin=dict(t=10, b=10, l=10, r=10),
                           xaxis_title=t("gr.rsc_axis"))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.caption(t("gr.class_legend"))
+        st.caption(t("gr.flows_delta_note"))
 
     # ── Paarweise relative Stärke ─────────────────────────────────────────────
     def _pairs(self, mat, pair_weeks: int, names: dict | None = None):
