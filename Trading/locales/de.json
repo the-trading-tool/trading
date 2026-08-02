@@ -1608,5 +1608,9 @@
   "ma.best_col_rsc": "vs Sektor",
   "ma.best_col_beats": "Schlägt Sektor",
   "ma.best_col_view": "Ansehen",
-  "sr.stocks_beats": "Schlägt Sektor"
+  "sr.stocks_beats": "Schlägt Sektor",
+  "gr.pairs_prose_header": "Von wo nach wo fließt Kapital?",
+  "gr.pairs_read": "Lies jede Zelle als **Zeile gegen Spalte** über {weeks} Wochen: **grün/positiv** = der Markt der **Zeile** war stärker als der der **Spalte** → Kapital rotiert (Proxy) **aus dem Spalten-Markt in den Zeilen-Markt**. **Rot/negativ** = umgekehrt. Die Diagonale bleibt leer (Markt mit sich selbst). Die Werte sind spiegel-antisymmetrisch: was oberhalb der Diagonale grün ist, ist gespiegelt rot.",
+  "gr.pairs_top": "**Stärkste Rotation:** von **{frm}** nach **{to}** ({val} %) — der größte einzelne Vorsprung im Fenster.",
+  "gr.pairs_net": "Über alle Paare gemittelt **zieht {inflow} am meisten an** ({in_val} %), **{outflow} gibt am meisten ab** ({out_val} %)."
 }

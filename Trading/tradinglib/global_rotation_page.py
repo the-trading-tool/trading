@@ -117,7 +117,7 @@ class GlobalRotationPage:
         st.caption(t("gr.class_legend"))
 
     # ── Paarweise relative Stärke ─────────────────────────────────────────────
-    def _pairs(self, mat, pair_weeks: int):
+    def _pairs(self, mat, pair_weeks: int, names: dict | None = None):
         codes = list(mat.columns)
         z = mat.values.astype(float)
         fig = go.Figure(go.Heatmap(
@@ -130,6 +130,35 @@ class GlobalRotationPage:
         fig.update_layout(height=460, margin=dict(t=30, b=10, l=10, r=10))
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
         st.caption(t("gr.pairs_note", weeks=pair_weeks))
+        self._pairs_prose(mat, pair_weeks, names)
+
+    # ── Prosa: von wo nach wo fließt Kapital (Reihe ← Spalte) ─────────────────
+    def _pairs_prose(self, mat, pair_weeks: int, names: dict | None = None):
+        names = names or {}
+        def _lbl(code):
+            nm = names.get(code)
+            return f"{code} ({nm})" if nm and nm != code else str(code)
+        try:
+            row_max = mat.max(axis=1).dropna()        # je Zeile stärkster Vorsprung
+            net = mat.mean(axis=1, skipna=True).dropna()
+        except Exception:
+            return
+        if row_max.empty or net.empty:
+            return
+        top_row = row_max.idxmax()                    # Zeile mit dem größten Vorsprung
+        top_col = mat.loc[top_row].idxmax()           # zugehörige Spalte
+        top_val = float(mat.loc[top_row, top_col])
+        inflow, outflow = net.idxmax(), net.idxmin()  # Netto-Anzieher / -Abgeber
+
+        with st.expander(t("gr.pairs_prose_header"), expanded=True):
+            st.markdown(t("gr.pairs_read", weeks=pair_weeks))
+            if top_val > 0:
+                st.markdown(t("gr.pairs_top", frm=_lbl(top_col), to=_lbl(top_row),
+                              val=f"{top_val:+.1f}"))
+            if inflow != outflow:
+                st.markdown(t("gr.pairs_net", inflow=_lbl(inflow),
+                              in_val=f"{net[inflow]:+.1f}", outflow=_lbl(outflow),
+                              out_val=f"{net[outflow]:+.1f}"))
 
     # ── Einstieg ──────────────────────────────────────────────────────────────
     def render(self):
@@ -167,7 +196,8 @@ class GlobalRotationPage:
             self._flows(flows.get("markets", []))
         with tab_pairs:
             if result.get("pair_matrix") is not None:
-                self._pairs(result["pair_matrix"], result.get("pair_weeks", 13))
+                _names = {m["code"]: m.get("name", m["code"]) for m in markets}
+                self._pairs(result["pair_matrix"], result.get("pair_weeks", 13), _names)
 
         if result.get("skipped"):
             st.caption(t("gr.skipped", items=", ".join(
