@@ -14,41 +14,64 @@ except ImportError:
 from tradinglib.indicator import _indicator
 
 
-class Mmm(_indicator._Indicator):
+class Sqz(_indicator._Indicator):
 
     is_oszilator = False
-    name = 'Market Maker Master Pattern (with Fibonacci)'
+    name = 'Squeeze / Volatility Phase (with Fibonacci)'
 
     params = {
-        'show_trend': {'type': 'bool', 'default': False, 'label': 'Show trend overlay'},
+        'show_trend':  {'type': 'bool',   'default': False, 'label': 'Show trend/expansion overlay'},
+        # Höheres Timeframe als Regime-Filter. 'auto' = passend zum Bar-Abstand
+        # (Daily->Woche, Intraday->Tag/4h) statt fix '4H' (auf Daily sinnlos).
+        'htf_rule':    {'type': 'select', 'default': 'auto', 'label': 'Higher timeframe',
+                        'options': ['auto', '1W', '1M', '1D', '4h', '1h']},
+        # Vola-Schwellen (früher hartcodiert 0.02 / 0.7 / 1.2):
+        'bb_squeeze':  {'type': 'float', 'default': 0.02, 'label': 'BB-width squeeze thr'},
+        'atr_low':     {'type': 'float', 'default': 0.7,  'label': 'Contraction ATR factor'},
+        'atr_expand':  {'type': 'float', 'default': 1.2,  'label': 'Expansion ATR factor'},
+        # Fibonacci (früher hartcodiert n=1, order=6, direction='low_to_high'):
+        'fib_order':   {'type': 'int',    'default': 6,  'min': 2, 'max': 50, 'label': 'Fib swing window'},
+        'fib_n':       {'type': 'int',    'default': 1,  'min': 0, 'max': 20, 'label': 'Fib swing index'},
+        'fib_dir':     {'type': 'select', 'default': 'auto', 'label': 'Fib direction',
+                        'options': ['auto', 'low_to_high', 'high_to_low']},
     }
 
-    def __init__(self, df, symbol="", show_trend=False):
+    def __init__(self, df, symbol="", show_trend=False, htf_rule='auto',
+                 bb_squeeze=0.02, atr_low=0.7, atr_expand=1.2,
+                 fib_order=6, fib_n=1, fib_dir='auto'):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.show_trend = show_trend
+        self.htf_rule = htf_rule
+        self.bb_squeeze = float(bb_squeeze)
+        self.atr_low = float(atr_low)
+        self.atr_expand = float(atr_expand)
+        self.fib_order = int(fib_order)
+        self.fib_n = int(fib_n)
+        self.fib_dir = fib_dir
 
     def calculate_phases(self, data):
-        """Classify each candle into a market phase (trend/consolidation)."""
+        """Classify each candle into a volatility phase (Contraction/Expansion/Trend)."""
         high_low = data['High'] - data['Low']
         high_close = (data['High'] - data['Close'].shift()).abs()
         low_close = (data['Low'] - data['Close'].shift()).abs()
 
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = ranges.max(axis=1)
-        data['mmm_atr'] = true_range.rolling(14).mean()
+        data['sqz_atr'] = true_range.rolling(14).mean()
 
         ma = data['Close'].rolling(20).mean()
         std = data['Close'].rolling(20).std()
-        data['mmm_bb_width'] = (2 * std) / ma
+        data['sqz_bb_width'] = (2 * std) / ma
 
+        atr_mean = data['sqz_atr'].mean()
         phases = []
         signals = []
         for i in range(len(data)):
-            if data['mmm_bb_width'].iloc[i] < 0.02 and data['mmm_atr'].iloc[i] < data['mmm_atr'].mean() * 0.7:
+            if data['sqz_bb_width'].iloc[i] < self.bb_squeeze and data['sqz_atr'].iloc[i] < atr_mean * self.atr_low:
                 phases.append("Contraction")
                 signals.append("Buy Straddle/Strangle")
-            elif data['mmm_atr'].iloc[i] > data['mmm_atr'].shift(1).iloc[i] * 1.2:
+            elif data['sqz_atr'].iloc[i] > data['sqz_atr'].shift(1).iloc[i] * self.atr_expand:
                 phases.append("Expansion")
                 if data['Close'].iloc[i] > ma.iloc[i]:
                     signals.append("Buy Call Option")
@@ -61,8 +84,8 @@ class Mmm(_indicator._Indicator):
                 else:
                     signals.append("Hold Puts")
 
-        data['mmm_phase'] = phases
-        data['mmm_signal'] = signals
+        data['sqz_phase'] = phases
+        data['sqz_signal'] = signals
         return data
 
     def aggregate_to_htf(self, df, rule="1H"):
@@ -316,22 +339,22 @@ class Mmm(_indicator._Indicator):
                     delta.append(-df['Volume'].iloc[i])  # sell volume
                 else:
                     delta.append(0)
-        df['mmm_delta'] = delta
-        df['mmm_cum_delta'] = pd.Series(delta).cumsum()
+        df['sqz_delta'] = delta
+        df['sqz_cum_delta'] = pd.Series(delta).cumsum()
         return df
 
     def calculate_cumdelta_price_scaled(self, rule="5T"):
         """
         Aggregate CumDelta into OHLC form and scale it to the price candles.
         """
-        if 'mmm_cum_delta' not in self.df.columns:
+        if 'sqz_cum_delta' not in self.df.columns:
             self.df = self.calculate_cumulative_delta(self.df.reset_index())
 
         df = self.df.reset_index().copy()
         df = df.set_index("Date")
 
         # CumDelta OHLC
-        cd_ohlc = df['mmm_cum_delta'].resample(rule).ohlc().dropna()
+        cd_ohlc = df['sqz_cum_delta'].resample(rule).ohlc().dropna()
         # Price OHLC for the same period
         price_ohlc = df[['Open', 'High', 'Low', 'Close']].resample(rule).ohlc().dropna()
 
@@ -383,7 +406,26 @@ class Mmm(_indicator._Indicator):
             showlegend=True
         ))
         
-    def add_fig(self, htf_rule="4H"):
+    def _resolve_htf(self):
+        """Higher-timeframe-Resample-Regel bestimmen. 'auto' wählt anhand des
+        typischen Bar-Abstands: Daily+->Woche, ~Stunden->Tag, Minuten->4h — statt
+        eines fixen '4H', das auf Daily-Daten sinnlos ist (feiner als die Bars)."""
+        rule = getattr(self, 'htf_rule', 'auto') or 'auto'
+        if rule != 'auto':
+            return rule
+        try:
+            d = pd.to_datetime(self.df['Date'])
+            med = d.diff().dropna().median()
+            secs = med.total_seconds()
+        except Exception:
+            return '1W'
+        if secs >= 6 * 3600:       # >= ~1/4 Tag (Daily/Weekly-Bars)
+            return '1W'
+        if secs >= 3600:           # Stunden-Bars
+            return '1D'
+        return '4h'                # Minuten-Bars
+
+    def add_fig(self, htf_rule=None):
         """Add the indicator traces to the given Plotly figure."""
         self.fig = go.Figure()
         try:
@@ -396,12 +438,13 @@ class Mmm(_indicator._Indicator):
 
         self.df = self.calculate_phases(self.df)
 
+        htf_rule = htf_rule or self._resolve_htf()
         df_high = self.aggregate_to_htf(self.df, rule=htf_rule)
         df_high = self.calculate_phases(df_high)
 
         self.df = self.df.set_index('Date')
         df_high = df_high.set_index(df_high.index)
-        self.df['mmm_htf_phase'] = df_high['mmm_phase'].reindex(self.df.index, method='ffill')
+        self.df['sqz_htf_phase'] = df_high['sqz_phase'].reindex(self.df.index, method='ffill')
 
 
         # Candlestick-Farben korrekt zuweisen (Color per point nicht direkt möglich, daher mit custom line traces)
@@ -410,12 +453,12 @@ class Mmm(_indicator._Indicator):
 #            )
 
         colors = {'Contraction': 'orange', 'Expansion': 'red', 'Trend': 'green'}
-        for phase in self.df['mmm_phase'].unique():
+        for phase in self.df['sqz_phase'].unique():
             if phase == "Trend" and not self.show_trend:
                 continue
             if phase == "Expansion" and not self.show_trend:
                 continue
-            mask = self.df['mmm_phase'] == phase
+            mask = self.df['sqz_phase'] == phase
             self.fig.add_trace(
                 go.Scatter(
                     x=self.df.index[mask],
@@ -432,12 +475,12 @@ class Mmm(_indicator._Indicator):
             'Trend': 'blue'
         }
 
-        for phase in self.df['mmm_htf_phase'].unique():
+        for phase in self.df['sqz_htf_phase'].unique():
             if phase == "Trend" and not self.show_trend:
                 continue
             if phase == "Expansion" and not self.show_trend:
                 continue
-            mask = self.df['mmm_htf_phase'] == phase
+            mask = self.df['sqz_htf_phase'] == phase
             if mask.any():
                 self.fig.add_trace(
                     go.Scatter(
@@ -511,10 +554,10 @@ class Mmm(_indicator._Indicator):
         else:
             logger.warning("Nicht genug Daten für Volume-Delta-Berechnung (len=%s, gap=%s)", len(self.df), gap)
         """
-        # Fibonacci: letztes Paar, optional bis zum Chartende
-#        self.add_fibonacci(n=0, order=5, annotate=True, annotation_side='left', direction="low_to_high", to_extreme=True)
-        self.add_fibonacci(n=1, order=6, annotate=True, direction="low_to_high")
-#        self.add_fibonacci(n=3, order=10, annotate=True, direction="low_to_high")
+        # Fibonacci aus Parametern (Swing-Fenster/Index/Richtung); direction='auto'
+        # erkennt die Leg-Richtung selbst statt fix "low_to_high" (im Abtrend falsch).
+        self.add_fibonacci(n=self.fib_n, order=self.fib_order, annotate=True,
+                           direction=self.fib_dir)
         
         
         return self.fig

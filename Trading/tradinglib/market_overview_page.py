@@ -567,7 +567,7 @@ def _ensure_core_indicators(df: pd.DataFrame, ind: dict) -> None:
             pass
 
     # ATR(14) — prüfe mehrere mögliche Spaltennamen aus verschiedenen Indikatoren
-    _atr_cols = ('atr14', 'atr', 'bos_atr', 'mmm_atr')
+    _atr_cols = ('atr14', 'atr', 'bos_atr', 'sqz_atr')
     if not any(c in ind for c in _atr_cols):
         try:
             high  = df['High']
@@ -1000,7 +1000,7 @@ def _build_market_prompt(
         # ── [3-VOLATILITÄT] ATR ───────────────────────────────────────────────
         lines.append("[3-VOLATILITÄT — ATR]")
         atr = (ind.get('atr14') or ind.get('atr') or
-               ind.get('bos_atr') or ind.get('mmm_atr'))
+               ind.get('bos_atr') or ind.get('sqz_atr'))
         if atr and close:
             pct = atr / close * 100
             lines.append(f"  ATR(14): {atr}  ({pct:.2f}% des Kurses)")

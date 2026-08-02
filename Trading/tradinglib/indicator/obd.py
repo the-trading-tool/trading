@@ -11,20 +11,26 @@ except ImportError:
 
 from tradinglib.indicator import _indicator
 
-class Oft(_indicator._Indicator):
+class Obd(_indicator._Indicator):
 
     is_oszilator = False
-    name = 'Order Flow Tracker'
+    name = 'Order Block Detector'
 
     params = {
-        'period':       {'type': 'int',    'default': 21,     'min': 2,  'max': 200, 'label': 'OFT period'},
+        'period':       {'type': 'int',    'default': 21,     'min': 2,  'max': 200, 'label': 'Flow imbalance period'},
         'ob_periods':   {'type': 'int',    'default': 3,      'min': 1,  'max': 20,  'label': 'Order block periods'},
-        'ob_threshold': {'type': 'float',  'default': 0.0,               'label': 'Order block threshold'},
+        'ob_threshold': {'type': 'float',  'default': 1.0,               'label': 'Order block min move %'},
         'use_wicks':    {'type': 'bool',   'default': False,              'label': 'Include wicks'},
         'ob_extend':    {'type': 'select', 'default': 'right', 'label': 'Extend direction', 'options': ['right', 'left', 'none']},
+        # Support/Resistance (jetzt parametrierbar + skalenrelativ statt hartcodiert):
+        'sr_window':    {'type': 'int',    'default': 21,     'min': 5,  'max': 200, 'label': 'S/R lookback'},
+        'sr_min_gap':   {'type': 'float',  'default': 0.5,               'label': 'S/R min gap %'},
+        'sr_zone':      {'type': 'float',  'default': 1.0,               'label': 'S/R proximity zone %'},
     }
 
-    def __init__(self, df, symbol="", period=21, ob_periods=3, ob_threshold=0.0, use_wicks=False, ob_extend="right"):
+    def __init__(self, df, symbol="", period=21, ob_periods=3, ob_threshold=1.0,
+                 use_wicks=False, ob_extend="right", sr_window=21, sr_min_gap=0.5,
+                 sr_zone=1.0):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.period = period
@@ -32,6 +38,12 @@ class Oft(_indicator._Indicator):
         self.ob_threshold = ob_threshold
         self.ob_extend = ob_extend
         self.use_wicks = use_wicks
+        # S/R-Steuerung: Fenster, Mindestabstand zwischen Levels (% des Preises),
+        # Näherungszone fürs Signal (% um das Level). Prozentual → funktioniert auf
+        # jedem Preisniveau (5-€-Aktie wie BTC), früher absolut 0.5 / hart 1 %.
+        self.sr_window = int(sr_window)
+        self.sr_min_gap = float(sr_min_gap)
+        self.sr_zone = float(sr_zone)
         self.data()
 
     def data(self):
@@ -40,61 +52,63 @@ class Oft(_indicator._Indicator):
         self.df = self.df.ffill()
 
         # 1. Order flow volume
-        self.df['oft_price_change'] = self.df['Close'].diff()
-        self.df['oft_buy_vol'] = self.df['Volume'].where(self.df['oft_price_change'] > 0, 0)
-        self.df['oft_sell_vol'] = self.df['Volume'].where(self.df['oft_price_change'] < 0, 0)
+        self.df['obd_price_change'] = self.df['Close'].diff()
+        self.df['obd_buy_vol'] = self.df['Volume'].where(self.df['obd_price_change'] > 0, 0)
+        self.df['obd_sell_vol'] = self.df['Volume'].where(self.df['obd_price_change'] < 0, 0)
 
         # 2. Rolling Order Flow Imbalance
-        self.df['oft_flow_imbalance'] = (self.df['oft_buy_vol'] - self.df['oft_sell_vol']).rolling(self.period).sum()
+        self.df['obd_flow_imbalance'] = (self.df['obd_buy_vol'] - self.df['obd_sell_vol']).rolling(self.period).sum()
 
         # Optional: smoothing
-        self.df['oft_flow_smoothed'] = self.df['oft_flow_imbalance'].ewm(span=5).mean()
+        self.df['obd_flow_smoothed'] = self.df['obd_flow_imbalance'].ewm(span=5).mean()
 
-        # 3. Support/Resistance
-        def find_levels(window=21, min_distance=0.5):
+        # 3. Support/Resistance — Fenster + Mindestabstand jetzt aus Parametern,
+        #    Abstand RELATIV (% des Levels) statt absolut → skalenunabhängig.
+        def find_levels(window, min_gap_pct):
             """Detect significant price levels from the OHLCV data."""
             support = self.df['Close'].rolling(window).min().dropna().drop_duplicates()
             resistance = self.df['Close'].rolling(window).max().dropna().drop_duplicates()
 
-            def filter_levels(levels, min_distance):
-                """Filter overlapping or redundant price levels by proximity."""
+            def filter_levels(levels):
+                """Filter overlapping or redundant price levels by relative proximity."""
                 filtered = []
                 for level in sorted(levels):
-                    if not filtered or abs(level - filtered[-1]) >= min_distance:
+                    # neues Level nur behalten, wenn es >= min_gap_pct % vom letzten entfernt ist
+                    if not filtered or abs(level - filtered[-1]) >= abs(filtered[-1]) * (min_gap_pct / 100.0):
                         filtered.append(level)
                 return filtered
 
-            support = filter_levels(support.tolist(), min_distance)
-            resistance = filter_levels(resistance.tolist(), min_distance)
-            return support, resistance
+            return filter_levels(support.tolist()), filter_levels(resistance.tolist())
 
-        support_levels, resistance_levels = find_levels(window=21, min_distance=0.5)
+        support_levels, resistance_levels = find_levels(self.sr_window, self.sr_min_gap)
 
-        # 4. Signal logic (vectorised)
-        price_range_pct = 0.01
-        self.df['oft_buy'] = False
-        self.df['oft_sell'] = False
+        # 4. Signal logic (vectorised) — Näherungszone aus Parameter (% um das Level)
+        #    NaN statt False: Nicht-Signal-Bars bleiben Lücken (kein Strich auf 0)
+        #    und die Spalte ist float (kein bool→float-Dtype-Warning beim Setzen).
+        price_range_pct = self.sr_zone / 100.0
+        self.df['obd_buy'] = np.nan
+        self.df['obd_sell'] = np.nan
 
         for s in support_levels:
             mask = (
                 (self.df['Close'] >= s * (1 - price_range_pct)) &
                 (self.df['Close'] <= s * (1 + price_range_pct)) &
-                (self.df['oft_flow_imbalance'] < 0)  # counter-trend logic
+                (self.df['obd_flow_imbalance'] < 0)  # counter-trend logic
             )
-            self.df.loc[mask, 'oft_buy'] = self.df['Close']
+            self.df.loc[mask, 'obd_buy'] = self.df['Close']
 
         for r in resistance_levels:
             mask = (
                 (self.df['Close'] >= r * (1 - price_range_pct)) &
                 (self.df['Close'] <= r * (1 + price_range_pct)) &
-                (self.df['oft_flow_imbalance'] > 0)  # counter-trend logic
+                (self.df['obd_flow_imbalance'] > 0)  # counter-trend logic
             )
-            self.df.loc[mask, 'oft_sell'] = self.df['Close']
+            self.df.loc[mask, 'obd_sell'] = self.df['Close']
 
         try:
             # === 5. Order Block Detection ===
-            self.df['oft_ob_bull'] = np.nan
-            self.df['oft_ob_bear'] = np.nan
+            self.df['obd_ob_bull'] = np.nan
+            self.df['obd_ob_bear'] = np.nan
 
             for i in range(self.ob_periods, len(self.df) - self.ob_periods):
                 ob_candle = i - self.ob_periods
@@ -115,7 +129,7 @@ class Oft(_indicator._Indicator):
                     if up_seq:
                         high = self.df['High'].iloc[ob_candle] if self.use_wicks else self.df['Open'].iloc[ob_candle]
                         low = self.df['Low'].iloc[ob_candle]
-                        self.df.at[self.df.index[ob_candle], 'oft_ob_bull'] = (high + low) / 2
+                        self.df.at[self.df.index[ob_candle], 'obd_ob_bull'] = (high + low) / 2
 
                 # === Bearish OB ===
                 if close_ob > open_ob:  # green candle
@@ -126,7 +140,7 @@ class Oft(_indicator._Indicator):
                     if down_seq:
                         high = self.df['High'].iloc[ob_candle]
                         low = self.df['Low'].iloc[ob_candle] if self.use_wicks else self.df['Open'].iloc[ob_candle]
-                        self.df.at[self.df.index[ob_candle], 'oft_ob_bear'] = (high + low) / 2
+                        self.df.at[self.df.index[ob_candle], 'obd_ob_bear'] = (high + low) / 2
         except Exception as e:
             st.write(e)
             pass
@@ -143,7 +157,7 @@ class Oft(_indicator._Indicator):
             self.fig.add_trace(
                 go.Scatter(
                     x=self.df['Date'],
-                    y=self.df['oft_buy'],
+                    y=self.df['obd_buy'],
                     line=dict(color='darkcyan', width=5),
                     showlegend=False,
                     name='Buy',
@@ -157,7 +171,7 @@ class Oft(_indicator._Indicator):
             self.fig.add_trace(
                 go.Scatter(
                     x=self.df['Date'],
-                    y=self.df['oft_sell'],
+                    y=self.df['obd_sell'],
                     line=dict(color='darkred', width=5),
                     showlegend=False,
                     name='Sell',
@@ -173,11 +187,11 @@ class Oft(_indicator._Indicator):
             self.fig.add_trace(
                 go.Scatter(
                     x=self.df['Date'],
-                    y=self.df['oft_ob_bull'],
+                    y=self.df['obd_ob_bull'],
                     mode="markers",
                     marker=dict(color='green', size=10, symbol="x"),
                     showlegend=False,
-                    name='oft_ob_bull'
+                    name='obd_ob_bull'
                 )
             )
 
@@ -185,11 +199,11 @@ class Oft(_indicator._Indicator):
             self.fig.add_trace(
                 go.Scatter(
                     x=self.df['Date'],
-                    y=self.df['oft_ob_bear'],
+                    y=self.df['obd_ob_bear'],
                     mode="markers",
                     marker=dict(color='red', size=10, symbol="x"),
                     showlegend=False,
-                    name='oft_ob_bear'
+                    name='obd_ob_bear'
                 )
             )
     
@@ -197,7 +211,7 @@ class Oft(_indicator._Indicator):
             bar_limit = self.ob_periods * 2  # configurable: how many candles wide should the line extend?
 
             # === Last Bullish OB ===
-            bullish_obs = self.df['oft_ob_bull'].dropna()
+            bullish_obs = self.df['obd_ob_bull'].dropna()
             if not bullish_obs.empty:
                 for i in range(0,len(bullish_obs.index)):
                     last_idx = bullish_obs.index[i]
@@ -222,7 +236,7 @@ class Oft(_indicator._Indicator):
                     )
 
             # === Last Bearish OB ===
-            bearish_obs = self.df['oft_ob_bear'].dropna()
+            bearish_obs = self.df['obd_ob_bear'].dropna()
             if not bearish_obs.empty:
                 for i in range(0,len(bearish_obs.index)):
                     last_idx = bearish_obs.index[i]

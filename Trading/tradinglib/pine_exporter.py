@@ -63,9 +63,9 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'ici':    'Inner Circle Trader (ICT) concept — custom implementation',
     'lqz':    'ICT / Smart Money Concepts community — Liquidity Zone',
     'mam':    'MA Multi — custom implementation',
-    'mmm':    'Market Mood Meter — custom implementation',
+    'sqz':    'Squeeze / Volatility Phase — custom implementation',
     'nsdt':   'NSDT (TradingView community) — Hama Candles concept',
-    'oft':    'Order Flow Tools — custom implementation',
+    'obd':    'Order Block Detector — custom implementation',
     'qtrend': 'Quantitative Trend — custom implementation',
     'gframa': 'QuantEdgeB — G-FRAMA (Gaussian-smoothed Fractal Adaptive Moving Average)',
     'renko':  'Renko chart — standard brick-based price-movement technique',
@@ -160,9 +160,9 @@ _INDICATOR_LABELS: dict[str, str] = {
     'lqz':    'Liquidity Zones',
     'mam':    'MA Multi',
     'markov': 'Markov Regime',
-    'mmm':    'Market Mood Meter',
+    'sqz':    'Squeeze / Volatility Phase',
     'nsdt':   'NSDT HAMA',
-    'oft':    'Order Flow',
+    'obd':    'Order Block Detector',
     'pvt':    'Pivot Points',
     'qtrend': 'Quantitative Trend',
     'gframa': 'G-FRAMA',
@@ -1958,67 +1958,67 @@ plot(nsdt_ma, "NSDT MA", nsdt_col, 2)
 """
 
 
-def _t_oft(p: dict) -> str:
-    """Return the Pine Script v5 Order Flow Tools overlay template with configurable params."""
+def _t_obd(p: dict) -> str:
+    """Return the Pine Script v5 Order Block Detector overlay template with configurable params."""
     period     = int(p.get('period',        21))
     ob_periods = int(p.get('ob_periods',     3))
     ob_thr     = float(p.get('ob_threshold', 0.0))
     use_wicks  = bool(p.get('use_wicks',  False))
     wick_comment = 'true' if use_wicks else 'false'
     return f"""\
-// ── Order Flow Tracker ────────────────────────────────────────────────────────
-oft_period     = {period}
-oft_ob_periods = {ob_periods}
-oft_ob_thr     = {ob_thr}
+// ── Order Block Detector ────────────────────────────────────────────────────────
+obd_period     = {period}
+obd_ob_periods = {ob_periods}
+obd_ob_thr     = {ob_thr}
 
 // 1. Order Flow Imbalance (buy / sell volume split by price direction)
-oft_chg     = close - close[1]
-oft_buy_vol = oft_chg > 0 ? volume : 0.0
-oft_sel_vol = oft_chg < 0 ? volume : 0.0
-oft_ofi     = math.sum(oft_buy_vol - oft_sel_vol, oft_period)
-oft_sofi    = ta.ema(oft_ofi, 5)   // smoothed OFI (available for alerts)
+obd_chg     = close - close[1]
+obd_buy_vol = obd_chg > 0 ? volume : 0.0
+obd_sel_vol = obd_chg < 0 ? volume : 0.0
+obd_ofi     = math.sum(obd_buy_vol - obd_sel_vol, obd_period)
+obd_sofi    = ta.ema(obd_ofi, 5)   // smoothed OFI (available for alerts)
 
 // 2. Rolling Support / Resistance bands
-oft_sup = ta.lowest(close,  oft_period)
-oft_res = ta.highest(close, oft_period)
-plot(oft_sup, "OFT Support",    color.new(color.teal,   40), 1, plot.style_linebr)
-plot(oft_res, "OFT Resistance", color.new(color.orange, 40), 1, plot.style_linebr)
+obd_sup = ta.lowest(close,  obd_period)
+obd_res = ta.highest(close, obd_period)
+plot(obd_sup, "OBD Support",    color.new(color.teal,   40), 1, plot.style_linebr)
+plot(obd_res, "OBD Resistance", color.new(color.orange, 40), 1, plot.style_linebr)
 
 // 3. Contrarian signals: price near S/R AND OFI pushing the other way
-oft_pct  = 0.01
-oft_buy  = close >= oft_sup * (1.0 - oft_pct) and close <= oft_sup * (1.0 + oft_pct) and oft_ofi < 0
-oft_sell = close >= oft_res * (1.0 - oft_pct) and close <= oft_res * (1.0 + oft_pct) and oft_ofi > 0
-plotshape(oft_buy,  "OFT Buy",  shape.triangleup,   location.belowbar, color.teal, size = size.small)
-plotshape(oft_sell, "OFT Sell", shape.triangledown, location.abovebar, color.red,  size = size.small)
+obd_pct  = 0.01
+obd_buy  = close >= obd_sup * (1.0 - obd_pct) and close <= obd_sup * (1.0 + obd_pct) and obd_ofi < 0
+obd_sell = close >= obd_res * (1.0 - obd_pct) and close <= obd_res * (1.0 + obd_pct) and obd_ofi > 0
+plotshape(obd_buy,  "OBD Buy",  shape.triangleup,   location.belowbar, color.teal, size = size.small)
+plotshape(obd_sell, "OBD Sell", shape.triangledown, location.abovebar, color.red,  size = size.small)
 
 // 4. Order Block detection (use_wicks = {wick_comment})
-// Bullish OB: red candle oft_ob_periods bars ago + oft_ob_periods consecutive green candles
-// Bearish OB: green candle oft_ob_periods bars ago + oft_ob_periods consecutive red candles
-oft_red_setup = close[oft_ob_periods] < open[oft_ob_periods]
-oft_grn_setup = close[oft_ob_periods] > open[oft_ob_periods]
-oft_absmove   = math.abs((close - close[oft_ob_periods]) / close[oft_ob_periods]) * 100.0
-oft_move_ok   = oft_ob_thr <= 0.0 or oft_absmove >= oft_ob_thr
+// Bullish OB: red candle obd_ob_periods bars ago + obd_ob_periods consecutive green candles
+// Bearish OB: green candle obd_ob_periods bars ago + obd_ob_periods consecutive red candles
+obd_red_setup = close[obd_ob_periods] < open[obd_ob_periods]
+obd_grn_setup = close[obd_ob_periods] > open[obd_ob_periods]
+obd_absmove   = math.abs((close - close[obd_ob_periods]) / close[obd_ob_periods]) * 100.0
+obd_move_ok   = obd_ob_thr <= 0.0 or obd_absmove >= obd_ob_thr
 
-bool oft_up_seq = true
-bool oft_dn_seq = true
-for j = 0 to oft_ob_periods - 1
-    oft_up_seq := oft_up_seq and close[j] > open[j]
-    oft_dn_seq := oft_dn_seq and close[j] < open[j]
+bool obd_up_seq = true
+bool obd_dn_seq = true
+for j = 0 to obd_ob_periods - 1
+    obd_up_seq := obd_up_seq and close[j] > open[j]
+    obd_dn_seq := obd_dn_seq and close[j] < open[j]
 
-oft_bull_ob = oft_move_ok and oft_red_setup and oft_up_seq
-oft_bear_ob = oft_move_ok and oft_grn_setup and oft_dn_seq
-plotshape(oft_bull_ob, "OFT Bullish OB", shape.xcross, location.belowbar, color.green, size = size.small)
-plotshape(oft_bear_ob, "OFT Bearish OB", shape.xcross, location.abovebar, color.red,   size = size.small)
+obd_bull_ob = obd_move_ok and obd_red_setup and obd_up_seq
+obd_bear_ob = obd_move_ok and obd_grn_setup and obd_dn_seq
+plotshape(obd_bull_ob, "OBD Bullish OB", shape.xcross, location.belowbar, color.green, size = size.small)
+plotshape(obd_bear_ob, "OBD Bearish OB", shape.xcross, location.abovebar, color.red,   size = size.small)
 """
 
 
-def _t_mmm(p: dict) -> str:
-    """Return the Pine Script v5 Market Mood Meter overlay template with configurable params."""
+def _t_sqz(p: dict) -> str:
+    """Return the Pine Script v5 Squeeze / Volatility Phase overlay template with configurable params."""
     show_trend  = bool(p.get('show_trend', False))
     trend_block = """\
 // Trend overlay (show_trend = true)
-mmm_ema50 = ta.ema(close, 50)
-plot(mmm_ema50, "MMM Trend EMA50", close > mmm_ema50 ? color.green : color.red, 2)
+sqz_ema50 = ta.ema(close, 50)
+plot(sqz_ema50, "SQZ Trend EMA50", close > sqz_ema50 ? color.green : color.red, 2)
 """ if show_trend else ''
     return f"""\
 // ── Market Maker Master Pattern (with Fibonacci) ──────────────────────────────
@@ -2027,42 +2027,42 @@ plot(mmm_ema50, "MMM Trend EMA50", close > mmm_ema50 ? color.green : color.red, 
 //   Expansion:   ATR jumped > 20% vs previous bar   |   else: Trend
 // Fibonacci: simplified from local-extrema to ta.highest / ta.lowest.
 // HTF: request.security maps to Python aggregate_to_htf("D").
-mmm_bb_len  = 20
-mmm_atr_len = 14
-mmm_fib_len = 50
+sqz_bb_len  = 20
+sqz_atr_len = 14
+sqz_fib_len = 50
 
 // Phase detection
-mmm_atr     = ta.atr(mmm_atr_len)
-mmm_atr_avg = ta.sma(mmm_atr, 50)
-mmm_bb_mid  = ta.sma(close, mmm_bb_len)
-mmm_bb_std  = ta.stdev(close, mmm_bb_len)
-mmm_bb_w    = mmm_bb_mid != 0.0 ? (2.0 * mmm_bb_std) / mmm_bb_mid : na
-mmm_contr   = mmm_bb_w < 0.02 and mmm_atr < mmm_atr_avg * 0.7
-mmm_expan   = mmm_atr > mmm_atr[1] * 1.2
-bgcolor(mmm_contr ? color.new(color.blue,   88) : na, title = "MMM Contraction")
-bgcolor(mmm_expan ? color.new(color.orange, 88) : na, title = "MMM Expansion")
+sqz_atr     = ta.atr(sqz_atr_len)
+sqz_atr_avg = ta.sma(sqz_atr, 50)
+sqz_bb_mid  = ta.sma(close, sqz_bb_len)
+sqz_bb_std  = ta.stdev(close, sqz_bb_len)
+sqz_bb_w    = sqz_bb_mid != 0.0 ? (2.0 * sqz_bb_std) / sqz_bb_mid : na
+sqz_contr   = sqz_bb_w < 0.02 and sqz_atr < sqz_atr_avg * 0.7
+sqz_expan   = sqz_atr > sqz_atr[1] * 1.2
+bgcolor(sqz_contr ? color.new(color.blue,   88) : na, title = "SQZ Contraction")
+bgcolor(sqz_expan ? color.new(color.orange, 88) : na, title = "SQZ Expansion")
 
 // Higher-timeframe daily close (mirrors Python resample("D"))
-mmm_htf_c = request.security(syminfo.tickerid, "D", close)
-plot(mmm_htf_c, "MMM HTF Close", color.new(color.yellow, 20), 2)
+sqz_htf_c = request.security(syminfo.tickerid, "D", close)
+plot(sqz_htf_c, "SQZ HTF Close", color.new(color.yellow, 20), 2)
 
-// Fibonacci from swing high / low over last mmm_fib_len bars
-mmm_sh = ta.highest(high, mmm_fib_len)
-mmm_sl = ta.lowest(low,   mmm_fib_len)
-mmm_fd = mmm_sh - mmm_sl
-plot(mmm_sh,                  "MMM Fib 1.000", color.new(color.red,    0), 1, plot.style_linebr)
-plot(mmm_sh - mmm_fd * 0.236, "MMM Fib 0.764", color.new(color.orange, 0), 1, plot.style_linebr)
-plot(mmm_sh - mmm_fd * 0.382, "MMM Fib 0.618", color.new(color.yellow, 0), 1, plot.style_linebr)
-plot(mmm_sh - mmm_fd * 0.500, "MMM Fib 0.500", color.new(color.gray,   0), 1, plot.style_linebr)
-plot(mmm_sh - mmm_fd * 0.618, "MMM Fib 0.382", color.new(color.lime,   0), 1, plot.style_linebr)
-plot(mmm_sl,                  "MMM Fib 0.000", color.new(color.green,  0), 1, plot.style_linebr)
+// Fibonacci from swing high / low over last sqz_fib_len bars
+sqz_sh = ta.highest(high, sqz_fib_len)
+sqz_sl = ta.lowest(low,   sqz_fib_len)
+sqz_fd = sqz_sh - sqz_sl
+plot(sqz_sh,                  "SQZ Fib 1.000", color.new(color.red,    0), 1, plot.style_linebr)
+plot(sqz_sh - sqz_fd * 0.236, "SQZ Fib 0.764", color.new(color.orange, 0), 1, plot.style_linebr)
+plot(sqz_sh - sqz_fd * 0.382, "SQZ Fib 0.618", color.new(color.yellow, 0), 1, plot.style_linebr)
+plot(sqz_sh - sqz_fd * 0.500, "SQZ Fib 0.500", color.new(color.gray,   0), 1, plot.style_linebr)
+plot(sqz_sh - sqz_fd * 0.618, "SQZ Fib 0.382", color.new(color.lime,   0), 1, plot.style_linebr)
+plot(sqz_sl,                  "SQZ Fib 0.000", color.new(color.green,  0), 1, plot.style_linebr)
 
 // CumDelta momentum signal (simplified: volume signed by price direction)
-var float mmm_cumd = 0.0
-mmm_cumd     += close > close[1] ? volume : close < close[1] ? -volume : 0.0
-mmm_cumd_sma  = ta.sma(mmm_cumd, 21)
-plotshape(ta.crossover(mmm_cumd,  mmm_cumd_sma), "MMM CD Bull", shape.triangleup,   location.belowbar, color.teal, size = size.tiny)
-plotshape(ta.crossunder(mmm_cumd, mmm_cumd_sma), "MMM CD Bear", shape.triangledown, location.abovebar, color.red,  size = size.tiny)
+var float sqz_cumd = 0.0
+sqz_cumd     += close > close[1] ? volume : close < close[1] ? -volume : 0.0
+sqz_cumd_sma  = ta.sma(sqz_cumd, 21)
+plotshape(ta.crossover(sqz_cumd,  sqz_cumd_sma), "SQZ CD Bull", shape.triangleup,   location.belowbar, color.teal, size = size.tiny)
+plotshape(ta.crossunder(sqz_cumd, sqz_cumd_sma), "SQZ CD Bear", shape.triangledown, location.abovebar, color.red,  size = size.tiny)
 {trend_block}"""
 
 
@@ -2764,9 +2764,9 @@ _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'lqz':    _t_lqz,
     'mam':    _t_mam,
     'markov': _t_markov,
-    'mmm':    _t_mmm,
+    'sqz':    _t_sqz,
     'nsdt':   _t_nsdt,
-    'oft':    _t_oft,
+    'obd':    _t_obd,
     'pvt':    _t_pvt,
     'qtrend': _t_qtrend,
     'renko':  _t_renko,

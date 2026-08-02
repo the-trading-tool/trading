@@ -592,7 +592,7 @@ class LiveTicker(fetch_data.FetchData):
         charts = ["1min","5min","15min"]
         if bare_mode:
             oszilators=['ewo','rsi']
-            overlays=['atc','candle','bos','pre','sup','heikin','oft']
+            overlays=['atc','candle','bos','pre','sup','heikin','obd']
         for chrt in charts:
             fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)        
             if not bare_mode and fig:
