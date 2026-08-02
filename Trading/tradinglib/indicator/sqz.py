@@ -432,15 +432,29 @@ class Sqz(_indicator._Indicator):
         onset = phase != phase.shift(1)
         suf = '-open' if open_marker else ''
 
+        # Squeeze als BUBBLE (Kreis), nach Bias in Kauf/Verkauf getrennt:
+        # grün = Kurs über MA20 (Kauf-Bias), rot = darunter (Verkauf-Bias).
+        # Form (Kreis) unterscheidet den Squeeze von den Expansion-Dreiecken.
         c = onset & (phase == 'Contraction')
         if bool(c.any()):
-            self.fig.add_trace(go.Scatter(
-                x=self.df.index[c], y=self.df['Low'][c] * 0.99,
-                mode='markers',
-                marker=dict(color='#F9A825', size=size, symbol=f'diamond{suf}',
-                            line=dict(color='white', width=1)),
-                name=f'Squeeze ({tag})', showlegend=False,
-                hovertext=[f'Squeeze-Start · {tag}'] * int(c.sum()), hoverinfo='text'))
+            cu = c & (self.df['Close'] > ma20)
+            cd = c & (self.df['Close'] <= ma20)
+            if bool(cu.any()):
+                self.fig.add_trace(go.Scatter(
+                    x=self.df.index[cu], y=self.df['Low'][cu] * 0.99,
+                    mode='markers',
+                    marker=dict(color='#2E7D32', size=size + 3, symbol=f'circle{suf}',
+                                line=dict(color='white', width=1.5)),
+                    name=f'Squeeze ▲ Kauf-Bias ({tag})', showlegend=False,
+                    hovertext=[f'Squeeze · Kauf-Bias · {tag}'] * int(cu.sum()), hoverinfo='text'))
+            if bool(cd.any()):
+                self.fig.add_trace(go.Scatter(
+                    x=self.df.index[cd], y=self.df['High'][cd] * 1.01,
+                    mode='markers',
+                    marker=dict(color='#C62828', size=size + 3, symbol=f'circle{suf}',
+                                line=dict(color='white', width=1.5)),
+                    name=f'Squeeze ▼ Verkauf-Bias ({tag})', showlegend=False,
+                    hovertext=[f'Squeeze · Verkauf-Bias · {tag}'] * int(cd.sum()), hoverinfo='text'))
 
         e = onset & (phase == 'Expansion')
         if bool(e.any()):
