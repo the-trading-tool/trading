@@ -712,12 +712,15 @@ class render_mainpage(fetch_data.FetchData):
             if entry and entry > 0:
                 # Entry-Linie startet am Kaufzeitpunkt (pos['since']); ohne Datum
                 # (z. B. Paper ohne Entry-Date) fällt add_entry_line auf volle Breite.
+                # Indigo + durchgezogen: hebt die Entry-Linie klar von den
+                # grün/rot-gestrichelten Pivots (S1/S2/S3, R1..) ab, die oft dicht
+                # am Einstand liegen (z. B. ADS: Entry 151,98 vs S1 150,95).
                 self.t_chart.add_entry_line(
                     y=entry,
                     since=pos.get('since'),
                     text=label,
-                    line_color='#1a9e3f',
-                    line_dash='dash',
+                    line_color='#5E35B1',
+                    line_dash='solid',
                     line_width=2,
                 )
 

@@ -151,8 +151,8 @@ class tiny_chart(gt.GraphTools):
             return dser.iloc[pos]
         return dser.iloc[0]                  # Kauf vor erstem Balken → volle Breite
 
-    def add_entry_line(self, y, since, text, line_color='#1a9e3f',
-                       line_dash='dash', line_width=2, row=1):
+    def add_entry_line(self, y, since, text, line_color='#5E35B1',
+                       line_dash='solid', line_width=2, row=1):
         """Wie :meth:`_add_hline_outside`, aber die Linie **beginnt am Kaufzeitpunkt**
         ``since`` (Datum/String) statt über die volle Breite zu laufen. Fällt auf
         eine volle Linie zurück, wenn ``since`` nicht auf der Achse platzierbar ist
@@ -171,6 +171,13 @@ class tiny_chart(gt.GraphTools):
             line=dict(color=line_color, dash=line_dash, width=line_width),
             row=row, col=1,
         )
+        # Marker am Kaufpunkt → macht den Startzeitpunkt unmissverständlich.
+        self.fig.add_trace(go.Scatter(
+            x=[x0], y=[y], mode='markers',
+            marker=dict(symbol='diamond', size=9, color=line_color,
+                        line=dict(color='white', width=1)),
+            showlegend=False, hoverinfo='text', hovertext=text,
+        ), row=row, col=1)
         yref = 'y' if row == 1 else f'y{row}'
         self.fig.add_annotation(
             x=1.0, y=y, xref='paper', yref=yref,
