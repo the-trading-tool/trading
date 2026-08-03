@@ -763,12 +763,14 @@ class TradingApp:
             _sb_items = sysconf.SystemConfig.sidebar_menu_config().get_sidebar_items()
 
             # ── Markt ──────────────────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed', 'global_rotation')):
+            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'summary', 'market_overview', 'correlation', 'fear_greed', 'global_rotation')):
                 with st.sidebar.expander(t('nav.group_market'), expanded=False):
                     if _sb_items.get('marketmap'):
                         _nav(t('nav.market_map'), marketmap='true')
                     if any(_sb_items.get(k) for k in ('rotation', 'correlation', 'fear_greed', 'global_rotation')):
                         _nav(t('nav.rotation_hub'), rotation_hub='true')
+                    if _sb_items.get('summary'):
+                        _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
                     if _sb_items.get('market_overview'):
                         _nav(t('nav.market_overview'), market_overview='true')
 
@@ -781,7 +783,6 @@ class TradingApp:
                         _nav(t('nav.asset_search'), asset_search='true')
                     if _sb_items.get('summary'):
                         _nav(t('nav.asset_summary'), summary='true')
-                        _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
                     if _sb_items.get('performance'):
                         _nav(t('nav.performance'), performance='true')
                         if self.is_admin:
