@@ -695,6 +695,11 @@ class SectorRotationPage:
         wanted     = list(dict.fromkeys(wanted))  # deduplicate, preserve order
         display_df = df[[c for c in wanted if c in df.columns]].copy()
 
+        # "roa" is stored as a raw ratio (net_income/total_assets, e.g. 0.022)
+        # in asset_simulation, but this table displays it as "ROA %" — scale to percent.
+        if "roa" in display_df.columns:
+            display_df["roa"] = display_df["roa"] * 100
+
         # ── Details link column ────────────────────────────────────────────────
         display_df.insert(0, "details", display_df["ticker"].apply(
             lambda t: f"/?symbol={t}&details=True"
