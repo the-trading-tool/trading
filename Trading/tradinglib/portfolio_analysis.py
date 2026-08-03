@@ -107,21 +107,22 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
     return fig
 
 
-def _build_since_buy_figs(series_dict: dict, buy_dates: dict, label_map: dict = None,
-                          end_date: str = None, xaxis_days: str = 'Trading days held') -> tuple:
+def _build_since_buy_fig(series_dict: dict, buy_dates: dict, label_map: dict = None,
+                         end_date: str = None) -> go.Figure:
     """
-    Two normalised charts – each open position rebased to 100 at its OWN buy date.
-    Returns (fig_calendar, fig_days):
-      - fig_calendar: x = calendar date; each line starts on the day it was bought
-                      → unrealised P&L trajectory per position.
-      - fig_days:     x = trading days held (0, 1, 2, …); all lines start at the left
-                      → compares the post-entry trajectory across positions,
-                        independent of when each was bought.
+    Normalised calendar chart – each open position rebased to 100 at its OWN buy
+    date (x = calendar date, line starts on the day it was bought → unrealised
+    P&L trajectory per position).
+
+    Traces are added ordered by their LATEST (current) indexed value, descending.
+    Plotly lists 'x unified' hover entries in trace order and offers no per-hover
+    value sort, so ordering the traces this way makes the hover box read top-to-
+    bottom by current value instead of by the arbitrary input order.
+
     series_dict: {ticker: pd.Series(Close, DatetimeIndex)}
     buy_dates:   {ticker: Timestamp of the first buy}
     """
-    fig_cal  = go.Figure()
-    fig_days = go.Figure()
+    entries = []  # (last_value, label, index, values)
     for ticker, s in series_dict.items():
         if s is None or s.empty:
             continue
@@ -141,27 +142,28 @@ def _build_since_buy_figs(series_dict: dict, buy_dates: dict, label_map: dict = 
             continue
         norm  = (seg / seg.iloc[0]) * 100
         label = (label_map or {}).get(ticker, ticker)
+        entries.append((float(norm.iloc[-1]), label, norm.index, norm.values.round(2)))
+
+    # Highest current value first → appears on top of the unified hover box.
+    entries.sort(key=lambda e: e[0], reverse=True)
+
+    fig_cal = go.Figure()
+    for _last, label, idx, vals in entries:
         fig_cal.add_trace(go.Scatter(
-            x=norm.index, y=norm.values.round(2), mode='lines', name=label,
+            x=idx, y=vals, mode='lines', name=label,
             hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Buy=100)<extra></extra>',
         ))
-        fig_days.add_trace(go.Scatter(
-            x=list(range(len(norm))), y=norm.values.round(2), mode='lines', name=label,
-            hovertemplate=f'<b>{label}</b><br>+%{{x}}d<br>%{{y:.1f}} (Buy=100)<extra></extra>',
-        ))
-    # No plotly title – the column sub-header labels each chart; this avoids the
-    # title overlapping the horizontal legend (the per-ticker entries above the plot).
-    _common = dict(template='plotly_white', height=460, hovermode='x unified',
-                   margin=dict(t=70),
-                   legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0))
-    fig_cal.update_layout(xaxis_title='Date',
-                          yaxis_title='Indexed (Buy = 100)', **_common)
-    fig_days.update_layout(xaxis_title=xaxis_days,
-                           yaxis_title='Indexed (Buy = 100)', **_common)
+    # No plotly title – the sub-header labels the chart; this avoids the title
+    # overlapping the horizontal legend (the per-ticker entries above the plot).
+    fig_cal.update_layout(
+        xaxis_title='Date', yaxis_title='Indexed (Buy = 100)',
+        template='plotly_white', height=460, hovermode='x unified',
+        margin=dict(t=70),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
+    )
     # Break-even reference line at 100
-    for _f in (fig_cal, fig_days):
-        _f.add_hline(y=100, line_dash='dot', line_color='#888', opacity=0.6)
-    return fig_cal, fig_days
+    fig_cal.add_hline(y=100, line_dash='dot', line_color='#888', opacity=0.6)
+    return fig_cal
 
 
 def _compute_parity_weights(series_dict: dict, window: int = 30) -> pd.Series:
@@ -841,17 +843,11 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 row['ticker']: pd.Timestamp(row['buy_ts'])
                 for _, row in agg.iterrows() if pd.notna(row.get('buy_ts'))
             }
-            fig_since_cal, fig_since_days = _build_since_buy_figs(
+            fig_since_cal = _build_since_buy_fig(
                 open_series, buy_dates, label_map=label_map, end_date=end_date,
-                xaxis_days=_t('ota.since_buy_xdays'),
             )
-            _sb_c1, _sb_c2 = st.columns(2)
-            with _sb_c1:
-                st.markdown(f"**{_t('ota.since_buy_calendar')}**")
-                st.plotly_chart(fig_since_cal, use_container_width=True)
-            with _sb_c2:
-                st.markdown(f"**{_t('ota.since_buy_holding')}**")
-                st.plotly_chart(fig_since_days, use_container_width=True)
+            st.markdown(f"**{_t('ota.since_buy_calendar')}**")
+            st.plotly_chart(fig_since_cal, use_container_width=True)
 
             # ── Parity analysis ───────────────────────────────────────────
             st.markdown(_t('ota.parity_header'))
