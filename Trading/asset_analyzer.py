@@ -741,10 +741,7 @@ class TradingApp:
 
             with st.sidebar.expander(t('nav.group_market'), expanded=False):
                 _nav(t('nav.market_overview'), market_overview='true')
-                _nav(t('nav.correlation'), correlation='true')
-                _nav(t('nav.fear_greed'), fear_greed='true')
-                _nav(t('nav.global_rotation'), global_rotation='true')
-                _nav(t('nav.sector_rotation'), rotation='true')
+                _nav(t('nav.rotation_hub'), rotation_hub='true')
                 _nav(t('nav.market_map'), marketmap='true')
 
             with st.sidebar.expander(t('nav.group_upgrade'), expanded=False):
@@ -770,16 +767,10 @@ class TradingApp:
                 with st.sidebar.expander(t('nav.group_market'), expanded=False):
                     if _sb_items.get('marketmap'):
                         _nav(t('nav.market_map'), marketmap='true')
-                    if _sb_items.get('rotation'):
-                        _nav(t('nav.sector_rotation'), rotation='true')
+                    if any(_sb_items.get(k) for k in ('rotation', 'correlation', 'fear_greed', 'global_rotation')):
+                        _nav(t('nav.rotation_hub'), rotation_hub='true')
                     if _sb_items.get('market_overview'):
                         _nav(t('nav.market_overview'), market_overview='true')
-                    if _sb_items.get('correlation'):
-                        _nav(t('nav.correlation'), correlation='true')
-                    if _sb_items.get('fear_greed'):
-                        _nav(t('nav.fear_greed'), fear_greed='true')
-                    if _sb_items.get('global_rotation'):
-                        _nav(t('nav.global_rotation'), global_rotation='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
             if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'summary', 'performance', 'compound')):
@@ -1072,6 +1063,14 @@ class TradingApp:
                                 TradingPage(username=self.username, db_path='database').render()
                             except Exception as e:
                                 st.error(t('error.load_trading', error=e))
+                elif parms.get('rotation_hub'):
+                    self.set_page_config(t('page.rotation_hub'))
+                    with st.spinner(t('page.rotation_hub') + " …"):
+                        try:
+                            from tradinglib.rotation_hub_page import RotationHubPage
+                            RotationHubPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_rotation', error=e))
                 elif parms.get('rotation'):
                     self.set_page_config(t('page.sector_rotation'))
                     with st.spinner(t('page.sector_rotation') + " …"):

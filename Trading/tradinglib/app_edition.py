@@ -68,6 +68,7 @@ SCALABLE_FREE_ROUTES = frozenset({
     'own_trades',       # entry / landing
     'marketmap',        # Market Map
     'rotation',         # Sector Rotation
+    'rotation_hub',     # Rotation / Correlation (Sector+Global Rotation, Correlation, Fear & Greed)
     'market_overview',  # Market View
     'correlation',      # Correlation Index
     'compound',         # Lump Sum Investment
@@ -80,7 +81,7 @@ SCALABLE_FREE_ROUTES = frozenset({
 # to the upgrade page — used by the upgrade CTA in the sidebar.
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
-    'strategy_finder', 'trading', 'rotation', 'market_overview',
+    'strategy_finder', 'trading', 'rotation', 'rotation_hub', 'market_overview',
     'correlation', 'compound', 'marketmap', 'summary', 'option_calc', 'upgrade',
 )
 
