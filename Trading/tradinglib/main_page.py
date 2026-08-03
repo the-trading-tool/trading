@@ -897,14 +897,22 @@ class render_mainpage(fetch_data.FetchData):
         #   2. Only runs ONCE per URL symbol (stored in session_state). On subsequent
         #      reruns the user can override freely via market-search or FTS.
         _auto_ss_key = f'_auto_resolved_{self.symbol}'
+        _auto_ln_key = f'_auto_resolved_longname_{self.symbol}'
         if self._symbol_from_url and self.symbol:
             if _auto_ss_key not in st.session_state:
                 fts.auto_resolve()
                 st.session_state[_auto_ss_key] = fts.ticker_selected
-            # Restore the resolved ticker so it is used as long as the user hasn't
-            # actively typed something in the FTS widget.
+                st.session_state[_auto_ln_key] = fts.ticker_selected_longname
+            # Restore the resolved ticker AND its longname so they are used as
+            # long as the user hasn't actively typed something in the FTS widget.
+            # auto_resolve() only runs once per URL symbol, but every rerun (e.g.
+            # an overlay change) builds a fresh FullTextSearch with an empty
+            # longname — without restoring it the chart title would drop the
+            # display name and show just "TICKER- - 1d/1y".
             if not fts.ticker_selected:
                 fts.ticker_selected = st.session_state.get(_auto_ss_key, '')
+            if not fts.ticker_selected_longname:
+                fts.ticker_selected_longname = st.session_state.get(_auto_ln_key, '')
 
         if not self.hide_search:
             mkt.render()
@@ -913,6 +921,7 @@ class render_mainpage(fetch_data.FetchData):
             # the auto-resolved value stored in session_state.
             if fts.ticker_selected and self._symbol_from_url:
                 st.session_state[_auto_ss_key] = fts.ticker_selected
+                st.session_state[_auto_ln_key] = fts.ticker_selected_longname
         else:
             fts.symbol_search()
 
