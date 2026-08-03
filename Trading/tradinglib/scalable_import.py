@@ -647,16 +647,24 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
             else:
                 ts_str = str(ts_val) if ts_val else ''
 
+            _raw_amt = float(row.get('amount', 0) or 0)
+            _act     = str(row.get('action', ''))
+            # abs() only for buy/sell (the engine derives direction from `action`,
+            # not the sign). Cash-flows (dividend/interest/fee/transfer) KEEP their
+            # sign so a reversal (negative amount) nets against the erroneous
+            # credit instead of being booked as a second positive income.
+            _value   = abs(_raw_amt) if _act in ('buy', 'sell') else _raw_amt
+
             rd = {
                 'uuid':      uuid.uuid4().hex,
                 'timestamp': ts_str,
-                'action':    str(row.get('action', '')),
+                'action':    _act,
                 'ticker':    str(row.get('ticker', row.get('isin', ''))),
                 'isin':      str(row.get('isin', '')),
                 'longName':  str(row.get('longname', '')),
                 'shares':    float(row.get('shares', 0) or 0),
                 'price':     float(row.get('price', 0) or 0),
-                'value':     abs(float(row.get('amount', 0) or 0)),
+                'value':     _value,
                 'fee':       float(row.get('fee', 0) or 0),
                 'tax':       float(row.get('tax', 0) or 0),
                 'currency':  str(row.get('currency', 'EUR')),
