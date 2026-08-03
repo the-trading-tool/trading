@@ -69,7 +69,7 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
     label_map:   {ticker: 'display name'} (optional)
     start_date:  'YYYY-MM-DD' (optional; defaults to first available date)
     """
-    fig = go.Figure()
+    entries = []  # (last_value, label, index, values)
     for ticker, s in series_dict.items():
         if s is None or s.empty:
             continue
@@ -88,9 +88,18 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
             continue
         norm = (s / base) * 100
         label = (label_map or {}).get(ticker, ticker)
+        entries.append((float(norm.iloc[-1]), label, norm.index, norm.values.round(2)))
+
+    # Order traces by their latest indexed value, descending. Plotly lists the
+    # 'x unified' hover in trace order (no per-hover value sort), so this makes
+    # the hover box read highest index value on top → lowest at the bottom.
+    entries.sort(key=lambda e: e[0], reverse=True)
+
+    fig = go.Figure()
+    for _last, label, idx, vals in entries:
         fig.add_trace(go.Scatter(
-            x=norm.index,
-            y=norm.values.round(2),
+            x=idx,
+            y=vals,
             mode='lines',
             name=label,
             hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Base 100)<extra></extra>',
