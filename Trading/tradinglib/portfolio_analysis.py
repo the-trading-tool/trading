@@ -69,7 +69,7 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
     label_map:   {ticker: 'display name'} (optional)
     start_date:  'YYYY-MM-DD' (optional; defaults to first available date)
     """
-    entries = []  # (last_value, label, index, values)
+    fig = go.Figure()
     for ticker, s in series_dict.items():
         if s is None or s.empty:
             continue
@@ -88,28 +88,23 @@ def _build_normalized_trend_fig(series_dict: dict, label_map: dict = None, start
             continue
         norm = (s / base) * 100
         label = (label_map or {}).get(ticker, ticker)
-        entries.append((float(norm.iloc[-1]), label, norm.index, norm.values.round(2)))
-
-    # Order traces by their latest indexed value, descending. Plotly lists the
-    # 'x unified' hover in trace order (no per-hover value sort), so this makes
-    # the hover box read highest index value on top → lowest at the bottom.
-    entries.sort(key=lambda e: e[0], reverse=True)
-
-    fig = go.Figure()
-    for _last, label, idx, vals in entries:
         fig.add_trace(go.Scatter(
-            x=idx,
-            y=vals,
+            x=norm.index,
+            y=norm.values.round(2),
             mode='lines',
             name=label,
             hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Base 100)<extra></extra>',
         ))
+    # hovermode='closest': with many overlapping lines a unified hover box is
+    # cluttered AND plotly cannot sort its entries per hovered date. 'closest'
+    # shows only the nearest line's value → readable; trace/input order (and thus
+    # per-ticker colours) stay stable.
     fig.update_layout(
         xaxis_title='Date',
         yaxis_title='Indexed (Start = 100)',
         template='plotly_white',
         height=500,
-        hovermode='x unified',
+        hovermode='closest',
         margin=dict(t=70),
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
     )
@@ -123,15 +118,10 @@ def _build_since_buy_fig(series_dict: dict, buy_dates: dict, label_map: dict = N
     date (x = calendar date, line starts on the day it was bought → unrealised
     P&L trajectory per position).
 
-    Traces are added ordered by their LATEST (current) indexed value, descending.
-    Plotly lists 'x unified' hover entries in trace order and offers no per-hover
-    value sort, so ordering the traces this way makes the hover box read top-to-
-    bottom by current value instead of by the arbitrary input order.
-
     series_dict: {ticker: pd.Series(Close, DatetimeIndex)}
     buy_dates:   {ticker: Timestamp of the first buy}
     """
-    entries = []  # (last_value, label, index, values)
+    fig_cal = go.Figure()
     for ticker, s in series_dict.items():
         if s is None or s.empty:
             continue
@@ -151,22 +141,17 @@ def _build_since_buy_fig(series_dict: dict, buy_dates: dict, label_map: dict = N
             continue
         norm  = (seg / seg.iloc[0]) * 100
         label = (label_map or {}).get(ticker, ticker)
-        entries.append((float(norm.iloc[-1]), label, norm.index, norm.values.round(2)))
-
-    # Highest current value first → appears on top of the unified hover box.
-    entries.sort(key=lambda e: e[0], reverse=True)
-
-    fig_cal = go.Figure()
-    for _last, label, idx, vals in entries:
         fig_cal.add_trace(go.Scatter(
-            x=idx, y=vals, mode='lines', name=label,
+            x=norm.index, y=norm.values.round(2), mode='lines', name=label,
             hovertemplate=f'<b>{label}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.1f}} (Buy=100)<extra></extra>',
         ))
     # No plotly title – the sub-header labels the chart; this avoids the title
     # overlapping the horizontal legend (the per-ticker entries above the plot).
+    # hovermode='closest': show only the nearest line's value (readable with many
+    # overlapping lines); trace/input order and per-ticker colours stay stable.
     fig_cal.update_layout(
         xaxis_title='Date', yaxis_title='Indexed (Buy = 100)',
-        template='plotly_white', height=460, hovermode='x unified',
+        template='plotly_white', height=460, hovermode='closest',
         margin=dict(t=70),
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='left', x=0),
     )
