@@ -1231,6 +1231,13 @@ class Admin():
             explorer = fe.FileExplorer()
             explorer.render()
             _spin.empty()
+
+        repair_expander = st.expander('OHLC-Reparatur (NULL-Close)', expanded=False)
+        with repair_expander:
+            _spin.markdown(_tab_overlay("OHLC-Reparatur"), unsafe_allow_html=True)
+            from tradinglib import ohlc_repair
+            ohlc_repair.render_repair_ui(db_path=self.db_path)
+            _spin.empty()
         _spin.empty()
 
     def _render_credentials(self, _spin):

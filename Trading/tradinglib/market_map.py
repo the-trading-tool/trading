@@ -151,8 +151,13 @@ class DataVisualizer(tt.TickerTools):
             db_path = tools.Tools().get_path(path=self.db_path, file_name=f'yf_{ticker}.db')
             try:
                 conn = open_db(db_path, readonly=True)
+                # Close IS NOT NULL: eine einzelne kaputte Kerze (Close=NULL, z. B.
+                # nie mit dem Settlement-Close überschriebene Live-Kerze) darf die
+                # Tagesveränderung nicht auf 0 ziehen — überspringe sie und nimm die
+                # zwei jüngsten *echten* Closes (ohlc_repair füllt sie dauerhaft).
                 df = pd.read_sql_query(
-                    "SELECT Date, Close FROM day_data ORDER BY Date DESC LIMIT 2",
+                    "SELECT Date, Close FROM day_data "
+                    "WHERE Close IS NOT NULL ORDER BY Date DESC LIMIT 2",
                     conn
                 )
                 conn.close()
