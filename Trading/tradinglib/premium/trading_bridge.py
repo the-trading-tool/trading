@@ -1076,7 +1076,7 @@ class SignalEvaluator(Tools):
 
             def _row_atr(row: pd.Series, price: float) -> float:
                 atr_raw = (
-                    row.get('atr') or row.get('bos_atr') or row.get('mmm_atr') or 0.0
+                    row.get('atr') or row.get('bos_atr') or row.get('sqz_atr') or 0.0
                 )
                 atr = float(atr_raw) if atr_raw else 0.0
                 if atr <= 0:
