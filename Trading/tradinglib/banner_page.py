@@ -239,7 +239,9 @@ class BannerPage():
         total_dividends = 0.0
         if act_col in raw.columns and value_col in raw.columns:
             div_rows = raw[raw[act_col] == 'dividend']
-            total_dividends = pd.to_numeric(div_rows[value_col], errors='coerce').abs().sum()
+            # Keep the sign: a dividend reversal (negative value) must NET against
+            # the erroneous credit, not be flipped back to a positive income by abs().
+            total_dividends = pd.to_numeric(div_rows[value_col], errors='coerce').sum()
 
         _c1, _c2, _c3, _c4, _c5 = self.region.columns(5)
         _c1.metric("Investiert (offen)", f"{cost_basis_open:,.2f} {self.system_currency}")
