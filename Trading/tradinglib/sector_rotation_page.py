@@ -99,6 +99,23 @@ def _bench_options(universe_name: str, default: str) -> list[str]:
     return opts
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _load_stock_data(sector: str, rank_col: str, top_n: int, show_rsc: bool, sector_etf: str):
+    """Query + optionally RSC-enrich the Best-of-Sector table; cached for 30 min.
+
+    Keyed on every control that affects the result, so re-selecting a
+    combination already seen this session (or by another user, cache is
+    process-wide) returns instantly instead of re-hitting the DB / re-
+    downloading RSC price data.
+    """
+    from tradinglib.sector_stocks import query_sector_stocks, enrich_with_rsc
+
+    df, debug_info = query_sector_stocks(sector=sector, rank_col=rank_col, limit=top_n)
+    if not df.empty and show_rsc and sector_etf:
+        df = enrich_with_rsc(df, sector_etf=sector_etf, weeks=4)
+    return df, debug_info
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_data(benchmark: str, period: str, etfs_json: str, weights_json: str, include_pe: bool):
     """Load and compute all sector rotation data; cached for 1 hour."""
@@ -586,8 +603,6 @@ class SectorRotationPage:
                 RANK_OPTIONS,
                 SECTOR_ETF_MAP,
                 get_available_sectors,
-                query_sector_stocks,
-                enrich_with_rsc,
             )
         except ImportError as exc:
             st.error(f"sector_stocks module not available: {exc}")
@@ -628,10 +643,11 @@ class SectorRotationPage:
 
         rank_col = RANK_OPTIONS[rank_label]
 
-        # ── Load DB data ───────────────────────────────────────────────────────
+        # ── Load DB data (+ optional RSC enrichment), cached per control combo ──
         with st.spinner(_t('sr.stocks_loading', n=top_n, sector=sector)):
-            df, debug_info = query_sector_stocks(
-                sector=sector, rank_col=rank_col, limit=top_n,
+            df, debug_info = _load_stock_data(
+                sector=sector, rank_col=rank_col, top_n=top_n,
+                show_rsc=show_rsc, sector_etf=sector_etf,
             )
 
         if df.empty:
@@ -639,11 +655,6 @@ class SectorRotationPage:
             with st.expander(_t('sr.stocks_diagnostic'), expanded=True):
                 st.markdown(debug_info)
             return
-
-        # ── Optional RSC enrichment ────────────────────────────────────────────
-        if show_rsc and sector_etf:
-            with st.spinner(_t('sr.stocks_rsc_loading', etf=sector_etf)):
-                df = enrich_with_rsc(df, sector_etf=sector_etf, weeks=4)
 
         # ── Metadata strip ─────────────────────────────────────────────────────
         data_date = df["Date"].iloc[0] if ("Date" in df.columns and not df.empty) else "N/A"
