@@ -243,6 +243,66 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
     return result
 
 
+def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
+                              db_path: str = 'database') -> dict:
+    """Per-asset add/reduce signal from the global buy_query / sell_query.
+
+    Evaluates each query as a SQL WHERE against every ticker's LATEST row in
+    asset_simulation_.db — the exact same mechanism the All-Assets screener uses
+    (SQLite is case-insensitive on column names, so 'Close' matches the stored
+    'close'; the '&'/comparison syntax works on 0/1 operands). The self-join to a
+    MAX(Date)-per-ticker subquery keeps unqualified OHLC references pointing at
+    asset_simulation only (no asset_info join → no ambiguous-column clash).
+
+    Returns {ticker: 'add' | 'reduce' | 'conflict' | 'hold'} for tickers that have
+    a simulation row. Tickers absent from the sim DB are omitted (→ n/a upstream).
+    """
+    tickers = [t for t in dict.fromkeys(tickers) if t]
+    if not tickers or not (buy_query or sell_query):
+        return {}
+    try:
+        dbt = tools.Db_tools(db_path=db_path, database_name='asset_simulation_.db')
+    except Exception as exc:
+        logger.warning('position signals: sim DB unavailable: %s', exc)
+        return {}
+    try:
+        ph = ','.join(['?'] * len(tickers))
+        base = (
+            'SELECT ap.ticker FROM asset_simulation ap '
+            'INNER JOIN (SELECT ticker, MAX(Date) AS md FROM asset_simulation '
+            f'WHERE ticker IN ({ph}) GROUP BY ticker) m '
+            'ON ap.ticker = m.ticker AND ap.Date = m.md'
+        )
+        try:
+            present = set(pd.read_sql_query(base, dbt.conn, params=tickers)['ticker'])
+        except Exception as exc:
+            logger.warning('position signals: base query failed: %s', exc)
+            return {}
+
+        def _hits(query: str) -> set:
+            if not query:
+                return set()
+            try:
+                d = pd.read_sql_query(base + f' WHERE ({query})', dbt.conn, params=tickers)
+                return set(d['ticker'])
+            except Exception as exc:
+                logger.warning('position signals: query failed (%s): %s', query, exc)
+                return set()
+
+        buy_hits, sell_hits = _hits(buy_query), _hits(sell_query)
+    finally:
+        try:
+            dbt.close()
+        except Exception:
+            pass
+
+    out = {}
+    for t in present:
+        b, s = t in buy_hits, t in sell_hits
+        out[t] = 'conflict' if (b and s) else 'add' if b else 'reduce' if s else 'hold'
+    return out
+
+
 def _listing_currency(ticker: str, info_map: dict) -> str:
     """Listing (quote) currency of a ticker — asset_info first, Yahoo info as fallback.
 
@@ -753,9 +813,29 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                 agg['buy_value'] > 0, (agg['unrealized_pnl'] / agg['buy_value'] * 100).round(2), 0.0
             )
 
+            # ── Per-asset add/reduce signal from the global buy/sell query ──
+            _has_signal = False
+            try:
+                from tradinglib import system_config as _sysconf
+                _cfg   = _sysconf.SystemConfig(username=username)
+                _buy_q = _cfg.get_value('buy_query', '')
+                _sell_q = _cfg.get_value('sell_query', '')
+            except Exception:
+                _buy_q = _sell_q = ''
+            if _buy_q or _sell_q:
+                _sig = _compute_position_signals(agg['ticker'].tolist(), _buy_q, _sell_q, db_path)
+                _sig_label = {
+                    'add':      f"🟢 {_t('ota.signal_add')}",
+                    'reduce':   f"🔴 {_t('ota.signal_reduce')}",
+                    'hold':     f"⚪ {_t('ota.signal_hold')}",
+                    'conflict': f"🟠 {_t('ota.signal_conflict')}",
+                }
+                agg['action'] = agg['ticker'].map(lambda t: _sig_label.get(_sig.get(t), '—'))
+                _has_signal = True
+
             # Portfolio table
             st.markdown(_t('ota.open_positions_header'))
-            disp_cols_o = [c for c in ['ticker', 'longName', 'isin', 'shares', 'avg_price',
+            disp_cols_o = [c for c in ['ticker', 'longName', 'action', 'isin', 'shares', 'avg_price',
                                         'current_price', 'buy_value', 'current_value',
                                         'unrealized_pnl', 'pnl_pct', 'weight_pct'] if c in agg.columns]
             _agg_disp = agg[disp_cols_o].copy()
@@ -766,6 +846,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                              'details':       st.column_config.LinkColumn('Details', display_text='View'),
                              'ticker':        st.column_config.TextColumn(_t('ota.col_ticker')),
                              'longName':      st.column_config.TextColumn(_t('ota.col_name')),
+                             'action':        st.column_config.TextColumn(_t('ota.col_action')),
                              'shares':        st.column_config.NumberColumn(_t('ota.col_shares'),       format='%.2f'),
                              'avg_price':     st.column_config.NumberColumn(_t('ota.col_avg_buy'),      format='%.4f'),
                              'current_price': st.column_config.NumberColumn(_t('ota.col_current_price'), format='%.4f'),
@@ -775,6 +856,8 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                              'pnl_pct':       st.column_config.NumberColumn(_t('ota.col_pnl_pct'),      format='%.1f'),
                              'weight_pct':    st.column_config.NumberColumn(_t('ota.col_weight_pct'),   format='%.1f'),
                          })
+            if _has_signal:
+                st.caption(_t('ota.signal_caption'))
             tools.excel_download_button(
                 _agg_disp[disp_cols_o], _t('ota.export_table_xlsx'),
                 'open_positions.xlsx', region=st, key='dl_open_positions')
