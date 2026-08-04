@@ -254,8 +254,11 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
     MAX(Date)-per-ticker subquery keeps unqualified OHLC references pointing at
     asset_simulation only (no asset_info join → no ambiguous-column clash).
 
-    Returns {ticker: 'add' | 'reduce' | 'conflict' | 'hold'} for tickers that have
-    a simulation row. Tickers absent from the sim DB are omitted (→ n/a upstream).
+    Returns {ticker: {'action': str, 'last_type': str|None, 'last_date': str|None}}
+    for tickers that have a simulation row. ``action`` is the state on the LATEST
+    bar (add/reduce/conflict/hold); ``last_type``/``last_date`` describe the most
+    recent bar on which either formula fired at all (the last *valid* signal and
+    its date, YYYY-MM-DD). Tickers absent from the sim DB are omitted (→ n/a).
     """
     tickers = [t for t in dict.fromkeys(tickers) if t]
     if not tickers or not (buy_query or sell_query):
@@ -267,6 +270,7 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
         return {}
     try:
         ph = ','.join(['?'] * len(tickers))
+        # Current state = does a formula hold on each ticker's LATEST row.
         base = (
             'SELECT ap.ticker FROM asset_simulation ap '
             'INNER JOIN (SELECT ticker, MAX(Date) AS md FROM asset_simulation '
@@ -280,16 +284,33 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
             return {}
 
         def _hits(query: str) -> set:
+            """Tickers whose LATEST row satisfies the query (current state)."""
             if not query:
                 return set()
             try:
                 d = pd.read_sql_query(base + f' WHERE ({query})', dbt.conn, params=tickers)
                 return set(d['ticker'])
             except Exception as exc:
-                logger.warning('position signals: query failed (%s): %s', query, exc)
+                logger.warning('position signals: current query failed (%s): %s', query, exc)
                 return set()
 
+        def _last_dates(query: str) -> dict:
+            """Most recent Date each ticker satisfied the query (whole history)."""
+            if not query:
+                return {}
+            try:
+                d = pd.read_sql_query(
+                    'SELECT ticker, MAX(Date) AS d FROM asset_simulation '
+                    f'WHERE ticker IN ({ph}) AND ({query}) GROUP BY ticker',
+                    dbt.conn, params=tickers,
+                )
+                return {r['ticker']: str(r['d'])[:10] for _, r in d.iterrows() if r['d']}
+            except Exception as exc:
+                logger.warning('position signals: last-date query failed (%s): %s', query, exc)
+                return {}
+
         buy_hits, sell_hits = _hits(buy_query), _hits(sell_query)
+        last_buy, last_sell = _last_dates(buy_query), _last_dates(sell_query)
     finally:
         try:
             dbt.close()
@@ -299,7 +320,18 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
     out = {}
     for t in present:
         b, s = t in buy_hits, t in sell_hits
-        out[t] = 'conflict' if (b and s) else 'add' if b else 'reduce' if s else 'hold'
+        action = 'conflict' if (b and s) else 'add' if b else 'reduce' if s else 'hold'
+        lb, ls = last_buy.get(t), last_sell.get(t)
+        if lb and ls:
+            last_type = 'conflict' if lb == ls else ('add' if lb > ls else 'reduce')
+        elif lb:
+            last_type = 'add'
+        elif ls:
+            last_type = 'reduce'
+        else:
+            last_type = None
+        last_date = max(d for d in (lb, ls) if d) if (lb or ls) else None
+        out[t] = {'action': action, 'last_type': last_type, 'last_date': last_date}
     return out
 
 
@@ -830,14 +862,27 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                     'hold':     f"⚪ {_t('ota.signal_hold')}",
                     'conflict': f"🟠 {_t('ota.signal_conflict')}",
                 }
-                agg['action'] = agg['ticker'].map(lambda t: _sig_label.get(_sig.get(t), '—'))
+
+                def _fmt_action(t):
+                    info = _sig.get(t)
+                    return _sig_label.get(info['action'], '—') if info else '—'
+
+                def _fmt_last(t):
+                    info = _sig.get(t)
+                    if not info or not info.get('last_date'):
+                        return '—'
+                    return f"{_sig_label.get(info['last_type'], '')} · {info['last_date']}"
+
+                agg['action']      = agg['ticker'].map(_fmt_action)
+                agg['last_signal'] = agg['ticker'].map(_fmt_last)
                 _has_signal = True
 
             # Portfolio table
             st.markdown(_t('ota.open_positions_header'))
-            disp_cols_o = [c for c in ['ticker', 'longName', 'action', 'isin', 'shares', 'avg_price',
-                                        'current_price', 'buy_value', 'current_value',
-                                        'unrealized_pnl', 'pnl_pct', 'weight_pct'] if c in agg.columns]
+            disp_cols_o = [c for c in ['ticker', 'longName', 'action', 'last_signal', 'isin',
+                                        'shares', 'avg_price', 'current_price', 'buy_value',
+                                        'current_value', 'unrealized_pnl', 'pnl_pct', 'weight_pct']
+                           if c in agg.columns]
             _agg_disp = agg[disp_cols_o].copy()
             if 'ticker' in _agg_disp.columns:
                 _agg_disp.insert(0, 'details', _agg_disp['ticker'].apply(lambda t: f'/?symbol={t}&details=True'))
@@ -847,6 +892,7 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
                              'ticker':        st.column_config.TextColumn(_t('ota.col_ticker')),
                              'longName':      st.column_config.TextColumn(_t('ota.col_name')),
                              'action':        st.column_config.TextColumn(_t('ota.col_action')),
+                             'last_signal':   st.column_config.TextColumn(_t('ota.col_last_signal')),
                              'shares':        st.column_config.NumberColumn(_t('ota.col_shares'),       format='%.2f'),
                              'avg_price':     st.column_config.NumberColumn(_t('ota.col_avg_buy'),      format='%.4f'),
                              'current_price': st.column_config.NumberColumn(_t('ota.col_current_price'), format='%.4f'),
