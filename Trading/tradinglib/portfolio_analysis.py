@@ -244,121 +244,137 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
     return result
 
 
-def _reconstruct_live_columns(df: pd.DataFrame, queries: str) -> pd.DataFrame:
-    """Add live-only indicator columns a query references but asset_simulation does
-    not persist, plus OHLC case aliases (SQLite was case-insensitive; pandas eval
-    is not). Currently: ovtEma{N} = per-ticker EMA of overallValueTrend (span N,
-    adjust=False) — identical to Ovt.data()/OvtEmaUpdater. Extend here if further
-    live-only columns turn up in queries.
+# Column-name hints → indicator module. A query's referenced columns activate
+# exactly the indicators FetchData must compute for indicator.buy_sell to evaluate
+# it (e.g. ovtEma9 → 'ovt'), so the markers match the chart. Extend as needed.
+_INDICATOR_COLUMN_HINTS = {
+    'atc':    ('atc_',),
+    'ewo':    ('ewo',),
+    'heikin': ('ha_',),
+    'rsi':    ('rsi', 'momentum'),
+    'relvol': ('relvol',),
+    'ovt':    ('overalltrend', 'overallvaluetrend', 'ovtema'),
+    'macd':   ('macd',),
+    'markov': ('markov',),
+    'sup':    ('sup_', 'support', 'resistance'),
+    'adx':    ('adx',),
+    'bol':    ('bol_',),
+    'dema':   ('dema_',),
+    'don':    ('don_',),
+    'sqz':    ('sqz_', 'mmm_'),
+    'obd':    ('obd_', 'oft_'),
+    'bos':    ('bos_',),
+    'cumd':   ('cumd_',),
+    'vol':    ('vol_',),
+    'hor':    ('hor_',),
+    'gan':    ('gan_',),
+}
+
+
+def _indicators_for_queries(*queries) -> list:
+    """Indicator modules whose columns any query references — so FetchData computes
+    exactly what indicator.buy_sell needs (matching the chart). Matches per
+    identifier token by prefix, so 'relvol_ratio' does not spuriously pull in 'vol'.
     """
-    # OHLC case aliases so 'Close'/'close', 'Open'/'open' etc. both resolve.
-    for cap, low in (('Open', 'open'), ('High', 'high'), ('Low', 'low'), ('Close', 'close')):
-        if cap in df.columns and low not in df.columns:
-            df[low] = df[cap]
-        elif low in df.columns and cap not in df.columns:
-            df[cap] = df[low]
-    # ovtEma{span}: rebuild from overallValueTrend, per ticker, time-ordered.
-    if 'overallValueTrend' in df.columns:
-        for span in {int(s) for s in re.findall(r'ovtEma(\d+)', queries)}:
-            col = f'ovtEma{span}'
-            if col not in df.columns:
-                df[col] = (
-                    df.groupby('ticker')['overallValueTrend']
-                    .transform(lambda s: s.ewm(span=span, adjust=False).mean())
-                )
-    return df
+    tokens = {t.lower() for t in re.findall(r'[A-Za-z_][A-Za-z0-9_]*',
+                                            ' '.join(q for q in queries if q))}
+    return sorted({mod for mod, hints in _INDICATOR_COLUMN_HINTS.items()
+                   if any(tok.startswith(h) for tok in tokens for h in hints)})
 
 
+def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
+                            indicators: tuple, db_path: str, username: str):
+    """Chart-identical add/reduce signal for one ticker via the tiny_chart path:
+    FetchData(indicators, buy/sell query) → indicator.buy_sell over 1d/1y, then read
+    the position-aware buy_close/sell_close markers. Returns a dict or None.
+    """
+    try:
+        from tradinglib.fetch_data import FetchData
+        from tradinglib import system_config as _sysconf
+        cfg = _sysconf.SystemConfig(username=username)
+        fd = FetchData(database_path=db_path, indicators=list(indicators),
+                       buy_query=buy_query, sell_query=sell_query, sys_conf=cfg)
+        df, _tk = fd.fetch_data(ticker, period='1y', interval='1d',
+                                add_current=False, region=None)
+    except Exception as exc:
+        logger.warning('live signal %s: fetch failed: %s', ticker, exc)
+        return None
+    if df is None or getattr(df, 'empty', True) \
+            or 'buy_close' not in df.columns or 'sell_close' not in df.columns:
+        return None
+
+    idx = pd.to_datetime(df['Date'] if 'Date' in df.columns else df.index, errors='coerce')
+    buy_mask = df['buy_close'].notna().to_numpy()
+    sell_mask = df['sell_close'].notna().to_numpy()
+    last_buy = idx[buy_mask].max() if buy_mask.any() else pd.NaT
+    last_sell = idx[sell_mask].max() if sell_mask.any() else pd.NaT
+
+    # Last strategy event (most recent marker) = the "last valid signal".
+    if pd.notna(last_buy) and pd.notna(last_sell):
+        last_type = 'add' if last_buy > last_sell else 'reduce' if last_sell > last_buy else 'conflict'
+        last_dt = max(last_buy, last_sell)
+    elif pd.notna(last_buy):
+        last_type, last_dt = 'add', last_buy
+    elif pd.notna(last_sell):
+        last_type, last_dt = 'reduce', last_sell
+    else:
+        last_type, last_dt = None, None
+
+    # Holder recommendation ("Action"): fresh entry on the latest bar → Nachkaufen;
+    # fresh exit OR strategy currently flat (last marker was a sell) → Reduzieren;
+    # otherwise (strategy long / no signal) → Halten.
+    b_now, s_now = bool(buy_mask[-1]), bool(sell_mask[-1])
+    if b_now:
+        action = 'add'
+    elif s_now or last_type == 'reduce':
+        action = 'reduce'
+    else:
+        action = 'hold'
+
+    return {
+        'action': action,
+        'last_type': last_type,
+        'last_date': last_dt.strftime('%Y-%m-%d') if last_dt is not None and pd.notna(last_dt) else None,
+    }
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
-                              db_path: str = 'database') -> tuple:
-    """Per-asset add/reduce signal from the (user-scoped) buy_query / sell_query.
+                              db_path: str = 'database', username: str = '') -> tuple:
+    """Chart-consistent per-position add/reduce signal.
 
-    Loads each ticker's asset_simulation_.db history into pandas and evaluates the
-    formulas with the shared ``compute_signal_mask`` (same engine as the Strategy
-    Finder), so live-only indicator columns the DB does not store (e.g. ovtEma9)
-    can be reconstructed first (see _reconstruct_live_columns). A pure SQL WHERE
-    would raise "no such column: ovtEma9" and silently drop every sell signal.
+    Computes each position through the SAME live path as tiny_chart.py — FetchData
+    with the (user-scoped) buy_query/sell_query over 1d/1y, then the position-aware
+    indicator.buy_sell markers — so 'Last signal' equals the chart's buy/sell
+    markers exactly (a sell is only emitted while a position is open). The required
+    indicators are derived from the query columns so live-only ones (e.g. ovtEma9)
+    are computed rather than missing.
 
     Returns (signals, warnings):
-      signals  = {ticker: {'action': str, 'last_type': str|None, 'last_date': str|None}}
-                 action = state on the LATEST bar (add/reduce/conflict/hold);
-                 last_type/last_date = most recent bar either formula fired (last
-                 valid signal + date YYYY-MM-DD). Tickers absent from the sim DB
-                 are omitted (→ n/a upstream).
-      warnings = human-readable strings for formulas that could not be evaluated
-                 (surfaced in the UI instead of silently reading as 'hold').
+      signals  = {ticker: {'action', 'last_type', 'last_date'}}  (absent → n/a)
+      warnings = coarse UI warnings (e.g. nothing could be computed).
+    Cached (30 min) and parallelised; the tab reruns often, one compute per change.
     """
     tickers = [t for t in dict.fromkeys(tickers) if t]
     warnings: list = []
     if not tickers or not (buy_query or sell_query):
         return {}, warnings
-    try:
-        dbt = tools.Db_tools(db_path=db_path, database_name='asset_simulation_.db')
-    except Exception as exc:
-        logger.warning('position signals: sim DB unavailable: %s', exc)
-        return {}, warnings
-    try:
-        ph = ','.join(['?'] * len(tickers))
-        try:
-            df = pd.read_sql_query(
-                f'SELECT * FROM asset_simulation WHERE ticker IN ({ph})',
-                dbt.conn, params=tickers,
-            )
-        except Exception as exc:
-            logger.warning('position signals: load failed: %s', exc)
-            return {}, warnings
-    finally:
-        try:
-            dbt.close()
-        except Exception:
-            pass
-
-    if df.empty or 'Date' not in df.columns:
-        return {}, warnings
-    df['_d'] = pd.to_datetime(df['Date'], errors='coerce')
-    df = df.dropna(subset=['_d']).sort_values(['ticker', '_d']).reset_index(drop=True)
-    df = _reconstruct_live_columns(df, f'{buy_query} {sell_query}')
-
-    def _mask(query: str, label: str) -> pd.Series:
-        if not query:
-            return pd.Series(False, index=df.index)
-        try:
-            return tools.compute_signal_mask(df, query, group_col='ticker').astype(bool)
-        except Exception as exc:
-            msg = str(exc)
-            logger.warning('position signals: %s query failed: %s', label, msg)
-            warnings.append(f'{label}: {msg}')
-            return pd.Series(False, index=df.index)
-
-    df['_buy'] = _mask(buy_query, 'buy_query').values
-    df['_sell'] = _mask(sell_query, 'sell_query').values
-
-    # Current state = last (most recent) row per ticker.
-    last_rows = df.loc[df.groupby('ticker')['_d'].idxmax()]
-    # Last date each formula fired, per ticker.
-    last_buy = df[df['_buy']].groupby('ticker')['_d'].max()
-    last_sell = df[df['_sell']].groupby('ticker')['_d'].max()
-
+    indicators = tuple(_indicators_for_queries(buy_query, sell_query))
     out = {}
-    for _, row in last_rows.iterrows():
-        t = row['ticker']
-        b, s = bool(row['_buy']), bool(row['_sell'])
-        action = 'conflict' if (b and s) else 'add' if b else 'reduce' if s else 'hold'
-        lb, ls = last_buy.get(t), last_sell.get(t)
-        if pd.notna(lb) and pd.notna(ls):
-            last_type = 'conflict' if lb == ls else ('add' if lb > ls else 'reduce')
-            last_dt = max(lb, ls)
-        elif pd.notna(lb):
-            last_type, last_dt = 'add', lb
-        elif pd.notna(ls):
-            last_type, last_dt = 'reduce', ls
-        else:
-            last_type, last_dt = None, None
-        out[t] = {
-            'action': action,
-            'last_type': last_type,
-            'last_date': last_dt.strftime('%Y-%m-%d') if last_dt is not None and pd.notna(last_dt) else None,
-        }
+    with ThreadPoolExecutor(max_workers=min(6, len(tickers))) as ex:
+        futs = {ex.submit(_live_signal_for_ticker, t, buy_query, sell_query,
+                          indicators, db_path, username): t for t in tickers}
+        for fut in as_completed(futs):
+            t = futs[fut]
+            try:
+                res = fut.result()
+            except Exception as exc:
+                logger.warning('live signal %s failed: %s', t, exc)
+                res = None
+            if res is not None:
+                out[t] = res
+    if not out:
+        warnings.append('Signale konnten nicht berechnet werden (keine Daten/Indikatoren).')
     return out, warnings
 
 
@@ -882,7 +898,9 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             except Exception:
                 _buy_q = _sell_q = ''
             if _buy_q or _sell_q:
-                _sig, _sig_warn = _compute_position_signals(agg['ticker'].tolist(), _buy_q, _sell_q, db_path)
+                with st.spinner(_t('ota.signal_computing')):
+                    _sig, _sig_warn = _compute_position_signals(
+                        agg['ticker'].tolist(), _buy_q, _sell_q, db_path, username)
                 for _w in _sig_warn:
                     st.warning(_t('ota.signal_query_error', err=_w))
                 _sig_label = {
