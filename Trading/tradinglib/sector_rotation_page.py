@@ -253,7 +253,19 @@ class SectorRotationPage:
         st.subheader(_t('sr.rrg_subheader'))
         st.caption(_t('sr.rrg_caption', label=label, tail=tail_label))
 
+        # summary["Status"] is always derived from the WEEKLY coordinates
+        # (build_summary calls calc_rrg_coordinates), so using it here would
+        # label the daily chart with weekly quadrants. Classify from the series
+        # actually being plotted instead, reusing the engine's own thresholds.
         status_map = summary.set_index("Sector")["Status"].to_dict()
+        statuses = {
+            sector: (SectorRotation.rrg_status(data["current_rs_ratio"],
+                                               data["current_rs_momentum"])
+                     if data.get("current_rs_ratio") is not None
+                     and data.get("current_rs_momentum") is not None
+                     else status_map.get(sector, "N/A"))
+            for sector, data in rrg_data.items()
+        }
 
         # Collect all data points first to determine auto-zoom range
         all_xs, all_ys = [], []
@@ -301,7 +313,7 @@ class SectorRotationPage:
             xs, ys = data["rs_ratio"], data["rs_momentum"]
             if not xs or not ys:
                 continue
-            status = status_map.get(sector, "N/A")
+            status = statuses.get(sector, "N/A")
             color = _STATUS_COLOR.get(status, "#888")
             n = len(xs)
 
@@ -358,8 +370,9 @@ class SectorRotationPage:
 
         st.plotly_chart(fig, use_container_width=True, theme="streamlit")
 
-        # Status summary metrics
-        sc = summary["Status"].value_counts()
+        # Status summary metrics — counted from the plotted series (see above),
+        # so the weekly and daily tabs report their own quadrant distribution.
+        sc = pd.Series(list(statuses.values())).value_counts()
         m1, m2, m3, m4 = st.columns(4)
         _status_labels = {
             "Leading":   _t('sr.status_leading'),
