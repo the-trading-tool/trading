@@ -487,6 +487,165 @@ def render_buy_hold_benchmark(df: pd.DataFrame, budgets: dict, price_lookup,
     region.caption(t('banner.bh_legend'))
 
 
+# ── Handlungsbedarf offener Positionen ────────────────────────────────────────
+# Schwellen: ab wie viel Restabstand (in %) eine offene Position als
+# "nahe am Stop" bzw. "nahe am Ziel" gemeldet wird.
+_NEAR_STOP_PCT = 3.0
+_NEAR_TARGET_PCT = 3.0
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _levels_for(tickers: tuple, db_path: str = 'database') -> dict:
+    """Aktueller Kurs plus Stop-/Ziel-Level je Ticker aus asset_simulation.
+
+    Liest die jeweils juengste Zeile pro Ticker. Rueckgabe:
+    ``{ticker: {'close': float, 'stop': float|None, 'target': float|None}}``.
+    """
+    if not tickers:
+        return {}
+    try:
+        from tradinglib import sector_stocks as ss
+        from tradinglib.tools import open_db
+    except Exception:
+        return {}
+
+    out: dict = {}
+    for db_name in ('asset_simulation_', 'asset_simulation_all', 'asset_simulation'):
+        try:
+            f = ss._db_path(db_path, f'{db_name}.db')
+        except Exception:
+            continue
+        import os
+        if not os.path.exists(f):
+            continue
+        try:
+            with open_db(f, readonly=True) as conn:
+                cols = {r[1].lower() for r in
+                        conn.execute('PRAGMA table_info(asset_simulation)')}
+                if not {'ticker', 'close'} <= cols:
+                    continue
+                sel = ['ticker', 'close']
+                sel += [c for c in ('stop_loss', 'take_profit') if c in cols]
+                ph = ','.join('?' * len(tickers))
+                # Juengste Zeile je Ticker — Fensterfunktion statt GROUP BY,
+                # damit close/stop/target garantiert aus derselben Zeile stammen.
+                rows = conn.execute(
+                    f"""SELECT {','.join(sel)} FROM (
+                            SELECT {','.join(sel)},
+                                   ROW_NUMBER() OVER (PARTITION BY ticker
+                                                      ORDER BY Date DESC) AS _rn
+                            FROM asset_simulation WHERE ticker IN ({ph})
+                        ) WHERE _rn = 1""", tuple(tickers)).fetchall()
+        except Exception as exc:
+            logger.debug('position alerts: %s failed: %s', db_name, exc)
+            continue
+
+        for r in rows:
+            d = dict(zip(sel, r))
+            tk = d.get('ticker')
+            if not tk or tk in out:
+                continue
+            try:
+                close = float(d['close'])
+            except (TypeError, ValueError):
+                continue
+            if not close or close != close:
+                continue
+
+            def _num(key):
+                v = d.get(key)
+                try:
+                    v = float(v)
+                except (TypeError, ValueError):
+                    return None
+                return v if v == v and v > 0 else None
+
+            out[tk] = {'close': close, 'stop': _num('stop_loss'),
+                       'target': _num('take_profit')}
+        if len(out) >= len(tickers):
+            break
+    return out
+
+
+def render_position_alerts(df: pd.DataFrame, region=None, db_path: str = 'database'):
+    """Offene Positionen mit Handlungsbedarf (Stop gerissen / nahe Stop / am Ziel).
+
+    Das Dashboard berichtet sonst ausschliesslich rueckblickend (Gewinne,
+    Heatmap, Trefferquoten). Dieser Block beantwortet die andere Frage: welche
+    der offenen Positionen brauchen heute eine Entscheidung. Kurs und Level
+    stammen aus derselben ``asset_simulation``, aus der auch die Engine rechnet.
+    """
+    if region is None:
+        region = st
+    if df is None or df.empty:
+        return
+
+    try:
+        _, open_df = _split_closed_open(df)
+    except Exception:
+        return
+    if open_df.empty or 'ticker' not in open_df.columns:
+        return
+
+    tickers = tuple(sorted({str(x) for x in open_df['ticker'].dropna().unique()}))
+    levels = _levels_for(tickers, db_path)
+    if not levels:
+        return
+
+    rows = []
+    for _, p in open_df.iterrows():
+        tk = str(p.get('ticker', ''))
+        lv = levels.get(tk)
+        if not lv:
+            continue
+        close, stop, target = lv['close'], lv['stop'], lv['target']
+
+        kind = None
+        dist = None
+        if stop is not None and close <= stop:
+            kind, dist = 'stop_hit', (close - stop) / close * 100
+        elif target is not None and close >= target:
+            kind, dist = 'target_hit', (close - target) / close * 100
+        elif stop is not None and (close - stop) / close * 100 <= _NEAR_STOP_PCT:
+            kind, dist = 'near_stop', (close - stop) / close * 100
+        elif target is not None and (target - close) / close * 100 <= _NEAR_TARGET_PCT:
+            kind, dist = 'near_target', (target - close) / close * 100
+        if kind is None:
+            continue
+
+        rows.append({
+            '_sort': {'stop_hit': 0, 'near_stop': 1,
+                      'target_hit': 2, 'near_target': 3}[kind],
+            t('banner.alert_col_status'):   t(f'banner.alert_{kind}'),
+            t('banner.alert_col_ticker'):   tk,
+            t('banner.alert_col_strategy'): p.get('Strategy', ''),
+            t('banner.alert_col_price'):    round(close, 2),
+            t('banner.alert_col_stop'):     None if stop is None else round(stop, 2),
+            t('banner.alert_col_target'):   None if target is None else round(target, 2),
+            t('banner.alert_col_distance'): None if dist is None else round(dist, 1),
+        })
+
+    if not rows:
+        return
+
+    rows.sort(key=lambda r: r['_sort'])
+    n_urgent = sum(1 for r in rows if r['_sort'] <= 1)
+    for r in rows:
+        r.pop('_sort', None)
+
+    region.divider()
+    region.markdown(f"**{t('banner.alert_header')}**")
+    region.caption(t('banner.alert_caption', n=len(rows)))
+    if n_urgent:
+        region.warning(t('banner.alert_urgent', n=n_urgent), icon="⚠️")
+    region.dataframe(
+        pd.DataFrame(rows), hide_index=True, use_container_width=True,
+        column_config={
+            t('banner.alert_col_distance'): st.column_config.NumberColumn(
+                t('banner.alert_col_distance'), format="%+.1f %%"),
+        })
+
+
 def render_portfolio_overlap(df: pd.DataFrame, region=None):
     """Warning when the same ticker is held by more than one strategy simultaneously."""
     if region is None:

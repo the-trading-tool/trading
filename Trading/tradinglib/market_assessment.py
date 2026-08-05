@@ -17,7 +17,9 @@ bleibt der Rest sichtbar. Die Einzelsignale werden zu einer groben
 Risk-on/Neutral/Risk-off-Beurteilung zusammengefasst.
 """
 from __future__ import annotations
+import datetime as dt
 import logging
+import os
 
 import numpy as np
 import pandas as pd
@@ -26,6 +28,13 @@ import streamlit as st
 from tradinglib.i18n import t
 
 logger = logging.getLogger(__name__)
+
+# Fear-&-Greed-Trend: Fenster und Mindestabstand des Vergleichspunkts (Tage).
+_FG_TREND_DAYS = 30
+_FG_TREND_MIN_DAYS = 5
+
+# Ab wie vielen Handelstagen Rueckstand die Datenstand-Zeile warnt.
+_STALE_WARN_DAYS = 2
 
 # US-Indizes → US-Sektoren; alles andere → EU-Sektoren (App ist EUR-/EU-zentriert).
 _US_INDICES = {"^SPX", "^GSPC", "^DJI", "^NDX", "^IXIC", "^RUT", "^OEX"}
@@ -59,9 +68,97 @@ def _block_fear_greed(ticker: str) -> dict | None:
         score = r.get("score")
         if score is None or (isinstance(score, float) and np.isnan(score)):
             return None
-        return {"index": idx, "score": float(score), "band": r.get("label", "")}
+        out = {"index": idx, "score": float(score), "band": r.get("label", ""),
+               "delta_30d": None}
+        # Ein Momentanwert sagt nicht, ob die Stimmung dreht — die Veraenderung
+        # ggue. dem aeltesten Punkt innerhalb von ~30 Tagen ergaenzt die Richtung.
+        try:
+            hist = fg.read_history(idx)
+            if hist is not None and not hist.empty and len(hist) >= 2:
+                h = hist.copy()
+                h["date"] = pd.to_datetime(h["date"], errors="coerce")
+                h = h.dropna(subset=["date", "score"]).sort_values("date")
+                cutoff = h["date"].iloc[-1] - pd.Timedelta(days=_FG_TREND_DAYS)
+                past = h[h["date"] <= cutoff]
+                # Kein Punkt alt genug -> aeltesten vorhandenen nehmen, aber nur
+                # wenn er mindestens ein paar Tage zurueckliegt (sonst Rauschen).
+                ref = past.iloc[-1] if not past.empty else h.iloc[0]
+                age = (h["date"].iloc[-1] - ref["date"]).days
+                if age >= _FG_TREND_MIN_DAYS:
+                    out["delta_30d"] = round(float(score) - float(ref["score"]), 1)
+                    out["delta_days"] = int(age)
+        except Exception as exc:
+            logger.debug("market_assessment: fg history unavailable: %s", exc)
+        return out
     except Exception as exc:
         logger.warning("market_assessment: fear_greed block failed: %s", exc)
+        return None
+
+
+def _block_stress(ticker: str) -> dict | None:
+    """Fruehwarn-Score aus der Marktbreite (regime_data_engine).
+
+    Die uebrigen Bloecke sind gleichlaufend (aktueller Stimmungsstand, aktueller
+    RRG-Quadrant, aktueller Sektor-Fuehrer) — sie sagen, wo der Markt *steht*.
+    compute_market_stress ist der einzige vorausschauende Baustein der App
+    (Breitenverschlechterung + Preis/Breite-Divergenz, Vorlauf Tage bis Wochen)
+    und deckt damit den Fall ab, den das Verdict sonst verschweigt: Risk-on an
+    der Oberflaeche, waehrend die Breite darunter bricht.
+
+    Der Wert liegt durch warm_market_stress.py bereits im Tages-Cache
+    (regime_cache.db) — hier entsteht also in aller Regel keine Rechenlast.
+    Nur echte ^-Indizes tragen ein Mitglieder-Universum; sonst None.
+    """
+    try:
+        if not str(ticker).startswith("^"):
+            return None
+        from tradinglib.regime_data_engine import compute_market_stress
+        s = compute_market_stress(ticker)
+        if not s or s.get("score") is None:
+            return None
+        return {"index": ticker, "score": float(s["score"]),
+                "level": s.get("level", ""), "n": s.get("n"),
+                "divergence": bool(s.get("divergence")),
+                "bull": s.get("bull"), "bear": s.get("bear")}
+    except Exception as exc:
+        logger.warning("market_assessment: stress block failed: %s", exc)
+        return None
+
+
+def _block_freshness(db_path: str) -> dict | None:
+    """Alter des juengsten Simulationsdatensatzes.
+
+    Faellt get_asset_data oder asset_perf2 aus, zeigt das Dashboard weiterhin
+    Zahlen — nur eben alte, ohne jeden Hinweis. Dieser Block macht den Stand
+    sichtbar, damit ein stiller Pipeline-Ausfall nicht als Marktaussage
+    durchgeht.
+    """
+    try:
+        from tradinglib import sector_stocks as ss
+        from tradinglib.tools import open_db
+        for db_name in ("asset_simulation_", "asset_simulation_all", "asset_simulation"):
+            f = ss._db_path(db_path, f"{db_name}.db")
+            if not os.path.exists(f):
+                continue
+            try:
+                with open_db(f, readonly=True) as conn:
+                    row = conn.execute(
+                        "SELECT DATE(MAX(Date)) FROM asset_simulation").fetchone()
+            except Exception:
+                continue
+            if not row or not row[0]:
+                continue
+            last = pd.to_datetime(row[0], errors="coerce")
+            if pd.isna(last):
+                continue
+            # Alter in Handelstagen, damit ein Montag nach dem Wochenende nicht
+            # faelschlich als zwei Tage Rueckstand erscheint.
+            age_bd = int(np.busday_count(last.date(), dt.date.today()))
+            return {"date": last.date().isoformat(), "age_days": max(age_bd, 0),
+                    "source": db_name}
+        return None
+    except Exception as exc:
+        logger.warning("market_assessment: freshness block failed: %s", exc)
         return None
 
 
@@ -221,9 +318,15 @@ def assess(ticker: str, day: str, db_path: str = "database") -> dict:
     corr_b = _block_correlation()
     sec_b = _block_sector(ticker)
     best_b = _block_best_stocks(db_path)
+    stress_b = _block_stress(ticker)
+    fresh_b = _block_freshness(db_path)
+    # stress fliesst bewusst NICHT in _verdict ein: das Verdict ist ein
+    # etabliertes Signal aus gleichlaufenden Bausteinen — die Fruehwarnung wird
+    # daneben gestellt und qualifiziert es, statt es still zu veraendern.
     verdict, vscore = _verdict(fg_b, rot_b, sec_b)
     return {"ticker": ticker, "fg": fg_b, "rotation": rot_b, "correlation": corr_b,
-            "sector": sec_b, "best_stocks": best_b,
+            "sector": sec_b, "best_stocks": best_b, "stress": stress_b,
+            "freshness": fresh_b,
             "verdict": verdict, "verdict_score": vscore}
 
 
@@ -242,6 +345,11 @@ _QUAD_KEYS = {
 _CLASS_KEYS = {
     "Equity": "gr.uni_equity", "Bond": "gr.uni_bond", "Metal": "gr.uni_metal",
     "Energy": "gr.uni_energy", "Agri": "gr.uni_agri", "Crypto": "gr.uni_crypto",
+}
+# Level-Namen aus regime_data_engine._stress_core
+_STRESS_KEYS = {
+    "calm": "ma.stress_calm", "elevated": "ma.stress_elevated",
+    "warning": "ma.stress_warning",
 }
 
 
@@ -300,14 +408,26 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         f"{vlabel}</span>", unsafe_allow_html=True)
     region.caption(t("ma.subtitle"))
 
-    c1, c2, c3, c4 = region.columns(4)
+    # Datenstand — ohne diesen Hinweis wuerde ein stiller Pipeline-Ausfall
+    # als aktuelle Marktaussage durchgehen.
+    fresh = data.get("freshness")
+    if fresh:
+        if fresh["age_days"] >= _STALE_WARN_DAYS:
+            region.warning(t("ma.data_stale", date=fresh["date"], n=fresh["age_days"]),
+                           icon="⚠️")
+        else:
+            region.caption(t("ma.data_asof", date=fresh["date"]))
 
-    # 1. Fear & Greed
+    c1, c2, c3, c4, c5 = region.columns(5)
+
+    # 1. Fear & Greed (+ Richtung ueber ~30 Tage)
     fg_b = data.get("fg")
     if fg_b:
         band = t(_FG_BAND_KEYS.get(fg_b["band"], "fg.band_neutral"))
+        d30 = fg_b.get("delta_30d")
+        sub = band if d30 is None else f"{band} · {d30:+.0f} ({fg_b.get('delta_days', _FG_TREND_DAYS)}T)"
         c1.metric(t("ma.fg_label", index=str(fg_b["index"]).lstrip("^")),
-                  f"{fg_b['score']:.0f}", delta=band, delta_color="off")
+                  f"{fg_b['score']:.0f}", delta=sub, delta_color="off")
     else:
         c1.metric(t("ma.fg_label", index=tk), t("ma.na"))
 
@@ -339,6 +459,16 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
                   delta=_rsc_text(rsc, prev), delta_color="off")
     else:
         c4.metric(t("ma.sector_label"), t("ma.na"))
+
+    # 5. Frühwarnung Marktbreite — der einzige vorausschauende Baustein
+    st_b = data.get("stress")
+    if st_b:
+        lvl = t(_STRESS_KEYS.get(st_b["level"], "ma.stress_calm"))
+        sub = t("ma.stress_divergence") if st_b.get("divergence") else lvl
+        c5.metric(t("ma.stress_label"), f"{st_b['score']:.0f}",
+                  delta=sub, delta_color="off")
+    else:
+        c5.metric(t("ma.stress_label"), t("ma.na"))
 
     # Synthese-Zeile: Cross-Asset-Extreme + schwächster Sektor
     bits = []
