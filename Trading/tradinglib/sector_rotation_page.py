@@ -481,18 +481,8 @@ class SectorRotationPage:
                 tail_label=_t('sr.tail_daily'),
             )
 
-        # Compact status strip
-        sc = summary["Status"].value_counts()
-        cols = st.columns(4)
-        _status_labels = {
-            "Leading":   _t('sr.status_leading'),
-            "Weakening": _t('sr.status_weakening'),
-            "Lagging":   _t('sr.status_lagging'),
-            "Improving": _t('sr.status_improving'),
-        }
-        for col, status in zip(cols, ["Leading", "Weakening", "Lagging", "Improving"]):
-            col.metric(_status_labels[status], sc.get(status, 0))
-
+        # No status strip here — _render_rrg already renders the identical
+        # Leading/Weakening/Lagging/Improving counts inside each sub-tab above.
         st.markdown("---")
 
         # Industry comparison matrix (reuses existing method)
