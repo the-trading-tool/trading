@@ -111,6 +111,11 @@ def stock_key(sector: str, rank_col: str, top_n: int,
     return f"stocks|{sector}|{rank_col}|{top_n}|{show_rsc}|{sector_etf}"
 
 
+def assessment_key(ticker: str, username: str) -> str:
+    """Cache key for the dashboard's market assessment."""
+    return f"assessment|{ticker}|{username}"
+
+
 def global_key(scope: str) -> str:
     """Cache key for a Global Rotation scope ('equities', 'all', 'uni|<name>')."""
     return f"global|{scope}"
@@ -196,6 +201,18 @@ def _is_worth_caching(value) -> bool:
     if isinstance(value, (dict, list)):
         return bool(value)
     return True
+
+
+def drop(key: str) -> None:
+    """Remove one key for today — lets a warm run with /force really recompute
+    even when the producing function caches internally."""
+    try:
+        with ts.open_db(_db_path()) as conn:
+            conn.execute("DELETE FROM rotation_cache WHERE cache_key=? AND day=?",
+                         (key, _today()))
+            conn.commit()
+    except Exception as exc:
+        logger.debug("rotation_cache drop %s failed: %s", key, exc)
 
 
 def clear() -> None:

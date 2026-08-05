@@ -249,10 +249,49 @@ def _block_sector(ticker: str) -> dict | None:
         return None
 
 
-def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5) -> list | None:
-    """Cross-Sektor-„Sektor-Schläger": aus den je Sektor fundamental stärksten
-    Aktien (Top nach Overall Value Trend) die ``top_n`` mit der höchsten
-    Outperformance ggü. ihrem eigenen Sektor-ETF (RSC_vs_ETF)."""
+def _sector_strength(db_path: str = "database") -> dict:
+    """Mansfield-RSC je Sektor, gekeyt auf den Sektor-ETF.
+
+    Bewusst ueber den ETF und nicht ueber den Sektornamen: sector_rotation und
+    asset_info verwenden verschiedene Taxonomien ("Financials" vs "Financial
+    Services", "Materials" vs "Basic Materials", ...), waehrend die ETFs
+    identisch sind. Ein Join ueber die Namen wuerde bei rund der Haelfte der
+    Sektoren still danebengreifen.
+    """
+    try:
+        from tradinglib import sector_rotation as sr
+        from tradinglib.sector_stocks import SECTOR_ETF_MAP
+        engine = sr.SectorRotation(sector_etfs=dict(SECTOR_ETF_MAP),
+                                   benchmark="SPY")
+        engine.fetch_all()
+        out = {}
+        for _name, etf in SECTOR_ETF_MAP.items():
+            try:
+                s = engine.calc_mansfield_rsc_series(etf)
+                if s is not None and not s.empty:
+                    v = float(s.iloc[-1])
+                    if not np.isnan(v):
+                        out[etf] = round(v, 2)
+            except Exception:
+                continue
+        return out
+    except Exception as exc:
+        logger.warning("market_assessment: sector strength failed: %s", exc)
+        return {}
+
+
+def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
+                       username: str = "admin") -> list | None:
+    """Staerkste Aktie JE Sektor — ein Titel pro Sektor, kein Sektor doppelt.
+
+    Aus den je Sektor fundamental staerksten Aktien (Top nach Overall Value
+    Trend) wird pro Sektor die mit der hoechsten Outperformance ggue. dem
+    eigenen Sektor-ETF (RSC_vs_ETF) genommen. Sortiert wird anschliessend nach
+    der Staerke des SEKTORS (Mansfield-RSC), nicht nach der der Aktie: so steht
+    oben, was im derzeit fuehrenden Sektor am besten laeuft.
+
+    ``top_n`` begrenzt nur noch nach oben (0 = alle Sektoren).
+    """
     try:
         from tradinglib import sector_stocks as ss
         df, _ = ss.query_best_per_sector(db_path=db_path,
@@ -264,7 +303,17 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5) -> lis
         df = df.dropna(subset=["RSC_vs_ETF"])
         if df.empty:
             return None
-        df = df.sort_values("RSC_vs_ETF", ascending=False).head(top_n)
+
+        # Je Sektor nur den besten Titel behalten.
+        df = (df.sort_values("RSC_vs_ETF", ascending=False)
+                .drop_duplicates(subset=["sector"], keep="first"))
+
+        # Nach Sektor-Staerke sortieren; Sektoren ohne RSC ans Ende.
+        strength = _sector_strength(db_path)
+        df["_sec_rsc"] = df["sector_etf"].map(strength)
+        df = df.sort_values("_sec_rsc", ascending=False, na_position="last")
+        if top_n:
+            df = df.head(top_n)
         rows = []
         for _, r in df.iterrows():
             rsc = float(r["RSC_vs_ETF"])
@@ -276,8 +325,34 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5) -> lis
                 "ovt": (float(r["overallValueTrend"])
                         if "overallValueTrend" in r and pd.notna(r["overallValueTrend"]) else None),
                 "rsc": round(rsc, 2),
+                "sector_rsc": (float(r["_sec_rsc"])
+                               if pd.notna(r.get("_sec_rsc")) else None),
                 "beats": rsc > 0,
+                "signal": None,
             })
+
+        # Signal ueber DENSELBEN Live-Pfad wie der Chart (FetchData + buy_sell),
+        # nicht aus asset_simulation: die Buy/Sell-Queries referenzieren
+        # Live-Only-Spalten wie ovtEma9, die dort nicht existieren, und die
+        # Marker sind positionsabhaengig. Nur so deckt sich das Signal mit dem,
+        # was der Nutzer im Asset Viewer sieht.
+        try:
+            from tradinglib import system_config as _sysconf
+            from tradinglib.portfolio_analysis import _compute_position_signals
+            _cfg = _sysconf.SystemConfig(username=username)
+            buy_q = _cfg.get_value("buy_query", "")
+            sell_q = _cfg.get_value("sell_query", "")
+            if buy_q or sell_q:
+                sig, _warn = _compute_position_signals(
+                    [r["ticker"] for r in rows if r["ticker"]],
+                    buy_q, sell_q, db_path, username)
+                for r in rows:
+                    info = sig.get(r["ticker"])
+                    if info:
+                        r["signal"] = info.get("action")
+        except Exception as exc:
+            logger.warning("market_assessment: best_stocks signal failed: %s", exc)
+
         return rows or None
     except Exception as exc:
         logger.warning("market_assessment: best_stocks block failed: %s", exc)
@@ -310,24 +385,40 @@ def _verdict(fg_b, rot_b, sec_b) -> tuple[str, float]:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def assess(ticker: str, day: str, db_path: str = "database") -> dict:
+def assess(ticker: str, day: str, db_path: str = "database",
+           username: str = "admin") -> dict:
     """Marktbeurteilung für ``ticker``. ``day`` hält den Cache tagesaktuell
-    (geht in den Cache-Key ein)."""
-    fg_b = _block_fear_greed(ticker)
-    rot_b = _block_rotation(ticker)
-    corr_b = _block_correlation()
-    sec_b = _block_sector(ticker)
-    best_b = _block_best_stocks(db_path)
-    stress_b = _block_stress(ticker)
-    fresh_b = _block_freshness(db_path)
-    # stress fliesst bewusst NICHT in _verdict ein: das Verdict ist ein
-    # etabliertes Signal aus gleichlaufenden Bausteinen — die Fruehwarnung wird
-    # daneben gestellt und qualifiziert es, statt es still zu veraendern.
-    verdict, vscore = _verdict(fg_b, rot_b, sec_b)
-    return {"ticker": ticker, "fg": fg_b, "rotation": rot_b, "correlation": corr_b,
-            "sector": sec_b, "best_stocks": best_b, "stress": stress_b,
-            "freshness": fresh_b,
-            "verdict": verdict, "verdict_score": vscore}
+    (geht in den Cache-Key ein).
+
+    Zwei Cache-Ebenen wie beim Rotation-Hub: ``st.cache_data`` innerhalb des
+    Prozesses und ``rotation_cache`` auf der Platte. Letzteres ueberlebt
+    Neustarts und laesst sich von ``warm_rotation.py`` vorbefuellen — noetig,
+    weil das Signal je Sektor-Titel ueber den teuren Live-Pfad laeuft
+    (~20 s fuer elf Sektoren) und das Dashboard die Startseite ist.
+    """
+    from tradinglib import rotation_cache
+
+    def _compute():
+        fg_b = _block_fear_greed(ticker)
+        rot_b = _block_rotation(ticker)
+        corr_b = _block_correlation()
+        sec_b = _block_sector(ticker)
+        # top_n=0 -> alle Sektoren, je ein Titel (statt frueher 5 Zeilen, in
+        # denen sich starke Sektoren doppelten und schwache ganz fehlten).
+        best_b = _block_best_stocks(db_path, top_n=0, username=username)
+        stress_b = _block_stress(ticker)
+        fresh_b = _block_freshness(db_path)
+        # stress fliesst bewusst NICHT in _verdict ein: das Verdict ist ein
+        # etabliertes Signal aus gleichlaufenden Bausteinen — die Fruehwarnung
+        # wird daneben gestellt und qualifiziert es, statt es still zu aendern.
+        verdict, vscore = _verdict(fg_b, rot_b, sec_b)
+        return {"ticker": ticker, "fg": fg_b, "rotation": rot_b,
+                "correlation": corr_b, "sector": sec_b, "best_stocks": best_b,
+                "stress": stress_b, "freshness": fresh_b,
+                "verdict": verdict, "verdict_score": vscore}
+
+    return rotation_cache.get_or_compute(
+        rotation_cache.assessment_key(ticker, username), _compute)
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────
@@ -350,6 +441,13 @@ _CLASS_KEYS = {
 _STRESS_KEYS = {
     "calm": "ma.stress_calm", "elevated": "ma.stress_elevated",
     "warning": "ma.stress_warning",
+}
+# Aktionen aus portfolio_analysis._live_signal_for_ticker. Dort sind sie aus
+# Halter-Sicht benannt (Nachkaufen/Reduzieren); fuer die Sektor-Schlaeger — die
+# man in aller Regel NICHT haelt — ist die Kauf-/Verkaufs-Lesart die passende.
+_SIGNAL_KEYS = {
+    "add": "ma.sig_buy", "hold": "ma.sig_hold",
+    "reduce": "ma.sig_sell", "conflict": "ma.sig_conflict",
 }
 
 
@@ -387,7 +485,8 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
     try:
         with region.spinner(t("ma.computing")):
             import datetime as dt
-            data = assess(ticker, dt.date.today().isoformat(), db_path)
+            data = assess(ticker, dt.date.today().isoformat(), db_path,
+                          username=username)
     except Exception as exc:
         logger.warning("market_assessment.render failed: %s", exc)
         return
@@ -500,23 +599,38 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
     if best:
         region.markdown(f"**{t('ma.best_header')}**")
         region.caption(t("ma.best_caption"))
+        # Signal-Spalte nur zeigen, wenn ueberhaupt eines berechnet werden
+        # konnte (ohne hinterlegte Buy/Sell-Query gibt es keins) — eine Spalte
+        # voller Striche waere nur Rauschen.
+        _has_sig = any(r.get("signal") for r in best)
         table = pd.DataFrame([{
             "details": f"/?symbol={r['ticker']}&details=True",
             t("ma.best_col_stock"): r["name"],
             t("ma.best_col_sector"): r["sector"],
+            t("ma.best_col_sector_rsc"): r.get("sector_rsc"),
             "OVT": r["ovt"],
             t("ma.best_col_rsc"): r["rsc"],
             t("ma.best_col_beats"): "✓" if r["beats"] else "✗",
+            **({t("ma.best_col_signal"): (t(_SIGNAL_KEYS[r["signal"]])
+                                          if r.get("signal") in _SIGNAL_KEYS
+                                          else "—")}
+               if _has_sig else {}),
         } for r in best])
         region.dataframe(
             table, use_container_width=True, hide_index=True,
             column_config={
                 "details": st.column_config.LinkColumn(
                     "", display_text=t("ma.best_col_view"), width="small"),
+                t("ma.best_col_sector_rsc"): st.column_config.NumberColumn(
+                    t("ma.best_col_sector_rsc"), format="%+.1f %%", width="small",
+                    help=t("ma.best_col_sector_rsc_help")),
                 "OVT": st.column_config.ProgressColumn(
                     "OVT", min_value=0, max_value=80, format="%.0f", width="small"),
                 t("ma.best_col_rsc"): st.column_config.ProgressColumn(
                     t("ma.best_col_rsc"), min_value=-20, max_value=20,
                     format="%+.1f %%", width="small"),
+                **({t("ma.best_col_signal"): st.column_config.TextColumn(
+                    t("ma.best_col_signal"), width="small",
+                    help=t("ma.best_col_signal_help"))} if _has_sig else {}),
             })
     region.divider()

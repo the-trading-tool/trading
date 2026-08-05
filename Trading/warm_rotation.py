@@ -16,6 +16,7 @@ Verwendung:
     python warm_rotation.py /force           # bestehende Tages-Einträge verwerfen
     python warm_rotation.py /index:^SPX,^RUT # Fear & Greed nur für diese Indizes
 """
+import datetime as dt
 import json
 import logging
 import sys
@@ -111,6 +112,64 @@ def warm_stocks(force: bool) -> tuple[int, int]:
     return ok, 1
 
 
+def warm_assessment(force: bool) -> tuple[int, int]:
+    """Warm the dashboard's market assessment (incl. the per-sector signals).
+
+    Teuerster Einzelposten des Dashboards: das Signal je Sektor-Titel laeuft
+    ueber den Live-Pfad (FetchData + buy_sell), damit es sich mit dem Chart
+    deckt. Vorgewaermt zahlt der erste Besucher das nicht.
+    """
+    from tradinglib import market_assessment as ma
+    from tradinglib import system_config as sysconf
+
+    # Default-Ticker und Nutzer wie im Dashboard; ohne hinterlegte Buy/Sell-Query
+    # gibt es kein Signal, dann ist der Lauf entsprechend billig.
+    users = _dashboard_users()
+    ok = 0
+    for user in users:
+        try:
+            ticker = (sysconf.SystemConfig(username=user)
+                      .get_value("default_ticker", "^GDAXI")) or "^GDAXI"
+        except Exception:
+            ticker = "^GDAXI"
+        key = rc.assessment_key(ticker, user)
+        if force:
+            # assess() cached selbst auf die Platte — ohne Loeschen wuerde
+            # /force nur den bestehenden Eintrag zurueckschreiben.
+            rc.drop(key)
+
+        def _compute(t=ticker, u=user):
+            # st.cache_data umgehen, damit ein zweiter Lauf im selben Prozess
+            # nicht den RAM-Cache zurueckliefert.
+            fn = getattr(ma.assess, "__wrapped__", ma.assess)
+            return fn(t, dt.date.today().isoformat(), "database", u)
+
+        ok += _run(f"assessment [{ticker} / {user}]", key, _compute, force)[0]
+    return ok, len(users)
+
+
+def _dashboard_users() -> list:
+    """Nutzer, fuer die eine Marktlage vorgewaermt wird.
+
+    Die Buy/Sell-Queries sind nutzer-scoped (``<user>:buy_query``), deshalb
+    reicht ein Lauf fuer 'admin' nicht — gewaermt wird fuer jeden Nutzer mit
+    hinterlegter Query, mindestens aber 'admin'.
+    """
+    users = set()
+    try:
+        from tradinglib.tools import Tools, open_db
+        p = Tools().get_path(path='database', file_name='config.db')
+        with open_db(p, readonly=True) as c:
+            for (k,) in c.execute(
+                    "SELECT key FROM config WHERE key LIKE '%:buy_query'"):
+                u = str(k).split(':', 1)[0]
+                if u and not u.startswith('_'):
+                    users.add(u)
+    except Exception as exc:
+        logger.debug("Nutzerliste nicht ermittelbar: %s", exc)
+    return sorted(users) or ['admin']
+
+
 def warm_global(force: bool) -> tuple[int, int]:
     """Warm Global Rotation: equities, cross-asset and each per-class universe."""
     from tradinglib import global_rotation as gr
@@ -165,6 +224,7 @@ def main(argv=None) -> None:
         'sector':     lambda: warm_sector(force),
         'stocks':     lambda: warm_stocks(force),
         'fear_greed': lambda: warm_fear_greed(force, indices),
+        'assessment': lambda: warm_assessment(force),
     }
     if only:
         if only not in sections:
