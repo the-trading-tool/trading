@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -77,6 +78,37 @@ ob dasselbe Instrument und dieselbe Methode gemeint sind.</div>
   <li>Ist noch keine <code>correlation_index.db</code> vorhanden, bietet die Seite einen
       Button <b>„Jetzt berechnen"</b> als Fallback.</li>
 </ul>
+<h2>Warum Renditen und nicht Kurse</h2>
+<p>Gerechnet wird auf <b>logarithmierten Tagesrenditen</b>
+<code>ln(C&#8348; / C&#8348;&#8331;&#8321;)</code>, nicht auf Kursniveaus. Das ist entscheidend:
+Zwei Anlagen mit langfristigem Aufwärtstrend korrelieren auf Kursbasis fast immer
+nahe +1, ohne dass das etwas über ihr Zusammenspiel aussagt. Erst die Renditen
+messen, ob sie an denselben Tagen in dieselbe Richtung laufen.</p>
+
+<h2>Was der Wert praktisch bedeutet</h2>
+<p>Ein Korrelationskoeffizient ist <b>kein Hebelmaß</b>. +0,50 sagt nichts darüber,
+<i>wie stark</i> sich etwas bewegt, nur wie gleichgerichtet. Für die
+Diversifikationswirkung zählt das Quadrat: Bei r&nbsp;=&nbsp;0,50 sind rund 25 %
+der Tagesschwankungen gemeinsam, bei r&nbsp;=&nbsp;0,80 schon 64 %. Der Schritt von
+0,5 auf 0,8 halbiert den Diversifikationsnutzen also nicht — er zerstört ihn
+weitgehend.</p>
+<p>Ebenso wichtig: Korrelation ist <b>keine Kausalität und keine Prognose</b>. Sie
+beschreibt ein Fenster der Vergangenheit (30 bzw. 90 Handelstage). Das aussagekräftige
+Ereignis ist selten der Absolutwert, sondern der <b>Vorzeichenwechsel</b> — er
+markiert einen Regimewechsel.</p>
+
+<h2>Warum zwei Fenster</h2>
+<p>30 Tage reagiert schnell, ist aber unruhig; 90 Tage ist träge, aber stabil.
+Laufen beide auseinander, ist eine Veränderung im Gange: Das kurze Fenster dreht
+zuerst. Bestätigt das lange Fenster nach, ist der Regimewechsel gefestigt — bleibt
+es liegen, war das kurze Signal Rauschen.</p>
+
+<div class="info"><b>Das wichtigste Paar für ein gemischtes Depot ist
+Aktien&nbsp;&harr;&nbsp;Anleihen.</b> Negativ ist der Normalfall und die Grundlage
+des 60/40-Gedankens: Anleihen steigen, wenn Aktien fallen. Dreht es ins Positive,
+hängen beide am selben Treiber — den Zinserwartungen — und der Puffer fehlt genau
+dann, wenn er gebraucht wird.</div>
+
 <div class="info">Voraussetzung: die sechs Instrumente müssen als Preis-DBs vorliegen.
 <code>seed_db.py</code> trägt sie in die Gruppen INDEX/CRYPTO/METALS/CURRENCIES/COMMODITIES
 ein, die von den <code>YAHOO_*_DATA_GROUP</code>/<code>/index</code>-Jobs geladen werden.

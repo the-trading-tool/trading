@@ -8,6 +8,7 @@ h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
 table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 </style>
 </head>
@@ -36,15 +37,78 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td>Top left</td><td>Improving</td><td>Weaker than the market, but momentum turning → consider entry</td></tr>
 </table>
 
-<h2>Indicators used</h2>
-<ul>
-  <li><b>RSC</b> – Relative Strength Comparison (vs. benchmark ETF)</li>
-  <li><b>CMF</b> – Chaikin Money Flow (capital in-/outflow)</li>
-  <li><b>OBV</b> – On Balance Volume (cumulative volume direction)</li>
-</ul>
-
 <h2>Choosing the universe</h2>
 <p>At the top of the dashboard: <b>US</b> (S&amp;P 500 sectors), <b>EU</b> (STOXX 600 sectors) or <b>EM</b> (Emerging Markets). The chosen universe determines the sectors, ETFs and reference index.</p>
+
+<h2>The metrics — how they are computed and what they say</h2>
+
+<p>All four measure <b>relative</b> strength: not whether a sector rises, but whether
+it does <i>better</i> than its reference index. A sector can fall and still lead, if
+the market falls harder.</p>
+
+<h3>RSC — Mansfield relative strength</h3>
+<p><code>RS = sector ETF / benchmark</code> (weekly closes), then
+<code>RSC = (RS / 30-week moving average(RS) &minus; 1) &times; 100</code>.</p>
+<p>The trick is the moving average in the denominator: what is measured is not the
+outperformance itself but its <b>deviation from its own trend</b>. A sector that has
+outperformed steadily for years hovers around 0 — it only stands out when the
+outperformance <i>accelerates</i> or <i>fades</i>. Positive = the sector is doing
+better than it typically did over the last 30 weeks. The Δ next to it is the
+week-over-week change, i.e. the direction.</p>
+
+<h3>RRG — RS-Ratio and RS-Momentum</h3>
+<p>The Relative Rotation Graph uses the same ratio series, but smoothed:</p>
+<table>
+<tr><th>Axis</th><th>Formula</th><th>Meaning</th></tr>
+<tr><td><b>RS-Ratio</b> (x)</td>
+    <td><code>100 + (EMA10(RS) / EMA40(RS) &minus; 1) &times; 100</code></td>
+    <td><b>Level</b> of relative strength. &gt;100 = ahead of the benchmark</td></tr>
+<tr><td><b>RS-Momentum</b> (y)</td>
+    <td><code>100 + (RS-Ratio / EMA5(RS-Ratio) &minus; 1) &times; 100</code></td>
+    <td><b>Change</b> in relative strength — the derivative of the x axis</td></tr>
+</table>
+<p>Because the y axis is the change of the x axis, sectors typically travel
+<b>clockwise</b>: momentum turns before the level follows. That is why
+<i>Improving</i> (top left) is the early entry quadrant and <i>Weakening</i>
+(bottom right) the early warning — not <i>Lagging</i>. The tail shows the last
+weeks (days in the daily tab); its <b>length</b> is the speed of rotation, its
+<b>direction</b> matters more than the snapshot.</p>
+
+<h3>CMF — Chaikin Money Flow (14 days)</h3>
+<p>Per bar: <code>MFM = ((C &minus; L) &minus; (H &minus; C)) / (H &minus; L)</code>,
+weighted by volume, then
+<code>CMF = &Sigma;&#8321;&#8324;(MFM &times; volume) / &Sigma;&#8321;&#8324;(volume)</code>.</p>
+<p>The multiplier asks: <b>where in the day's range did price close?</b> Near the
+high → +1 (buyers kept control), near the low → &minus;1. Multiplied by volume this
+becomes a measure of capital in- or outflow. Positive = accumulation, negative =
+distribution. Unlike price, CMF captures <i>how firmly</i> a move is backed — a
+rising price with negative CMF is a poorly supported advance.</p>
+
+<h3>OBV trend — slope of On-Balance Volume (20 days)</h3>
+<p><code>OBV = cumulative sum(sign(&Delta;close) &times; volume)</code>; a linear
+regression over the last 20 days, its slope divided by average volume and scaled
+by 100.</p>
+<p>OBV adds the full day's volume when the close is up and subtracts it when down.
+The absolute value is meaningless; the <b>slope</b> is the statement: positive =
+net volume flowing in. Normalising by average volume makes ETFs of different size
+comparable — without it XLK alone would dominate every smaller sector.</p>
+
+<div class="info"><b>Read together:</b> RSC and RRG say <i>whether</i> a sector is
+relatively strong, CMF and OBV say <i>whether capital confirms it</i>. Leading in
+the RRG with negative CMF means the lead is no longer carried by inflows — a
+candidate for the move into <i>Weakening</i>.</div>
+
+<h2>Limitations</h2>
+<ul>
+  <li>Every value is <b>relative to the chosen benchmark</b>. Switching the
+      universe (US / EU / EM) changes the benchmark and therefore every number.</li>
+  <li>RSC works on <b>weekly closes</b> and needs 30 weeks of history; young ETFs
+      do not appear.</li>
+  <li>CMF and OBV need reliable volume. For European ETFs it is fragmented across
+      venues — those values are coarser than for the US SPDRs.</li>
+  <li>The RRG tail is smoothed (EMA); it lags deliberately and turns later than
+      price after a shock.</li>
+</ul>
 
 <div class="info">The page is reachable via the <b>Sector Rotation</b> menu item or directly via <code>/?rotation=true</code>.</div>
 </body>

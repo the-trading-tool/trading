@@ -8,6 +8,7 @@ h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
 table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 </style>
 </head>
@@ -36,11 +37,77 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td>Links oben</td><td>Improving</td><td>Schwächer als Markt, aber Dynamik dreht → Einstieg prüfen</td></tr>
 </table>
 
-<h2>Verwendete Indikatoren</h2>
+<h2>Die Kennzahlen — Rechenweg und Aussage</h2>
+
+<p>Alle vier Kennzahlen messen <b>relative</b> Stärke: nicht ob ein Sektor steigt,
+sondern ob er sich <i>besser</i> entwickelt als sein Referenzindex. Ein Sektor kann
+fallen und trotzdem führend sein, wenn der Markt stärker fällt.</p>
+
+<h3>RSC — Mansfield Relative Strength</h3>
+<p><code>RS = Sektor-ETF / Benchmark</code> (Wochenschluss), daraus
+<code>RSC = (RS / gleitender 30-Wochen-Schnitt(RS) &minus; 1) &times; 100</code>.</p>
+<p>Der Kniff steckt im Schnitt als Nenner: Gemessen wird nicht die Outperformance
+selbst, sondern ihre <b>Abweichung vom eigenen Trend</b>. Ein Sektor, der seit
+Jahren gleichmäßig besser läuft, pendelt um 0 — auffällig wird er erst, wenn die
+Outperformance <i>anzieht</i> oder <i>nachlässt</i>. Positiv = der Sektor läuft
+besser als in den letzten 30 Wochen üblich, negativ = schlechter. Die Δ-Angabe
+daneben ist die Veränderung zur Vorwoche, also die Richtung.</p>
+
+<h3>RRG — RS-Ratio und RS-Momentum</h3>
+<p>Der Relative Rotation Graph nutzt dieselbe Verhältnisreihe, aber geglättet:</p>
+<table>
+<tr><th>Achse</th><th>Rechnung</th><th>Bedeutung</th></tr>
+<tr><td><b>RS-Ratio</b> (x)</td>
+    <td><code>100 + (EMA10(RS) / EMA40(RS) &minus; 1) &times; 100</code></td>
+    <td><b>Niveau</b> der relativen Stärke. &gt;100 = besser als die Benchmark</td></tr>
+<tr><td><b>RS-Momentum</b> (y)</td>
+    <td><code>100 + (RS-Ratio / EMA5(RS-Ratio) &minus; 1) &times; 100</code></td>
+    <td><b>Änderung</b> der relativen Stärke — die Ableitung der x-Achse</td></tr>
+</table>
+<p>Weil die y-Achse die Veränderung der x-Achse ist, laufen Sektoren typischerweise
+<b>im Uhrzeigersinn</b>: Die Dynamik dreht, bevor das Niveau folgt. Deshalb ist
+<i>Improving</i> (links oben) der frühe Einstiegsquadrant und <i>Weakening</i>
+(rechts unten) das frühe Warnsignal — nicht erst <i>Lagging</i>. Der Schweif zeigt
+die letzten Wochen (bzw. Tage im Daily-Tab); seine <b>Länge</b> ist das Tempo der
+Rotation, seine <b>Richtung</b> wichtiger als die Momentaufnahme.</p>
+
+<h3>CMF — Chaikin Money Flow (14 Tage)</h3>
+<p>Je Kerze: <code>MFM = ((C &minus; L) &minus; (H &minus; C)) / (H &minus; L)</code>,
+gewichtet mit dem Volumen, dann
+<code>CMF = &Sigma;&#8321;&#8324;(MFM &times; Volumen) / &Sigma;&#8321;&#8324;(Volumen)</code>.</p>
+<p>Der Multiplikator fragt: <b>Wo im Tagesbereich schloss der Kurs?</b> Nahe am Hoch
+→ +1 (Käufer behielten die Oberhand), nahe am Tief → &minus;1. Multipliziert mit dem
+Volumen wird daraus ein Maß für Kapitalzu- oder -abfluss. Positiv = Akkumulation,
+negativ = Distribution. Anders als der Preis berücksichtigt CMF, <i>mit welchem
+Nachdruck</i> eine Bewegung getragen wird — ein steigender Kurs bei negativem CMF
+ist ein schwach unterlegter Anstieg.</p>
+
+<h3>OBV-Trend — Steigung des On-Balance-Volume (20 Tage)</h3>
+<p><code>OBV = kumulierte Summe(Vorzeichen(&Delta;Close) &times; Volumen)</code>; darüber
+eine lineare Regression der letzten 20 Tage, deren Steigung durch das
+Durchschnittsvolumen geteilt und mit 100 skaliert wird.</p>
+<p>OBV addiert das gesamte Tagesvolumen bei steigendem Schluss und zieht es bei
+fallendem ab. Der Absolutwert ist wertlos, die <b>Steigung</b> ist die Aussage:
+positiv = Volumen fließt netto zu. Die Normierung auf das Durchschnittsvolumen
+macht ETFs unterschiedlicher Größe vergleichbar — ohne sie würde allein XLK jeden
+kleineren Sektor dominieren.</p>
+
+<div class="info"><b>Zusammen gelesen:</b> RSC und RRG sagen, <i>ob</i> ein Sektor
+relativ stark ist, CMF und OBV, <i>ob Kapital das bestätigt</i>. Führend im RRG bei
+negativem CMF heißt: der Vorsprung wird nicht mehr von Zuflüssen getragen — ein
+Kandidat für den Übergang nach <i>Weakening</i>.</div>
+
+<h2>Grenzen</h2>
 <ul>
-  <li><b>RSC</b> – Relative Strength Comparison (vs. Benchmark-ETF)</li>
-  <li><b>CMF</b> – Chaikin Money Flow (Kapitalzu-/abfluss)</li>
-  <li><b>OBV</b> – On Balance Volume (kumulative Volumen-Richtung)</li>
+  <li>Alle Werte sind <b>relativ zur gewählten Benchmark</b>. Ein Wechsel des
+      Universums (US / EU / EM) ändert die Benchmark und damit jede Zahl.</li>
+  <li>RSC arbeitet auf <b>Wochenschlusskursen</b> und braucht 30 Wochen Historie;
+      junge ETFs erscheinen nicht.</li>
+  <li>CMF und OBV brauchen belastbares Volumen. Bei europäischen ETFs ist es
+      über mehrere Handelsplätze fragmentiert — die Werte sind dort gröber als
+      bei den US-SPDRs.</li>
+  <li>Der RRG-Schweif ist geglättet (EMA); er reagiert bewusst träge und dreht
+      nach einem Schock später als der Preis.</li>
 </ul>
 
 <h2>Universum wählen</h2>

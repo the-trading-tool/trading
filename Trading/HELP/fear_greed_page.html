@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -75,6 +76,76 @@ extreme Werte markieren oft Wendepunkte.</p>
   <li><b>Komponenten-Balken:</b> jeder Teilwert mit Kurz-Begründung (z. B. „VIX 18,2
       (64. Perzentil)").</li>
   <li><b>🔄 Aktualisieren:</b> erzwingt eine Neuberechnung (sonst tagesaktuell gecacht).</li>
+</ul>
+
+<h2>Wie die Komponenten funktionieren</h2>
+
+<p>Die sieben Bausteine messen sehr verschiedene Dinge; erst die gemeinsame
+Normierung macht sie addierbar. <b>Jede Komponente wird gegen ihre eigene
+Mehrjahres-Historie in einen Perzentilrang 0–100 übersetzt</b> — nicht gegen eine
+feste Skala. „VIX 18" ist für sich genommen bedeutungslos; entscheidend ist, wo 18
+in der Verteilung der letzten Jahre liegt. Dadurch bleibt der Index über
+Marktphasen hinweg vergleichbar.</p>
+
+<table>
+<tr><th>Baustein</th><th>Was gemessen wird</th><th>Was ein hoher Wert bedeutet</th></tr>
+<tr><td><b>Momentum</b></td>
+    <td>Abstand des Index zu seinem SMA125</td>
+    <td>Kurs deutlich über dem Halbjahresschnitt — Trendstärke, aber auch
+        Überdehnung</td></tr>
+<tr><td><b>Marktbreite</b></td>
+    <td>Anteil der Indexmitglieder über SMA200, mit RSI&nbsp;&gt;&nbsp;50 und im
+        Bullen-Regime</td>
+    <td>Der Anstieg wird breit getragen, nicht nur von wenigen Schwergewichten</td></tr>
+<tr><td><b>52-Wochen-Stärke</b></td>
+    <td>Neue 52-Wochen-Hochs minus Tiefs</td>
+    <td>Viele Titel markieren Jahreshochs — spätzyklisches Gier-Signal</td></tr>
+<tr><td><b>Volatilität</b></td>
+    <td>VIX in seiner eigenen 1-Jahres-Spanne</td>
+    <td><b>Invertiert:</b> niedriger VIX = hoher Wert = Sorglosigkeit</td></tr>
+<tr><td><b>Terminstruktur</b></td>
+    <td>VIX gegen VIX3M</td>
+    <td>Normale Contango-Kurve = ruhig. Backwardation (VIX&nbsp;&gt;&nbsp;VIX3M)
+        = akute Angst, der Wert bricht ein</td></tr>
+<tr><td><b>Safe Haven</b></td>
+    <td>60-Tage-Rendite Aktien minus Staatsanleihen (TLT)</td>
+    <td>Aktien schlagen Anleihen deutlich — Risikobereitschaft</td></tr>
+<tr><td><b>Junk-Bond-Nachfrage</b></td>
+    <td>60-Tage-Rendite HYG minus LQD</td>
+    <td>Hochzins schlägt Investment-Grade — Anleger werden für Kreditrisiko
+        bezahlt und nehmen es</td></tr>
+</table>
+
+<h2>Wie der Gesamtwert zustande kommt</h2>
+<p>Der Index ist der <b>gleichgewichtete Mittelwert der verfügbaren</b> Komponenten.
+Fehlt eine Reihe (z. B. weil VIX3M für einen Index nicht sinnvoll ist), wird sie
+weggelassen statt mit 0 gewertet — die Zahl unter dem Gauge nennt deshalb, wie
+viele Bausteine eingeflossen sind. Weniger Bausteine heißt nicht „falsch", aber
+schmaler abgestützt.</p>
+
+<h2>Wie man ihn liest</h2>
+<ul>
+  <li><b>Extreme sind Kontraindikatoren.</b> Große Gier tritt gehäuft an Hochs auf,
+      große Angst an Tiefs. Der Index ist ein Stimmungsmaß, kein Trendfolger —
+      er sagt nicht „kaufen", sondern „die Stimmung ist einseitig".</li>
+  <li><b>Die Richtung schlägt den Stand.</b> Ein Fall von 80 auf 60 ist ein anderes
+      Signal als ein Anstieg von 40 auf 60, obwohl beide bei 60 enden. Deshalb
+      steht neben dem Wert die Veränderung über rund 30 Tage.</li>
+  <li><b>Mittlere Werte sagen wenig.</b> Zwischen etwa 45 und 55 ist die Aussage
+      schwach; dort lohnt der Blick auf die Einzelbalken mehr als auf die Summe.</li>
+  <li><b>Divergenzen sind das Interessanteste.</b> Steigender Kurs bei fallender
+      Marktbreite heißt: der Anstieg wird von immer weniger Titeln getragen.</li>
+</ul>
+
+<h2>Grenzen</h2>
+<ul>
+  <li>Die Makro-Reihen (VIX, TLT, HYG, LQD) sind <b>US-Daten</b>. Bei einem
+      DAX- oder Nikkei-Index ist nur die Marktbreite lokal, der Rest bleibt eine
+      globale Risikoaussage.</li>
+  <li>Die Perzentil-Normierung braucht Historie. Kurz nach dem Anlegen eines
+      Index sind die Werte instabil.</li>
+  <li>Der Index kann <b>lange</b> im Extrem verharren. „Extreme Gier" ist ein
+      Zustand, kein Zeitpunkt — als alleiniger Auslöser ist er untauglich.</li>
 </ul>
 
 <div class="info">Die <b>Marktbreite</b> ist je Index lokal; die <b>Makro-Reihen</b>

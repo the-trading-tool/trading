@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -75,6 +76,75 @@ turning points.</p>
   <li><b>Component bars:</b> each sub-value with a short rationale (e.g. "VIX 18.2
       (64th percentile)").</li>
   <li><b>🔄 Refresh:</b> forces a recompute (otherwise cached per day).</li>
+</ul>
+
+<h2>How the components work</h2>
+
+<p>The seven building blocks measure very different things; only the shared
+normalisation makes them additive. <b>Each component is translated into a 0–100
+percentile rank against its own multi-year history</b> — not against a fixed scale.
+"VIX 18" on its own is meaningless; what matters is where 18 sits in the
+distribution of the last years. That keeps the index comparable across market
+regimes.</p>
+
+<table>
+<tr><th>Component</th><th>What is measured</th><th>What a high value means</th></tr>
+<tr><td><b>Momentum</b></td>
+    <td>Distance of the index from its SMA125</td>
+    <td>Price well above the half-year average — trend strength, but also
+        stretch</td></tr>
+<tr><td><b>Breadth</b></td>
+    <td>Share of members above SMA200, with RSI&nbsp;&gt;&nbsp;50 and in a bull
+        regime</td>
+    <td>The advance is carried broadly, not just by a few heavyweights</td></tr>
+<tr><td><b>52-week strength</b></td>
+    <td>New 52-week highs minus lows</td>
+    <td>Many names at yearly highs — a late-cycle greed signal</td></tr>
+<tr><td><b>Volatility</b></td>
+    <td>VIX within its own 1-year range</td>
+    <td><b>Inverted:</b> low VIX = high score = complacency</td></tr>
+<tr><td><b>Term structure</b></td>
+    <td>VIX versus VIX3M</td>
+    <td>Normal contango = calm. Backwardation (VIX&nbsp;&gt;&nbsp;VIX3M) = acute
+        fear, the score collapses</td></tr>
+<tr><td><b>Safe haven</b></td>
+    <td>60-day return of equities minus Treasuries (TLT)</td>
+    <td>Equities clearly beat bonds — risk appetite</td></tr>
+<tr><td><b>Junk bond demand</b></td>
+    <td>60-day return HYG minus LQD</td>
+    <td>High yield beats investment grade — investors are paid for credit risk
+        and take it</td></tr>
+</table>
+
+<h2>How the overall value is formed</h2>
+<p>The index is the <b>equal-weighted mean of the available</b> components. If a
+series is missing (e.g. because VIX3M is not meaningful for an index) it is
+dropped rather than counted as 0 — which is why the line below the gauge states
+how many building blocks went in. Fewer blocks does not mean "wrong", but more
+narrowly supported.</p>
+
+<h2>How to read it</h2>
+<ul>
+  <li><b>Extremes are contrarian.</b> Great greed clusters at tops, great fear at
+      bottoms. The index is a sentiment gauge, not a trend follower — it does not
+      say "buy", it says "sentiment is one-sided".</li>
+  <li><b>Direction beats level.</b> A fall from 80 to 60 is a different signal from
+      a rise from 40 to 60, although both end at 60. That is why the change over
+      roughly 30 days is shown next to the value.</li>
+  <li><b>Mid-range values say little.</b> Between about 45 and 55 the statement is
+      weak; there the individual bars are more informative than the total.</li>
+  <li><b>Divergences are the most interesting part.</b> Rising price with falling
+      breadth means the advance is carried by fewer and fewer names.</li>
+</ul>
+
+<h2>Limitations</h2>
+<ul>
+  <li>The macro series (VIX, TLT, HYG, LQD) are <b>US data</b>. For a DAX or Nikkei
+      index only breadth is local; the rest remains a global risk statement.</li>
+  <li>Percentile normalisation needs history. Shortly after adding an index the
+      values are unstable.</li>
+  <li>The index can stay at an extreme for a <b>long</b> time. "Extreme greed" is a
+      state, not a moment — as a standalone trigger it is unsuitable.</li>
 </ul>
 
 <div class="info">Breadth is local to each index; the macro series (VIX, bonds, credit)

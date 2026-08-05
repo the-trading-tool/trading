@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -53,6 +54,52 @@ den Daten; relative Stärke ist der etablierte Ersatz.</p>
 <tr><td><b>Zurückfallend</b> (unten links)</td><td>schwach und fallend — gemieden</td></tr>
 <tr><td><b>Aufholend</b> (oben links)</td><td>noch schwach, aber steigend — Kapital kommt an</td></tr>
 </table>
+
+<h2>Die Kennzahlen — Rechenweg und Aussage</h2>
+
+<h3>Warum alles in EUR gerechnet wird</h3>
+<p>Jeder Index wird über sein FX-Paar in EUR umgerechnet, <b>bevor</b> die relative
+Stärke gebildet wird. Das ist kein Kosmetik-Schritt: Für einen Anleger mit
+EUR-Konto ist die Währungsbewegung Teil der Rendite. Ein Markt kann in lokaler
+Währung steigen und in EUR trotzdem verlieren — die Seite zeigt die Sicht, die für
+das Depot zählt.</p>
+
+<h3>Die Benchmark ist der Korb selbst</h3>
+<p>Referenz ist ein <b>gleichgewichteter EUR-Korb der gezeigten Märkte</b>, kein
+externer Index. Jede Aussage ist damit ausdrücklich <i>relativ innerhalb der
+Auswahl</i>: „Führend" heißt besser als der Durchschnitt der übrigen Märkte, nicht
+besser als der Weltmarkt. Fallen alle Märkte, liegt der Korb ebenfalls im Minus und
+ein Markt kann führen, während er Geld verliert.</p>
+
+<h3>RS-Ratio und RS-Momentum</h3>
+<p>Mit <code>RS = Markt / Korb</code> (beide EUR-normiert und auf einen gemeinsamen
+Startpunkt indexiert):</p>
+<ul>
+  <li><code>RS-Ratio = 100 + (EMA10(RS) / EMA40(RS) &minus; 1) &times; 100</code> —
+      das <b>Niveau</b>: &gt;100 = der Markt schlägt den Korb.</li>
+  <li><code>RS-Momentum = 100 + (RS-Ratio / EMA5(RS-Ratio) &minus; 1) &times; 100</code> —
+      die <b>Änderung</b> dieses Niveaus.</li>
+</ul>
+<p>Da die zweite Größe die Ableitung der ersten ist, rotieren Märkte im
+Uhrzeigersinn durch die Quadranten. <i>Aufholend</i> markiert den frühen Zufluss,
+<i>Abschwächend</i> den frühen Abfluss — beide drehen, bevor sich das Niveau ändert.</p>
+
+<h3>Mansfield RSC — die Zu-/Abfluss-Rangliste</h3>
+<p><code>RSC = (RS / gleitender 30-Wochen-Schnitt(RS) &minus; 1) &times; 100</code>,
+dieselbe Definition wie in der Sektorrotation. Sie beantwortet nicht „wer ist
+stark?", sondern „<b>wo verschiebt sich gerade etwas gegenüber dem eigenen
+Normalzustand?</b>" — deshalb taugt sie als Zu-/Abfluss-Proxy.</p>
+
+<h3>Paar-Matrix</h3>
+<p>Jede Zelle ist die Differenz der EUR-Renditen zweier Märkte über das gewählte
+Fenster (in Prozentpunkten). Die Matrix ist antisymmetrisch: was in einer Zelle
+steht, steht gespiegelt mit umgekehrtem Vorzeichen. Nützlich für die konkrete
+Frage „US oder Europa?", die der RRG allein nicht beantwortet.</p>
+
+<div class="info"><b>Wichtig:</b> Das Ganze ist ein <b>Proxy über relative Stärke</b>,
+keine gemessenen Mittelzuflüsse. Es wird aus Kursen abgeleitet, nicht aus
+Fondsdaten — starke relative Performance <i>impliziert</i> Kapitalzufluss, belegt
+ihn aber nicht.</div>
 
 <div class="info">Die Kennzahlen sind <b>identisch zur Sektor-Rotation</b>
 (JdK RS-Ratio/RS-Momentum, Mansfield RSC) — hier nur auf Markt-Indizes statt

@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -52,6 +53,50 @@ relative strength is the established substitute.</p>
 <tr><td><b>Lagging</b> (bottom left)</td><td>weak and falling — avoided</td></tr>
 <tr><td><b>Improving</b> (top left)</td><td>still weak but rising — capital arriving</td></tr>
 </table>
+
+<h2>The metrics — how they are computed and what they say</h2>
+
+<h3>Why everything is computed in EUR</h3>
+<p>Every index is converted into EUR via its FX pair <b>before</b> relative strength
+is derived. This is not cosmetic: for an investor with a EUR account the currency
+move is part of the return. A market can rise in local currency and still lose in
+EUR — the page shows the view that matters for the portfolio.</p>
+
+<h3>The benchmark is the basket itself</h3>
+<p>The reference is an <b>equal-weighted EUR basket of the markets shown</b>, not an
+external index. Every statement is therefore explicitly <i>relative within the
+selection</i>: "leading" means better than the average of the other markets, not
+better than the world. If all markets fall, the basket falls too and a market can
+lead while losing money.</p>
+
+<h3>RS-Ratio and RS-Momentum</h3>
+<p>With <code>RS = market / basket</code> (both EUR-normalised and rebased to a
+common start):</p>
+<ul>
+  <li><code>RS-Ratio = 100 + (EMA10(RS) / EMA40(RS) &minus; 1) &times; 100</code> —
+      the <b>level</b>: &gt;100 = the market beats the basket.</li>
+  <li><code>RS-Momentum = 100 + (RS-Ratio / EMA5(RS-Ratio) &minus; 1) &times; 100</code> —
+      the <b>change</b> of that level.</li>
+</ul>
+<p>Because the second is the derivative of the first, markets rotate clockwise
+through the quadrants. <i>Improving</i> marks the early inflow, <i>Weakening</i> the
+early outflow — both turn before the level changes.</p>
+
+<h3>Mansfield RSC — the in-/outflow ranking</h3>
+<p><code>RSC = (RS / 30-week moving average(RS) &minus; 1) &times; 100</code>, the same
+definition as in sector rotation. It does not answer "who is strong?" but
+"<b>where is something shifting relative to its own normal?</b>" — which is what
+makes it usable as a flow proxy.</p>
+
+<h3>Pair matrix</h3>
+<p>Each cell is the difference between the EUR returns of two markets over the
+chosen window (in percentage points). The matrix is antisymmetric: a cell's mirror
+carries the same number with the opposite sign. Useful for the concrete question
+"US or Europe?", which the RRG alone does not answer.</p>
+
+<div class="info"><b>Important:</b> this is a <b>proxy via relative strength</b>, not
+measured fund flows. It is derived from prices, not from fund data — strong
+relative performance <i>implies</i> inflow but does not prove it.</div>
 
 <div class="info">The metrics are <b>identical to sector rotation</b>
 (JdK RS-Ratio/RS-Momentum, Mansfield RSC) — here applied to market indices instead of

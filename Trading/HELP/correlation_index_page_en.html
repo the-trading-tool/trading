@@ -9,6 +9,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
 th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
 .info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
 .warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
 ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 </style>
@@ -77,6 +78,35 @@ by the scheduler. Job command:</p>
   <li>If no <code>correlation_index.db</code> exists yet, the page offers a
       <b>"Compute now"</b> button as a fallback.</li>
 </ul>
+<h2>Why returns and not prices</h2>
+<p>The computation runs on <b>logarithmic daily returns</b>
+<code>ln(C&#8348; / C&#8348;&#8331;&#8321;)</code>, not on price levels. This matters: two assets
+with a long-term uptrend correlate close to +1 on a price basis almost by
+construction, which says nothing about how they interact. Only returns measure
+whether they move the same way on the same days.</p>
+
+<h2>What the value means in practice</h2>
+<p>A correlation coefficient is <b>not a magnitude measure</b>. +0.50 says nothing
+about <i>how far</i> something moves, only how aligned the moves are. For
+diversification what counts is the square: at r&nbsp;=&nbsp;0.50 about 25 % of the
+daily variation is shared, at r&nbsp;=&nbsp;0.80 already 64 %. Going from 0.5 to 0.8
+does not halve the diversification benefit — it largely destroys it.</p>
+<p>Equally important: correlation is <b>neither causation nor forecast</b>. It
+describes a window of the past (30 or 90 trading days). The informative event is
+rarely the absolute level but the <b>change of sign</b> — that marks a regime
+change.</p>
+
+<h2>Why two windows</h2>
+<p>30 days reacts fast but is noisy; 90 days is slow but stable. When they diverge,
+something is shifting: the short window turns first. If the long window follows,
+the regime change is confirmed — if it does not, the short signal was noise.</p>
+
+<div class="info"><b>The key pair for a mixed portfolio is
+equities&nbsp;&harr;&nbsp;bonds.</b> Negative is the normal case and the basis of the
+60/40 idea: bonds rise when equities fall. When it turns positive both hinge on the
+same driver — rate expectations — and the cushion is missing exactly when it is
+needed.</div>
+
 <div class="info">Prerequisite: the six instruments must be present as price DBs.
 <code>seed_db.py</code> adds them to the INDEX/CRYPTO/METALS/CURRENCIES/COMMODITIES groups,
 which are loaded by the <code>YAHOO_*_DATA_GROUP</code>/<code>/index</code> jobs.
