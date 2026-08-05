@@ -23,6 +23,7 @@ from tradinglib.sector_rotation import (
     SectorRotation,
 )
 from tradinglib.i18n import t as _t
+from tradinglib import rotation_cache
 
 logger = logging.getLogger(__name__)
 
@@ -110,25 +111,39 @@ def _load_stock_data(sector: str, rank_col: str, top_n: int, show_rsc: bool, sec
     """
     from tradinglib.sector_stocks import query_sector_stocks, enrich_with_rsc
 
-    df, debug_info = query_sector_stocks(sector=sector, rank_col=rank_col, limit=top_n)
-    if not df.empty and show_rsc and sector_etf:
-        df = enrich_with_rsc(df, sector_etf=sector_etf, weeks=4)
-    return df, debug_info
+    def _compute():
+        df, debug_info = query_sector_stocks(sector=sector, rank_col=rank_col, limit=top_n)
+        if not df.empty and show_rsc and sector_etf:
+            df = enrich_with_rsc(df, sector_etf=sector_etf, weeks=4)
+        return df, debug_info
+
+    key = rotation_cache.stock_key(sector, rank_col, top_n, show_rsc, sector_etf)
+    return rotation_cache.get_or_compute(key, _compute)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_data(benchmark: str, period: str, etfs_json: str, weights_json: str, include_pe: bool):
-    """Load and compute all sector rotation data; cached for 1 hour."""
-    etfs    = json.loads(etfs_json)
-    weights = json.loads(weights_json)
-    rot = SectorRotation(
-        sector_etfs=etfs, benchmark=benchmark, period=period, weights=weights
-    )
-    rot.fetch_all()
-    summary        = rot.build_summary(include_pe=include_pe)
-    rrg_weekly     = rot.calc_rrg_coordinates(tail_weeks=5)
-    rrg_daily      = rot.calc_rrg_coordinates_daily(tail_days=15)
-    return summary, rrg_weekly, rrg_daily
+    """Load and compute all sector rotation data.
+
+    Two cache layers: ``st.cache_data`` for repeat renders inside this process,
+    and ``rotation_cache`` on disk so the result survives restarts and can be
+    precomputed by ``warm_rotation.py`` before the first visitor of the day.
+    """
+    key = rotation_cache.sector_key(benchmark, period, etfs_json, weights_json, include_pe)
+
+    def _compute():
+        etfs    = json.loads(etfs_json)
+        weights = json.loads(weights_json)
+        rot = SectorRotation(
+            sector_etfs=etfs, benchmark=benchmark, period=period, weights=weights
+        )
+        rot.fetch_all()
+        summary        = rot.build_summary(include_pe=include_pe)
+        rrg_weekly     = rot.calc_rrg_coordinates(tail_weeks=5)
+        rrg_daily      = rot.calc_rrg_coordinates_daily(tail_days=15)
+        return summary, rrg_weekly, rrg_daily
+
+    return rotation_cache.get_or_compute(key, _compute)
 
 
 # ─── Page class ───────────────────────────────────────────────────────────────
@@ -173,6 +188,9 @@ class SectorRotationPage:
             help="Fetches forwardPE from Yahoo Finance — adds ~10 s.",
         )
         if c_refresh.button(_t('sr.refresh'), use_container_width=True):
+            # Both layers, otherwise the persisted day-cache would keep serving
+            # the old result and the button would look broken.
+            rotation_cache.clear()
             st.cache_data.clear()
 
         # Universe-specific note (FX warning for EM, etc.)
@@ -771,7 +789,13 @@ class SectorRotationPage:
 
         tickers_for_charts = df["ticker"] if "ticker" in df.columns else pd.Series(dtype=str)
         if not tickers_for_charts.empty:
-            with st.expander(_t('sr.stocks_chart_expander', n=len(df), sector=sector), expanded=False):
+            # Deliberately a checkbox, NOT an expander: Streamlit executes an
+            # expander's body even while it is collapsed, so the chart grid
+            # (one OHLC fetch + indicator run per ticker, ~27 s for 20 stocks)
+            # was rebuilt on every single rerun although nobody could see it.
+            # Gating on the checkbox defers that work until it is asked for.
+            if st.checkbox(_t('sr.stocks_chart_expander', n=len(df), sector=sector),
+                           value=False, key="stocks_show_charts"):
                 st.caption(_t('sr.stocks_chart_caption'))
                 try:
                     from tradinglib import tiny_chart as tc

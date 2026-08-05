@@ -12,6 +12,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from tradinglib import global_rotation as gr
+from tradinglib import rotation_cache
 from tradinglib.i18n import t
 
 # Quadrant → (Farbe, x-Anker, y-Anker) für den RRG-Hintergrund
@@ -33,18 +34,26 @@ _CLASS_COLOR = {"Equity": "#1f77b4", "Bond": "#795548", "Metal": "#C9A227",
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _compute_cached(day: str) -> dict:
-    return gr.compute()               # nur Aktien (RRG + Paar-Matrix)
+    # rotation_cache = zweite, persistente Ebene: überlebt Neustarts und wird von
+    # warm_rotation.py vorbefüllt (st.cache_data lebt nur im Streamlit-Prozess).
+    return rotation_cache.get_or_compute(
+        rotation_cache.global_key("equities"),
+        lambda: gr.compute())                      # nur Aktien (RRG + Paar-Matrix)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _compute_flows_cached(day: str) -> dict:
-    return gr.compute(gr.ASSETS_ALL)  # Cross-Asset (Zu-/Abfluss-Balken)
+    return rotation_cache.get_or_compute(
+        rotation_cache.global_key("all"),
+        lambda: gr.compute(gr.ASSETS_ALL))         # Cross-Asset (Zu-/Abfluss-Balken)
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _compute_universe_cached(day: str, universe: str) -> dict:
     # RRG je Anlageklasse (eigener EUR-Korb-Benchmark → vergleichbare Vola).
-    return gr.compute(gr.UNIVERSES.get(universe, gr.EQUITIES))
+    return rotation_cache.get_or_compute(
+        rotation_cache.global_key(f"uni|{universe}"),
+        lambda: gr.compute(gr.UNIVERSES.get(universe, gr.EQUITIES)))
 
 
 class GlobalRotationPage:

@@ -287,6 +287,7 @@ JOBS = [
     ("22:00", "asset_perf2.py",        "/all /add_current /silent /group:ETP", WD+",saturday",  "ASSET_PERFORMANCE_ETP",       "",      "",            "", 1),
     ("10:00", "get_asset_data.py",     "1m:5d 1mo:5y 60m:2y 1d:5y /all /group:ETP /worker:4",       "saturday", "YAHOO_W_ETP",        "",      "",            "", 1),
     ("10:30", "warm_market_stress.py", "",                                    WD+",saturday,sunday", "WARM_MARKET_STRESS",     "",      "",            "", 1),
+    ("10:35", "warm_rotation.py",      "",                                    WD+",saturday,sunday", "WARM_ROTATION",          "",      "",            "", 1),
     ("5",     "get_asset_data.py",     "1m:2d /group:"+US,                    "minutes",        "YAHOO_M_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
     ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:"+US,            "hours",          "YAHOO_H_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
     ("5",     "get_asset_data.py",     "1m:2d /group:"+AS,                    "minutes",        "YAHOO_M_DATA_MEMBER_ASIA",    "",      "22:00-08:00", WD, 1),

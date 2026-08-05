@@ -11,6 +11,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 from tradinglib import fear_greed as fg
+from tradinglib import rotation_cache
 from tradinglib.i18n import t
 
 # Reihenfolge + Locale-Key je Komponente
@@ -54,7 +55,10 @@ def _color(score: float) -> str:
 def _compute_cached(index: str, day: str) -> dict:
     # `day` (ohne führenden Unterstrich → geht in den Cache-Key ein) hält den
     # Cache tagesaktuell: neuer Tag → Neuberechnung.
-    return fg.compute(index)
+    # rotation_cache = zweite, persistente Ebene: überlebt Neustarts und wird von
+    # warm_rotation.py vorbefüllt (st.cache_data lebt nur im Streamlit-Prozess).
+    return rotation_cache.get_or_compute(rotation_cache.fear_greed_key(index),
+                                         lambda: fg.compute(index))
 
 
 class FearGreedPage:
@@ -137,6 +141,9 @@ class FearGreedPage:
         index = col_idx.selectbox(t('fg.index_label'), _INDEX_OPTIONS, index=0,
                                   key="_fg_index")
         if col_btn.button(t('fg.refresh'), key="_fg_refresh"):
+            # Both layers — clearing only the in-process cache would leave the
+            # persisted day-cache serving the old score, making the button a no-op.
+            rotation_cache.clear()
             _compute_cached.clear()
 
         with st.spinner(t('fg.computing')):
