@@ -427,9 +427,10 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         d30 = fg_b.get("delta_30d")
         sub = band if d30 is None else f"{band} · {d30:+.0f} ({fg_b.get('delta_days', _FG_TREND_DAYS)}T)"
         c1.metric(t("ma.fg_label", index=str(fg_b["index"]).lstrip("^")),
-                  f"{fg_b['score']:.0f}", delta=sub, delta_color="off")
+                  f"{fg_b['score']:.0f}", delta=sub, delta_color="off",
+                  help=t("ma.fg_help"))
     else:
-        c1.metric(t("ma.fg_label", index=tk), t("ma.na"))
+        c1.metric(t("ma.fg_label", index=tk), t("ma.na"), help=t("ma.fg_help"))
 
     # 2. Global Rotation (Heimatmarkt)
     rot_b = data.get("rotation")
@@ -438,27 +439,29 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         quad = t(_QUAD_KEYS.get(home["quadrant"], "gr.q_lagging"))
         delta = _rsc_text(home.get("rsc"), home.get("rsc_prev"))
         c2.metric(t("ma.rotation_label", code=home["code"]), quad,
-                  delta=delta, delta_color="off")
+                  delta=delta, delta_color="off", help=t("ma.rotation_help"))
     else:
-        c2.metric(t("ma.rotation_label", code=tk), t("ma.na"))
+        c2.metric(t("ma.rotation_label", code=tk), t("ma.na"),
+                  help=t("ma.rotation_help"))
 
     # 3. Korrelation Aktien↔Anleihen
     corr_b = data.get("correlation")
     if corr_b:
         regime = t(f"ma.corr_regime_{corr_b['regime']}")
         c3.metric(t("ma.corr_label"), f"{corr_b['value']:+.2f}",
-                  delta=regime, delta_color="off")
+                  delta=regime, delta_color="off", help=t("ma.corr_help"))
     else:
-        c3.metric(t("ma.corr_label"), t("ma.na"))
+        c3.metric(t("ma.corr_label"), t("ma.na"), help=t("ma.corr_help"))
 
     # 4. Sector Rotation (führender Sektor)
     sec_b = data.get("sector")
     if sec_b:
         name, rsc, prev = sec_b["leader"]
         c4.metric(t("ma.sector_label"), name,
-                  delta=_rsc_text(rsc, prev), delta_color="off")
+                  delta=_rsc_text(rsc, prev), delta_color="off",
+                  help=t("ma.sector_help"))
     else:
-        c4.metric(t("ma.sector_label"), t("ma.na"))
+        c4.metric(t("ma.sector_label"), t("ma.na"), help=t("ma.sector_help"))
 
     # 5. Frühwarnung Marktbreite — der einzige vorausschauende Baustein
     st_b = data.get("stress")
@@ -466,9 +469,9 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         lvl = t(_STRESS_KEYS.get(st_b["level"], "ma.stress_calm"))
         sub = t("ma.stress_divergence") if st_b.get("divergence") else lvl
         c5.metric(t("ma.stress_label"), f"{st_b['score']:.0f}",
-                  delta=sub, delta_color="off")
+                  delta=sub, delta_color="off", help=t("ma.stress_help"))
     else:
-        c5.metric(t("ma.stress_label"), t("ma.na"))
+        c5.metric(t("ma.stress_label"), t("ma.na"), help=t("ma.stress_help"))
 
     # Synthese-Zeile: Cross-Asset-Extreme + schwächster Sektor
     bits = []
@@ -485,6 +488,12 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
         bits.append(t("ma.sector_laggard", name=nm, val=f"{rsc:+.1f}"))
     if bits:
         region.caption(" · ".join(bits))
+
+    # ── Lesehilfe: Herkunft und Deutung der fuenf Kennzahlen ──────────────────
+    # Nur Markdown im Rumpf — ein zugeklappter Expander fuehrt seinen Inhalt in
+    # Streamlit trotzdem aus, hier kostet das aber nichts.
+    with region.expander(t("ma.howto_header"), expanded=False):
+        st.markdown(t("ma.howto_body"))
 
     # ── Sektor-Schläger: Top 5 Aktien, die ihren Sektor am stärksten schlagen ──
     best = data.get("best_stocks")
