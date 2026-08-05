@@ -120,6 +120,13 @@ class BannerPage():
         from tradinglib.backtest_widgets import render_portfolio_overlap
         render_portfolio_overlap(df, region=self.region)
 
+    # ── Position alerts ───────────────────────────────────────────────────────
+
+    def _render_position_alerts(self, df: pd.DataFrame):
+        """Render open positions that reached (or approach) their stop/target level."""
+        from tradinglib.backtest_widgets import render_position_alerts
+        render_position_alerts(df, region=self.region, db_path=self.db_path)
+
     # ── Monthly heatmap ───────────────────────────────────────────────────────
 
     def _render_per_strategy_heatmaps(self, df: pd.DataFrame):
@@ -278,8 +285,15 @@ class BannerPage():
         # ── Portfolio value over time ──────────────────────────────────────
         if not trades_df.empty and 'timestamp' in trades_df.columns:
             try:
-                from tradinglib.portfolio_analysis import _fetch_close_series_for_portfolio
-                from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+                # Reconstruction + valuation is done by _build_portfolio_history:
+                # it values the held shares daily AND converts every listing
+                # currency into the system currency (incl. the GBp minor unit).
+                # The previous hand-rolled loop here multiplied share counts by
+                # the RAW close price, so LSE holdings quoted in pence were
+                # valued 100x too high — e.g. Centrica at 71,357 EUR instead of
+                # 832 EUR — which inflated the whole curve.
+                from tradinglib.portfolio_analysis import (
+                    _build_portfolio_history, _listing_currency)
 
                 # Build daily net-shares per ticker from trade history
                 tdf_sorted = trades_df.dropna(subset=['timestamp']).copy()
@@ -291,81 +305,54 @@ class BannerPage():
                 )
 
                 all_tickers = [t for t in tdf_sorted['ticker'].dropna().unique() if t and len(str(t)) > 1]
-                first_date = tdf_sorted['timestamp'].min().normalize()
-                today      = pd.Timestamp.now().normalize()
-                date_range = pd.date_range(first_date, today, freq='D')
 
-                # Fetch price series for all tickers in parallel
+                # Listing currency per ticker — NOT the trade currency: a
+                # Scalable buy is booked in EUR while the Yahoo listing may
+                # quote in GBp or USD. That distinction is the whole bug.
+                info_map = {}
+                try:
+                    from tradinglib.tools import open_db as _open_db
+                    from tradinglib.tools import Tools as _Tools
+                    _info_db = _Tools().get_path(path=self.db_path,
+                                                 file_name='asset_info.db')
+                    with _open_db(_info_db, readonly=True) as _c:
+                        for _tk in all_tickers:
+                            _r = _c.execute(
+                                'SELECT currency FROM asset_info WHERE ticker=?',
+                                (_tk,)).fetchone()
+                            if _r and _r[0]:
+                                info_map[_tk] = {'currency': _r[0]}
+                except Exception:
+                    logger.debug('Scalable chart: currency lookup failed', exc_info=True)
+
+                currency_map = {tk: _listing_currency(tk, info_map) for tk in all_tickers}
+
+                events = pd.DataFrame({
+                    '_ts':         tdf_sorted['timestamp'],
+                    '_ticker':     tdf_sorted['ticker'],
+                    '_signed_sh':  tdf_sorted['signed_shares'],
+                    # Capital deployed is booked in the trade currency (EUR at
+                    # Scalable); shares x trade price, positive on buy.
+                    '_signed_val': tdf_sorted['signed_shares'] * pd.to_numeric(
+                        tdf_sorted.get('price', pd.Series(dtype=float)),
+                        errors='coerce').fillna(0).abs(),
+                    '_cur':        tdf_sorted.get('currency', self.system_currency or 'EUR'),
+                })
+
                 with st.spinner('Lade Kursdaten für Portfolio-Chart …'):
-                    price_map = {}
-                    with ThreadPoolExecutor(max_workers=min(8, len(all_tickers))) as ex:
-                        futs = {ex.submit(_fetch_close_series_for_portfolio, t, self.db_path): t for t in all_tickers}
-                        for fut in _as_completed(futs):
-                            tk = futs[fut]
-                            try:
-                                s = fut.result()
-                                if s is not None and not s.empty:
-                                    s.index = pd.to_datetime(s.index, errors='coerce').normalize()
-                                    price_map[tk] = s.groupby(level=0).last()
-                            except Exception:
-                                pass
+                    hist = _build_portfolio_history(
+                        events, db_path=self.db_path,
+                        system_currency=(self.system_currency or 'EUR'),
+                        currency_map=currency_map)
 
-                # Precompute daily portfolio state: shares held + cost basis per ticker
-                # Process trades chronologically once; snapshot state per calendar day.
-                has_price_col = 'price' in tdf_sorted.columns
-                daily_states = {}   # date → {ticker: (shares, cost_basis)}
-                state = {}          # {ticker: [shares, cost_basis]}  (mutable)
-                prev_day = None
-
-                for _, row in tdf_sorted.iterrows():
-                    day = row['timestamp'].normalize()
-                    # Snapshot at start of each new day (before today's trades)
-                    if prev_day is not None and day != prev_day:
-                        daily_states[prev_day] = {tk: (v[0], v[1]) for tk, v in state.items() if v[0] > 0.0001}
-                    prev_day = day
-
-                    tk  = row.get('ticker', '')
-                    sh  = abs(float(row.get('shares_num', 0) or 0))
-                    px_ = abs(float(row.get('price', 0) or 0)) if has_price_col else 0.0
-
-                    if tk not in state:
-                        state[tk] = [0.0, 0.0]
-
-                    if row['action'] == 'buy' and sh > 0:
-                        state[tk][0] += sh
-                        state[tk][1] += sh * px_
-                    elif row['action'] == 'sell' and sh > 0 and state[tk][0] > 0.0001:
-                        sell_frac = min(sh / state[tk][0], 1.0)
-                        state[tk][1] -= state[tk][1] * sell_frac
-                        state[tk][0] = max(state[tk][0] - sh, 0.0)
-
-                # Snapshot the final day
-                if prev_day is not None:
-                    daily_states[prev_day] = {tk: (v[0], v[1]) for tk, v in state.items() if v[0] > 0.0001}
-
-                # Fill forward: carry last known state to each calendar day
                 value_rows = []
-                last_state = {}
-                for day in date_range:
-                    if day in daily_states:
-                        last_state = daily_states[day]
-                    if not last_state:
-                        continue
-                    day_value   = 0.0
-                    day_invested = 0.0
-                    for tk, (sh, cost) in last_state.items():
-                        ps = price_map.get(tk)
-                        if ps is None or ps.empty:
-                            continue
-                        past = ps[ps.index <= day]
-                        if past.empty:
-                            continue
-                        day_value    += sh * float(past.iloc[-1])
-                        day_invested += cost   # cost already = shares × avg_buy_price
-                    if day_value > 0:
-                        value_rows.append({'date': day,
-                                           'Portfoliowert': round(day_value, 2),
-                                           'Investiert':    round(day_invested, 2)})
+                if hist is not None and not hist.empty:
+                    for _d, _r in hist.iterrows():
+                        _v, _i = float(_r.get('value', 0)), float(_r.get('invested', 0))
+                        if _v > 0:
+                            value_rows.append({'date': _d,
+                                               'Portfoliowert': round(_v, 2),
+                                               'Investiert':    round(_i, 2)})
 
                 if value_rows:
                     import plotly.graph_objects as go
@@ -751,6 +738,10 @@ div[data-testid="stMetric"] {
                         self.region.info(text)
                 except Exception:
                     pass
+
+            # Handlungsbedarf vor die Rueckschau: was heute eine Entscheidung
+            # braucht, steht ueber Trades-Tabelle, Heatmaps und Kennzahlen.
+            self._render_position_alerts(df)
 
             self.region.markdown(f"**{t('banner.trades_since', year=year)}**")
             df = df.sort_values(['sellDate','ticker'], ascending=[False,False])
