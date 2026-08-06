@@ -111,9 +111,14 @@ def stock_key(sector: str, rank_col: str, top_n: int,
     return f"stocks|{sector}|{rank_col}|{top_n}|{show_rsc}|{sector_etf}"
 
 
-def assessment_key(ticker: str, username: str) -> str:
-    """Cache key for the dashboard's market assessment."""
-    return f"assessment|{ticker}|{username}"
+def assessment_key(ticker: str, username: str, timeframe: str = "") -> str:
+    """Cache key for the dashboard's market assessment.
+
+    ``timeframe`` gehoert in den Key, weil die Sektor-Signale je nach gewaehlter
+    Zeitebene (1d/4h/60m) anders ausfallen — ohne ihn wuerde ein Wechsel den
+    alten Eintrag weiterliefern.
+    """
+    return f"assessment|{ticker}|{username}|{timeframe or '1d'}"
 
 
 def global_key(scope: str) -> str:

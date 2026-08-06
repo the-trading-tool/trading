@@ -282,6 +282,30 @@ def _indicators_for_queries(*queries) -> list:
                    if any(tok.startswith(h) for tok in tokens for h in hints)})
 
 
+# Waehlbare Zeitebenen des Positions-Signals -> (interval, period).
+# Der Zeitraum ist je Ebene so gewaehlt, dass die Rechenzeit vertretbar bleibt:
+# an 21 offenen Positionen gemessen 1d 6s, 4h 13s, 60m mit 3mo 21s (60m/1y
+# waere 73s). '60m' statt '1h', weil beide dieselbe Tabelle lesen -- siehe
+# calc_max_periods, wo nur die m:-Zeilen den vollen Zeitraum aufloesen.
+SIGNAL_TIMEFRAMES: dict[str, tuple[str, str]] = {
+    '1d':  ('1d',  '1y'),
+    '4h':  ('4h',  '1y'),
+    '60m': ('60m', '3mo'),
+}
+DEFAULT_SIGNAL_TF = '4h'
+
+
+def signal_timeframe(username: str = '') -> str:
+    """Gewaehlte Zeitebene aus der Config (nutzer-gescoped), sonst der Default."""
+    try:
+        from tradinglib import system_config as _sysconf
+        v = _sysconf.SystemConfig(username=username).get_value(
+            'signal_timeframe', DEFAULT_SIGNAL_TF)
+        return v if v in SIGNAL_TIMEFRAMES else DEFAULT_SIGNAL_TF
+    except Exception:
+        return DEFAULT_SIGNAL_TF
+
+
 def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
                             indicators: tuple, db_path: str, username: str,
                             interval: str = '1d', period: str = '1y'):
@@ -905,9 +929,27 @@ def render_portfolio_analysis(region=st, db_path: str = 'database', username: st
             except Exception:
                 _buy_q = _sell_q = ''
             if _buy_q or _sell_q:
+                # Zeitebene waehlbar: die Tagesbasis liefert oft nur ein Monate
+                # altes "letztes Signal" (Median 120 Tage gemessen), 4h rund 40.
+                _tf_keys = list(SIGNAL_TIMEFRAMES)
+                _tf_cur = signal_timeframe(username)
+                _c_tf, _ = st.columns([0.28, 0.72])
+                _tf = _c_tf.selectbox(
+                    _t('ota.signal_tf'), _tf_keys,
+                    index=_tf_keys.index(_tf_cur),
+                    format_func=lambda k: _t(f'ota.signal_tf_{k}'),
+                    key='_ota_signal_tf', help=_t('ota.signal_tf_help'))
+                if _tf != _tf_cur:
+                    try:
+                        _cfg.set_value('signal_timeframe', _tf)
+                    except Exception:
+                        logger.debug('signal_timeframe konnte nicht gespeichert werden',
+                                     exc_info=True)
+                _iv, _pe = SIGNAL_TIMEFRAMES[_tf]
                 with st.spinner(_t('ota.signal_computing')):
                     _sig, _sig_warn = _compute_position_signals(
-                        agg['ticker'].tolist(), _buy_q, _sell_q, db_path, username)
+                        agg['ticker'].tolist(), _buy_q, _sell_q, db_path, username,
+                        _iv, _pe)
                 for _w in _sig_warn:
                     st.warning(_t('ota.signal_query_error', err=_w))
                 _sig_label = {

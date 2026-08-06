@@ -132,7 +132,10 @@ def warm_assessment(force: bool) -> tuple[int, int]:
                       .get_value("default_ticker", "^GDAXI")) or "^GDAXI"
         except Exception:
             ticker = "^GDAXI"
-        key = rc.assessment_key(ticker, user)
+        # Zeitebene muss in den Key, sonst waermt der Job an dem vorbei, was
+        # die Seite spaeter anfragt.
+        from tradinglib.portfolio_analysis import signal_timeframe
+        key = rc.assessment_key(ticker, user, signal_timeframe(user))
         if force:
             # assess() cached selbst auf die Platte — ohne Loeschen wuerde
             # /force nur den bestehenden Eintrag zurueckschreiben.

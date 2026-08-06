@@ -338,14 +338,18 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
         # was der Nutzer im Asset Viewer sieht.
         try:
             from tradinglib import system_config as _sysconf
-            from tradinglib.portfolio_analysis import _compute_position_signals
+            from tradinglib.portfolio_analysis import (
+                _compute_position_signals, SIGNAL_TIMEFRAMES, signal_timeframe)
             _cfg = _sysconf.SystemConfig(username=username)
             buy_q = _cfg.get_value("buy_query", "")
             sell_q = _cfg.get_value("sell_query", "")
             if buy_q or sell_q:
+                # Dieselbe Zeitebene wie im Own-Trades-Tab, damit ein Titel nicht
+                # an zwei Stellen widerspruechliche Signale zeigt.
+                iv, pe = SIGNAL_TIMEFRAMES[signal_timeframe(username)]
                 sig, _warn = _compute_position_signals(
                     [r["ticker"] for r in rows if r["ticker"]],
-                    buy_q, sell_q, db_path, username)
+                    buy_q, sell_q, db_path, username, iv, pe)
                 for r in rows:
                     info = sig.get(r["ticker"])
                     if info:
@@ -417,8 +421,10 @@ def assess(ticker: str, day: str, db_path: str = "database",
                 "stress": stress_b, "freshness": fresh_b,
                 "verdict": verdict, "verdict_score": vscore}
 
+    from tradinglib.portfolio_analysis import signal_timeframe
     return rotation_cache.get_or_compute(
-        rotation_cache.assessment_key(ticker, username), _compute)
+        rotation_cache.assessment_key(ticker, username, signal_timeframe(username)),
+        _compute)
 
 
 # ── Rendering ─────────────────────────────────────────────────────────────────

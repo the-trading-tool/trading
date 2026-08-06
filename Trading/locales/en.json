@@ -1664,5 +1664,10 @@
   "sqz.mk_expansion_buy": "Expansion ▲ buy",
   "sqz.mk_expansion_sell": "Expansion ▼ sell",
   "ma.best_col_sector_rsc": "Sector RSC",
-  "ma.best_col_sector_rsc_help": "Mansfield relative strength of the sector ETF versus the broad market (SPY). It drives the sort order: the top row is the best stock in the currently strongest sector. Positive = sector beats the market."
+  "ma.best_col_sector_rsc_help": "Mansfield relative strength of the sector ETF versus the broad market (SPY). It drives the sort order: the top row is the best stock in the currently strongest sector. Positive = sector beats the market.",
+  "ota.signal_tf": "Signal timeframe",
+  "ota.signal_tf_1d": "Daily",
+  "ota.signal_tf_4h": "4 hours",
+  "ota.signal_tf_60m": "1 hour",
+  "ota.signal_tf_help": "Which candle basis the signal is computed on. Daily is fastest but its last signal is often months old (measured: median 120 days versus 40 days on 4 hours). Finer timeframes barely change the decisions, but they are more current — and they take longer (daily ≈ 6 s, 4 hours ≈ 13 s, 1 hour ≈ 21 s for 21 positions). The valuation columns overallTrend/overallValueTrend stay daily and therefore act as a regime filter."
 }
