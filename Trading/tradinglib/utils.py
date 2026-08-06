@@ -52,6 +52,13 @@ class DataUtils():
 
         tbl = mapping.get(key, None)
         if tbl is None:
+            # Mehrstuendige Intervalle ('2h', '4h', ...) werden aus den
+            # Stundendaten resampled -- ohne diesen Zweig lieferte der
+            # Rest-Fallback unten 'h_data', eine Tabelle die es nicht gibt.
+            low = str(interval).lower()
+            if low.endswith('h') and low[:-1].isdigit():
+                tbl = 'h60'
+        if tbl is None:
             # best-effort fallback: use the part after digits
             tbl = ''.join([c for c in interval if not c.isdigit()]) or interval
 

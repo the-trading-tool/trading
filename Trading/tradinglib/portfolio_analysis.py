@@ -283,10 +283,15 @@ def _indicators_for_queries(*queries) -> list:
 
 
 def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
-                            indicators: tuple, db_path: str, username: str):
+                            indicators: tuple, db_path: str, username: str,
+                            interval: str = '1d', period: str = '1y'):
     """Chart-identical add/reduce signal for one ticker via the tiny_chart path:
-    FetchData(indicators, buy/sell query) → indicator.buy_sell over 1d/1y, then read
-    the position-aware buy_close/sell_close markers. Returns a dict or None.
+    FetchData(indicators, buy/sell query) → indicator.buy_sell over the given
+    interval/period, then read the position-aware buy_close/sell_close markers.
+    Returns a dict or None.
+
+    ``interval`` accepts the same strings as the chart ('1d', '60m', '4h', ...).
+    Intraday values read h60_data, which the scheduler refreshes hourly.
     """
     try:
         from tradinglib.fetch_data import FetchData
@@ -294,7 +299,7 @@ def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
         cfg = _sysconf.SystemConfig(username=username)
         fd = FetchData(database_path=db_path, indicators=list(indicators),
                        buy_query=buy_query, sell_query=sell_query, sys_conf=cfg)
-        df, _tk = fd.fetch_data(ticker, period='1y', interval='1d',
+        df, _tk = fd.fetch_data(ticker, period=period, interval=interval,
                                 add_current=False, region=None)
     except Exception as exc:
         logger.warning('live signal %s: fetch failed: %s', ticker, exc)
@@ -340,7 +345,8 @@ def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
-                              db_path: str = 'database', username: str = '') -> tuple:
+                              db_path: str = 'database', username: str = '',
+                              interval: str = '1d', period: str = '1y') -> tuple:
     """Chart-consistent per-position add/reduce signal.
 
     Computes each position through the SAME live path as tiny_chart.py — FetchData
@@ -363,7 +369,8 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
     out = {}
     with ThreadPoolExecutor(max_workers=min(6, len(tickers))) as ex:
         futs = {ex.submit(_live_signal_for_ticker, t, buy_query, sell_query,
-                          indicators, db_path, username): t for t in tickers}
+                          indicators, db_path, username, interval, period): t
+                for t in tickers}
         for fut in as_completed(futs):
             t = futs[fut]
             try:

@@ -286,6 +286,15 @@ class FetchData(tt.TickerTools):
                 'm:wk'  : (60*9*5),
                 'm:mo'  : (60*9*5*4),
                 'm:y'  : (60*9*5*4*12),
+                # Stunden-Intervalle ('1h', '4h', ...). Ohne diese Zeilen findet
+                # die Schleife unten keinen Treffer und m_pe bleibt auf dem
+                # Default (360) stehen -- '1h'/'1y' lieferte dadurch nur ~55
+                # Tage, waehrend das gleichwertige '60m'/'1y' auf 2160 Kerzen
+                # kam. Gleiche Basis wie oben: 9 Handelsstunden pro Tag.
+                'h:d'   : 9,
+                'h:wk'  : (9*5),
+                'h:mo'  : (9*5*4),
+                'h:y'   : (9*5*4*12),
                 'd:wk'  : 5,
                 'd:mo'  : 22,
                 'd:y'   : 256,
