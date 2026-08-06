@@ -48,12 +48,14 @@ class tiny_chart(gt.GraphTools):
     dt_obs = None
     calc_ly_hl = False
 
-    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None):
+    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None):
 
         if symbol:
             self.username = username
             self.pips_select = pips_select
             self.zoom = zoom
+            # None = aus der Konfiguration lesen (siehe _zoom_factor).
+            self.zoom_factor = zoom_factor
             self.exchange = exchange
             self.x_rate = x_rate
             self.purchase_price = purchase_price
@@ -92,6 +94,35 @@ class tiny_chart(gt.GraphTools):
             self.get_data()
             self.graph()
             
+    # Zoomfaktor: wie viele trend_length-Vielfache beim Start sichtbar sind.
+    # Kleiner = staerker hineingezoomt, groesser = mehr Historie im Bild.
+    ZOOM_FACTOR_DEFAULT = 4.0
+    ZOOM_FACTOR_MIN = 1.0
+    ZOOM_FACTOR_MAX = 50.0
+
+    def _zoom_factor(self) -> float:
+        """Zoomfaktor: expliziter Parameter vor Konfiguration vor Default.
+
+        Ein unbrauchbarer Konfigurationswert darf den Chart nicht kippen —
+        er faellt still auf den Default zurueck und wird in die Grenzen
+        geklemmt.
+        """
+        val = getattr(self, 'zoom_factor', None)
+        if val is None:
+            try:
+                from tradinglib import system_config as _sysconf
+                val = _sysconf.SystemConfig(username=self.username).get_value(
+                    'chart_zoom_factor', self.ZOOM_FACTOR_DEFAULT)
+            except Exception:
+                val = self.ZOOM_FACTOR_DEFAULT
+        try:
+            val = float(val)
+        except (TypeError, ValueError):
+            return self.ZOOM_FACTOR_DEFAULT
+        if val != val or val <= 0:          # NaN oder <= 0
+            return self.ZOOM_FACTOR_DEFAULT
+        return max(self.ZOOM_FACTOR_MIN, min(self.ZOOM_FACTOR_MAX, val))
+
     def _add_hline_outside(self, y, text, line_color='grey', line_dash='dot', line_width=1, row=1):
         """Add hline with label arrow positioned outside the chart on the right."""
         self.fig.add_hline(
@@ -751,10 +782,18 @@ class tiny_chart(gt.GraphTools):
 #        if unit_i == "min":
 
         if self.zoom:
-            
-                pips = self.trend_length*4 # pips                
+                # Sichtbares Fenster = trend_length x Faktor Kerzen vom rechten
+                # Rand. Der Faktor war fest auf 4 verdrahtet; er kommt jetzt aus
+                # der Konfiguration (chart_zoom_factor), Default weiterhin 4.
+                # Groesserer Faktor = mehr Historie im Bild = weniger Zoom.
+                pips = int(self.trend_length * self._zoom_factor())
                 length = len(self.df['Date'])
                 if pips > length:
+                    pips = length
+                if pips < 1:
+                    # trend_length=0 (z. B. Multi-Strategies) hiess bisher
+                    # iloc[-0] = iloc[0] und damit unabsichtlich "alles zeigen".
+                    # Das bleibt so, nur jetzt ausgesprochen.
                     pips = length
                 end = self.df['Date'].iloc[-1]
                 start = self.df['Date'].iloc[-pips]

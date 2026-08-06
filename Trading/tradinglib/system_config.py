@@ -381,6 +381,17 @@ class SystemConfig(tools.Db_tools):
             self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
             self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
             self.set_value('mark_nontrading_times', st.selectbox(i18n.t("cfg.mark_nontrading_times"), b_select, idx_mark_nontrading, help=i18n.t("cfg.mark_nontrading_times_help")))
+            # Anfangs-Zoom des Charts: sichtbares Fenster = trend_length x Faktor
+            # Kerzen. War fest 4; kleinerer Wert zoomt staerker hinein.
+            try:
+                _zf_default = float(self.get_value('chart_zoom_factor', 4) or 4)
+            except (TypeError, ValueError):
+                _zf_default = 4.0
+            _zf_default = max(1.0, min(50.0, _zf_default))
+            self.set_value('chart_zoom_factor', st.number_input(
+                i18n.t("cfg.chart_zoom_factor"), min_value=1.0, max_value=50.0,
+                value=_zf_default, step=1.0,
+                help=i18n.t("cfg.chart_zoom_factor_help")))
 
         with tabs[2]:
             self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))

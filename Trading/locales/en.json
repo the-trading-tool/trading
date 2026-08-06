@@ -1669,5 +1669,7 @@
   "ota.signal_tf_1d": "Daily",
   "ota.signal_tf_4h": "4 hours",
   "ota.signal_tf_60m": "1 hour",
-  "ota.signal_tf_help": "Which candle basis the signal is computed on. Daily is fastest but its last signal is often months old (measured: median 120 days versus 40 days on 4 hours). Finer timeframes barely change the decisions, but they are more current — and they take longer (daily ≈ 6 s, 4 hours ≈ 13 s, 1 hour ≈ 21 s for 21 positions). The valuation columns overallTrend/overallValueTrend stay daily and therefore act as a regime filter."
+  "ota.signal_tf_help": "Which candle basis the signal is computed on. Daily is fastest but its last signal is often months old (measured: median 120 days versus 40 days on 4 hours). Finer timeframes barely change the decisions, but they are more current — and they take longer (daily ≈ 6 s, 4 hours ≈ 13 s, 1 hour ≈ 21 s for 21 positions). The valuation columns overallTrend/overallValueTrend stay daily and therefore act as a regime filter.",
+  "cfg.chart_zoom_factor": "Initial chart zoom (factor)",
+  "cfg.chart_zoom_factor_help": "Controls how much history is visible when a chart opens. The window spans trend length × factor candles from the right edge — in the Asset Viewer the trend length is 21, so a factor of 4 shows 84 candles. Lower value = zoomed in further, higher value = more history. Zooming out in the chart remains possible at any time; this only sets the initial view. Default: 4."
 }
