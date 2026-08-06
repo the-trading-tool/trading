@@ -7,6 +7,11 @@ from tradinglib.utils import get_display_name
 
 logger = logging.getLogger(__name__)
 
+# Basis des Start-Zooms in Kerzen; multipliziert mit dem konfigurierten
+# Zoomfaktor (chart_zoom_factor, Default 4) ergibt sie das sichtbare Fenster.
+# 21 wie im Asset Viewer, damit beide Ansichten denselben Ausschnitt zeigen.
+ZOOM_BASE = 21
+
 
 class ChartsGridRenderer:
     """Reusable renderer for a grid of tiny charts.
@@ -113,9 +118,14 @@ class ChartsGridRenderer:
                 except Exception:
                     name = ""
 
+                # zoom_base statt trend_length: trend_length=0 haelt die
+                # Trendberechnung (indicator.trend) unveraendert, waehrend der
+                # Startausschnitt demselben konfigurierbaren Zoomfaktor folgt
+                # wie der Asset Viewer (dort ist die Basis ebenfalls 21).
                 t_chart = tc.tiny_chart(symbol, name, url=f"{url}", period=period, interval=interval, range_breaks=True,
                                          candle_chart=True, add_sub_plots=oszilators, show_trend=False, trend_length=0,
-                                         add_overlays=overlays, username=username, zoom=True)
+                                         add_overlays=overlays, username=username, zoom=True,
+                                         zoom_base=ZOOM_BASE)
 
                 # now add the charts to the right rows / cols
                 i = p % self.columns

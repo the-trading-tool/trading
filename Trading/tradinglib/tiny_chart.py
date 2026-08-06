@@ -48,7 +48,7 @@ class tiny_chart(gt.GraphTools):
     dt_obs = None
     calc_ly_hl = False
 
-    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None):
+    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None, zoom_base=None):
 
         if symbol:
             self.username = username
@@ -56,6 +56,12 @@ class tiny_chart(gt.GraphTools):
             self.zoom = zoom
             # None = aus der Konfiguration lesen (siehe _zoom_factor).
             self.zoom_factor = zoom_factor
+            # Basis fuer das Zoomfenster. Normalerweise trend_length, aber
+            # getrennt davon, weil trend_length auch in indicator.trend()
+            # einfliesst (Zeile ~310): Aufrufer mit trend_length=0 -- etwa das
+            # Chart-Grid -- koennen so zoomen, ohne die Trendberechnung zu
+            # veraendern.
+            self.zoom_base = zoom_base
             self.exchange = exchange
             self.x_rate = x_rate
             self.purchase_price = purchase_price
@@ -94,8 +100,8 @@ class tiny_chart(gt.GraphTools):
             self.get_data()
             self.graph()
             
-    # Zoomfaktor: wie viele trend_length-Vielfache beim Start sichtbar sind.
-    # Kleiner = staerker hineingezoomt, groesser = mehr Historie im Bild.
+    # Zoomfaktor: wie viele Basis-Vielfache beim Start sichtbar sind (Basis =
+    # zoom_base, sonst trend_length). Kleiner = staerker hineingezoomt.
     ZOOM_FACTOR_DEFAULT = 4.0
     ZOOM_FACTOR_MIN = 1.0
     ZOOM_FACTOR_MAX = 50.0
@@ -786,14 +792,16 @@ class tiny_chart(gt.GraphTools):
                 # Rand. Der Faktor war fest auf 4 verdrahtet; er kommt jetzt aus
                 # der Konfiguration (chart_zoom_factor), Default weiterhin 4.
                 # Groesserer Faktor = mehr Historie im Bild = weniger Zoom.
-                pips = int(self.trend_length * self._zoom_factor())
+                base = self.zoom_base if self.zoom_base else self.trend_length
+                pips = int((base or 0) * self._zoom_factor())
                 length = len(self.df['Date'])
                 if pips > length:
                     pips = length
                 if pips < 1:
-                    # trend_length=0 (z. B. Multi-Strategies) hiess bisher
-                    # iloc[-0] = iloc[0] und damit unabsichtlich "alles zeigen".
-                    # Das bleibt so, nur jetzt ausgesprochen.
+                    # Weder zoom_base noch trend_length gesetzt (z. B. Multi-
+                    # Strategies): hiess bisher iloc[-0] = iloc[0] und damit
+                    # unabsichtlich "alles zeigen". Das bleibt so, nur jetzt
+                    # ausgesprochen.
                     pips = length
                 end = self.df['Date'].iloc[-1]
                 start = self.df['Date'].iloc[-pips]
