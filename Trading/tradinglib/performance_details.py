@@ -2,7 +2,7 @@ from tradinglib import ( ticker_tools as tt, tools, parity as pr, portfolio as p
             main_page as mp, make_query as mq, system_config as sysconf,
             graph_tools as gt, tiny_chart as tc )
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
-from tradinglib.utils import DataUtils
+from tradinglib.utils import DataUtils, display_name_sql
 from tradinglib.i18n import t
 from tradinglib.tools import open_db, attach_db
 
@@ -88,10 +88,12 @@ def _duckdb_fetch_years(
         filter_clause = qry_ext
         order_clause = ""
 
-    sim_cols = """
+    # longName ueber display_name_sql (longName -> shortName -> ticker): ohne
+    # Fallback zeigten Zeilen ohne Yahoo-Langnamen 'None' statt eines Namens.
+    sim_cols = f"""
         ap.*,
         yt.ISIN,
-        ai.sector, ai.shortName, ai.longName, ai.exchange,
+        ai.sector, ai.shortName, {display_name_sql('ai')}, ai.exchange,
         ai.industry, ai.beta, ai.lastDividendValue,
         ai.recommendationKey, ai.targetHighPrice, ai.targetMeanPrice,
         ai.targetLowPrice, ai.ebitdaMargins, ai.revenueGrowth,

@@ -11,6 +11,7 @@ try:
 except ImportError:
     ass = None
 from tradinglib.tiny_chart_grid import ChartsGridRenderer
+from tradinglib.utils import display_name_sql
 from tradinglib.i18n import t
 import pandas as pd
 import streamlit as st 
@@ -76,8 +77,12 @@ class AllAssetsView(tt.TickerTools):
         # SQLite matches identifiers case-insensitively, so an unqualified Open/High/Low
         # in the user filter would clash with asset_simulation's Open/High/Low
         # ("ambiguous column name"). Narrowing the join keeps OHLC filters unqualified.
+        # longName kommt ueber display_name_sql (longName -> shortName -> ticker):
+        # Yahoo liefert fuer viele ETFs keinen Langnamen, ohne Fallback stand in
+        # der Tabelle dann 'None'. shortName wird dafuer mit in die Subquery
+        # genommen -- es kollidiert nicht mit asset_simulation-Spalten.
         query = f"""SELECT ai.longName, ai.exchange, ap.* FROM asset_simulation as ap
-        INNER JOIN (SELECT ticker, longName, exchange FROM info_db.asset_info) as ai on ap.ticker = ai.ticker
+        INNER JOIN (SELECT ticker, {display_name_sql()}, exchange FROM info_db.asset_info) as ai on ap.ticker = ai.ticker
         WHERE {bq_input}
         {o_by}
         """
@@ -158,8 +163,8 @@ class AllAssetsView(tt.TickerTools):
             li_input = int(li.text_input('Limit: ',limit))
 
             o_by = f" ORDER BY Date DESC, ticker LIMIT {li_input}"
-            query = f"""SELECT ai.longName, ai.exchange, ap.* FROM asset_simulation as ap 
-            INNER JOIN info_db.asset_info as ai on ap.ticker = ai.ticker {o_by}
+            query = f"""SELECT ai.longName, ai.exchange, ap.* FROM asset_simulation as ap
+            INNER JOIN (SELECT ticker, {display_name_sql()}, exchange FROM info_db.asset_info) as ai on ap.ticker = ai.ticker {o_by}
             """
             try:
                 df = pd.read_sql_query(query, db.conn)

@@ -627,22 +627,58 @@ class DataUtils():
         conn.commit()
 
 
-def get_display_name(row, name_col: str = 'longName', fallback_col: str = 'shortName') -> str:
-    """Return the best available display name for a ticker row (dict or DataFrame row).
+def display_name_sql(alias: str = '', out: str = 'longName') -> str:
+    """SQL-Ausdruck fuer den Anzeigenamen eines asset_info-Datensatzes.
 
-    Futures and some ETFs have no longName in Yahoo Finance — falls back to
-    shortName so chart titles never show 'None'.
+    **Die eine Stelle**, an der die Namensauflösung definiert ist. Jede Abfrage
+    auf ``asset_info`` sollte statt eines rohen ``longName`` diesen Ausdruck
+    verwenden — sonst taucht in der Oberfläche wieder ein leeres Feld oder
+    'None' auf.
+
+    Hintergrund: Yahoo laesst ``longName`` bei vielen ETFs und Futures einfach
+    weg (gemessen: 549 von 8394 Zeilen ohne, davon 273 mit brauchbarem
+    ``shortName``). Ein reiner ``longName``-Select zeigt dort nichts an.
+    Deshalb dreistufig: longName -> shortName -> ticker, damit im schlimmsten
+    Fall wenigstens das Kuerzel steht.
+
+    Args:
+        alias: Tabellen-Alias inkl. Punkt-Trennung, z. B. ``'ai'``.
+        out:   Name der Ergebnisspalte.
+    """
+    p = f"{alias}." if alias else ""
+    return (f"COALESCE(NULLIF(TRIM({p}longName), ''), "
+            f"NULLIF(TRIM({p}shortName), ''), {p}ticker) AS {out}")
+
+
+def get_display_name(row, name_col: str = 'longName', fallback_col: str = 'shortName',
+                     ticker_col: str = 'ticker') -> str:
+    """Best available display name for a ticker row (dict or DataFrame row).
+
+    Gegenstueck zu :func:`display_name_sql` fuer bereits geladene Zeilen —
+    gleiche dreistufige Kette longName -> shortName -> ticker. Der
+    Ticker-Fallback fehlte hier frueher, weshalb Zeilen ohne beide Namen als
+    leerer String erschienen, waehrend SQL-seitige Stellen das Kuerzel zeigten.
 
     Works with both dict-like objects (row.get) and pandas Series / namedtuples.
     """
+    def _get(col):
+        if not col:
+            return ''
+        try:
+            v = row.get(col) if hasattr(row, 'get') else row[col]
+        except Exception:
+            return ''
+        # NaN und der String 'None' zaehlen als leer
+        if v is None or v != v:
+            return ''
+        v = str(v).strip()
+        return '' if v.lower() in ('none', 'nan', 'null') else v
+
     try:
-        name = row.get(name_col) if hasattr(row, 'get') else row[name_col]
-        if not name and fallback_col:
-            name = (row.get(fallback_col) if hasattr(row, 'get') else row.get(fallback_col, '')) or ''
-        return name or ''
+        return _get(name_col) or _get(fallback_col) or _get(ticker_col) or ''
     except Exception:
         return ''
 
 
-__all__ = ["DataUtils", "get_display_name"]
+__all__ = ["DataUtils", "get_display_name", "display_name_sql"]
 
