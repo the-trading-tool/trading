@@ -58,6 +58,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
         'repair': False,    # get_asset_info: nur Ticker ohne Namen nachziehen
+        'apply': False,     # sync_index_members: schreiben statt Trockenlauf
+        'nocheck': False,   # sync_index_members: neue Symbole nicht validieren
     }
 
     if len(argv) <= 1:
@@ -136,6 +138,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['force'] = True
             if pref == 'repair':
                 result['repair'] = True
+            if pref == 'apply':
+                result['apply'] = True
+            if pref == 'nocheck':
+                result['nocheck'] = True
 
     return result
 

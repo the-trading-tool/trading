@@ -542,15 +542,25 @@ class StockDataSaver(TickerTools):
         if interval in interval_length:        
             interval = interval_length[interval] 
         
+        # Yahoo's hard lookback limits per interval — the clamp below never lets a
+        # request reach further back than these.
+        #
+        # '1d' used to sit at -729 as well, which is the *intraday* limit: Yahoo
+        # serves 60m/1h for roughly two years, but daily bars go back decades.
+        # The clamp therefore capped every daily request at two years, silently.
+        # Two effects: a newly added ticker could never gain more than two years
+        # of daily history (while long-standing ones kept their decades from
+        # earlier imports), and "1d:5y" quietly delivered 2y. Daily now shares
+        # the 20-year window of the weekly/monthly series.
         period_length = {
             '1m':-6,
             '5m':-6,
             '15m':-59,
             '60m':-59,
             '1h':-729,
-            '1d':-729,
+            '1d':-20*365,
             '1wk':-20*365,
-            '1mo':-20*365 
+            '1mo':-20*365
         }
 
         if period == 'max':        
@@ -558,12 +568,17 @@ class StockDataSaver(TickerTools):
             if interval in period_length:
                 days = period_length[interval]
         else:
-            (days, unt) = self.split_interval(period)  
+            (days, unt) = self.split_interval(period)
+            # Calendar days, because the result becomes a calendar start date.
+            # These used to be trading-day counts (wk=5, mo=21, y=252), which
+            # were then subtracted as calendar days -- so every period came out
+            # roughly 30 % short: "5y" reached back 1260 days (3.5 years) and
+            # "2y" barely 1.4 years.
             units = {
                 "d": 1,
-                "wk": 5,
-                "mo": 21,     
-                "y": 252,           
+                "wk": 7,
+                "mo": 30,
+                "y": 365,
             }
             days = -int(days * units[unt])
         if days < period_length[interval]:
