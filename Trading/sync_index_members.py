@@ -127,6 +127,20 @@ SOURCES = {
         'name': 'IBEX 35',
         'min': 30,
     },
+    '^KS200': {
+        # KOSPI 200, not the KOSPI Composite: ^KS11 spans roughly 800 listings
+        # with no clean public constituent list, while the 200 are the
+        # investable benchmark and are published as a table. ^KS11 stays on
+        # board as an index ticker for its own price series.
+        # Codes are six characters -- almost all numeric, but not quite
+        # (0126Z0 = Samsung Epis Holdings), so no numeric assumption.
+        'url': 'https://en.wikipedia.org/wiki/KOSPI_200',
+        'table': 2,
+        'column': 'Symbol',
+        'name': 'KOSPI 200',
+        'min': 180,
+        'suffix': '.KS',
+    },
     '^BVSP': {
         # Ibovespa, the Brazilian benchmark. The article is titled after the
         # exchange, but it carries 88 rows -- the index portfolio, not B3's

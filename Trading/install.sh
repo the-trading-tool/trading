@@ -265,7 +265,10 @@ EU  = "^GDAXI,^MDAXI,^SDAXI,^SSMI,^IBEX,^FTSE,^STOXX50E"
 # wurden in Auswertungen aber wie ein Index behandelt. Breadth ueber den
 # US-Markt deckt ^SPX/^NDX/^RUT ab.
 US  = "^SPX,^DJI,^NDX"
-AS  = "^HSI,^N225"
+# ^KS200 statt ^KS11: der KOSPI Composite umfasst rund 800 Notierungen ohne
+# saubere oeffentliche Mitgliederliste, die 200 sind der handelbare Referenz-
+# index. ^KS11 bleibt als Index-Ticker in der INDEX-Gruppe erhalten.
+AS  = "^HSI,^N225,^KS200"
 
 # (time, script, extra-args, frequency, job_name, end_time, time_range, allowed_days, enabled)
 JOBS = [

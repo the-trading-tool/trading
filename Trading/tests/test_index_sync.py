@@ -45,6 +45,9 @@ import sync_index_members as sync
     ('^BVSP', 'PETR4', 'PETR4.SA'),
     ('^BVSP', 'VALE3', 'VALE3.SA'),
     ('^BVSP', 'KLBN11', 'KLBN11.SA'),
+    # Korea: six-character codes, almost all numeric but not quite
+    ('^KS200', '005930', '005930.KS'),
+    ('^KS200', '0126Z0', '0126Z0.KS'),
 ])
 def test_symbol_notation_per_source(index_name, raw, expected):
     assert sync.to_yahoo_symbol(raw, sync.SOURCES[index_name]) == expected
