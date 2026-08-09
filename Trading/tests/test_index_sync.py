@@ -40,6 +40,11 @@ import sync_index_members as sync
     ('^STOXX50E', 'ADYEN.AS', 'ADYEN.AS'),
     ('^STOXX50E', 'NDA-FI.HE', 'NDA-FI.HE'),
     ('^IBEX', 'ACS.MC', 'ACS.MC'),
+    # Brazil: the trailing digit is the share class (3 ordinary, 4 preferred,
+    # 11 unit) and part of the code -- it must survive untouched.
+    ('^BVSP', 'PETR4', 'PETR4.SA'),
+    ('^BVSP', 'VALE3', 'VALE3.SA'),
+    ('^BVSP', 'KLBN11', 'KLBN11.SA'),
 ])
 def test_symbol_notation_per_source(index_name, raw, expected):
     assert sync.to_yahoo_symbol(raw, sync.SOURCES[index_name]) == expected

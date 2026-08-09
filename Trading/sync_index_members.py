@@ -127,6 +127,19 @@ SOURCES = {
         'name': 'IBEX 35',
         'min': 30,
     },
+    '^BVSP': {
+        # Ibovespa, the Brazilian benchmark. The article is titled after the
+        # exchange, but it carries 88 rows -- the index portfolio, not B3's
+        # several hundred listings. Symbols are bare B3 codes (PETR4, VALE3);
+        # Yahoo wants '.SA'. The class digit is part of the code (3 = ordinary,
+        # 4 = preferred, 11 = unit), so it must not be touched.
+        'url': 'https://en.wikipedia.org/wiki/List_of_companies_listed_on_B3',
+        'table': 0,
+        'column': 'Ticker',
+        'name': 'Ibovespa',
+        'min': 70,
+        'suffix': '.SA',
+    },
     '^SDAXI': {
         # No public source lists SDAX constituents with an identifier:
         # Wikipedia carries names only (a name match scored 67 % and confused
