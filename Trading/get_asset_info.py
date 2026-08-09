@@ -6,7 +6,7 @@ import time
 from tradinglib import ticker_tools as tt
 from tradinglib import tools as ts
 from tradinglib.utils import DataUtils
-from tradinglib import cli, logging_config, market_data
+from tradinglib import cli, logging_config, market_data, asset_status
 from tradinglib.tools import open_db
 
 
@@ -223,6 +223,11 @@ if __name__ == '__main__':
                     len(ticker_list),
                     f" (Gruppen={group})" if group else "",
                     max_workers)
+
+    # Skip symbols already assessed as delisted/renamed. This also keeps /repair
+    # honest: it retries names lost for a *new* reason, not the ones we have
+    # already established are gone at the source.
+    ticker_list = asset_status.filter_active(ticker_list, context='get_asset_info')
 
     # row_maps werden nur hier im Main-Thread eingesammelt (kein Lock nötig)
     batch = []

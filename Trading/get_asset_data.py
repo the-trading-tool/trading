@@ -1,5 +1,5 @@
 from tradinglib import ticker_tools as tt
-from tradinglib import cli, logging_config
+from tradinglib import cli, logging_config, asset_status
 import sys
 import time
 import logging
@@ -126,6 +126,11 @@ if __name__ == "__main__":
             pass
     if not ticker_list == []:
         ticker_list = list(set(ticker_list))
+
+    # Drop symbols the source no longer serves (delisted/renamed). They are kept
+    # in the databases for history and past trades, but re-requesting them every
+    # run only buys 404s. Clearing the asset_status row brings a ticker back.
+    ticker_list = asset_status.filter_active(ticker_list, context='get_asset_data')
 
     # --- Failed-Ticker-Tracking ---
     # Pfad zur persistenten Liste fehlgeschlagener Ticker
