@@ -20,6 +20,7 @@ Usage:
     python sync_index_members.py /index:^SPX /apply /nocheck   # skip validation
 """
 import io
+import os
 import logging
 import sys
 import urllib.request
@@ -35,6 +36,13 @@ logger = logging.getLogger(__name__)
 # Per index: where the constituent list lives and which table/column holds it.
 # Wikipedia's list articles are the conventional public source for these and
 # carry a stable "Symbol" column.
+# Symbol handling per source, applied in this order by to_yahoo_symbol():
+#   strip_prefix  cut an exchange marker off the front ("SEHK: 5" -> "5")
+#   class_dot     US class shares: BRK.B -> BRK-B (only where a dot means a
+#                 share class -- for European sources the dot is the exchange
+#                 suffix and must survive untouched)
+#   pad           zero-pad to a fixed width (Hong Kong: 5 -> 0005)
+#   suffix        exchange suffix Yahoo expects (.HK, .AX, .DE, .T)
 SOURCES = {
     '^SPX': {
         'url': 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies',
@@ -42,6 +50,7 @@ SOURCES = {
         'column': 'Symbol',
         'name': 'S&P 500',
         'min': 400,
+        'class_dot': True,
     },
     '^NDX': {
         # The Nasdaq-100 article itself no longer carries the constituents --
@@ -52,6 +61,7 @@ SOURCES = {
         'name': 'Nasdaq-100',
         # 101 securities: Alphabet is in with both share classes.
         'min': 90,
+        'class_dot': True,
     },
     '^DJI': {
         'url': 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
@@ -59,15 +69,96 @@ SOURCES = {
         'column': 'Symbol',
         'name': 'Dow Jones Industrial Average',
         'min': 25,
+        'class_dot': True,
+    },
+    '^N225': {
+        # Wikipedia carries no constituent table for the Nikkei (neither the
+        # English nor the Japanese article), so this reads the index owner's
+        # own component page. It splits the 225 across ~34 sector tables --
+        # table='all' concatenates every table carrying the column.
+        'url': 'https://indexes.nikkei.co.jp/en/nkave/index/component?idx=nk225',
+        'table': 'all',
+        'column': 'Code',
+        'name': 'Nikkei 225',
+        'min': 200,
+        # Codes are not all numeric any more (Japan issues alphanumeric ones
+        # such as 285A), so no padding here -- they are already four wide.
+        'suffix': '.T',
+    },
+    '^HSI': {
+        'url': 'https://en.wikipedia.org/wiki/Hang_Seng_Index',
+        'table': 6,
+        'column': 'Ticker',
+        'name': 'Hang Seng Index',
+        'min': 70,
+        'strip_prefix': 'SEHK:',
+        'pad': 4,
+        'suffix': '.HK',
+    },
+    '^ASXJO': {
+        'url': 'https://en.wikipedia.org/wiki/S%26P/ASX_200',
+        'table': 2,
+        'column': 'Code',
+        'name': 'S&P/ASX 200',
+        'min': 180,
+        'suffix': '.AX',
+    },
+    '^TECDAX': {
+        # The English article has no ticker column; the German one does.
+        'url': 'https://de.wikipedia.org/wiki/TecDAX',
+        'table': 5,
+        'column': 'Symbol[9]',
+        'name': 'TecDAX',
+        'min': 25,
+        'suffix': '.DE',
+    },
+    '^STOXX50E': {
+        'url': 'https://en.wikipedia.org/wiki/EURO_STOXX_50',
+        'table': 3,
+        'column': 'Ticker',
+        'name': 'EURO STOXX 50',
+        'min': 45,
+        # Already in Yahoo notation (ADS.DE, ADYEN.AS) -- no dot rewriting.
+    },
+    '^IBEX': {
+        'url': 'https://en.wikipedia.org/wiki/IBEX_35',
+        'table': 2,
+        'column': 'Ticker',
+        'name': 'IBEX 35',
+        'min': 30,
+    },
+    '^SDAXI': {
+        # No public source lists SDAX constituents with an identifier:
+        # Wikipedia carries names only (a name match scored 67 % and confused
+        # ordinary with preference shares) and finanzen.net answers scripted
+        # requests with HTTP 403. The list is therefore curated in the repo --
+        # see the file header for how it was derived.
+        'file': 'index_members/sdaxi.txt',
+        'name': 'SDAX',
+        'min': 60,
     },
 }
 
 USER_AGENT = 'Mozilla/5.0 (compatible; trading-app index sync)'
 
 
-def to_yahoo_symbol(symbol):
-    """Wikipedia writes class shares with a dot, Yahoo with a hyphen."""
-    return str(symbol).strip().upper().replace('.', '-')
+def to_yahoo_symbol(symbol, src=None):
+    """Bring one source symbol into Yahoo notation (see SOURCES for the keys)."""
+    src = src or {}
+    # Wikipedia separates the exchange marker with a non-breaking space.
+    s = str(symbol).replace('\xa0', ' ').strip().upper()
+
+    prefix = (src.get('strip_prefix') or '').upper()
+    if prefix and prefix in s:
+        s = s.split(prefix, 1)[1].strip()
+    if src.get('class_dot'):
+        s = s.replace('.', '-')
+    if src.get('pad'):
+        s = s.zfill(src['pad'])
+    suffix = src.get('suffix', '')
+    if suffix and not s.endswith(suffix):
+        s += suffix
+    return s
 
 
 def fetch_constituents(index_name):
@@ -76,13 +167,39 @@ def fetch_constituents(index_name):
     if not src:
         raise SystemExit(f"no constituent source configured for {index_name} "
                          f"(known: {', '.join(sorted(SOURCES))})")
+    if src.get('file'):
+        # Curated list next to the script; '#' starts a comment.
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), src['file'])
+        with open(path, encoding='utf-8') as fh:
+            values = [ln.split('#', 1)[0].strip() for ln in fh]
+        values = [v for v in values if v]
+        symbols = {to_yahoo_symbol(s, src) for s in values}
+        minimum = src.get('min', 50)
+        if len(symbols) < minimum:
+            raise SystemExit(f"{path}: only {len(symbols)} symbols, expected at "
+                             f"least {minimum} — refusing to sync")
+        return symbols
+
     req = urllib.request.Request(src['url'], headers={'User-Agent': USER_AGENT})
     html = urllib.request.urlopen(req, timeout=30).read().decode('utf-8')
-    table = pd.read_html(io.StringIO(html))[src['table']]
-    if src['column'] not in table.columns:
-        raise SystemExit(f"column {src['column']!r} missing — page layout changed; "
-                         f"found: {list(table.columns)}")
-    symbols = {to_yahoo_symbol(s) for s in table[src['column']].dropna()}
+    tables = pd.read_html(io.StringIO(html))
+
+    if src['table'] == 'all':
+        # Constituents spread over several tables (one per sector).
+        parts = [t[src['column']].dropna() for t in tables
+                 if src['column'] in [str(c) for c in t.columns]]
+        if not parts:
+            raise SystemExit(f"no table carries column {src['column']!r} — "
+                             f"page layout changed")
+        values = pd.concat(parts)
+    else:
+        table = tables[src['table']]
+        if src['column'] not in table.columns:
+            raise SystemExit(f"column {src['column']!r} missing — page layout "
+                             f"changed; found: {list(table.columns)}")
+        values = table[src['column']].dropna()
+
+    symbols = {to_yahoo_symbol(s, src) for s in values}
     # A layout change could yield a handful of rows and silently wipe the index,
     # so each source states the count below which the result is not credible.
     minimum = src.get('min', 50)

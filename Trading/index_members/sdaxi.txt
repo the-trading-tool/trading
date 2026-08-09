@@ -1,0 +1,84 @@
+# SDAX (^SDAXI) — Ticker in Yahoo-Notation, eine Zeile je Mitglied.
+#
+# Warum eine Datei statt einer URL: fuer den SDAX gibt es keine frei
+# abrufbare Mitgliederliste mit Kennungen. Wikipedia fuehrt nur Firmennamen
+# (ein Namensabgleich traf nur 67 % und verwechselte Stamm-/Vorzugsaktien),
+# finanzen.net weist Skriptzugriffe mit HTTP 403 ab.
+#
+# Diese Liste wurde am 2026-08-09 aus einer ISIN-Liste aufgeloest: die ISIN
+# identifiziert das Papier selbst und entscheidet damit auch die
+# Gattungsfrage (DE0005550636 = Draegerwerk Vorzuege -> DRW3.DE,
+# DE0007231326 = Sixt Staemme -> SIX2.DE). Xetra wurde bevorzugt.
+#
+# Nicht enthalten: Shelly Group (BG1100003166) — Yahoo kennt die ISIN nicht.
+# Bei Indexaenderungen von Hand nachziehen.
+
+1AST.DE
+1SXP.DE
+1U1.DE
+ACT.DE
+ADV.DE
+AFX.DE
+AOF.DE
+BFSA.DE
+BSL.DE
+COK.DE
+CWC.DE
+DBAN.DE
+DEQ.DE
+DMP.DE
+DOU.DE
+DRW3.DE
+DUE.DE
+EIN.DE
+EKT.DE
+EUZ.DE
+EVT.DE
+F3C.DE
+FIE.DE
+GFT.DE
+GLJ.DE
+GYC.DE
+HABA.DE
+HBH.DE
+HDD.DE
+HFG.DE
+HYQ.DE
+ILM1.DE
+INH.DE
+IXX.DE
+JST.DE
+JUN3.DE
+KCO.DE
+KSB3.DE
+KTN.DE
+KWS.DE
+LPK.DE
+MBB.DE
+MLP.DE
+MUX.DE
+NA9.DE
+NOEJ.DE
+OBCK.DE
+PAT.DE
+PBB.DE
+PNE3.DE
+RDC.DE
+S92.DE
+SAX.DE
+SFQ.DE
+SIX2.DE
+SPG.DE
+STM.DE
+STO3.DE
+SZU.DE
+TMV.DE
+TNIE.DE
+TPE.DE
+V1NC.DE
+VBK.DE
+VH2.DE
+VOS.DE
+WAC.DE
+WUW.DE
+YSN.DE

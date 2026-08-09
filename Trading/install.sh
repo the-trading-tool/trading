@@ -260,7 +260,11 @@ if c.fetchone()[0] > 0:
 
 WD  = "monday,tuesday,wednesday,thursday,friday"          # Handelstage Mo-Fr
 EU  = "^GDAXI,^MDAXI,^SDAXI,^SSMI,^IBEX,^FTSE,^STOXX50E"
-US  = "^SPX,^DJI,^NDX,^IXIC,^NYA"
+# ^IXIC/^NYA sind hier bewusst nicht mehr enthalten: fuer beide gab es nie eine
+# echte Mitgliederliste (15 bzw. 16 zufaellige Werte statt ~3000/~1900), sie
+# wurden in Auswertungen aber wie ein Index behandelt. Breadth ueber den
+# US-Markt deckt ^SPX/^NDX/^RUT ab.
+US  = "^SPX,^DJI,^NDX"
 AS  = "^HSI,^N225"
 
 # (time, script, extra-args, frequency, job_name, end_time, time_range, allowed_days, enabled)
