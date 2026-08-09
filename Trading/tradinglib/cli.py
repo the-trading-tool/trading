@@ -57,6 +57,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'rescore': False,
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
+        'repair': False,    # get_asset_info: nur Ticker ohne Namen nachziehen
     }
 
     if len(argv) <= 1:
@@ -133,6 +134,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['backfill'] = [s.strip().lower() for s in suf.split(',') if s.strip()]
             if pref == 'force':
                 result['force'] = True
+            if pref == 'repair':
+                result['repair'] = True
 
     return result
 

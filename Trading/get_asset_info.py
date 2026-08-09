@@ -54,6 +54,31 @@ class AssetList(tt.TickerTools):
         df = self.read_stock_list(db_path='database', db_name='yf_tickers.db')
         return df
     
+def build_repair_ticker_list():
+    """Nur Ticker, denen in asset_info ein Anzeigename fehlt.
+
+    Fuer den gezielten Nachlauf nach einem Datenverlust: bis zum Fix in
+    ``DataUtils.bulk_upsert_dicts`` hat jeder Lauf Felder ausgeloescht, die
+    Yahoo in der jeweiligen Antwort nicht mitgeliefert hat (INSERT OR REPLACE
+    statt echtem Upsert). Betroffene Zeilen lassen sich so nachziehen, ohne
+    alle ~8400 Ticker erneut abzufragen.
+
+    Liefert Zeilen ohne longName UND ohne shortName — bei denen also gar kein
+    Name mehr steht.
+    """
+    db_info = ts.Tools().get_path(path='database', file_name='asset_info.db')
+    conn2 = open_db(db_info, readonly=True)
+    try:
+        rows = conn2.execute(
+            "SELECT ticker FROM asset_info "
+            "WHERE (longName IS NULL OR TRIM(longName) = '') "
+            "  AND (shortName IS NULL OR TRIM(shortName) = '') "
+            "ORDER BY ticker").fetchall()
+    finally:
+        conn2.close()
+    return pd.DataFrame(rows, columns=['Ticker'])['Ticker']
+
+
 def build_ticker_list(group=None):
     """Return the Series of tickers whose Stammdaten should be (re)fetched.
 
@@ -186,12 +211,18 @@ if __name__ == '__main__':
 
     group = args.get('group') or []        # nur diese Gruppen, z.B. /group:ETP
     max_workers = args.get('worker') or 1   # parallele Info-Downloads
+    repair = bool(args.get('repair'))       # nur Ticker ohne jeden Namen
 
-    ticker_list = list(build_ticker_list(group))
-    logger.info("get_asset_info: %d Ticker%s, %d Worker",
-                len(ticker_list),
-                f" (Gruppen={group})" if group else "",
-                max_workers)
+    if repair:
+        ticker_list = list(build_repair_ticker_list())
+        logger.info("get_asset_info /repair: %d Ticker ohne Namen, %d Worker",
+                    len(ticker_list), max_workers)
+    else:
+        ticker_list = list(build_ticker_list(group))
+        logger.info("get_asset_info: %d Ticker%s, %d Worker",
+                    len(ticker_list),
+                    f" (Gruppen={group})" if group else "",
+                    max_workers)
 
     # row_maps werden nur hier im Main-Thread eingesammelt (kein Lock nötig)
     batch = []
