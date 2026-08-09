@@ -41,6 +41,24 @@ SOURCES = {
         'table': 0,
         'column': 'Symbol',
         'name': 'S&P 500',
+        'min': 400,
+    },
+    '^NDX': {
+        # The Nasdaq-100 article itself no longer carries the constituents --
+        # they live in this separate list article.
+        'url': 'https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies',
+        'table': 0,
+        'column': 'Ticker',
+        'name': 'Nasdaq-100',
+        # 101 securities: Alphabet is in with both share classes.
+        'min': 90,
+    },
+    '^DJI': {
+        'url': 'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average',
+        'table': 1,
+        'column': 'Symbol',
+        'name': 'Dow Jones Industrial Average',
+        'min': 25,
     },
 }
 
@@ -65,10 +83,12 @@ def fetch_constituents(index_name):
         raise SystemExit(f"column {src['column']!r} missing — page layout changed; "
                          f"found: {list(table.columns)}")
     symbols = {to_yahoo_symbol(s) for s in table[src['column']].dropna()}
-    if len(symbols) < 50:
-        # A layout change could yield a handful of rows and silently wipe the
-        # index. Refuse rather than apply a bogus diff.
-        raise SystemExit(f"only {len(symbols)} symbols parsed — refusing to sync")
+    # A layout change could yield a handful of rows and silently wipe the index,
+    # so each source states the count below which the result is not credible.
+    minimum = src.get('min', 50)
+    if len(symbols) < minimum:
+        raise SystemExit(f"only {len(symbols)} symbols parsed, expected at least "
+                         f"{minimum} — page layout changed; refusing to sync")
     return symbols
 
 
@@ -170,9 +190,14 @@ if __name__ == '__main__':
     logging_config.configure_logging(to_console=args.get('log_to_console', True),
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
-    index_arg = args.get('index') or '^SPX'
-    if isinstance(index_arg, (list, tuple)):
-        index_arg = index_arg[0] if index_arg else '^SPX'
-    sync(str(index_arg).upper(),
-         apply=bool(args.get('apply')),
-         check=not args.get('nocheck'))
+    # cli.parse_args puts the value of /index:NAME into 'index_name' (plain
+    # 'index' is the flag without a value) and keeps the case, so '^NDX'
+    # survives. Comma-separated lists are documented, so sync them in one run.
+    raw = args.get('index_name') or '^SPX'
+    indices = [i.strip().upper() for i in str(raw).split(',') if i.strip()]
+    for n, index_name in enumerate(indices):
+        if n:
+            print()
+        sync(index_name,
+             apply=bool(args.get('apply')),
+             check=not args.get('nocheck'))
