@@ -583,7 +583,35 @@ class DataUtils():
         # prepare executemany
         placeholders = ', '.join(['?'] * (len(superset_cols) + 1))
         cols_sql = ', '.join(superset_cols)
-        sql = f"INSERT OR REPLACE INTO {table_name} (timestamp, {cols_sql}) VALUES ({placeholders})"
+
+        # Echtes Upsert statt INSERT OR REPLACE.
+        #
+        # INSERT OR REPLACE loescht die bestehende Zeile und legt sie neu an —
+        # jede Spalte, die im aktuellen Batch fehlt, faellt dabei auf NULL
+        # zurueck. Bei asset_info (259 Spalten) war das ein Datenverlust bei
+        # jedem Lauf: Yahoo laesst fehlende Felder einfach weg (JEEP.DE liefert
+        # 66 Schluessel ohne longName, SAP.DE 170 mit), also enthaelt der Batch
+        # nie alle Spalten — und der woechentliche get_asset_info-Lauf hat
+        # zuvor geholte Namen, Sektoren und Waehrungen wieder ausgeloescht.
+        #
+        # ON CONFLICT ... DO UPDATE setzt ausschliesslich die geliefeten
+        # Spalten; alles andere bleibt stehen. Fehlt der Tabelle ein
+        # eindeutiger Schluessel, bleibt es beim alten Verhalten.
+        pk_cols = [r[1] for r in sorted(
+            (r for r in cur.execute(f"PRAGMA table_info('{table_name}')") if r[5]),
+            key=lambda r: r[5])]
+
+        if pk_cols and all(c in superset_cols for c in pk_cols):
+            update_cols = ['timestamp'] + [c for c in superset_cols if c not in pk_cols]
+            set_sql = ', '.join(f"{c}=excluded.{c}" for c in update_cols)
+            sql = (f"INSERT INTO {table_name} (timestamp, {cols_sql}) "
+                   f"VALUES ({placeholders}) "
+                   f"ON CONFLICT({', '.join(pk_cols)}) DO UPDATE SET {set_sql}")
+        else:
+            logger.debug("bulk_upsert_dicts: %s ohne Primaerschluessel im Batch — "
+                         "Fallback auf INSERT OR REPLACE", table_name)
+            sql = (f"INSERT OR REPLACE INTO {table_name} (timestamp, {cols_sql}) "
+                   f"VALUES ({placeholders})")
 
         params = []
         for r in rows:
