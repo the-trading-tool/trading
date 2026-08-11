@@ -4,6 +4,7 @@ from tradinglib import (
     fetch_data, pushover_notifier as pn,
     graph_tools as gt
 )
+from tradinglib.i18n import t
 
 import glob
 import os
@@ -107,6 +108,11 @@ class LiveTicker(fetch_data.FetchData):
         'ewo': ['ewo', 'ewo_ema', 'ewo_diff'],
         'rsi': ['rsi', 'rsi_ema', 'momentum'],
     }
+
+    # Resampling intervals of the live tick chart. All of them are computed for
+    # the trend signal; the user picks which one is drawn.
+    tick_intervals = ("1min", "5min", "15min")
+    tick_interval_key = 'live_tick_interval'
 
     def __init__(self, db_path='database', db_table="ticker_data", init=False, region=st, username='admin', is_admin=False, days_back=10):
         """Initialize the live ticker, optionally create the DB table, and load historical tick data."""
@@ -749,6 +755,34 @@ class LiveTicker(fetch_data.FetchData):
         db_files = sorted(glob.glob(path), reverse=True)
         return [os.path.basename(db) for db in db_files]
 
+    def select_tick_interval(self, region=st):
+        """Render the interval selector for the streamed tick chart.
+
+        This is deliberately separate from the multi-selector's Interval/Period,
+        which belong to the historical chart: the live view resamples ticks and
+        only offers the intervals that make sense for them. The choice is kept
+        in config.db, but written *after* the widget returned — an on_change
+        handler would re-fire on widget garbage collection and could persist a
+        half-finished selection.
+        """
+        intervals = list(self.tick_intervals)
+        stored = str(self.sys_conf.get_value(self.tick_interval_key, intervals[0]))
+        index = intervals.index(stored) if stored in intervals else 0
+        try:
+            selected = region.radio(t('live.tick_interval'), intervals, index=index,
+                                    horizontal=True, key='_live_tick_interval',
+                                    help=t('live.tick_interval_help'))
+        except Exception:
+            logger.debug("interval selector failed", exc_info=True)
+            return intervals[index]
+
+        if selected != stored:
+            try:
+                self.sys_conf.set_value(self.tick_interval_key, selected)
+            except Exception:
+                logger.debug("could not store the tick interval", exc_info=True)
+        return selected
+
     def render(self, default="^GDAXI", region=st, bare_mode=False):
         """Render the live candlestick chart and price ticker in the Streamlit app.
 
@@ -803,7 +837,7 @@ class LiveTicker(fetch_data.FetchData):
             except Exception:
                 logger.debug("symbol selectbox failed", exc_info=True)
 
-        charts = ["1min","5min","15min"]
+        charts = self.tick_intervals
 
         if bare_mode:
             # Headless: compute the signals only, no figures.
@@ -814,8 +848,16 @@ class LiveTicker(fetch_data.FetchData):
             return
 
         region.write(self.get_price_line())
+        selected = self.select_tick_interval()
 
+        # Every interval is still computed — value/momentum/trend are the sum
+        # across all three and the notifier's thresholds are calibrated on it —
+        # but only the selected one is drawn. The order matters: the 1min pass
+        # resets the accumulators.
         for chrt in charts:
+            if chrt != selected:
+                self.compute_signals(self.symbol, chrt, oszillators=oszilators)
+                continue
             fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)
             if fig:
                 st.plotly_chart(fig,

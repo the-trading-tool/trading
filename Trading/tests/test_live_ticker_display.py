@@ -184,6 +184,106 @@ def test_update_signals_resets_on_the_first_interval_and_accumulates():
     assert obj.market_price == pytest.approx(frame["Close"].iloc[-1], abs=0.05)
 
 
+def test_only_the_selected_interval_is_drawn_but_all_of_them_are_computed():
+    """The trend signal is the sum over all three intervals.
+
+    notifier() fires on abs(value) >= 30, so drawing fewer charts must not
+    change what is accumulated — otherwise the alert thresholds silently shift.
+    """
+    obj = _ticker(_tick_frame(minutes=60))
+    obj.sys_conf = _StubConfig(stored={'live_tick_interval': '5min'})
+    obj.multi_selector = _StubSelector()
+    obj.calc_max_periods = lambda interval, period: 512
+    drawn, computed = [], []
+    obj.plot_candlestick = lambda symbol, interval, **kw: drawn.append(interval)
+    obj.compute_signals = lambda symbol, interval, **kw: computed.append(interval)
+    obj.get_price_line = lambda: ''
+    obj.get_database_files = lambda asterik='*': []
+    obj.load_from_db = lambda **kw: None
+    obj.select_tick_interval = lambda region=None: '5min'
+
+    lt.LiveTicker.render(obj, region=_StubRegion(), bare_mode=False)
+
+    assert drawn == ['5min']                                # one chart only
+    assert computed == ['1min', '15min']                    # the others still run
+    # 1min must come first — it resets the accumulators.
+    assert (computed + drawn).index('1min') == 0
+
+
+class _StubConfig:
+    """Minimal SystemConfig stand-in that records writes."""
+
+    def __init__(self, stored=None):
+        self.stored = dict(stored or {})
+        self.writes = []
+
+    def get_value(self, key, default=None):
+        return self.stored.get(key, default)
+
+    def set_value(self, key, value):
+        self.stored[key] = value
+        self.writes.append((key, value))
+
+    def get_selectors(self, interval, period, overlays, oszilators):
+        return ('1d', '1mo', overlays, oszilators)
+
+
+class _StubSelector:
+    """Stand-in for the shared Interval/Period/Overlay selector row."""
+
+    def render(self):
+        pass
+
+    def get_selected_options(self, name):
+        return []
+
+
+class _StubRegion:
+    """Swallows the Streamlit calls render() makes on `region`."""
+
+    def write(self, *args, **kwargs):
+        pass
+
+    def radio(self, *args, **kwargs):
+        raise AssertionError("render() must use select_tick_interval()")
+
+
+def test_select_tick_interval_persists_only_on_change():
+    obj = _ticker()
+    obj.sys_conf = _StubConfig(stored={'live_tick_interval': '5min'})
+
+    class _Region:
+        def __init__(self, answer):
+            self.answer = answer
+            self.kwargs = None
+
+        def radio(self, label, options, **kwargs):
+            self.kwargs = kwargs
+            return self.answer
+
+    unchanged = _Region('5min')
+    assert lt.LiveTicker.select_tick_interval(obj, region=unchanged) == '5min'
+    assert obj.sys_conf.writes == []                         # nothing to store
+
+    changed = _Region('15min')
+    assert lt.LiveTicker.select_tick_interval(obj, region=changed) == '15min'
+    assert obj.sys_conf.writes == [('live_tick_interval', '15min')]
+    # The stored value preselects the widget on the next run.
+    assert changed.kwargs['index'] == lt.LiveTicker.tick_intervals.index('5min')
+
+
+def test_select_tick_interval_survives_an_unknown_stored_value():
+    obj = _ticker()
+    obj.sys_conf = _StubConfig(stored={'live_tick_interval': '4h'})
+
+    class _Region:
+        def radio(self, label, options, **kwargs):
+            assert kwargs['index'] == 0                      # falls back to the first
+            return options[0]
+
+    assert lt.LiveTicker.select_tick_interval(obj, region=_Region()) == '1min'
+
+
 def test_get_symbol_list_handles_an_empty_frame():
     obj = _ticker()
     assert lt.LiveTicker.get_symbol_list(obj) == []
