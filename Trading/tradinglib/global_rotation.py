@@ -38,6 +38,8 @@ _MARKETS = [
     ("HK", "^HSI",   "HKD", "Equity"),
     ("ES", "^IBEX",  "EUR", "Equity"),
     ("KR", "^KS11",  "KRW", "Equity"),
+    ("AU", "^AXJO",  "AUD", "Equity"),
+    ("BR", "^BVSP",  "BRL", "Equity"),
 ]
 
 # Cross-Asset-Ergänzung. Metalle/Rohstoffe (=F-Futures) in USD → via EURUSD; Krypto
