@@ -12,7 +12,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
-import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,6 +19,64 @@ logger = logging.getLogger(__name__)
 for name, l in logging.root.manager.loggerDict.items():
     if "streamlit" in name:
         l.disabled = True
+
+# A quote time up to this many minutes ahead of the local clock is still treated
+# as today's (source clock skew), not as yesterday's.
+FUTURE_TOLERANCE_MIN = 5
+
+
+def resolve_timestamp(time_str, tolerance_min=FUTURE_TOLERANCE_MIN):
+    """Map a quote time onto a full timestamp string.
+
+    A full "YYYY-MM-DD HH:MM:SS" is taken as-is — a collector that knows both
+    the source's timezone and its own is the only party that can resolve the
+    date correctly, so its verdict wins.
+
+    A bare HH:MM:SS is resolved against the local clock: slightly ahead still
+    counts as today (the source's clock may run a few seconds fast), further
+    ahead means yesterday. Returns None when the input holds no usable time.
+
+    ⚠ With a bare clock time, a collector running in a different timezone than
+    the source pushes every quote a day back. Send the full timestamp instead.
+    """
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(str(time_str).strip(), fmt).strftime("%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            continue
+
+    parsed = None
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            parsed = datetime.strptime(str(time_str).strip(), fmt).time()
+            break
+        except (TypeError, ValueError):
+            continue
+    if parsed is None:
+        return None
+
+    now = datetime.now()
+    stamp = datetime.combine(now.date(), parsed)
+    if stamp > now + timedelta(minutes=tolerance_min):
+        stamp -= timedelta(days=1)
+    return stamp.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def to_price(value):
+    """Coerce a scraped price into a float, accepting German and plain formats."""
+    if isinstance(value, (int, float)):
+        price = float(value)
+        return price if price == price and abs(price) != float('inf') else None
+    text = str(value).strip()
+    if not text:
+        return None
+    if ',' in text:
+        # "24.004,02" -> 24004.02 ; a lone comma is the decimal separator
+        text = text.replace('.', '').replace(',', '.') if '.' in text else text.replace(',', '.')
+    try:
+        return float(text)
+    except ValueError:
+        return None
 
 class LiveTicker(fetch_data.FetchData):
 
@@ -36,6 +93,20 @@ class LiveTicker(fetch_data.FetchData):
                         "drawrect",
                         "eraseshape"]
                     }
+
+    # A quote time up to this many minutes ahead of the local clock is still
+    # treated as today's (source clock skew), not as yesterday's.
+    future_tolerance_min = 5
+
+    # Moving averages drawn in the intraday charts — nothing else is computed.
+    ema_spans = (9, 21, 50)
+    sma_spans = (100, 200)
+
+    # Oscillator columns that feed the trend/momentum signal of notifier().
+    signal_columns = {
+        'ewo': ['ewo', 'ewo_ema', 'ewo_diff'],
+        'rsi': ['rsi', 'rsi_ema', 'momentum'],
+    }
 
     def __init__(self, db_path='database', db_table="ticker_data", init=False, region=st, username='admin', is_admin=False, days_back=10):
         """Initialize the live ticker, optionally create the DB table, and load historical tick data."""
@@ -54,6 +125,8 @@ class LiveTicker(fetch_data.FetchData):
         self.trend_ticker = ''
         self.username = username
         self.is_admin = is_admin
+        self.symbol_list = []
+        self._ohlc_cache = {}
         self.sys_conf = sysconf.SystemConfig(region=region, username=self.username, is_admin=self.is_admin)
         self.notfr = pn.PushoverNotifier(storage_file=self.get_path(file_name="pushover_notifier_momentum.json"))
         self.multi_selector = ms.MultiCheckboxSelector(region=st, sys_conf=self.sys_conf)
@@ -74,36 +147,94 @@ class LiveTicker(fetch_data.FetchData):
         
     def _initialize_db(self):
         """Create the ticker_data table with a (timestamp, symbol) primary key if absent."""
-        
-        conn = self._connect_db()
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ticker_data (
-                timestamp TEXT,
-                symbol TEXT,
-                price REAL,
-                PRIMARY KEY (timestamp, symbol)
-            )
-        """)
-        conn.commit()
-        conn.close()
+        self.ensure_table(db_path=self.db_path, db_table=self.db_table)
+
+    @classmethod
+    def ensure_table(cls, db_path='database', db_table='ticker_data'):
+        """Create the tick table if it is absent — usable without an instance."""
+        db = tt.tools.Db_tools(db_path=db_path, database_name=f"{db_table}.db")
+        try:
+            db.conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {db_table} (
+                    timestamp TEXT,
+                    symbol TEXT,
+                    price REAL,
+                    PRIMARY KEY (timestamp, symbol)
+                )
+            """)
+            db.conn.commit()
+        finally:
+            db.conn.close()
+
+    @classmethod
+    def store_ticks(cls, ticks, db_path='database', db_table='ticker_data'):
+        """Parse and persist ticks without building a LiveTicker instance.
+
+        The ingest endpoint only needs to write: constructing the full class
+        would load the day's ticks into a DataFrame and set up config, notifier
+        and selector objects for nothing.
+        """
+        rows = cls.prepare_rows(ticks)
+        if not rows:
+            return 0
+        cls.ensure_table(db_path=db_path, db_table=db_table)
+        return cls.write_rows(rows, db_path=db_path, db_table=db_table)
+
+    @classmethod
+    def prepare_rows(cls, ticks):
+        """Turn (time_str, symbol, price) tuples into storable rows.
+
+        Entries with an unusable time or price are skipped and logged, so one
+        bad value never costs the whole batch.
+        """
+        rows = []
+        for time_str, symbol, price in ticks:
+            timestamp = resolve_timestamp(time_str)
+            value = to_price(price)
+            if timestamp is None or value is None or not symbol:
+                logger.warning("Skipping tick %s / %s / %s", symbol, time_str, price)
+                continue
+            rows.append((timestamp, str(symbol), value))
+        return rows
+
+    @classmethod
+    def write_rows(cls, rows, db_path='database', db_table='ticker_data'):
+        """Write (timestamp, symbol, price) tuples in a single transaction."""
+        rows = list(rows)
+        if not rows:
+            return 0
+        db = tt.tools.Db_tools(db_path=db_path, database_name=f"{db_table}.db")
+        conn = db.conn
+        try:
+            with conn:
+                conn.executemany(
+                    f"INSERT OR REPLACE INTO {db_table} (timestamp, symbol, price) "
+                    f"VALUES (?, ?, ?)", rows)
+        except Exception as e:
+            logger.error("Error writing %s ticks: %s", len(rows), e)
+            return 0
+        finally:
+            conn.close()
+        return len(rows)
     
     def save_to_db(self):
-        """Persist current tick data to SQLite using INSERT OR REPLACE to avoid duplicates."""
-        conn = self._connect_db()
-        self.df = self.df[~self.df.index.duplicated(keep='last')]  # Remove duplicate entries
-        for idx, row  in self.df.iterrows():
-            timestamp = row["timestamp"]
-            symbol = row["symbol"]
-            price = row["price"]
-            conn.execute("""
-                INSERT OR REPLACE INTO ticker_data (timestamp, symbol, price)
-                VALUES (?, ?, ?)
-            """, (timestamp, symbol, price)) # timestamp.isoformat()
-#                ON CONFLICT(timestamp, symbol) DO UPDATE SET price=excluded.price
-        
-        conn.commit()
-        conn.close()
+        """Persist the whole in-memory tick frame to SQLite (INSERT OR REPLACE).
+
+        Duplicates are resolved on (timestamp, symbol) — the previous version
+        deduplicated on the *row index*, which after a concat is a repeated
+        counter, so it silently dropped all but one row.
+        """
+        if self.df.empty:
+            return 0
+        self.df = self.df.drop_duplicates(subset=["timestamp", "symbol"], keep="last")
+        return self._write_ticks(
+            self.df[["timestamp", "symbol", "price"]].itertuples(index=False, name=None))
+
+    def _write_ticks(self, rows):
+        """Write (timestamp, symbol, price) tuples in a single transaction."""
+        return self.write_rows(rows, db_path=self.db_path, db_table=self.db_table)
+
+    _to_price = staticmethod(to_price)   # kept as a method for existing callers
 
     def get_time_strings(self):
         """Return (now, today_str, yesterday_str, tomorrow_str) as formatted date strings."""
@@ -114,40 +245,58 @@ class LiveTicker(fetch_data.FetchData):
         return (now, today_str, yesterday_str, tomorrow_str) 
        
     def resolve_timestamp(self, time_str):
-        """Determine whether an HH:MM:SS string belongs to today or yesterday and return the full datetime string."""
-        (now, today_str, yesterday_str, tomorrow_str) = self.get_time_strings()
+        """Instance wrapper around the module-level resolve_timestamp()."""
+        return resolve_timestamp(time_str, tolerance_min=self.future_tolerance_min)
 
-        full_timestamp_today = datetime.strptime(f"{today_str} {time_str}", "%Y-%m-%d %H:%M:%S")
-        full_timestamp_yesterday = datetime.strptime(f"{yesterday_str} {time_str}", "%Y-%m-%d %H:%M:%S")
-        
-        if full_timestamp_today < now:
-            return full_timestamp_today.strftime("%Y-%m-%d %H:%M:%S")  # Belongs to today
-        if full_timestamp_today >= now:
-            return full_timestamp_yesterday.strftime("%Y-%m-%d %H:%M:%S")  # Belongs to yesterday
-   
     def add_tick_data(self, time_str, symbol, price):
-        """Append a new tick to self.df and persist it to the database without duplicates."""
-        timestamp = self.resolve_timestamp(time_str)
-        
-        new_data = pd.DataFrame({"timestamp": [timestamp], 
-                                  "symbol": [symbol], 
-                                  "price": [price]})
-        
-        self.df = pd.concat([self.df, new_data]).drop_duplicates()
-        self.save_to_db()
-    
+        """Append a single tick and persist it. Returns True when it was stored."""
+        return self.add_tick_batch([(time_str, symbol, price)]) == 1
+
+    def add_tick_batch(self, ticks):
+        """Append many ticks in one transaction and return how many were stored.
+
+        `ticks` is an iterable of (time_str, symbol, price). Entries with an
+        unusable time or price are skipped and logged, so one bad value never
+        costs the whole batch. Only the new rows are written — the previous
+        implementation rewrote the complete frame on every single tick.
+        """
+        rows = self.prepare_rows(ticks)
+        if not rows:
+            return 0
+
+        new_data = pd.DataFrame(rows, columns=["timestamp", "symbol", "price"])
+        if self.df is None or self.df.empty:
+            self.df = new_data
+        else:
+            self.df = pd.concat([self.df, new_data], ignore_index=True)
+        self.df = self.df.drop_duplicates(subset=["timestamp", "symbol"], keep="last")
+        stored = self._write_ticks(rows)
+        self._ohlc_cache = {}
+        self.get_symbol_list()
+        return stored
+
+
     def rename_db(self, file_date=''):
-        """Archive the current database file with a timestamp suffix and create a fresh one."""
+        """Archive the current database file with a timestamp suffix and create a fresh one.
+
+        The old implementation unlinked the source path *after* renaming it,
+        which raised FileNotFoundError and aborted the daily cleanup.
+        """
         path = self.get_path(path=self.db_path, file_name=f"{self.db_table}.db")
-        day_diff = 0
         if file_date == '':
-            file_date = (dt.datetime.now() + dt.timedelta(days=day_diff)).strftime("%Y-%m-%d.%f")[:-3]
-        os.rename(path, f"{path[:-3]}_{file_date}.db")
-        time.sleep(5)
-        os.unlink(path)
-        time.sleep(5)
+            file_date = dt.datetime.now().strftime("%Y-%m-%d.%f")[:-3]
+        archive = f"{path[:-3]}_{file_date}.db"
+        try:
+            os.replace(path, archive)
+            logger.info("Archived tick database as %s", os.path.basename(archive))
+        except OSError as e:
+            logger.error("Could not archive %s: %s", path, e)
+            return False
         self._initialize_db()
-        pass
+        self.df = pd.DataFrame(columns=["timestamp", "symbol", "price"])
+        self._ohlc_cache = {}
+        self.get_symbol_list()
+        return True
 
     def load_from_file_backwards(self, db_name: str):
         """Load and merge tick data from up to days_back archived database files, starting from db_name."""
@@ -215,82 +364,137 @@ class LiveTicker(fetch_data.FetchData):
         self.get_symbol_list()
     
     def load_from_db(self, timestamp="", db_name = ''):
-        """Load stored tick data from the SQLite database."""
+        """Load stored tick data from the SQLite database.
+
+        Rows come back in chronological order — cleanup() and notifier() read
+        the last row and would otherwise pick an arbitrary tick.
+        """
+        params = ()
         where = ""
-#        if not timestamp == "" and db_name == "":
-#            where = f' WHERE timestamp > "{start_date}"'
-        query = f"SELECT * FROM {self.db_table} {where}"
+        if timestamp:
+            where = " WHERE timestamp >= ?"
+            params = (timestamp,)
+        query = f"SELECT timestamp, symbol, price FROM {self.db_table}{where} ORDER BY timestamp"
         conn = self._connect_db(db_name=db_name)
         try:
-            self.df = pd.read_sql(query, conn)
+            self.df = pd.read_sql(query, conn, params=params)
         except Exception as e:
             logger.error("Error, loading data from %s: %s", self.db_table, e)
         finally:
             conn.close()
+        self._ohlc_cache = {}
         self.get_symbol_list()
         
     def get_price_line(self):
         """Query the latest price for each symbol and format a price-line summary string."""
-        query = f"SELECT MAX(timestamp),timestamp,symbol,price FROM  {self.db_table} GROUP BY symbol"
+        query = (f"SELECT symbol, MAX(timestamp) AS timestamp, price "
+                 f"FROM {self.db_table} GROUP BY symbol ORDER BY symbol")
         conn = self._connect_db()
+        ticker_df = pd.DataFrame()
         try:
             ticker_df = pd.read_sql(query, conn)
         except Exception as e:
-            logger.warning("Keine gespeicherten Daten gefunden oder Fehler beim Laden: %s", e)
+            logger.warning("No stored tick data found, or loading failed: %s", e)
         finally:
             conn.close()
-        price_line = ""
-        try:
-            for idx, row in ticker_df.iterrows():
-                try:
-                    price_line += f'- {row["symbol"]}  {row["price"]} @ {row["timestamp"][10:]} -'
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        return price_line
 
-    def aggregate_ohlc(self, interval="5min", symbol=''):
-        """Aggregate tick data into OHLC values for a given time interval."""
-        ohlc = pd.DataFrame()
+        parts = []
+        for _, row in ticker_df.iterrows():
+            try:
+                parts.append(f'{row["symbol"]} {row["price"]} @ {str(row["timestamp"])[11:]}')
+            except (KeyError, TypeError):
+                continue
+        return " - ".join(parts)
 
-        df_combined = self.df[self.df['symbol']==symbol].copy()
-        # Sort values by symbol and timestamp to ensure correct EMA calculation
-        df_combined = df_combined.sort_values(by=["symbol", "timestamp"])
+    def tick_series(self, symbol):
+        """Return one symbol's ticks as a time-indexed float Series."""
+        if self.df is None or self.df.empty or 'symbol' not in self.df.columns:
+            return pd.Series(dtype='float64')
+        ticks = self.df.loc[self.df['symbol'] == symbol, ['timestamp', 'price']]
+        if ticks.empty:
+            return pd.Series(dtype='float64')
+        index = pd.to_datetime(ticks['timestamp'], errors='coerce')
+        series = pd.Series(pd.to_numeric(ticks['price'], errors='coerce').values, index=index)
+        return series.dropna().sort_index()
 
-        df_combined["timestamp"] = pd.to_datetime(df_combined.get("timestamp", []))
-        df_combined = df_combined.set_index(["timestamp", "symbol"])
-        if not df_combined.empty:
-            ohlc = df_combined.groupby("symbol").resample(interval, level=0).agg({"price": ["first", "max", "min", "last"]}).dropna()
-            ohlc.columns = ["Open", "High", "Low", "Close"]
-            # Calculate MAs for each symbol
-            mas = [9,21,50,100,200]
-            for ema in mas:
-                ohlc[f"ema{ema}"] = ohlc["Close"].transform(lambda x: x.ewm(span=ema, adjust=False).mean())
-            for sma in mas:
-                ohlc[f"sma{sma}"] = ohlc["Close"].transform(lambda x: x.rolling(int(sma)).mean()) 
+    def aggregate_ticks(self, interval="5min", symbol=''):
+        """Aggregate one symbol's ticks into an OHLC frame plus its moving averages.
 
-        return ohlc       
+        Results are cached per (symbol, interval) until new ticks arrive —
+        render() asks for three intervals of the same symbol in a row.
+        Named differently from FetchData.aggregate_ohlc(df, interval) on purpose:
+        overriding that method with an incompatible signature broke every
+        inherited price-loading path.
+        """
+        cache_key = (symbol, interval, len(self.df) if self.df is not None else 0)
+        cached = self._ohlc_cache.get(cache_key)
+        if cached is not None:
+            return cached.copy()
 
+        series = self.tick_series(symbol)
+        if series.empty:
+            return pd.DataFrame()
+
+        ohlc = series.resample(interval).agg(["first", "max", "min", "last"]).dropna()
+        if ohlc.empty:
+            return pd.DataFrame()
+        ohlc.columns = ["Open", "High", "Low", "Close"]
+        ohlc.index.name = "timestamp"
+        # Only the averages that are actually drawn — the old code built ten.
+        for span in self.ema_spans:
+            ohlc[f"ema{span}"] = ohlc["Close"].ewm(span=span, adjust=False).mean()
+        for window in self.sma_spans:
+            ohlc[f"sma{window}"] = ohlc["Close"].rolling(int(window)).mean()
+
+        self._ohlc_cache = {cache_key: ohlc}
+        return ohlc.copy()
+
+    def prepare_frame(self, symbol, interval="5min"):
+        """Return the resampled frame in the shape the indicator classes expect."""
+        ohlc = self.aggregate_ticks(symbol=symbol, interval=interval)
+        if ohlc.empty:
+            logger.debug("No data for %s / %s", symbol, interval)
+            return pd.DataFrame()
+        ohlc = ohlc.reset_index().rename(columns={"timestamp": "Date"})
+        ohlc['Date'] = pd.to_datetime(ohlc['Date'])
+        ohlc['symbol'] = symbol
+        return ohlc
+
+    def merge_signal_columns(self, ohlc_df, name, obj):
+        """Copy an oscillator's signal columns into the working frame."""
+        columns = [c for c in self.signal_columns.get(name, []) if c in obj.df.columns]
+        if not columns:
+            return ohlc_df
+        return pd.concat([ohlc_df.reset_index(drop=True),
+                          obj.df[columns].reset_index(drop=True)], axis=1)
+
+    def compute_signals(self, symbol, interval="5min", oszillators=('ewo', 'rsi')):
+        """Compute the oscillator signals for one interval without building any figure.
+
+        This is the headless path used by the collector (bare_mode): it used to
+        render three full Plotly figures per cycle only to throw them away.
+        """
+        ohlc_df = self.prepare_frame(symbol, interval)
+        if ohlc_df.empty:
+            return ohlc_df
+        for osz in oszillators:
+            if osz not in self.signal_columns:
+                continue
+            try:
+                self.init_instance(osz, df=ohlc_df)
+                ohlc_df = self.merge_signal_columns(ohlc_df, osz, getattr(self, osz))
+            except Exception:
+                logger.debug("Could not compute %s for %s", osz, symbol, exc_info=True)
+        self.update_signals(ohlc_df, interval)
+        return ohlc_df
 
     def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False):
         """Create a Plotly candlestick chart for a symbol."""
 
-        ohlc_df = self.aggregate_ohlc(symbol=symbol, interval=interval)
-        if symbol not in ohlc_df.index:
-            logger.debug("No data for %s", symbol)
+        ohlc_df = self.prepare_frame(symbol, interval)
+        if ohlc_df.empty:
             return None
 
-        ohlc_df = ohlc_df.reset_index()
-        ohlc_df = ohlc_df.rename(columns={"timestamp":"Date"})
-        ohlc_df['Date'] = pd.to_datetime(ohlc_df['Date'], format='%Y-%m-%d %H:%M:%S')
-        ohlc_df = ohlc_df.loc[ohlc_df['symbol']==symbol]
-
-
-        if ohlc_df.empty:
-            st.write(f"Still no data for {interval}")
-            return
-        
         rows = len(oszillators)
         row_width = []
         for i in range(rows):
@@ -400,20 +604,9 @@ class LiveTicker(fetch_data.FetchData):
                 row+=1
 
                 # We need the following values to identify trend signals
-                if osz == "ewo":
-                    try:
-                        ohlc_df = pd.concat([ohlc_df.reset_index(drop=True),
-                            obj.df[['ewo', 'ewo_ema', 'ewo_diff']].reset_index(drop=True)], axis=1)
-                    except Exception:
-                        pass
-                if osz == "rsi":
-                    try:
-                        ohlc_df = pd.concat([ohlc_df.reset_index(drop=True), 
-                            obj.df[['rsi', 'rsi_ema', 'stoch']].reset_index(drop=True)], axis=1)
-                    except Exception:
-                        pass
+                ohlc_df = self.merge_signal_columns(ohlc_df, osz, obj)
         except Exception:
-            pass
+            logger.debug("Oscillator rendering failed for %s", symbol, exc_info=True)
 
         fig.update_xaxes(
             rangeslider_visible = False,
@@ -439,62 +632,37 @@ class LiveTicker(fetch_data.FetchData):
         fig.update_layout(yaxis=dict(range=[min_close, max_close],))
         fig.update_layout(title=f"{symbol}-{interval}", yaxis_title="price")
 
-        if interval == "1min":
-            self.momentum = 0
-            self.value = 0
-            self.trend = 0
-            self.trend_ticker = ''
-            self.market_price = ''
+        ohlc_df = self.update_signals(ohlc_df, interval)
 
-        ohlc_df = ohlc_df.fillna(0).infer_objects(copy=False)
-        if 1:
-#        if self.symbol == "^GDAXI":
+        (value_i, unit_i) = self.split_interval(interval)
+        if unit_i == "min":
 
-            self.trend_ticker = self.symbol
-            self.market_price = round(ohlc_df['Close'].iloc[-1],1)
-            try:
-                self.value += ohlc_df['ewo'].iloc[-2] - ohlc_df['ewo_ema'].iloc[-2]
-                self.momentum += (ohlc_df['stoch'].iloc[-2])# - ohlc_df['rsi_ema'].iloc[-2])
-            except Exception:
-                pass
-            try:
-                if ohlc_df['ewo_diff'].iloc[-2] < 0:
-                    self.trend += -1
-                elif ohlc_df['ewo_diff'].iloc[-2] > 0:
-                    self.trend += 1
-            except Exception:
-                pass
+            end = ohlc_df['Date'].iloc[-1]
+            length = 120 # pips
 
-            (value_i, unit_i) = self.split_interval(interval)
-            
-            if unit_i == "min":
+            if value_i > 1:
+                length *= 5 # 5h min
 
-                end = ohlc_df['Date'].iloc[-1]
-                length = 120 # pips                
-                
-                if value_i > 1:
-                    length *= 5 # 5h min
-                    
-                if not type(end) == int:
+            if not type(end) == int:
 
-                    start = end - timedelta(minutes=length)
+                start = end - timedelta(minutes=length)
 
-                    fig.update_xaxes(
-                        type="date", 
-                        range=[start, end]
-                        )
+                fig.update_xaxes(
+                    type="date",
+                    range=[start, end]
+                    )
 
-                    # DataFrame auf Zoom-Bereich filtern
-                    visible_df = ohlc_df[(ohlc_df['Date'] >= start) & (ohlc_df['Date'] <= end)]
+                # Limit the frame to the zoom range
+                visible_df = ohlc_df[(ohlc_df['Date'] >= start) & (ohlc_df['Date'] <= end)]
 
-                    # Min/Max der sichtbaren Y-Werte berechnen
-                    min = visible_df['Low'].min()
-                    max = visible_df['High'].max()
-                    padding = (max - min) * 0.05
-                    fig.update_yaxes(
-                        range=[min-padding, max+padding],
-                        row=1, col=1
-                        )
+                # Min/max of the visible y values
+                low = visible_df['Low'].min()
+                high = visible_df['High'].max()
+                padding = (high - low) * 0.05
+                fig.update_yaxes(
+                    range=[low - padding, high + padding],
+                    row=1, col=1
+                    )
 
         fig.update_xaxes(
             rangebreaks = [
@@ -504,7 +672,47 @@ class LiveTicker(fetch_data.FetchData):
         )
 
         return fig
-    
+
+    def update_signals(self, ohlc_df, interval):
+        """Accumulate value / momentum / trend over the rendered intervals.
+
+        The 1min pass resets the accumulators, the later intervals add to them —
+        notifier() reads the sum. Returns the frame with NaNs filled.
+        """
+        if interval == "1min":
+            self.momentum = 0
+            self.value = 0
+            self.trend = 0
+            self.trend_ticker = ''
+            self.market_price = ''
+
+        if ohlc_df is None or ohlc_df.empty:
+            return ohlc_df
+
+        ohlc_df = ohlc_df.fillna(0).infer_objects(copy=False)
+        self.trend_ticker = self.symbol
+        self.market_price = round(ohlc_df['Close'].iloc[-1], 1)
+
+        # The last bar is still forming — read the previous, closed one.
+        if len(ohlc_df) < 2:
+            return ohlc_df
+
+        try:
+            self.value += ohlc_df['ewo'].iloc[-2] - ohlc_df['ewo_ema'].iloc[-2]
+            self.momentum += ohlc_df['momentum'].iloc[-2]
+        except (KeyError, IndexError):
+            logger.debug("No ewo/rsi columns for %s / %s", self.symbol, interval)
+        try:
+            if ohlc_df['ewo_diff'].iloc[-2] < 0:
+                self.trend += -1
+            elif ohlc_df['ewo_diff'].iloc[-2] > 0:
+                self.trend += 1
+        except (KeyError, IndexError):
+            logger.debug("No ewo_diff column for %s / %s", self.symbol, interval)
+
+        return ohlc_df
+
+
     def get_idx_selected(self, v_list, v_key, default=0):
         """Return the index of v_key in v_list, or default when not found."""
         try:
@@ -515,20 +723,25 @@ class LiveTicker(fetch_data.FetchData):
 
     def get_symbol_list(self):
         """Populate self.symbol_list with the unique symbol names present in self.df."""
-        self.symbol_list = self.df["symbol"].unique().tolist()
+        if self.df is None or self.df.empty or "symbol" not in self.df.columns:
+            self.symbol_list = []
+        else:
+            self.symbol_list = sorted(self.df["symbol"].dropna().unique().tolist())
+        return self.symbol_list
 
     def cleanup(self):
         """Archive the current database file when no file for today exists yet."""
         now = dt.datetime.now()
         file_date = now.strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            file_date = self.df['timestamp'].iloc[-2]
-        except Exception:
-            pass
-        date = now.strftime("%Y-%m-%d")
-        files = self.get_database_files(f"{date} *")
-        if files == []:           
-            self.rename_db(file_date=file_date.replace(":","-"))
+        if self.df is not None and not self.df.empty and 'timestamp' in self.df.columns:
+            # The frame is sorted, so the last row is the most recent tick.
+            file_date = str(self.df['timestamp'].iloc[-1])
+
+        files = self.get_database_files(f"{now.strftime('%Y-%m-%d')} *")
+        if files:
+            logger.info("Tick database for today is already archived (%s)", files[0])
+            return False
+        return self.rename_db(file_date=file_date.replace(":", "-"))
     
     def get_database_files(self, asterik='*'):
         """Return a sorted list of archived database filenames matching the glob pattern."""
@@ -537,18 +750,23 @@ class LiveTicker(fetch_data.FetchData):
         return [os.path.basename(db) for db in db_files]
 
     def render(self, default="^GDAXI", region=st, bare_mode=False):
-        """Render the live candlestick chart and price ticker in the Streamlit app."""
-#        if not bare_mode:
-        
-        databases = self.get_database_files()
-        databases.insert(0, "")
+        """Render the live candlestick chart and price ticker in the Streamlit app.
+
+        bare_mode is the headless path used by the collector: it only refreshes
+        the trend signals (no Plotly figures, no Streamlit widgets).
+        """
+        interval = period = None
+        overlays = oszilators = []
         limit_start = True
-        if databases and not bare_mode:
+
+        if not bare_mode:
+            databases = self.get_database_files()
+            databases.insert(0, "")
             # Dropdown to select the database
             selected_db = st.selectbox("Choose database:", databases)
 
             if selected_db and selected_db != "":
-                
+
                 # Load data from the selected database
                 self.load_from_file_backwards(selected_db)
                 limit_start = False
@@ -573,61 +791,58 @@ class LiveTicker(fetch_data.FetchData):
                 self.url = f"/?symbol="        
 
         if limit_start:
-            self.load_from_db(timestamp='06:00',db_name="ticker_data.db") # timestamp='06:00'
+            # Only today's session — everything older lives in the archived files.
+            self.load_from_db(timestamp=datetime.now().strftime("%Y-%m-%d 06:00:00"),
+                              db_name=f"{self.db_table}.db")
 
-        self.symbol_list.sort()
         idx = self.get_idx_selected(self.symbol_list,default,2)
         self.symbol = default
         if not bare_mode:
             try:
                 self.symbol = st.selectbox("Choose Symbol", self.symbol_list if self.symbol_list else ["No data"],index=idx)
             except Exception:
-                pass
-        
-        price_line = self.get_price_line()
+                logger.debug("symbol selectbox failed", exc_info=True)
 
-        if not bare_mode:
-            region.write(price_line)      
-        
         charts = ["1min","5min","15min"]
+
         if bare_mode:
-            oszilators=['ewo','rsi']
-            overlays=['atc','candle','bos','pre','sup','heikin','obd']
+            # Headless: compute the signals only, no figures.
+            for chrt in charts:
+                self.compute_signals(self.symbol, chrt, oszillators=['ewo', 'rsi'])
+            logger.info("Index: %s - Indicator: %s / %s, trend: %s", self.symbol,
+                        round(self.value, 1), round(self.momentum, 1), self.trend)
+            return
+
+        region.write(self.get_price_line())
+
         for chrt in charts:
-            fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)        
-            if not bare_mode and fig:
+            fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)
+            if fig:
                 st.plotly_chart(fig,
                         use_container_width = True,
                         theme="streamlit",
                         config = self.charts_config,
                         )
 
+        st.write(f"Index: {self.symbol} - Indicator: {round(self.value,1)} / "
+                 f"{round(self.momentum,1)}, trend: {self.trend}")
 
-        message = f"""Index: {self.symbol} - Indicator: {round(self.value,1)} / {round(self.momentum,1)}, trend: {self.trend}"""
-        if not bare_mode:
-            st.write(message)
-        else:
-            logger.info("%s", message)
-
-        del_btn = st.button("Delete cached ticker entries")
-        if del_btn:
+        if st.button("Delete cached ticker entries"):
             self.cleanup()
-            if not bare_mode:
-                st.rerun()
+            st.rerun()
         try:
-            if not bare_mode:
+            show_history = st.checkbox("Show history: ",False)
+            if show_history:
 
-                show_history = st.checkbox("Show history: ",False)
-                if show_history:
-
-                    st.plotly_chart(tc.tiny_chart(self.symbol,f' {interval} / {period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays, trend_length=trend_length, zoom=True).fig,
-                        use_container_width = True,
-                        theme="streamlit",
-                        config = self.charts_config
-                    )
+                st.plotly_chart(tc.tiny_chart(self.symbol,f' {interval} / {period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays, trend_length=trend_length, zoom=True).fig,
+                    use_container_width = True,
+                    theme="streamlit",
+                    config = self.charts_config
+                )
         except Exception:
-            pass
-        
+            logger.debug("history chart failed", exc_info=True)
+
+
     def notifier(self, bare_mode=False):
         """Send a Pushover notification with the current trend signal and price information."""
         message = f"""Symbol: {self.trend_ticker}
