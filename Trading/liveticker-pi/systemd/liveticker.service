@@ -1,0 +1,37 @@
+[Unit]
+Description=Live quote collector
+Documentation=file:/opt/liveticker/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# Adjust to your venv. The api_key can live here instead of the ini file:
+#   Environment=LIVETICKER_API_KEY=…
+# but prefer EnvironmentFile with mode 0600 so it is not world-readable.
+EnvironmentFile=-/etc/default/liveticker
+ExecStart=/home/pi/liveticker-venv/bin/liveticker
+
+# If the source serves no quote table to a headless browser, set
+# "headless = false" in the ini and use a virtual screen instead — comment the
+# line above and uncomment this one (needs: sudo apt install xvfb):
+# ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1280x1024x24" /home/pi/liveticker-venv/bin/liveticker
+
+# The collector restarts itself on errors; this catches the harder crashes.
+Restart=always
+RestartSec=30
+
+# Chromium needs a writable /tmp and leaves processes behind if killed rudely.
+PrivateTmp=false
+KillMode=control-group
+TimeoutStopSec=30
+
+# Keep the journal readable — the collector logs one line per changed quote set.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

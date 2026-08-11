@@ -1,0 +1,40 @@
+# Copy to ~/.config/liveticker.ini or /etc/liveticker.ini and adjust.
+# Every key can also be set as an environment variable: LIVETICKER_<KEY>.
+# Precedence: command line > environment > this file > default.
+
+[liveticker]
+# The Trading app instance the ticks are streamed to.
+target = http://192.168.1.10:8080
+
+# Shared secret; must match a '<user>:api_key' entry in the app's config.db.
+# Prefer LIVETICKER_API_KEY if you do not want the key in a file.
+api_key =
+
+# indices = the index/commodity/FX overview, members = the DAX member table
+fetch_type = indices
+page = /realtimekurse
+
+# A Pi normally has no display. If the log says 'table missing', the source
+# is refusing headless browsers -> set this to false and start the service
+# under xvfb-run (see README).
+headless = true
+
+# Only needed when the source dislikes the default UA.
+user_agent =
+
+# Browser profile location. Defaults to ~/.local/share/liveticker/profiles —
+# deliberately NOT /tmp, which is a tmpfs on many Pi setups (the consent
+# cookie would be gone after every reboot).
+profile_dir =
+
+# Only needed when the paths differ from the distribution defaults.
+# Raspberry Pi OS (Bookworm): /usr/bin/chromium and /usr/bin/chromedriver
+chrome_binary =
+chromedriver =
+
+# Collection window (weekdays only) and the interval between two scrapes.
+start_time = 06:00
+end_time = 21:59
+cycle_seconds = 20
+
+log = INFO

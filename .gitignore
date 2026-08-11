@@ -7,3 +7,10 @@ images/
 
 # Claude Code lokale Settings & Agent-Worktrees (nicht versionieren)
 .claude/
+
+# Python-Artefakte (u.a. aus liveticker-pi)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+*.bak

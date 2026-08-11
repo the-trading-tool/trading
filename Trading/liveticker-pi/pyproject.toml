@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liveticker"
+version = "1.0.0"
+description = "Minimal live quote collector: scrapes real-time index quotes and streams them into a Trading app instance."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Proprietary" }
+authors = [{ name = "Kurt" }]
+keywords = ["scraping", "quotes", "streamlit", "raspberry-pi"]
+
+# Deliberately tiny. The collector needs a browser to read the page and a
+# websocket to deliver the ticks — nothing else. In particular it does NOT pull
+# in streamlit/pandas/plotly: the BackMsg protobuf frame is encoded by hand
+# (see stream.py) and the response is matched as raw bytes.
+dependencies = [
+    "selenium>=4.15",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+# Only needed to run the test suite.
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+liveticker = "liveticker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
