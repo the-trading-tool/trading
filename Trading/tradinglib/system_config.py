@@ -161,6 +161,26 @@ class SystemConfig(tools.Db_tools):
                     return result[0]  # Fall back if it is a plain string
             return default
     
+    def find_values(self, key: str) -> list:
+        """Return every user's value for `key`, ignoring the '<user>:' namespace.
+
+        Needed by endpoints that run without a login — the tick ingest API is
+        called by the collector process, which has no session user whose
+        namespace could be used for the lookup.
+        """
+        values = []
+        with open_db(self._db_path, readonly=True) as conn:
+            rows = conn.execute("SELECT value FROM config WHERE key LIKE ?",
+                                (f"%:{key}",)).fetchall()
+        for row in rows:
+            if not row or not row[0]:
+                continue
+            try:
+                values.append(json.loads(row[0]))
+            except json.JSONDecodeError:
+                values.append(row[0])   # plain string, not serialised
+        return values
+
     def delete_value(self, key: str):
         """Deletes a config value."""
         with open_db(self._db_path) as conn:

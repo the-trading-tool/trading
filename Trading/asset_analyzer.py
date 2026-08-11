@@ -15,7 +15,8 @@ from tradinglib import (
     multi_select as ms, search as sr, system_config as sysconf, banner_page as bp,
     live_ticker as lt, file_provider as fp, graph_tools as gt,
     performance_details as perfdetails, all_assets as aa,
-    option_calculator as op, parity as pr, earnings_calendar as ec
+    option_calculator as op, parity as pr, earnings_calendar as ec,
+    tick_ingest
 )
 from tradinglib.premium_availability import STRATEGY_ENGINE_AVAILABLE, PAPER_TRADING_AVAILABLE
 from tradinglib.license_manager import has_feature, FEATURE_STRATEGY_ENGINE, FEATURE_PAPER_TRADING
@@ -887,26 +888,10 @@ class TradingApp:
             if parms:
                 st.session_state['_nav_params'] = parms
         if parms.get('stream') == "api":
-                data = json.loads(parms.get('data'))
-                api_key = data["api_key"]
-
-                if self.lt == None:
-                    self.lt = lt.LiveTicker(init=True,username=self.username, is_admin=self.is_admin, days_back=5)
-                if dt.datetime.now().strftime("%H:%M:%S") >= "21:59:00":
-                        print("\nRunning cleanup...")
-                        self.lt.cleanup()
-
-                if api_key == self.sys_config.get_value('api_key',None):
-                    st.write(f"Success:")                 
-                    for d in data:
-                        if not d == "api_key":
-                            st.write(d)
-                            try:
-                                self.lt.add_tick_data(symbol=d,time_str=data[d]['time'], price=data[d]['price'])                            
-                                st.write(data[d])
-                            except Exception:
-                                st.write(t('error.api_write'))
-                                pass
+                # Normally handled by the short-circuit in __main__ before this
+                # class is even built; kept here for any other entry point that
+                # reaches the router with an ingest URL.
+                tick_ingest.handle_payload(parms.get('data'))
         elif parms.get('download'):
             fp.FileProvider()
         else:
@@ -1175,6 +1160,10 @@ class TradingApp:
                     
 
 if __name__ == "__main__":
-    from tradinglib.first_run import ensure_config_yaml
-    ensure_config_yaml()
-    TradingApp().render()
+    # Tick ingest short-circuit: answered before the app is constructed, so a
+    # tick request pays for neither config.yaml, the authenticator, the CSS
+    # injection nor the router — it runs several times per minute.
+    if not tick_ingest.handle_request():
+        from tradinglib.first_run import ensure_config_yaml
+        ensure_config_yaml()
+        TradingApp().render()
