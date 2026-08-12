@@ -1674,11 +1674,8 @@
   "cfg.chart_zoom_factor_help": "Controls how much history is visible when a chart opens. The window spans trend length × factor candles from the right edge — in the Asset Viewer the trend length is 21, so a factor of 4 shows 84 candles. Lower value = zoomed in further, higher value = more history. Zooming out in the chart remains possible at any time; this only sets the initial view. Default: 4.",
   "live.tick_interval": "Live quote interval",
   "live.tick_interval_help": "How the streamed ticks are aggregated for the live chart. Independent of the history chart's interval/period below. All intervals keep feeding the trend signal; only the selected one is drawn.",
-  "live.col_symbol": "Symbol",
-  "live.col_price": "Price",
-  "live.col_change": "Δ session",
   "live.col_change_help": "Change against the first tick of the loaded session — not the daily change against yesterday's close.",
-  "live.col_time": "Time",
   "live.no_quotes": "No ticks received yet.",
-  "live.stale_hint": "⏳ {count} quote(s) unchanged for more than {minutes} minutes — that market is probably closed."
+  "live.stale_hint": "⏳ {count} quote(s) unchanged for more than {minutes} minutes — that market is probably closed.",
+  "live.tile_help": "Last update: {time}"
 }

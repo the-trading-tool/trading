@@ -478,41 +478,78 @@ def test_label_right_ignores_an_empty_series():
     assert not fig.layout.annotations
 
 
-def _alignment_per_column(table, right=()):
-    """Return the effective text-align per column index of the rendered HTML."""
-    import re
+class _Slot:
+    """Records what render_price_summary writes into one column."""
 
-    html = lt.LiveTicker.style_price_table(table, right=right).to_html()
-    alignment = {}
-    for selectors, body in re.findall(r"([^{}]+)\{([^}]*)\}", html.split("</style>")[0]):
-        match = re.search(r"text-align:\s*(\w+)", body)
-        if not match:
-            continue
-        for selector in selectors.split(","):
-            column = re.search(r"row\d+_col(\d+)", selector)
-            if column:
-                alignment[int(column.group(1))] = match.group(1)
-    return alignment
+    def __init__(self, log):
+        self.log = log
+
+    def metric(self, label, value, delta=None, help=None):
+        self.log.append({'label': label, 'value': value, 'delta': delta, 'help': help})
+
+    def caption(self, text):
+        self.log.append({'caption': text})
 
 
-def test_price_column_is_left_aligned():
-    """st.dataframe draws on a canvas — neither column_config nor CSS can align it.
+class _TileRegion:
+    """Stand-in for st: hands out slots and collects captions."""
 
-    st.table renders real HTML, so the Styler decides. The rules are set as
-    disjoint subsets because the Styler does not emit them in call order: a
-    global "all left" plus a later override let the global rule win.
+    def __init__(self, width=5):
+        self.width = width
+        self.log = []
+        self.captions = []
+
+    def columns(self, count):
+        assert count == self.width
+        return [_Slot(self.log) for _ in range(count)]
+
+    def caption(self, text):
+        self.captions.append(text)
+
+    def info(self, text):
+        self.captions.append(text)
+
+
+def test_price_summary_renders_one_tile_per_symbol():
+    """Tiles instead of a table: st.dataframe paints on a canvas (no way to
+    align a column) and st.table prints the row index whatever the Styler hides.
     """
-    table = pd.DataFrame({"Symbol": ["BUND-FUT"], "Price": ["124.88"],
-                          "Δ": ["+0.16 %"], "Time": ["11:40:15"]})
+    rows = []
+    base = dt.datetime(2026, 8, 12, 11, 42, 0)
+    for index in range(7):
+        rows.append((base.strftime("%Y-%m-%d %H:%M:%S"), f"SYM{index}", 100.0 + index))
+        rows.append(((base + dt.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S"),
+                     f"SYM{index}", 101.0 + index))
+    obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
+    region = _TileRegion(width=5)
 
-    alignment = _alignment_per_column(table, right=["Δ"])
+    summary = lt.LiveTicker.render_price_summary(obj, region=region, columns=5)
 
-    assert alignment[1] == 'left'      # Price
-    assert alignment[0] == 'left'      # Symbol
-    assert alignment[3] == 'left'      # Time
-    assert alignment[2] == 'right'     # the change column stays right
+    tiles = [entry for entry in region.log if 'label' in entry]
+    assert len(tiles) == len(summary) == 7          # 5 + 2, wrapped into two rows
+    assert tiles[0]['value'] == lt.LiveTicker.format_price(101.0)
+    assert tiles[0]['delta'].endswith('%')
+    # Every tile carries its quote time, as a caption and in the tooltip.
+    assert sum('caption' in entry for entry in region.log) == 7
 
 
-def test_style_price_table_hides_the_index():
-    table = pd.DataFrame({"Symbol": ["BUND-FUT"], "Price": ["124.88"]})
-    assert 'row_heading' not in lt.LiveTicker.style_price_table(table).to_html()
+def test_a_stale_symbol_is_marked_on_its_tile():
+    rows = [
+        ("2026-08-12 11:42:00", "^GDAXI", 26000.0),
+        ("2026-08-12 06:59:00", "EURUSD=X", 1.1535),
+    ]
+    obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
+    region = _TileRegion(width=5)
+
+    lt.LiveTicker.render_price_summary(obj, region=region, columns=5, stale_after_min=15)
+
+    labels = {entry['label'] for entry in region.log if 'label' in entry}
+    assert '^GDAXI' in labels
+    assert 'EURUSD=X ⏳' in labels                  # 283 minutes behind the freshest tick
+    assert any('⏳' in caption for caption in region.captions)
+
+
+def test_price_summary_says_so_when_there_are_no_ticks():
+    region = _TileRegion()
+    assert lt.LiveTicker.render_price_summary(_ticker(), region=region).empty
+    assert region.captions                          # the "no ticks yet" notice

@@ -484,60 +484,34 @@ class LiveTicker(fetch_data.FetchData):
             region.info(t('live.no_quotes'))
             return summary
 
-        change = t('live.col_change')
-        table = pd.DataFrame({
-            t('live.col_symbol'): summary['symbol'],
-            t('live.col_price'): summary['price'].map(self.format_price),
-            change: summary['change'].map('{:+.2f} %'.format),
-            t('live.col_time'): [f"{stamp} ⏳" if age and age >= stale_after_min else stamp
-                                 for stamp, age in zip(summary['time'], summary['age'])],
-        })
+        # Tiles instead of a table widget: st.dataframe paints on a canvas (no
+        # way to align a column), and st.table renders the row index no matter
+        # what the Styler hides. st.metric needs neither — and it colours the
+        # change by itself, which is what the Δ column was for.
+        rows = list(summary.itertuples())
+        per_row = max(1, columns)
+        for start in range(0, len(rows), per_row):
+            chunk = rows[start:start + per_row]
+            try:
+                slots = region.columns(per_row)
+            except Exception:
+                slots = [region] * len(chunk)
+            for slot, row in zip(slots, chunk):
+                stale = bool(row.age and row.age >= stale_after_min)
+                slot.metric(
+                    label=f"{row.symbol} ⏳" if stale else row.symbol,
+                    value=self.format_price(row.price),
+                    delta=f"{row.change:+.2f} %",
+                    help=t('live.tile_help', time=row.time),
+                )
+                slot.caption(row.time)
 
-        columns = max(1, min(columns, len(table)))
-        per_column = -(-len(table) // columns)          # ceil
-        try:
-            slots = region.columns(columns)
-        except Exception:
-            slots = [region]
-            per_column = len(table)
-
-        for index, slot in enumerate(slots):
-            chunk = table.iloc[index * per_column:(index + 1) * per_column]
-            if chunk.empty:
-                continue
-            slot.table(self.style_price_table(chunk, right=[change]))
-
-        stale = int((summary['age'] >= stale_after_min).sum())
+        stale_count = int((summary['age'] >= stale_after_min).sum())
         hints = [t('live.col_change_help')]
-        if stale:
-            hints.append(t('live.stale_hint', count=stale, minutes=stale_after_min))
+        if stale_count:
+            hints.append(t('live.stale_hint', count=stale_count, minutes=stale_after_min))
         region.caption("  \n".join(hints))
         return summary
-
-    @staticmethod
-    def style_price_table(table, right=()):
-        """Left-align the table, keeping the given columns right-aligned.
-
-        st.dataframe draws its cells on a canvas, so neither column_config (it
-        has no alignment option) nor CSS can move them — st.table renders real
-        HTML, where a Styler can.
-        """
-        # Disjoint subsets, not "all left then override": the Styler does not
-        # emit its rules in call order, so a later override is not guaranteed
-        # to win — measured, the global rule swallowed the right-aligned column.
-        left = [column for column in table.columns if column not in set(right)]
-        styled = table.style
-        if left:
-            styled = styled.set_properties(subset=left, **{'text-align': 'left'})
-        if right:
-            styled = styled.set_properties(subset=list(right), **{'text-align': 'right'})
-        styled = styled.set_table_styles([
-            {'selector': 'th', 'props': [('text-align', 'left')]},
-        ])
-        try:
-            return styled.hide(axis='index')
-        except AttributeError:                     # pandas < 1.4
-            return styled.hide_index()
 
     def aggregate_ticks(self, interval="5min", symbol=''):
         """Aggregate one symbol's ticks into an OHLC frame plus its moving averages.
