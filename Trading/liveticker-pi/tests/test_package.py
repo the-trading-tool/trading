@@ -339,3 +339,33 @@ def test_symbol_sets():
     assert symbols.for_type('unknown') is symbols.INDICES
     # The page writes "TecDAX" — the config must match after casefolding.
     assert symbols.INDICES["^TECDAX"]["name"] == "TecDAX"
+
+
+def test_a_stuck_source_clock_gets_the_observation_time():
+    """The FX rows repeat the same clock time while the price moves.
+
+    The receiving table is keyed on (timestamp, symbol), so a repeating time
+    overwrites one row instead of appending — a whole day collapses into a
+    couple of points.
+    """
+    collector = _collector()
+    collector.last_sent = {"EURUSD=X": {"price": 1.15350, "time": "2026-08-12 11:39:19"}}
+    now = dt.datetime(2026, 8, 12, 11, 34, 51)
+
+    changed = collector.changed_quotes(
+        {"EURUSD=X": {"price": 1.15360, "time": "2026-08-12 11:39:19"}}, now=now)
+
+    assert changed["EURUSD=X"]["time"] == "2026-08-12 11:34:51"
+    # Unchanged price and time is still skipped.
+    assert collector.changed_quotes(
+        {"EURUSD=X": {"price": 1.15350, "time": "2026-08-12 11:39:19"}}, now=now) == {}
+
+
+def test_reload_due_refreshes_a_long_open_page():
+    collector = _collector()
+    collector.last_reload = None
+    start = dt.datetime(2026, 8, 12, 9, 0, 0)
+
+    assert collector.reload_due(start) is False          # remembers the open time
+    assert collector.reload_due(start + dt.timedelta(minutes=29)) is False
+    assert collector.reload_due(start + dt.timedelta(minutes=30)) is True

@@ -17,6 +17,13 @@ STALL_CYCLES = 5            # unchanged cycles before the page is treated as fro
 MAX_JUMP_PCT = 10.0         # a bigger single-step move must be confirmed twice
 MAX_QUOTE_AGE_MIN = 90      # quote timestamps older than this are reported as stale
 IDLE_SLEEP = 300            # nap length while the markets are closed (no requests)
+# A tab that stays open all day goes partly stale: the source keeps pushing the
+# index and commodity sections but stops refreshing the FX one (measured: one
+# EURUSD=X quote from 06:59 while a freshly loaded page showed the current
+# rate). The frozen-quotes check cannot see it — it only fires when *every*
+# symbol stops moving. A periodic reload cures the whole class of "a section
+# quietly stopped updating" without having to know which section it is.
+RELOAD_MINUTES = 30
 
 
 class Collector:
@@ -41,6 +48,7 @@ class Collector:
         self.last_sent = {}
         self.pending = {}
         self.stale_reported = set()
+        self.last_reload = None
         self.stall_cycles = 0
 
         logger.info("streaming ticks to %s%s%s%s (transport=%s)", self.protocol,
@@ -84,8 +92,21 @@ class Collector:
         self.last_sent = {}
         self.pending = {}
         self.stale_reported = set()
+        self.last_reload = None
 
     # -- schedule -------------------------------------------------------------
+
+    def reload_due(self, now=None):
+        """True when the page has been open longer than RELOAD_MINUTES.
+
+        Sections of a long-lived page stop updating one by one; a reload is the
+        only reliable cure and costs one page load per half hour.
+        """
+        now = now or dt.datetime.now()
+        if self.last_reload is None:
+            self.last_reload = now       # the page was just opened
+            return False
+        return (now - self.last_reload).total_seconds() >= RELOAD_MINUTES * 60
 
     def is_trading_time(self, now=None):
         """True inside the configured collection window (weekdays only)."""
@@ -186,10 +207,29 @@ class Collector:
             accepted[symbol] = quote
         return accepted, issues
 
-    def changed_quotes(self, quotes):
-        """Return only the quotes whose price or quote time differs from the last send."""
-        return {symbol: quote for symbol, quote in quotes.items()
-                if self.last_sent.get(symbol) != quote}
+    def changed_quotes(self, quotes, now=None):
+        """Return the quotes worth sending, with a usable timestamp.
+
+        The receiving table is keyed on (timestamp, symbol) and written with
+        INSERT OR REPLACE. A source that keeps serving the same clock time while
+        the price moves therefore overwrites one and the same row instead of
+        appending — measured on the FX rows, which repeated the same second
+        across two days and collapsed a whole day of quotes into two points.
+
+        So when the price moved but the source's clock did not, the observation
+        time is used instead. An unchanged price *and* time is still skipped.
+        """
+        now = now or dt.datetime.now()
+        changed = {}
+        for symbol, quote in quotes.items():
+            previous = self.last_sent.get(symbol)
+            if previous is None or previous != quote:
+                if previous and quote['time'] == previous['time']:
+                    logger.debug("%s: source clock stuck at %s — stamping the observation time",
+                                 symbol, quote['time'])
+                    quote = dict(quote, time=now.strftime("%Y-%m-%d %H:%M:%S"))
+                changed[symbol] = quote
+        return changed
 
     def price_line(self, quotes):
         """Format a one-line summary of the given quotes for the log."""
@@ -207,6 +247,10 @@ class Collector:
         # The consent wall can reappear at any time and does NOT hide the table
         # from the DOM — scraping alone would never notice it.
         scraper.dismiss_overlays()
+
+        if self.reload_due():
+            scraper.reload_page()
+            self.last_reload = dt.datetime.now()
 
         quotes, issues = scraper.scrape(self.symbols)
         for issue in issues:

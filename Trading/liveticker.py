@@ -439,6 +439,14 @@ MIN_COVERAGE = 0.5          # below this share of resolved symbols the page coun
 STALL_CYCLES = 5            # unchanged cycles before the page is treated as frozen
 MAX_JUMP_PCT = 10.0         # a bigger single-step move must be confirmed twice
 MAX_QUOTE_AGE_MIN = 90      # quote timestamps older than this are reported as stale
+# A tab that stays open all day goes partly stale: the source keeps pushing the
+# index and commodity sections but stops refreshing the FX one (measured: the
+# collector sat on one EURUSD=X quote from 06:59 while a freshly loaded page
+# showed the current rate). Nothing detects that — the frozen-quotes check only
+# fires when *every* symbol stops moving. A periodic reload cures the whole
+# class of "section quietly stopped updating" without having to know which
+# section it is.
+RELOAD_MINUTES = 30
 CHUNK_SIZE = 20             # symbols per API call (keeps the GET URL short)
 # Where the ticks are streamed to. Defaults to the local app; a remote instance
 # is selected explicitly with /target:https://trading.cloogidoo.com.
@@ -1190,6 +1198,21 @@ class WebFetch:
             self.recovery_step = 0
         return step
 
+    def reload_page(self):
+        """Reload the page and clear whatever the reload brings back."""
+        logger.info("reloading the page (periodic refresh)")
+        try:
+            self.call('refresh', self.wt.d.refresh)
+        except DriverTimeout:
+            raise
+        except Exception:
+            logger.warning("reload failed", exc_info=True)
+            return False
+        time.sleep(random.uniform(2, 4))
+        self.dismiss_overlays()
+        return self.wait_until(self.has_content, timeout=PAGE_READY_TIMEOUT,
+                               label='content after reload') is not None
+
     def reset_recovery(self):
         """Forget previous recovery attempts after a healthy cycle."""
         self.recovery_step = 0
@@ -1279,6 +1302,7 @@ class TradingApp:
         self.last_sent = {}
         self.pending = {}           # candidate outliers awaiting confirmation
         self.stale_reported = set()  # symbols already reported as stale
+        self.last_reload = None      # when the page was last refreshed
         self.stall_cycles = 0
         self.refresh_counter = 0
 
@@ -1333,6 +1357,7 @@ class TradingApp:
         self.last_sent = {}
         self.pending = {}
         self.stale_reported = set()
+        self.last_reload = None
 
     # -- schedule -------------------------------------------------------------
 
@@ -1484,12 +1509,29 @@ class TradingApp:
             accepted[symbol] = quote
         return accepted, issues
 
-    def changed_quotes(self, quotes):
-        """Return only the quotes whose price or quote time differs from the last send."""
+    def changed_quotes(self, quotes, now=None):
+        """Return the quotes worth sending, with a usable timestamp.
+
+        The receiving table is keyed on (timestamp, symbol) and written with
+        INSERT OR REPLACE. A source that keeps serving the same clock time while
+        the price moves therefore overwrites one and the same row instead of
+        appending — measured on the FX rows, which repeated 06:59:48 and
+        11:39:19 to the second across two days and collapsed a whole day of
+        quotes into two points.
+
+        So when the price moved but the source's clock did not, the observation
+        time is used instead. An unchanged price *and* time is still skipped —
+        that is the normal, wanted deduplication.
+        """
+        now = now or dt.datetime.now()
         changed = {}
         for symbol, quote in quotes.items():
             previous = self.last_sent.get(symbol)
             if previous is None or previous != quote:
+                if previous and quote['time'] == previous['time']:
+                    logger.debug("%s: source clock stuck at %s — stamping the observation time",
+                                 symbol, quote['time'])
+                    quote = dict(quote, time=now.strftime("%H:%M:%S"))
                 changed[symbol] = quote
         return changed
 
@@ -1515,6 +1557,10 @@ class TradingApp:
         # — scraping alone would never notice it while the site stops updating
         # behind it. One cheap probe per cycle closes that gap.
         self.wf.dismiss_overlays()
+
+        if self.reload_due():
+            self.wf.reload_page()
+            self.last_reload = dt.datetime.now()
 
         quotes, issues = self.wf.scrape(self.symbols)
         coverage = len(quotes) / max(len(self.symbols), 1)
@@ -1550,6 +1596,18 @@ class TradingApp:
             logger.warning("%s quotes could not be delivered — retrying next cycle", len(changed))
 
         self.notify()
+
+    def reload_due(self, now=None):
+        """True when the page has been open longer than RELOAD_MINUTES.
+
+        Sections of a long-lived page stop updating one by one; a reload is the
+        only reliable cure and costs one page load per half hour.
+        """
+        now = now or dt.datetime.now()
+        if self.last_reload is None:
+            self.last_reload = now       # the page was just opened
+            return False
+        return (now - self.last_reload).total_seconds() >= RELOAD_MINUTES * 60
 
     def notify(self):
         """Refresh the local tick DB and fire the trend notification, if enabled."""

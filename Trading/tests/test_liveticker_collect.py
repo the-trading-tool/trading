@@ -465,6 +465,34 @@ def test_validate_reports_a_stale_quote_but_keeps_it():
     assert any("old" in issue for issue in issues)
 
 
+def test_a_stuck_source_clock_gets_the_observation_time():
+    """Measured on the FX rows: the same second, twice, on two different days.
+
+    The tick table is keyed on (timestamp, symbol) and written with INSERT OR
+    REPLACE — a repeating source clock therefore overwrites one row while the
+    price moves, collapsing a whole day into a couple of points.
+    """
+    app = _collector()
+    app.last_sent = {"EURUSD=X": {"price": 1.15350, "time": "11:39:19"}}
+    now = dt.datetime(2026, 8, 12, 11, 34, 51)
+
+    changed = app.changed_quotes({"EURUSD=X": {"price": 1.15360, "time": "11:39:19"}}, now=now)
+
+    assert changed["EURUSD=X"]["price"] == 1.15360
+    assert changed["EURUSD=X"]["time"] == "11:34:51"      # observation time
+    # An advancing source clock is left alone.
+    app.last_sent = {"^GDAXI": {"price": 26000.0, "time": "11:30:00"}}
+    moved = app.changed_quotes({"^GDAXI": {"price": 26010.0, "time": "11:31:00"}}, now=now)
+    assert moved["^GDAXI"]["time"] == "11:31:00"
+
+
+def test_an_unchanged_quote_is_still_skipped():
+    app = _collector()
+    app.last_sent = {"EURUSD=X": {"price": 1.15350, "time": "11:39:19"}}
+
+    assert app.changed_quotes({"EURUSD=X": {"price": 1.15350, "time": "11:39:19"}}) == {}
+
+
 def test_changed_quotes_only_returns_updates():
     app = _collector()
     app.last_sent = {"^GDAXI": {"price": 24000.0, "time": "10:00:00"}}
@@ -676,3 +704,37 @@ def test_parse_args_reads_flags_and_values():
     assert opts['fetch_type'] == 'members'
     assert opts['page'] == "/aktien/dax-realtimekurse"
     assert opts['log'] == 'DEBUG'
+
+
+def test_reload_due_refreshes_a_long_open_page():
+    """A tab left open all day goes partly stale.
+
+    Measured on the live source: the index and commodity sections kept updating
+    while the FX row sat on its 06:59 quote for hours — a freshly loaded page
+    showed the current rate. The frozen-quotes check cannot catch that, it only
+    fires when *every* symbol stops moving.
+    """
+    app = lt.TradingApp.__new__(lt.TradingApp)
+    app.last_reload = None
+    start = dt.datetime(2026, 8, 12, 9, 0, 0)
+
+    # First call just remembers when the page was opened.
+    assert app.reload_due(start) is False
+    assert app.last_reload == start
+
+    assert app.reload_due(start + dt.timedelta(minutes=lt.RELOAD_MINUTES - 1)) is False
+    assert app.reload_due(start + dt.timedelta(minutes=lt.RELOAD_MINUTES)) is True
+
+
+def test_closing_the_browsers_forgets_the_reload_clock():
+    app = lt.TradingApp.__new__(lt.TradingApp)
+    app.wf = app.target = app.dl = app.stream = None
+    app.last_sent = {}
+    app.pending = {}
+    app.stale_reported = set()
+    app.last_reload = dt.datetime(2026, 8, 12, 9, 0, 0)
+
+    lt.TradingApp.close_browsers(app)
+
+    # The next session opens a fresh page — its clock starts then, not now.
+    assert app.last_reload is None

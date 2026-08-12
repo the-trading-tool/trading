@@ -724,6 +724,21 @@ class Scraper:
             self.recovery_step = 0
         return step
 
+    def reload_page(self):
+        """Reload the page and clear whatever the reload brings back."""
+        logger.info("reloading the page (periodic refresh)")
+        try:
+            self.call('refresh', self.d.refresh)
+        except DriverTimeout:
+            raise
+        except Exception:
+            logger.warning("reload failed", exc_info=True)
+            return False
+        time.sleep(random.uniform(2, 4))
+        self.dismiss_overlays()
+        return self.wait_until(self.has_content, timeout=PAGE_READY_TIMEOUT,
+                               label='content after reload') is not None
+
     def reset_recovery(self):
         """Forget previous recovery attempts after a healthy cycle."""
         self.recovery_step = 0
