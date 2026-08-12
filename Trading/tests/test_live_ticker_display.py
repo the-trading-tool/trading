@@ -184,6 +184,42 @@ def test_update_signals_resets_on_the_first_interval_and_accumulates():
     assert obj.market_price == pytest.approx(frame["Close"].iloc[-1], abs=0.05)
 
 
+SEP = lt.LiveTicker.thousands_separator
+
+
+@pytest.mark.parametrize("value,expected", [
+    (26497.03, f"26{SEP}497.03"),   # index: grouped digits, 2 decimals
+    (1.153499960899353, "1.1535"),  # FX: 4 decimals instead of 15
+    (88.84, "88.84"),
+    (0.5, "0.5000"),
+    ("kaputt", ""),
+])
+def test_format_price_matches_the_magnitude(value, expected):
+    assert lt.LiveTicker.format_price(value) == expected
+
+
+def test_price_summary_reports_last_price_change_and_age():
+    rows = [
+        ("2026-08-11 10:00:00", "^GDAXI", 26000.0),
+        ("2026-08-11 10:34:00", "^GDAXI", 26260.0),      # +1 %
+        ("2026-08-11 06:59:00", "EURUSD=X", 1.1535),     # stopped updating
+    ]
+    obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
+
+    summary = lt.LiveTicker.price_summary(obj).set_index('symbol')
+
+    assert summary.loc['^GDAXI', 'price'] == 26260.0
+    assert summary.loc['^GDAXI', 'change'] == pytest.approx(1.0)
+    assert summary.loc['^GDAXI', 'time'] == "10:34:00"
+    assert summary.loc['^GDAXI', 'age'] == 0
+    # Age is measured against the freshest tick, so a stalled market stands out.
+    assert summary.loc['EURUSD=X', 'age'] == pytest.approx(215)
+
+
+def test_price_summary_survives_an_empty_frame():
+    assert lt.LiveTicker.price_summary(_ticker()).empty
+
+
 def test_only_the_selected_interval_is_drawn_but_all_of_them_are_computed():
     """The trend signal is the sum over all three intervals.
 
@@ -197,7 +233,7 @@ def test_only_the_selected_interval_is_drawn_but_all_of_them_are_computed():
     drawn, computed = [], []
     obj.plot_candlestick = lambda symbol, interval, **kw: drawn.append(interval)
     obj.compute_signals = lambda symbol, interval, **kw: computed.append(interval)
-    obj.get_price_line = lambda: ''
+    obj.render_price_summary = lambda region=None, **kw: None
     obj.get_database_files = lambda asterik='*': []
     obj.load_from_db = lambda **kw: None
     obj.select_tick_interval = lambda region=None: '5min'

@@ -423,6 +423,100 @@ class LiveTicker(fetch_data.FetchData):
         series = pd.Series(pd.to_numeric(ticks['price'], errors='coerce').values, index=index)
         return series.dropna().sort_index()
 
+    # Thin space (U+2009): groups the digits without committing to a decimal
+    # convention, which differs between the German and the English UI.
+    thousands_separator = " "
+
+    @classmethod
+    def format_price(cls, value):
+        """Format a price with a precision that suits its magnitude.
+
+        A single format cannot serve both an index (26491.29) and an FX rate;
+        the raw float would print 1.153499960899353.
+        """
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return ''
+        if abs(value) >= 10:
+            return f"{value:,.2f}".replace(",", cls.thousands_separator)
+        return f"{value:.4f}"
+
+    def price_summary(self):
+        """Return one row per symbol: last price, change since session start, age.
+
+        Built from the loaded tick frame rather than a fresh query, so the table
+        always matches what the charts show (including an archived database).
+        """
+        empty = pd.DataFrame(columns=['symbol', 'price', 'change', 'time', 'age'])
+        if self.df is None or self.df.empty or 'symbol' not in self.df.columns:
+            return empty
+
+        frame = self.df.copy()
+        frame['price'] = pd.to_numeric(frame['price'], errors='coerce')
+        frame = frame.dropna(subset=['price']).sort_values('timestamp')
+        if frame.empty:
+            return empty
+
+        grouped = frame.groupby('symbol')['price']
+        summary = pd.DataFrame({
+            'price': grouped.last(),
+            'first': grouped.first(),
+            'time': frame.groupby('symbol')['timestamp'].last(),
+        }).reset_index()
+
+        summary['change'] = (summary['price'] - summary['first']) / summary['first'] * 100
+        newest = pd.to_datetime(summary['time'], errors='coerce').max()
+        summary['age'] = (newest - pd.to_datetime(summary['time'], errors='coerce')
+                          ).dt.total_seconds().div(60).round(0)
+        summary['time'] = summary['time'].astype(str).str.slice(11, 19)
+        return summary[['symbol', 'price', 'change', 'time', 'age']].sort_values('symbol')
+
+    def render_price_summary(self, region=st, stale_after_min=15, columns=3):
+        """Show the latest quote per symbol as a compact table.
+
+        Replaces the single run-on text line, which neither rounded sensibly nor
+        showed that a quote had stopped updating. The rows are spread over
+        several columns so fifteen symbols do not push the chart off-screen.
+        """
+        summary = self.price_summary()
+        if summary.empty:
+            region.info(t('live.no_quotes'))
+            return summary
+
+        table = pd.DataFrame({
+            t('live.col_symbol'): summary['symbol'],
+            t('live.col_price'): summary['price'].map(self.format_price),
+            t('live.col_change'): summary['change'],
+            t('live.col_time'): [f"{stamp} ⏳" if age and age >= stale_after_min else stamp
+                                 for stamp, age in zip(summary['time'], summary['age'])],
+        })
+        config = {
+            t('live.col_change'): st.column_config.NumberColumn(
+                t('live.col_change'), format="%+.2f %%", help=t('live.col_change_help')),
+        }
+
+        columns = max(1, min(columns, len(table)))
+        per_column = -(-len(table) // columns)          # ceil
+        height = 36 * per_column + 38                   # show every row, no scrolling
+        try:
+            slots = region.columns(columns)
+        except Exception:
+            slots = [region]
+            per_column = len(table)
+
+        for index, slot in enumerate(slots):
+            chunk = table.iloc[index * per_column:(index + 1) * per_column]
+            if chunk.empty:
+                continue
+            slot.dataframe(chunk, hide_index=True, use_container_width=True,
+                           height=height, column_config=config)
+
+        stale = int((summary['age'] >= stale_after_min).sum())
+        if stale:
+            region.caption(t('live.stale_hint', count=stale, minutes=stale_after_min))
+        return summary
+
     def aggregate_ticks(self, interval="5min", symbol=''):
         """Aggregate one symbol's ticks into an OHLC frame plus its moving averages.
 
@@ -847,7 +941,7 @@ class LiveTicker(fetch_data.FetchData):
                         round(self.value, 1), round(self.momentum, 1), self.trend)
             return
 
-        region.write(self.get_price_line())
+        self.render_price_summary(region=region)
         selected = self.select_tick_interval()
 
         # Every interval is still computed — value/momentum/trend are the sum

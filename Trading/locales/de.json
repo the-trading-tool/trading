@@ -1673,5 +1673,12 @@
   "cfg.chart_zoom_factor": "Anfangs-Zoom des Charts (Faktor)",
   "cfg.chart_zoom_factor_help": "Bestimmt, wie viel Historie beim Öffnen eines Charts sichtbar ist. Das Fenster umfasst Trendlänge × Faktor Kerzen ab dem rechten Rand — im Asset Viewer ist die Trendlänge 21, bei Faktor 4 sind also 84 Kerzen im Bild. Kleinerer Wert = stärker hineingezoomt, größerer Wert = mehr Historie. Herauszoomen im Chart bleibt jederzeit möglich; die Einstellung legt nur den Startausschnitt fest. Standard: 4.",
   "live.tick_interval": "Intervall der Live-Kurse",
-  "live.tick_interval_help": "Verdichtung der gestreamten Ticks für den Live-Chart. Unabhängig von Intervall/Periode der Historie weiter unten. Alle Intervalle fließen weiter in das Trendsignal ein, gezeichnet wird nur das gewählte."
+  "live.tick_interval_help": "Verdichtung der gestreamten Ticks für den Live-Chart. Unabhängig von Intervall/Periode der Historie weiter unten. Alle Intervalle fließen weiter in das Trendsignal ein, gezeichnet wird nur das gewählte.",
+  "live.col_symbol": "Symbol",
+  "live.col_price": "Kurs",
+  "live.col_change": "Δ Session",
+  "live.col_change_help": "Veränderung gegenüber dem ersten Tick der geladenen Sitzung — nicht die Tagesveränderung gegenüber dem Vortagesschluss.",
+  "live.col_time": "Zeit",
+  "live.no_quotes": "Noch keine Ticks empfangen.",
+  "live.stale_hint": "⏳ {count} Kurs(e) seit mehr als {minutes} Minuten unverändert — der Handelsplatz ist vermutlich geschlossen."
 }
