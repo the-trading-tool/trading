@@ -5,6 +5,7 @@ session or SQLite file is needed — only the pure logic is exercised.
 """
 
 import datetime as dt
+import types
 
 import pandas as pd
 import pytest
@@ -484,17 +485,14 @@ class _Slot:
     def __init__(self, log):
         self.log = log
 
-    def metric(self, label, value, delta=None, help=None):
-        self.log.append({'label': label, 'value': value, 'delta': delta, 'help': help})
-
-    def caption(self, text):
-        self.log.append({'caption': text})
+    def markdown(self, body, unsafe_allow_html=False):
+        self.log.append(body)
 
 
 class _TileRegion:
     """Stand-in for st: hands out slots and collects captions."""
 
-    def __init__(self, width=5):
+    def __init__(self, width=4):
         self.width = width
         self.log = []
         self.captions = []
@@ -511,42 +509,48 @@ class _TileRegion:
 
 
 def test_price_summary_renders_one_tile_per_symbol():
-    """Tiles instead of a table: st.dataframe paints on a canvas (no way to
-    align a column) and st.table prints the row index whatever the Styler hides.
+    """Hand-built tiles: st.dataframe paints on a canvas, st.table prints the
+    row index, and st.metric's value font filled the page on its own.
     """
     rows = []
     base = dt.datetime(2026, 8, 12, 11, 42, 0)
-    for index in range(7):
+    for index in range(6):
         rows.append((base.strftime("%Y-%m-%d %H:%M:%S"), f"SYM{index}", 100.0 + index))
         rows.append(((base + dt.timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S"),
                      f"SYM{index}", 101.0 + index))
     obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
-    region = _TileRegion(width=5)
+    region = _TileRegion(width=4)
 
-    summary = lt.LiveTicker.render_price_summary(obj, region=region, columns=5)
+    summary = lt.LiveTicker.render_price_summary(obj, region=region, columns=4)
 
-    tiles = [entry for entry in region.log if 'label' in entry]
-    assert len(tiles) == len(summary) == 7          # 5 + 2, wrapped into two rows
-    assert tiles[0]['value'] == lt.LiveTicker.format_price(101.0)
-    assert tiles[0]['delta'].endswith('%')
-    # Every tile carries its quote time, as a caption and in the tooltip.
-    assert sum('caption' in entry for entry in region.log) == 7
+    assert len(region.log) == len(summary) == 6      # 4 + 2, wrapped into two rows
+    assert 'SYM0' in region.log[0]
+    assert lt.LiveTicker.format_price(101.0) in region.log[0]
+    assert '11:43:00' in region.log[0]               # the quote time stays visible
 
 
-def test_a_stale_symbol_is_marked_on_its_tile():
-    rows = [
-        ("2026-08-12 11:42:00", "^GDAXI", 26000.0),
-        ("2026-08-12 06:59:00", "EURUSD=X", 1.1535),
-    ]
-    obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
-    region = _TileRegion(width=5)
+def test_a_tile_colours_the_change_and_marks_a_stale_quote():
+    row = types.SimpleNamespace(symbol='^GDAXI', price=26530.81, change=0.53,
+                                time='11:47:24', age=0)
 
-    lt.LiveTicker.render_price_summary(obj, region=region, columns=5, stale_after_min=15)
+    up = lt.LiveTicker.price_tile(row)
+    assert lt.LiveTicker.up_color in up and '+0.53' in up
+    assert '⏳' not in up
 
-    labels = {entry['label'] for entry in region.log if 'label' in entry}
-    assert '^GDAXI' in labels
-    assert 'EURUSD=X ⏳' in labels                  # 283 minutes behind the freshest tick
-    assert any('⏳' in caption for caption in region.captions)
+    down = lt.LiveTicker.price_tile(types.SimpleNamespace(**{**row.__dict__, 'change': -0.95}))
+    assert lt.LiveTicker.down_color in down and '-0.95' in down
+
+    flat = lt.LiveTicker.price_tile(types.SimpleNamespace(**{**row.__dict__, 'change': 0.0}))
+    assert 'color:inherit' in flat            # no colour claim for an unchanged quote
+
+    stale = lt.LiveTicker.price_tile(row, stale=True)
+    assert '⏳' in stale
+
+
+def test_a_tile_escapes_its_values():
+    row = types.SimpleNamespace(symbol='<script>', price=1.0, change=0.0,
+                                time='11:00:00', age=0)
+    assert '<script>' not in lt.LiveTicker.price_tile(row)
 
 
 def test_price_summary_says_so_when_there_are_no_ticks():

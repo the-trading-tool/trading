@@ -7,6 +7,7 @@ from tradinglib import (
 from tradinglib.i18n import t
 
 import glob
+import html
 import os
 import datetime as dt
 import pandas as pd
@@ -472,7 +473,38 @@ class LiveTicker(fetch_data.FetchData):
         summary['time'] = summary['time'].astype(str).str.slice(11, 19)
         return summary[['symbol', 'price', 'change', 'time', 'age']].sort_values('symbol')
 
-    def render_price_summary(self, region=st, stale_after_min=15, columns=3):
+    # Green/red for the change. Both readable on a light and a dark background;
+    # everything else inherits the theme's colour on purpose.
+    up_color = '#16a34a'
+    down_color = '#dc2626'
+
+    @classmethod
+    def price_tile(cls, row, stale=False):
+        """Render one quote as a compact three-line tile.
+
+        Sized like a heading, not like st.metric's oversized value: the point of
+        the summary is to be scannable above the chart, not to fill the page.
+        """
+        symbol = html.escape(str(row.symbol))
+        price = html.escape(cls.format_price(row.price))
+        try:
+            change = float(row.change)
+        except (TypeError, ValueError):
+            change = 0.0
+        color = cls.up_color if change > 0 else (cls.down_color if change < 0 else 'inherit')
+        opacity = '1' if change else '0.55'
+        title = html.escape(t('live.tile_help', time=row.time))
+        return (
+            f'<div title="{title}" style="line-height:1.3;margin:0 0 0.55rem 0">'
+            f'<div style="font-size:0.78rem;opacity:0.6">{symbol}{" ⏳" if stale else ""}</div>'
+            f'<div style="font-size:1rem;font-weight:600">{price}'
+            f'<span style="font-size:0.78rem;font-weight:500;margin-left:0.45rem;'
+            f'color:{color};opacity:{opacity}">{change:+.2f}&nbsp;%</span></div>'
+            f'<div style="font-size:0.72rem;opacity:0.45">{html.escape(str(row.time))}</div>'
+            f'</div>'
+        )
+
+    def render_price_summary(self, region=st, stale_after_min=15, columns=4):
         """Show the latest quote per symbol as a compact table.
 
         Replaces the single run-on text line, which neither rounded sensibly nor
@@ -484,10 +516,10 @@ class LiveTicker(fetch_data.FetchData):
             region.info(t('live.no_quotes'))
             return summary
 
-        # Tiles instead of a table widget: st.dataframe paints on a canvas (no
-        # way to align a column), and st.table renders the row index no matter
-        # what the Styler hides. st.metric needs neither — and it colours the
-        # change by itself, which is what the Δ column was for.
+        # Hand-built tiles rather than a widget: st.dataframe paints on a canvas
+        # (no way to align a column), st.table prints the row index whatever the
+        # Styler hides, and st.metric sets its own — very large — value font.
+        # Fifteen of those filled the page before the chart even started.
         rows = list(summary.itertuples())
         per_row = max(1, columns)
         for start in range(0, len(rows), per_row):
@@ -498,13 +530,7 @@ class LiveTicker(fetch_data.FetchData):
                 slots = [region] * len(chunk)
             for slot, row in zip(slots, chunk):
                 stale = bool(row.age and row.age >= stale_after_min)
-                slot.metric(
-                    label=f"{row.symbol} ⏳" if stale else row.symbol,
-                    value=self.format_price(row.price),
-                    delta=f"{row.change:+.2f} %",
-                    help=t('live.tile_help', time=row.time),
-                )
-                slot.caption(row.time)
+                slot.markdown(self.price_tile(row, stale=stale), unsafe_allow_html=True)
 
         stale_count = int((summary['age'] >= stale_after_min).sum())
         hints = [t('live.col_change_help')]
