@@ -588,6 +588,59 @@ class LiveTicker(fetch_data.FetchData):
         self.update_signals(ohlc_df, interval)
         return ohlc_df
 
+    @staticmethod
+    def transfer_annotations(fig, source, row=1):
+        """Copy an indicator's annotations onto the combined figure.
+
+        Deliberately WITHOUT row/col. The indicator labels are anchored with
+        xref='paper' (x=0.0 left margin, x=1.0 right margin); passing row/col
+        makes Plotly rewrite that reference to the data axis, where 0.0 and 1.0
+        become 1970-01-01 on a date axis. The shared x-axis then spans from 1970
+        to today and squeezes every candle against the right edge — which is
+        exactly what the live chart looked like.
+
+        Sub-plot rows are skipped: a paper-anchored annotation cannot be homed
+        to a sub-plot without that same distortion.
+        """
+        if row != 1:
+            return 0
+        transferred = 0
+        for annotation in getattr(source.layout, 'annotations', ()) or ():
+            fig.add_annotation(annotation)
+            transferred += 1
+        return transferred
+
+    @staticmethod
+    def label_right(fig, series, text, color, row=1, line_dash=None, draw_line=False):
+        """Put a coloured label for a line's last value into the right margin.
+
+        Same idiom as the history chart: an annotation anchored to the paper's
+        right edge, so it sits beside the plot instead of on top of the data.
+        """
+        try:
+            value = float(pd.Series(series).dropna().iloc[-1])
+        except (IndexError, TypeError, ValueError):
+            return False
+        if draw_line:
+            fig.add_hline(y=value, line_width=1, line_dash=line_dash or 'dot',
+                          line_color=color, row=row, col=1)
+        fig.add_annotation(
+            x=1.0,
+            y=value,
+            xref='paper',
+            yref='y' if row == 1 else f'y{row}',
+            text=f' {text} ',
+            showarrow=False,
+            xanchor='left',
+            yanchor='middle',
+            bgcolor=color,
+            font=dict(color='white', size=13),
+            bordercolor=color,
+            borderpad=3,
+            opacity=0.9,
+        )
+        return True
+
     def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False):
         """Create a Plotly candlestick chart for a symbol."""
 
@@ -610,29 +663,30 @@ class LiveTicker(fetch_data.FetchData):
         )
 
         fig.update_layout(
-            autosize = False,            
+            autosize = False,
             height=800,
-            width=500
-        )       
+            width=500,
+            # Room for the labels that sit outside the plotting area — the
+            # history chart uses the same margins.
+            margin=dict(l=110, r=90),
+        )
 
         if "heikin" in overlays:
             self.init_instance("heikin", df=ohlc_df)
-            for trace in self.heikin.fig.data:    
+            for trace in self.heikin.fig.data:
                 fig.add_trace(trace, row=1, col=1)
-            for shape in self.heikin.fig.layout.shapes:    
-                fig.add_shape(shape, row=1, col=1)                    
-            for annotation in self.heikin.fig.layout.annotations:
-                fig.add_annotation(annotation, row=1, col=1)              
+            for shape in self.heikin.fig.layout.shapes:
+                fig.add_shape(shape, row=1, col=1)
+            self.transfer_annotations(fig, self.heikin.fig)
 
         if "candle" in overlays:
             self.init_instance("candle", df=ohlc_df)
             self.candle.add_fig()
-            for trace in self.candle.fig.data:    
+            for trace in self.candle.fig.data:
                 fig.add_trace(trace, row=1, col=1)
-            for shape in self.candle.fig.layout.shapes:    
-                fig.add_shape(shape, row=1, col=1)                    
-            for annotation in self.candle.fig.layout.annotations:
-                fig.add_annotation(annotation, row=1, col=1)              
+            for shape in self.candle.fig.layout.shapes:
+                fig.add_shape(shape, row=1, col=1)
+            self.transfer_annotations(fig, self.candle.fig)
 
         emas = {
                 9:"darkorange",
@@ -644,33 +698,25 @@ class LiveTicker(fetch_data.FetchData):
                 200:"darkred",
             }
 
-#        if interval == "1min":
-        if 1:
-            for ma in emas:
-                color = emas[ma]
+        for label, spans in (('EMA', emas), ('SMA', smas)):
+            for ma, color in spans.items():
+                column = f"{label.lower()}{ma}"
+                if column not in ohlc_df.columns:
+                    continue
                 fig.add_trace(
-                    go.Scatter(x = ohlc_df['Date'], y = ohlc_df[f'ema{ma}'], name = f'EMA {ma}',
+                    go.Scatter(x = ohlc_df['Date'], y = ohlc_df[column], name = f'{label} {ma}',
                         line_color = color,
                         line = { 'width':0.8},
                         showlegend = False,
                         ),
                     row = 1,
                     col = 1,
-                )           
+                )
+                self.label_right(fig, ohlc_df[column], f'{label} {ma}', color)
 
-            for ma in smas:
-                color = smas[ma]
-                fig.add_trace(
-                    go.Scatter(x = ohlc_df['Date'], y = ohlc_df[f'sma{ma}'], name = f'SMA {ma}',
-                        line_color = color,
-                        line = { 'width':0.8},
-                        showlegend = False,
-                        ),
-                    row = 1,
-                    col = 1,
-                )           
-        else:
-            pass
+        # The last price, like the history chart's green marker.
+        self.label_right(fig, ohlc_df['Close'], self.format_price(ohlc_df['Close'].iloc[-1]),
+                         'darkgreen', line_dash='dot', draw_line=True)
 
         row = 1
         for ovl in overlays:
@@ -681,10 +727,9 @@ class LiveTicker(fetch_data.FetchData):
                 obj.add_fig()
                 for trace in obj.fig.data :    
                     fig.add_trace(trace, row=row, col=1)
-                for shape in obj.fig.layout.shapes:    
+                for shape in obj.fig.layout.shapes:
                     fig.add_shape(shape, row=row, col=1)
-                for annotation in obj.fig.layout.annotations:
-                    fig.add_annotation(annotation, row=1, col=1)              
+                self.transfer_annotations(fig, obj.fig, row=row)
                 fig['layout'][f'yaxis{row}']['title'] = ovl
             except Exception:
                 pass
@@ -696,10 +741,9 @@ class LiveTicker(fetch_data.FetchData):
                 obj.add_fig()
                 for trace in obj.fig.data :    
                     fig.add_trace(trace, row=row, col=1)
-                for shape in obj.fig.layout.shapes:    
+                for shape in obj.fig.layout.shapes:
                     fig.add_shape(shape, row=row, col=1)
-                for annotation in obj.fig.layout.annotations:
-                    fig.add_annotation(annotation, row=1, col=1)              
+                self.transfer_annotations(fig, obj.fig, row=row)
                 fig['layout'][f'yaxis{row}']['title'] = osz
                 row+=1
 

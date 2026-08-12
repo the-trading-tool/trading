@@ -430,3 +430,49 @@ def test_history_chart_passes_every_argument_the_asset_viewer_passes():
     history = kwargs_of(root / 'live_ticker.py', 'history = tc.tiny_chart(')
 
     assert not viewer - history, f"history chart is missing: {sorted(viewer - history)}"
+
+
+def test_paper_anchored_annotations_are_transferred_without_row():
+    """Indicator labels are anchored to the paper, not to the data axis.
+
+    Passing row/col makes Plotly rewrite xref='paper' to the date axis, where
+    x=1.0 becomes 1970-01-01: the shared axis then spans 1970..today and every
+    candle is squeezed against the right edge. That is what the live chart did.
+    """
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    source = go.Figure()
+    source.add_annotation(x=1.0, y=100.0, xref='paper', yref='y', text=' EMA 9 ',
+                          showarrow=False)
+
+    target = make_subplots(rows=2, cols=1, shared_xaxes=True)
+    assert lt.LiveTicker.transfer_annotations(target, source) == 1
+    assert target.layout.annotations[0].xref == 'paper'      # survived the copy
+
+    # Sub-plot rows are skipped rather than distorted.
+    target2 = make_subplots(rows=2, cols=1, shared_xaxes=True)
+    assert lt.LiveTicker.transfer_annotations(target2, source, row=2) == 0
+    assert not target2.layout.annotations
+
+
+def test_label_right_marks_the_last_value():
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    assert lt.LiveTicker.label_right(fig, pd.Series([1.0, 2.0, 26497.03]),
+                                     'EMA 9', 'darkorange') is True
+
+    label = fig.layout.annotations[-1]
+    assert label.text.strip() == 'EMA 9'
+    assert label.y == pytest.approx(26497.03)      # the line's last value
+    assert label.xref == 'paper' and label.x == 1.0
+    assert label.bgcolor == 'darkorange'
+
+
+def test_label_right_ignores_an_empty_series():
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    assert lt.LiveTicker.label_right(fig, pd.Series(dtype='float64'), 'x', 'red') is False
+    assert not fig.layout.annotations
