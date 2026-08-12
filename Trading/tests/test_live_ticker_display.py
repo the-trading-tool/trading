@@ -708,3 +708,74 @@ def test_the_expander_label_is_plain_when_every_quote_is_fresh():
     lt.LiveTicker.render_price_summary(obj, region=region, columns=4)
 
     assert '⏳' not in region.expander_label
+
+
+class _FakeOsc:
+    """Minimal stand-in for an indicator instance."""
+
+    def __init__(self, name):
+        self.name = name
+        self.df = pd.DataFrame()
+        self.figured = False
+
+    def add_fig(self):
+        self.figured = True
+
+
+def _osc_ticker(broken=()):
+    """A ticker whose init_instance serves fakes and fails for `broken` names."""
+    obj = _ticker()
+    obj.instances = {}
+
+    def init_instance(name, df=None, symbol=None):
+        if name in broken:
+            # Exactly how relvol fails on tick data: no volume column.
+            raise KeyError('Volume')
+        obj.instances[name] = _FakeOsc(name)
+        setattr(obj, name, obj.instances[name])
+
+    obj.init_instance = init_instance
+    obj.merge_signal_columns = lambda df, name, instance: df
+    return obj
+
+
+def test_selected_but_not_plotted_oscillators_get_no_row():
+    """The Asset Viewer honours the no-plot flag; the live chart must match it."""
+    obj = _osc_ticker()
+
+    sub_plots, _ = obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}),
+                                       ['ewo', 'macd', 'ovt'],
+                                       no_plot_oszilators=['macd'])
+
+    assert [name for name, _ in sub_plots] == ['ewo', 'ovt']
+    assert obj.unavailable_oszilators == []
+
+
+def test_a_computed_but_unplotted_oscillator_is_still_instantiated():
+    """Its columns feed the buy/sell expressions even without a row."""
+    obj = _osc_ticker()
+
+    obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}), ['ewo', 'macd'],
+                        no_plot_oszilators=['macd'])
+
+    assert 'macd' in obj.instances
+    assert obj.instances['macd'].figured is False   # computed, not drawn
+
+
+def test_one_broken_oscillator_does_not_drop_the_ones_behind_it():
+    """A single try around the whole loop lost every row after the failure."""
+    obj = _osc_ticker(broken=('relvol',))
+
+    sub_plots, _ = obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}),
+                                       ['ewo', 'ovt', 'relvol', 'rsi'])
+
+    assert [name for name, _ in sub_plots] == ['ewo', 'ovt', 'rsi']
+    assert obj.unavailable_oszilators == ['relvol']
+
+
+def test_an_unavailable_oscillator_claims_no_empty_row():
+    obj = _osc_ticker(broken=('relvol',))
+
+    sub_plots, _ = obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}), ['ewo', 'relvol'])
+
+    assert len(sub_plots) == 1

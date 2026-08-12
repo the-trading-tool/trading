@@ -104,6 +104,9 @@ class LiveTicker(fetch_data.FetchData):
     ema_spans = (9, 21, 50)
     sma_spans = (100, 200)
 
+    # Oscillators that were selected but could not be built on tick data.
+    unavailable_oszilators = []
+
     # Oscillator columns that feed the trend/momentum signal of notifier().
     signal_columns = {
         'ewo': ['ewo', 'ewo_ema', 'ewo_diff'],
@@ -686,14 +689,54 @@ class LiveTicker(fetch_data.FetchData):
         )
         return True
 
-    def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False):
+    def build_sub_plots(self, ohlc_df, oszillators, no_plot_oszilators=(), symbol=''):
+        """Return the oscillators that earn a sub-plot row, plus the working frame.
+
+        Built before the figure exists, because only what really renders may
+        claim a row. Two reasons an oscillator may not:
+          * "selected but not plotted" — the buy/sell expressions read its
+            columns while the chart stays clean. The Asset Viewer's chart obeys
+            that flag; ignoring it here is what made the two charts disagree.
+          * it cannot work on tick data at all: an aggregated tick frame carries
+            no volume, so relvol and friends raise. Catching that per indicator
+            keeps the damage local — one try around the whole loop silently
+            dropped every oscillator that came after the broken one.
+        """
+        no_plot_oszilators = set(no_plot_oszilators or ())
+        sub_plots = []
+        self.unavailable_oszilators = []
+        for osz in oszillators:
+            try:
+                self.init_instance(osz, df=ohlc_df)
+                obj = getattr(self, osz)
+                # We need the following values to identify trend signals
+                ohlc_df = self.merge_signal_columns(ohlc_df, osz, obj)
+                if osz in no_plot_oszilators:
+                    continue
+                obj.add_fig()
+                sub_plots.append((osz, obj))
+            except Exception:
+                # Reported below the chart: silently dropping a selected
+                # oscillator is what sent us looking for this bug in the first
+                # place.
+                self.unavailable_oszilators.append(osz)
+                logger.debug("Oscillator %s is not renderable for %s", osz, symbol, exc_info=True)
+        return sub_plots, ohlc_df
+
+    def plot_candlestick(self, symbol, interval="5min", oszillators=['ewo','rsi'], overlays=['atc','fvg','pre','bos','candle'], limit_start=False,
+                         no_plot_overlays=None, no_plot_oszilators=None):
         """Create a Plotly candlestick chart for a symbol."""
 
         ohlc_df = self.prepare_frame(symbol, interval)
         if ohlc_df.empty:
             return None
 
-        rows = len(oszillators)
+        no_plot_overlays = set(no_plot_overlays or [])
+        no_plot_oszilators = set(no_plot_oszilators or [])
+
+        sub_plots, ohlc_df = self.build_sub_plots(ohlc_df, oszillators, no_plot_oszilators, symbol)
+
+        rows = len(sub_plots)
         row_width = []
         for i in range(rows):
             row_width.append(0.4 / rows)
@@ -716,7 +759,7 @@ class LiveTicker(fetch_data.FetchData):
             margin=dict(l=110, r=90),
         )
 
-        if "heikin" in overlays:
+        if "heikin" in overlays and "heikin" not in no_plot_overlays:
             self.init_instance("heikin", df=ohlc_df)
             for trace in self.heikin.fig.data:
                 fig.add_trace(trace, row=1, col=1)
@@ -724,7 +767,7 @@ class LiveTicker(fetch_data.FetchData):
                 fig.add_shape(shape, row=1, col=1)
             self.transfer_annotations(fig, self.heikin.fig)
 
-        if "candle" in overlays:
+        if "candle" in overlays and "candle" not in no_plot_overlays:
             self.init_instance("candle", df=ohlc_df)
             self.candle.add_fig()
             for trace in self.candle.fig.data:
@@ -765,6 +808,8 @@ class LiveTicker(fetch_data.FetchData):
 
         row = 1
         for ovl in overlays:
+            if ovl in no_plot_overlays:
+                continue
 #            if interval == "1min" or interval == "5min":# and (ovl == 'fvg' or ovl == "bsz" or 'ici' or 'lzq'):
             try:
                 self.init_instance(ovl, df=ohlc_df, symbol=symbol)
@@ -779,23 +824,17 @@ class LiveTicker(fetch_data.FetchData):
             except Exception:
                 pass
         row = 2
-        try:
-            for osz in oszillators:
-                self.init_instance(osz, df=ohlc_df)
-                obj = getattr(self, osz)
-                obj.add_fig()
-                for trace in obj.fig.data :    
+        for osz, obj in sub_plots:
+            try:
+                for trace in obj.fig.data :
                     fig.add_trace(trace, row=row, col=1)
                 for shape in obj.fig.layout.shapes:
                     fig.add_shape(shape, row=row, col=1)
                 self.transfer_annotations(fig, obj.fig, row=row)
                 fig['layout'][f'yaxis{row}']['title'] = osz
-                row+=1
-
-                # We need the following values to identify trend signals
-                ohlc_df = self.merge_signal_columns(ohlc_df, osz, obj)
-        except Exception:
-            logger.debug("Oscillator rendering failed for %s", symbol, exc_info=True)
+            except Exception:
+                logger.debug("Oscillator %s failed to draw for %s", osz, symbol, exc_info=True)
+            row += 1
 
         fig.update_xaxes(
             rangeslider_visible = False,
@@ -1114,13 +1153,22 @@ class LiveTicker(fetch_data.FetchData):
             if chrt != selected:
                 self.compute_signals(self.symbol, chrt, oszillators=oszilators)
                 continue
-            fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)
+            fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays,
+                                        limit_start=limit_start,
+                                        no_plot_overlays=no_plot_overlays,
+                                        no_plot_oszilators=no_plot_oszilators)
             if fig:
                 chart_slot.plotly_chart(fig,
                         use_container_width = True,
                         theme="streamlit",
                         config = self.charts_config,
                         )
+                # Some indicators cannot exist here: the ticks carry price only,
+                # so anything volume based has nothing to work with. Saying so
+                # beats leaving the user to compare row counts.
+                if self.unavailable_oszilators:
+                    chart_slot.caption(t('live.osz_unavailable',
+                                         names=', '.join(self.unavailable_oszilators)))
 
         signal_slot.write(self.signal_line())
 

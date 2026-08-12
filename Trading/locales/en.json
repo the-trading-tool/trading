@@ -1680,5 +1680,6 @@
   "live.tile_help": "Last update: {time}",
   "live.signal_line": "{symbol} · strength {strength} % of price · momentum {momentum} · trend {trend} ({ready} of {total} intervals)",
   "live.overview": "Quote overview — {count} symbols",
-  "live.overview_stale": "Quote overview — {count} symbols, {stale} stale ⏳"
+  "live.overview_stale": "Quote overview — {count} symbols, {stale} stale ⏳",
+  "live.osz_unavailable": "Not computable on tick data (no volume): {names}"
 }
