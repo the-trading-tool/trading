@@ -484,21 +484,17 @@ class LiveTicker(fetch_data.FetchData):
             region.info(t('live.no_quotes'))
             return summary
 
+        change = t('live.col_change')
         table = pd.DataFrame({
             t('live.col_symbol'): summary['symbol'],
             t('live.col_price'): summary['price'].map(self.format_price),
-            t('live.col_change'): summary['change'],
+            change: summary['change'].map('{:+.2f} %'.format),
             t('live.col_time'): [f"{stamp} ⏳" if age and age >= stale_after_min else stamp
                                  for stamp, age in zip(summary['time'], summary['age'])],
         })
-        config = {
-            t('live.col_change'): st.column_config.NumberColumn(
-                t('live.col_change'), format="%+.2f %%", help=t('live.col_change_help')),
-        }
 
         columns = max(1, min(columns, len(table)))
         per_column = -(-len(table) // columns)          # ceil
-        height = 36 * per_column + 38                   # show every row, no scrolling
         try:
             slots = region.columns(columns)
         except Exception:
@@ -509,13 +505,39 @@ class LiveTicker(fetch_data.FetchData):
             chunk = table.iloc[index * per_column:(index + 1) * per_column]
             if chunk.empty:
                 continue
-            slot.dataframe(chunk, hide_index=True, use_container_width=True,
-                           height=height, column_config=config)
+            slot.table(self.style_price_table(chunk, right=[change]))
 
         stale = int((summary['age'] >= stale_after_min).sum())
+        hints = [t('live.col_change_help')]
         if stale:
-            region.caption(t('live.stale_hint', count=stale, minutes=stale_after_min))
+            hints.append(t('live.stale_hint', count=stale, minutes=stale_after_min))
+        region.caption("  \n".join(hints))
         return summary
+
+    @staticmethod
+    def style_price_table(table, right=()):
+        """Left-align the table, keeping the given columns right-aligned.
+
+        st.dataframe draws its cells on a canvas, so neither column_config (it
+        has no alignment option) nor CSS can move them — st.table renders real
+        HTML, where a Styler can.
+        """
+        # Disjoint subsets, not "all left then override": the Styler does not
+        # emit its rules in call order, so a later override is not guaranteed
+        # to win — measured, the global rule swallowed the right-aligned column.
+        left = [column for column in table.columns if column not in set(right)]
+        styled = table.style
+        if left:
+            styled = styled.set_properties(subset=left, **{'text-align': 'left'})
+        if right:
+            styled = styled.set_properties(subset=list(right), **{'text-align': 'right'})
+        styled = styled.set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'left')]},
+        ])
+        try:
+            return styled.hide(axis='index')
+        except AttributeError:                     # pandas < 1.4
+            return styled.hide_index()
 
     def aggregate_ticks(self, interval="5min", symbol=''):
         """Aggregate one symbol's ticks into an OHLC frame plus its moving averages.

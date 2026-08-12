@@ -476,3 +476,43 @@ def test_label_right_ignores_an_empty_series():
     fig = go.Figure()
     assert lt.LiveTicker.label_right(fig, pd.Series(dtype='float64'), 'x', 'red') is False
     assert not fig.layout.annotations
+
+
+def _alignment_per_column(table, right=()):
+    """Return the effective text-align per column index of the rendered HTML."""
+    import re
+
+    html = lt.LiveTicker.style_price_table(table, right=right).to_html()
+    alignment = {}
+    for selectors, body in re.findall(r"([^{}]+)\{([^}]*)\}", html.split("</style>")[0]):
+        match = re.search(r"text-align:\s*(\w+)", body)
+        if not match:
+            continue
+        for selector in selectors.split(","):
+            column = re.search(r"row\d+_col(\d+)", selector)
+            if column:
+                alignment[int(column.group(1))] = match.group(1)
+    return alignment
+
+
+def test_price_column_is_left_aligned():
+    """st.dataframe draws on a canvas — neither column_config nor CSS can align it.
+
+    st.table renders real HTML, so the Styler decides. The rules are set as
+    disjoint subsets because the Styler does not emit them in call order: a
+    global "all left" plus a later override let the global rule win.
+    """
+    table = pd.DataFrame({"Symbol": ["BUND-FUT"], "Price": ["124.88"],
+                          "Δ": ["+0.16 %"], "Time": ["11:40:15"]})
+
+    alignment = _alignment_per_column(table, right=["Δ"])
+
+    assert alignment[1] == 'left'      # Price
+    assert alignment[0] == 'left'      # Symbol
+    assert alignment[3] == 'left'      # Time
+    assert alignment[2] == 'right'     # the change column stays right
+
+
+def test_style_price_table_hides_the_index():
+    table = pd.DataFrame({"Symbol": ["BUND-FUT"], "Price": ["124.88"]})
+    assert 'row_heading' not in lt.LiveTicker.style_price_table(table).to_html()
