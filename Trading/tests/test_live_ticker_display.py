@@ -273,6 +273,9 @@ class _StubSelector:
     def get_selected_options(self, name):
         return []
 
+    def get_plot_options(self, name):
+        return []
+
 
 class _StubRegion:
     """Swallows the Streamlit calls render() makes on `region`."""
@@ -354,3 +357,76 @@ def test_select_tick_interval_survives_an_unknown_stored_value():
 def test_get_symbol_list_handles_an_empty_frame():
     obj = _ticker()
     assert lt.LiveTicker.get_symbol_list(obj) == []
+
+
+def test_history_chart_is_configured_like_the_asset_viewer(monkeypatch):
+    """The history chart must see the same settings as the Asset Viewer.
+
+    `username` is the critical one: tiny_chart builds its own SystemConfig from
+    it, so without a user every per-user setting (indicator parameters, zoom
+    factor, …) silently falls back to the defaults — the chart looks subtly
+    different for the same ticker.
+    """
+    obj = _ticker(_tick_frame(minutes=60))
+    obj.username = 'kurt'
+    obj.sys_conf = _StubConfig(stored={'live_tick_interval': '1min'})
+    obj.multi_selector = _StubSelector()
+    obj.calc_max_periods = lambda interval, period: 512
+    obj.get_database_files = lambda asterik='*': []
+    obj.load_from_db = lambda **kw: None
+    obj.compute_signals = lambda symbol, interval, **kw: None
+    obj.plot_candlestick = lambda symbol, interval, **kw: None
+    obj.render_price_summary = lambda region=None, **kw: None
+    obj.select_tick_interval = lambda region=None: '1min'
+
+    captured = {}
+
+    class _Chart:
+        fig = object()
+
+    def _tiny_chart(symbol, **kwargs):
+        captured['symbol'] = symbol
+        captured.update(kwargs)
+        return _Chart()
+
+    monkeypatch.setattr(lt.tc, 'tiny_chart', _tiny_chart)
+    monkeypatch.setattr(lt.st, 'checkbox', lambda *args, **kwargs: True)
+    monkeypatch.setattr(lt.st, 'plotly_chart', lambda *args, **kwargs: None)
+
+    lt.LiveTicker.render(obj, region=_StubRegion(), bare_mode=False)
+
+    assert captured['username'] == 'kurt'
+    assert captured['no_plot_overlays'] == []
+    assert captured['no_plot_oszilators'] == []
+    assert captured['zoom'] is True and captured['range_breaks'] is True
+
+
+def test_history_chart_passes_every_argument_the_asset_viewer_passes():
+    """Pin the parity itself, so the two call sites cannot drift apart.
+
+    When the Asset Viewer gains a new tiny_chart argument, this fails and points
+    at the live ticker's history chart — which is exactly the moment somebody
+    has to decide whether it needs it too.
+    """
+    import re
+    from pathlib import Path
+
+    def kwargs_of(path, anchor):
+        source = Path(path).read_text(encoding='utf-8')
+        start = source.index(anchor)
+        opening = source.index('(', start)
+        depth = 0
+        for end in range(opening, len(source)):
+            if source[end] == '(':
+                depth += 1
+            elif source[end] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+        return {m.group(1) for m in re.finditer(r'(\w+)\s*=', source[opening + 1:end])}
+
+    root = Path(__file__).resolve().parent.parent / 'tradinglib'
+    viewer = kwargs_of(root / 'main_page.py', 'self.t_chart = tc.tiny_chart(')
+    history = kwargs_of(root / 'live_ticker.py', 'history = tc.tiny_chart(')
+
+    assert not viewer - history, f"history chart is missing: {sorted(viewer - history)}"

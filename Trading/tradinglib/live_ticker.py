@@ -943,6 +943,14 @@ class LiveTicker(fetch_data.FetchData):
         overlays = self.multi_selector.get_selected_options('Overlay')
         oszilators = self.multi_selector.get_selected_options('Oszilator')
 
+        # "Selected but not plotted" — an indicator can be computed for the
+        # buy/sell expressions without cluttering the chart. Reading this the
+        # same way the Asset Viewer does is what keeps both charts identical.
+        plot_overlays = set(self.multi_selector.get_plot_options('Overlay'))
+        plot_oszilators = set(self.multi_selector.get_plot_options('Oszilator'))
+        no_plot_overlays = [n for n in overlays if n not in plot_overlays]
+        no_plot_oszilators = [n for n in oszilators if n not in plot_oszilators]
+
         (interval, period, overlays, oszilators) = self.sys_conf.get_selectors(interval, period, overlays, oszilators)
 
         trend_length = 21
@@ -977,8 +985,34 @@ class LiveTicker(fetch_data.FetchData):
         try:
             show_history = st.checkbox("Show history: ",False)
             if show_history:
-
-                st.plotly_chart(tc.tiny_chart(self.symbol,f' {interval} / {period} trend',period,interval,True, True,range_breaks=True,add_sub_plots=oszilators, add_overlays=overlays, trend_length=trend_length, zoom=True).fig,
+                # Same parameters as the Asset Viewer's chart (main_page), so the
+                # history looks identical for the same ticker and settings.
+                # `username` is the important one: tiny_chart builds its own
+                # SystemConfig from it, and without a user every per-user setting
+                # (indicator parameters, zoom factor, …) silently falls back to
+                # the defaults.
+                slider_row = st.empty()
+                history = tc.tiny_chart(
+                    self.symbol,
+                    longname=f"{self.symbol} - {interval}/{period}",
+                    interval=interval,
+                    period=period,
+                    url=f'{self.url}',
+                    candle_chart='candle' in (overlays or []),
+                    show_trend=False,
+                    range_breaks=True,
+                    trend_length=trend_length,
+                    add_sub_plots=oszilators,
+                    add_overlays=overlays,
+                    no_plot_overlays=no_plot_overlays,
+                    no_plot_oszilators=no_plot_oszilators,
+                    username=self.username,
+                    zoom=True,
+                    pips_select=True,
+                    add_current=(interval == "1d"),
+                    region=slider_row,
+                )
+                st.plotly_chart(history.fig,
                     use_container_width = True,
                     theme="streamlit",
                     config = self.charts_config
