@@ -115,6 +115,20 @@ class LiveTicker(fetch_data.FetchData):
     tick_intervals = ("1min", "5min", "15min")
     tick_interval_key = 'live_tick_interval'
 
+    # Bars an interval needs before its EWO histogram means anything: 21 for the
+    # EWO's slow SMA plus roughly the EMA span on top.
+    min_signal_bars = 30
+
+    # Alert threshold, now in percent of price instead of price points, so it
+    # holds for every symbol. 0.1 % is close to what the old "30 points" meant
+    # on the DAX, which is the instrument the number was tuned for.
+    signal_threshold_key = 'live_signal_threshold'
+    signal_threshold_default = 0.1
+    # Optional confirmation: only alert long when the momentum agrees (>50) and
+    # short when it does not. Off by default — switching it on changes how often
+    # the notifier fires, and that should be a deliberate decision.
+    momentum_filter_key = 'live_signal_momentum_filter'
+
     def __init__(self, db_path='database', db_table="ticker_data", init=False, region=st, username='admin', is_admin=False, days_back=10):
         """Initialize the live ticker, optionally create the DB table, and load historical tick data."""
         # create empty index (timestamp + symbol)
@@ -839,44 +853,101 @@ class LiveTicker(fetch_data.FetchData):
 
         return fig
 
-    def update_signals(self, ohlc_df, interval):
-        """Accumulate value / momentum / trend over the rendered intervals.
+    def reset_signals(self):
+        """Start a fresh multi-interval signal.
 
-        The 1min pass resets the accumulators, the later intervals add to them —
-        notifier() reads the sum. Returns the frame with NaNs filled.
+        Called explicitly before the interval loop. The old code reset whenever
+        the interval happened to be named "1min" — reorder or rename the list and
+        the accumulators would have grown without bound.
         """
-        if interval == "1min":
-            self.momentum = 0
-            self.value = 0
-            self.trend = 0
-            self.trend_ticker = ''
-            self.market_price = ''
+        self.signals = {}
+        self.value = 0
+        self.momentum = 0
+        self.trend = 0
+        self.trend_ticker = ''
+        self.market_price = 0
+
+    def update_signals(self, ohlc_df, interval):
+        """Fold one interval's oscillators into the multi-interval signal.
+
+        Each interval contributes a *normalised* strength — the EWO histogram as
+        a percentage of the price — because EWO is a difference of two moving
+        averages and therefore carries the price's unit. Summed raw, the same
+        market state produced +25 on the Nikkei (67 000) and +0.00 on EURUSD
+        (1.15), so a fixed alert threshold could only ever fit one instrument.
+
+        An interval that lacks the bars for a meaningful EWO is recorded as *not
+        ready* and left out — it no longer contributes a silent zero that reads
+        like "neutral". That matters daily: the tick database starts empty every
+        morning, so the 15min series has no EWO at all before the early
+        afternoon (EWO needs 21 bars, its EMA about nine more).
+        """
+        if not hasattr(self, 'signals'):
+            self.reset_signals()
+
+        entry = {'bars': 0, 'ready': False, 'strength': 0.0,
+                 'momentum': None, 'direction': 0}
+        self.signals[interval] = entry
 
         if ohlc_df is None or ohlc_df.empty:
+            self.aggregate_signals()
             return ohlc_df
 
-        ohlc_df = ohlc_df.fillna(0).infer_objects(copy=False)
         self.trend_ticker = self.symbol
-        self.market_price = round(ohlc_df['Close'].iloc[-1], 1)
+        entry['bars'] = len(ohlc_df)
 
         # The last bar is still forming — read the previous, closed one.
-        if len(ohlc_df) < 2:
-            return ohlc_df
+        if len(ohlc_df) > 1:
+            closed = ohlc_df.iloc[-2]
+            price = self._finite(ohlc_df['Close'].iloc[-1])
+            self.market_price = round(price, 1) if price else self.market_price
 
-        try:
-            self.value += ohlc_df['ewo'].iloc[-2] - ohlc_df['ewo_ema'].iloc[-2]
-            self.momentum += ohlc_df['momentum'].iloc[-2]
-        except (KeyError, IndexError):
-            logger.debug("No ewo/rsi columns for %s / %s", self.symbol, interval)
-        try:
-            if ohlc_df['ewo_diff'].iloc[-2] < 0:
-                self.trend += -1
-            elif ohlc_df['ewo_diff'].iloc[-2] > 0:
-                self.trend += 1
-        except (KeyError, IndexError):
-            logger.debug("No ewo_diff column for %s / %s", self.symbol, interval)
+            ewo = self._finite(closed.get('ewo'))
+            ewo_ema = self._finite(closed.get('ewo_ema'))
+            if entry['bars'] >= self.min_signal_bars and None not in (ewo, ewo_ema) and price:
+                entry['ready'] = True
+                entry['strength'] = (ewo - ewo_ema) / price * 100
+                diff = self._finite(closed.get('ewo_diff'))
+                entry['direction'] = 0 if diff is None else (1 if diff > 0 else (-1 if diff < 0 else 0))
+                entry['momentum'] = self._finite(closed.get('momentum'))
+            else:
+                logger.debug("%s / %s: only %s bars — interval not counted",
+                             self.symbol, interval, entry['bars'])
+        else:
+            price = self._finite(ohlc_df['Close'].iloc[-1])
+            self.market_price = round(price, 1) if price else self.market_price
 
-        return ohlc_df
+        self.aggregate_signals()
+        return ohlc_df.fillna(0).infer_objects(copy=False)
+
+    @staticmethod
+    def _finite(value):
+        """Return value as a float, or None when it is missing/NaN/inf."""
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number == number and abs(number) != float('inf') else None
+
+    def aggregate_signals(self):
+        """Combine the ready intervals into value / momentum / trend.
+
+        The strength is averaged rather than summed, so adding a fourth interval
+        does not move the alert threshold. The trend stays a sum: it is the
+        agreement count over the ready intervals (-n … +n) and scale-free by
+        construction — the healthiest part of the original idea.
+        """
+        ready = [entry for entry in self.signals.values() if entry['ready']]
+        self.value = sum(entry['strength'] for entry in ready) / len(ready) if ready else 0
+        self.trend = sum(entry['direction'] for entry in ready)
+        momenta = [entry['momentum'] for entry in ready if entry['momentum'] is not None]
+        self.momentum = sum(momenta) / len(momenta) if momenta else 0
+        return self.value, self.momentum, self.trend
+
+    def signal_state(self):
+        """Return (ready intervals, configured intervals) of the current signal."""
+        signals = getattr(self, 'signals', {}) or {}
+        return sum(1 for entry in signals.values() if entry['ready']), len(self.tick_intervals)
 
 
     def get_idx_selected(self, v_list, v_key, default=0):
@@ -977,10 +1048,10 @@ class LiveTicker(fetch_data.FetchData):
 
         if bare_mode:
             # Headless: compute the signals only, no figures.
+            self.reset_signals()
             for chrt in charts:
                 self.compute_signals(self.symbol, chrt, oszillators=['ewo', 'rsi'])
-            logger.info("Index: %s - Indicator: %s / %s, trend: %s", self.symbol,
-                        round(self.value, 1), round(self.momentum, 1), self.trend)
+            logger.info("%s", self.signal_line())
             return
 
         self.render_price_summary(region=region)
@@ -1026,10 +1097,10 @@ class LiveTicker(fetch_data.FetchData):
 
         self.url = f"/?symbol="
 
-        # Every interval is still computed — value/momentum/trend are the sum
-        # across all three and the notifier's thresholds are calibrated on it —
-        # but only the selected one is drawn. The order matters: the 1min pass
-        # resets the accumulators.
+        # Every interval is still computed — the signal is the agreement across
+        # all of them and the notifier is calibrated on that — but only the
+        # selected one is drawn.
+        self.reset_signals()
         for chrt in charts:
             if chrt != selected:
                 self.compute_signals(self.symbol, chrt, oszillators=oszilators)
@@ -1042,8 +1113,7 @@ class LiveTicker(fetch_data.FetchData):
                         config = self.charts_config,
                         )
 
-        signal_slot.write(f"Index: {self.symbol} - Indicator: {round(self.value,1)} / "
-                          f"{round(self.momentum,1)}, trend: {self.trend}")
+        signal_slot.write(self.signal_line())
 
         if signal_slot.button("Delete cached ticker entries"):
             self.cleanup()
@@ -1087,17 +1157,62 @@ class LiveTicker(fetch_data.FetchData):
             logger.debug("history chart failed", exc_info=True)
 
 
+    def signal_line(self):
+        """One-line summary of the multi-interval signal.
+
+        Says how many intervals actually contributed: a trend of -1 means
+        something different when it comes from one interval than from three.
+        """
+        ready, total = self.signal_state()
+        return t('live.signal_line', symbol=self.symbol,
+                 strength=f"{self.value:+.3f}", momentum=f"{self.momentum:.1f}",
+                 trend=f"{self.trend:+d}", ready=ready, total=total)
+
+    def signal_threshold(self):
+        """Alert threshold in percent of price, from config."""
+        try:
+            return float(self.sys_conf.get_value(self.signal_threshold_key,
+                                                 self.signal_threshold_default))
+        except (TypeError, ValueError, AttributeError):
+            return self.signal_threshold_default
+
+    def should_notify(self):
+        """True when the multi-interval signal is strong and agrees on a direction.
+
+        Requires at least one ready interval — an empty signal used to read as
+        trend 0 / value 0, which never fired but for the wrong reason.
+        """
+        ready, _ = self.signal_state()
+        if not ready or not self.trend:
+            return False
+        if abs(self.value) < self.signal_threshold():
+            return False
+        try:
+            use_momentum = bool(self.sys_conf.get_value(self.momentum_filter_key, False))
+        except AttributeError:
+            use_momentum = False
+        if use_momentum and self.momentum:
+            if self.value > 0 and self.momentum < 50:
+                return False
+            if self.value < 0 and self.momentum > 50:
+                return False
+        return True
+
     def notifier(self, bare_mode=False):
         """Send a Pushover notification with the current trend signal and price information."""
+        ready, total = self.signal_state()
         message = f"""Symbol: {self.trend_ticker}
-Indicator: {round(self.value,1)}, Trend: {self.trend}
-Momentum: {round(self.momentum,1)}
+Strength: {round(self.value, 3)} % of price, Trend: {self.trend} ({ready}/{total} intervals)
+Momentum: {round(self.momentum, 1)}
 Market price: {self.market_price}
 """
         if not bare_mode:
-            pass
-        else:
-            if abs(self.trend) > 0 and abs(self.value) >= 30:
-                logger.info("notifiying: %s", message)
-                self.notfr.send_notification(ticker=self.symbol,price=self.market_price, date=self.df['timestamp'].iloc[-1],message=message, title=f"""Dax {"SHORT" if self.value < 0 else "LONG"} indicator""")
+            return False
+        if self.should_notify():
+            logger.info("notifiying: %s", message)
+            self.notfr.send_notification(ticker=self.symbol, price=self.market_price,
+                                         date=self.df['timestamp'].iloc[-1], message=message,
+                                         title=f"""{self.symbol} {"SHORT" if self.value < 0 else "LONG"} indicator""")
+            return True
+        return False
 

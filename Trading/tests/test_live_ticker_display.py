@@ -165,24 +165,143 @@ def test_prepare_frame_shape_matches_indicator_expectations():
     assert pd.api.types.is_datetime64_any_dtype(frame["Date"])
 
 
-def test_update_signals_resets_on_the_first_interval_and_accumulates():
-    obj = _ticker(_tick_frame(minutes=30))
-    frame = lt.LiveTicker.prepare_frame(obj, "^GDAXI", "5min")
-    frame["ewo"] = 10.0
-    frame["ewo_ema"] = 4.0
-    frame["ewo_diff"] = 1.0
-    frame["momentum"] = 20.0
+def _signal_frame(bars, price=26500.0, histogram=5.0, diff=1.0, momentum=60.0):
+    """A frame shaped like compute_signals' output, with a known EWO histogram."""
+    frame = pd.DataFrame({
+        'Close': [price] * bars,
+        'ewo': [histogram] * bars,
+        'ewo_ema': [0.0] * bars,
+        'ewo_diff': [diff] * bars,
+        'momentum': [momentum] * bars,
+    })
+    return frame
 
-    obj.value, obj.momentum, obj.trend = 99, 99, 99
-    lt.LiveTicker.update_signals(obj, frame, "1min")     # resets, then adds
-    assert obj.value == pytest.approx(6.0)
-    assert obj.momentum == pytest.approx(20.0)
-    assert obj.trend == 1
 
-    lt.LiveTicker.update_signals(obj, frame, "5min")     # accumulates
-    assert obj.value == pytest.approx(12.0)
-    assert obj.trend == 2
-    assert obj.market_price == pytest.approx(frame["Close"].iloc[-1], abs=0.05)
+def _signal_ticker():
+    obj = _ticker()
+    obj.sys_conf = None                     # falls back to the defaults
+    obj.reset_signals()
+    return obj
+
+
+def test_the_strength_is_normalised_so_symbols_are_comparable():
+    """EWO is a difference of moving averages and carries the price's unit.
+
+    Summed raw, the same market state read +25 on the Nikkei (67 000) and +0.00
+    on EURUSD (1.15) — a fixed threshold could only ever fit one instrument.
+    """
+    index = _signal_ticker()
+    lt.LiveTicker.update_signals(index, _signal_frame(50, price=26500.0, histogram=26.5), '1min')
+
+    fx = _signal_ticker()
+    lt.LiveTicker.update_signals(fx, _signal_frame(50, price=1.15, histogram=0.00115), '1min')
+
+    # Both moved by 0.1 % of their price, so both must report the same strength.
+    assert index.value == pytest.approx(0.1)
+    assert fx.value == pytest.approx(0.1)
+
+
+def test_an_interval_without_enough_bars_is_excluded_not_counted_as_zero():
+    """Measured on ^GDAXI: the 5min interval had 24 bars, its EWO-EMA was still
+    initialising, and its -8.46 flipped the sign of the whole indicator while
+    the only interval with enough data said +8.03.
+    """
+    obj = _signal_ticker()
+    lt.LiveTicker.update_signals(obj, _signal_frame(113, histogram=8.03, diff=1.0), '1min')
+    lt.LiveTicker.update_signals(obj, _signal_frame(24, histogram=-8.46, diff=-1.0), '5min')
+    lt.LiveTicker.update_signals(obj, _signal_frame(8), '15min')
+
+    assert obj.signals['1min']['ready'] is True
+    assert obj.signals['5min']['ready'] is False        # 24 < min_signal_bars
+    assert obj.signals['15min']['ready'] is False
+    assert obj.signal_state() == (1, 3)
+    assert obj.value > 0                                # the ready interval decides
+    assert obj.trend == 1                               # not 0, and not -1
+
+
+def test_missing_oscillator_columns_leave_the_interval_unready():
+    obj = _signal_ticker()
+    frame = _signal_frame(50).drop(columns=['ewo_ema'])
+
+    lt.LiveTicker.update_signals(obj, frame, '1min')
+
+    assert obj.signals['1min']['ready'] is False
+    assert obj.signal_state() == (0, 3)
+
+
+def test_the_strength_is_averaged_and_the_trend_summed():
+    """Averaging keeps the threshold stable when an interval is added."""
+    obj = _signal_ticker()
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.2), '1min')
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.4), '5min')
+
+    assert obj.value == pytest.approx(0.3)      # mean of 0.2 % and 0.4 %
+    assert obj.trend == 2                       # agreement count, scale-free
+    assert obj.momentum == pytest.approx(60.0)
+
+
+def test_reset_signals_is_explicit_not_tied_to_an_interval_name():
+    obj = _signal_ticker()
+    lt.LiveTicker.update_signals(obj, _signal_frame(50), '5min')
+    assert obj.signal_state()[0] == 1
+
+    obj.reset_signals()
+    assert obj.signal_state() == (0, 3)
+    assert (obj.value, obj.momentum, obj.trend) == (0, 0, 0)
+
+
+def test_the_alert_threshold_is_a_percentage_and_needs_a_ready_interval():
+    obj = _signal_ticker()
+    assert obj.should_notify() is False                  # nothing computed yet
+
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.05), '1min')
+    assert obj.value == pytest.approx(0.05)
+    assert obj.should_notify() is False                  # below the 0.1 % default
+
+    obj.reset_signals()
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.2), '1min')
+    assert obj.should_notify() is True
+
+
+def test_the_alert_needs_a_direction():
+    obj = _signal_ticker()
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.2, diff=0.0),
+                                 '1min')
+
+    assert obj.value == pytest.approx(0.2)               # strong enough …
+    assert obj.trend == 0                                # … but no direction
+    assert obj.should_notify() is False
+
+
+def test_the_momentum_filter_is_off_by_default():
+    class _Config:
+        def __init__(self, **values):
+            self.values = values
+
+        def get_value(self, key, default=None):
+            return self.values.get(key, default)
+
+    obj = _signal_ticker()
+    obj.sys_conf = _Config()
+    # Long signal with a bearish momentum reading.
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.2, momentum=20.0),
+                                 '1min')
+    assert obj.should_notify() is True
+
+    obj.sys_conf = _Config(live_signal_momentum_filter=True)
+    assert obj.should_notify() is False                  # momentum disagrees
+
+    obj.sys_conf = _Config(live_signal_threshold=0.5)
+    assert obj.should_notify() is False                  # threshold is configurable
+
+
+def test_signal_line_names_the_contributing_intervals():
+    obj = _signal_ticker()
+    obj.symbol = '^GDAXI'
+    lt.LiveTicker.update_signals(obj, _signal_frame(50, price=100.0, histogram=0.2), '1min')
+
+    line = obj.signal_line()
+    assert '^GDAXI' in line and '1' in line and '3' in line
 
 
 SEP = lt.LiveTicker.thousands_separator

@@ -1677,5 +1677,6 @@
   "live.col_change_help": "Change against the first tick of the loaded session — not the daily change against yesterday's close.",
   "live.no_quotes": "No ticks received yet.",
   "live.stale_hint": "⏳ {count} quote(s) unchanged for more than {minutes} minutes — that market is probably closed.",
-  "live.tile_help": "Last update: {time}"
+  "live.tile_help": "Last update: {time}",
+  "live.signal_line": "{symbol} · strength {strength} % of price · momentum {momentum} · trend {trend} ({ready} of {total} intervals)"
 }

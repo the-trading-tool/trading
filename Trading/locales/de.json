@@ -1677,5 +1677,6 @@
   "live.col_change_help": "Veränderung gegenüber dem ersten Tick der geladenen Sitzung — nicht die Tagesveränderung gegenüber dem Vortagesschluss.",
   "live.no_quotes": "Noch keine Ticks empfangen.",
   "live.stale_hint": "⏳ {count} Kurs(e) seit mehr als {minutes} Minuten unverändert — der Handelsplatz ist vermutlich geschlossen.",
-  "live.tile_help": "Letzte Aktualisierung: {time}"
+  "live.tile_help": "Letzte Aktualisierung: {time}",
+  "live.signal_line": "{symbol} · Stärke {strength} % vom Kurs · Momentum {momentum} · Trend {trend} ({ready} von {total} Intervallen)"
 }
