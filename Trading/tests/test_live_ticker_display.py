@@ -284,6 +284,37 @@ class _StubRegion:
         raise AssertionError("render() must use select_tick_interval()")
 
 
+def test_the_layout_order_is_table_symbol_interval_chart_then_selectors(monkeypatch):
+    """The Interval/Period row sits below the chart it feeds.
+
+    Streamlit widgets only yield their value where they are created, so the
+    chart must be drawn into a container reserved earlier. If that indirection
+    is ever removed, the chart would silently use last run's overlays.
+    """
+    obj = _ticker(_tick_frame(minutes=60))
+    obj.sys_conf = _StubConfig(stored={'live_tick_interval': '1min'})
+    obj.multi_selector = _StubSelector()
+    obj.calc_max_periods = lambda interval, period: 512
+    obj.get_database_files = lambda asterik='*': []
+    obj.load_from_db = lambda **kw: None
+    obj.compute_signals = lambda symbol, interval, **kw: None
+    obj.select_tick_interval = lambda region=None: '1min'
+
+    order = []
+    obj.render_price_summary = lambda region=None, **kw: order.append('table')
+    obj.plot_candlestick = lambda symbol, interval, **kw: order.append('chart')
+    original_render = _StubSelector.render
+    _StubSelector.render = lambda self: order.append('selectors')
+    try:
+        lt.LiveTicker.render(obj, region=_StubRegion(), bare_mode=False)
+    finally:
+        _StubSelector.render = original_render
+
+    # The selector row is rendered before the chart is *drawn* — its values are
+    # needed — but it lands below it on screen via the reserved container.
+    assert order == ['table', 'selectors', 'chart']
+
+
 def test_select_tick_interval_persists_only_on_change():
     obj = _ticker()
     obj.sys_conf = _StubConfig(stored={'live_tick_interval': '5min'})

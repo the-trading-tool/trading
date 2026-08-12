@@ -882,6 +882,9 @@ class LiveTicker(fetch_data.FetchData):
 
         bare_mode is the headless path used by the collector: it only refreshes
         the trend signals (no Plotly figures, no Streamlit widgets).
+
+        Layout order: database · quote table · symbol · live interval · chart ·
+        signal line · Interval/Period/Overlay/Oszilator · history.
         """
         interval = period = None
         overlays = oszilators = []
@@ -899,37 +902,10 @@ class LiveTicker(fetch_data.FetchData):
                 self.load_from_file_backwards(selected_db)
                 limit_start = False
 
-        if not bare_mode:
-                # Create an instance of the class and display the selectors
-                self.multi_selector.render()
-                if self.sys_conf.get_value("pine_export", False):
-                    self.multi_selector.render_pine_export()
-                interval = self.multi_selector.get_selected_options('Interval')[:1]
-                period = self.multi_selector.get_selected_options('Period')[:1]
-                overlays = self.multi_selector.get_selected_options('Overlay')
-                oszilators = self.multi_selector.get_selected_options('Oszilator')
-
-                (interval, period, overlays, oszilators) = self.sys_conf.get_selectors(interval, period, overlays, oszilators)
-                    
-                trend_length = 21
-                max_trend_length = self.calc_max_periods(interval,period)
-                if trend_length > max_trend_length:
-                    trend_length = int(max_trend_length/2)
-
-                self.url = f"/?symbol="        
-
         if limit_start:
             # Only today's session — everything older lives in the archived files.
             self.load_from_db(timestamp=datetime.now().strftime("%Y-%m-%d 06:00:00"),
                               db_name=f"{self.db_table}.db")
-
-        idx = self.get_idx_selected(self.symbol_list,default,2)
-        self.symbol = default
-        if not bare_mode:
-            try:
-                self.symbol = st.selectbox("Choose Symbol", self.symbol_list if self.symbol_list else ["No data"],index=idx)
-            except Exception:
-                logger.debug("symbol selectbox failed", exc_info=True)
 
         charts = self.tick_intervals
 
@@ -942,7 +918,39 @@ class LiveTicker(fetch_data.FetchData):
             return
 
         self.render_price_summary(region=region)
+
+        idx = self.get_idx_selected(self.symbol_list, default, 2)
+        self.symbol = default
+        try:
+            self.symbol = st.selectbox("Choose Symbol", self.symbol_list if self.symbol_list else ["No data"],index=idx)
+        except Exception:
+            logger.debug("symbol selectbox failed", exc_info=True)
+
         selected = self.select_tick_interval()
+
+        # Containers reserve their spot in the layout while the code that fills
+        # them runs later. That is what lets the Interval/Period/Overlay row sit
+        # below the chart although the chart is drawn *from* its values: a
+        # Streamlit widget only yields its value where it is created.
+        chart_slot = st.container()
+        signal_slot = st.container()
+
+        self.multi_selector.render()
+        if self.sys_conf.get_value("pine_export", False):
+            self.multi_selector.render_pine_export()
+        interval = self.multi_selector.get_selected_options('Interval')[:1]
+        period = self.multi_selector.get_selected_options('Period')[:1]
+        overlays = self.multi_selector.get_selected_options('Overlay')
+        oszilators = self.multi_selector.get_selected_options('Oszilator')
+
+        (interval, period, overlays, oszilators) = self.sys_conf.get_selectors(interval, period, overlays, oszilators)
+
+        trend_length = 21
+        max_trend_length = self.calc_max_periods(interval, period)
+        if trend_length > max_trend_length:
+            trend_length = int(max_trend_length / 2)
+
+        self.url = f"/?symbol="
 
         # Every interval is still computed — value/momentum/trend are the sum
         # across all three and the notifier's thresholds are calibrated on it —
@@ -954,16 +962,16 @@ class LiveTicker(fetch_data.FetchData):
                 continue
             fig = self.plot_candlestick(self.symbol, chrt, oszillators=oszilators, overlays=overlays, limit_start=limit_start)
             if fig:
-                st.plotly_chart(fig,
+                chart_slot.plotly_chart(fig,
                         use_container_width = True,
                         theme="streamlit",
                         config = self.charts_config,
                         )
 
-        st.write(f"Index: {self.symbol} - Indicator: {round(self.value,1)} / "
-                 f"{round(self.momentum,1)}, trend: {self.trend}")
+        signal_slot.write(f"Index: {self.symbol} - Indicator: {round(self.value,1)} / "
+                          f"{round(self.momentum,1)}, trend: {self.trend}")
 
-        if st.button("Delete cached ticker entries"):
+        if signal_slot.button("Delete cached ticker entries"):
             self.cleanup()
             st.rerun()
         try:
