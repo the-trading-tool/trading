@@ -1678,5 +1678,7 @@
   "live.no_quotes": "Noch keine Ticks empfangen.",
   "live.stale_hint": "⏳ {count} Kurs(e) seit mehr als {minutes} Minuten unverändert — der Handelsplatz ist vermutlich geschlossen.",
   "live.tile_help": "Letzte Aktualisierung: {time}",
-  "live.signal_line": "{symbol} · Stärke {strength} % vom Kurs · Momentum {momentum} · Trend {trend} ({ready} von {total} Intervallen)"
+  "live.signal_line": "{symbol} · Stärke {strength} % vom Kurs · Momentum {momentum} · Trend {trend} ({ready} von {total} Intervallen)",
+  "live.overview": "Kursübersicht — {count} Symbole",
+  "live.overview_stale": "Kursübersicht — {count} Symbole, {stale} veraltet ⏳"
 }

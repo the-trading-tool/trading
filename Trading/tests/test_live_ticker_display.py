@@ -620,6 +620,11 @@ class _TileRegion:
         assert count == self.width
         return [_Slot(self.log) for _ in range(count)]
 
+    def expander(self, label, expanded=True):
+        self.expander_label = label
+        self.expanded = expanded
+        return self
+
     def caption(self, text):
         self.captions.append(text)
 
@@ -643,6 +648,7 @@ def test_price_summary_renders_one_tile_per_symbol():
     summary = lt.LiveTicker.render_price_summary(obj, region=region, columns=4)
 
     assert len(region.log) == len(summary) == 6      # 4 + 2, wrapped into two rows
+    assert '6' in region.expander_label              # the tiles live in an expander
     assert 'SYM0' in region.log[0]
     assert lt.LiveTicker.format_price(101.0) in region.log[0]
     assert '11:43:00' in region.log[0]               # the quote time stays visible
@@ -676,3 +682,29 @@ def test_price_summary_says_so_when_there_are_no_ticks():
     region = _TileRegion()
     assert lt.LiveTicker.render_price_summary(_ticker(), region=region).empty
     assert region.captions                          # the "no ticks yet" notice
+
+
+def test_the_expander_label_carries_the_stale_count():
+    """Collapsed, the label is the only place a stopped quote is still visible."""
+    rows = [
+        ("2026-08-12 12:17:00", "^GDAXI", 26518.5),
+        ("2026-08-12 06:59:00", "EURUSD=X", 1.1535),
+    ]
+    obj = _ticker(pd.DataFrame(rows, columns=["timestamp", "symbol", "price"]))
+    region = _TileRegion(width=4)
+
+    lt.LiveTicker.render_price_summary(obj, region=region, columns=4, stale_after_min=15)
+
+    assert '⏳' in region.expander_label
+    assert '2' in region.expander_label          # two symbols, one of them stale
+
+
+def test_the_expander_label_is_plain_when_every_quote_is_fresh():
+    stamp = "2026-08-12 12:17:00"
+    obj = _ticker(pd.DataFrame([(stamp, "^GDAXI", 26518.5), (stamp, "^SPX", 7741.35)],
+                               columns=["timestamp", "symbol", "price"]))
+    region = _TileRegion(width=4)
+
+    lt.LiveTicker.render_price_summary(obj, region=region, columns=4)
+
+    assert '⏳' not in region.expander_label

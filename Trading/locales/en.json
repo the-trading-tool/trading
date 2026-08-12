@@ -1678,5 +1678,7 @@
   "live.no_quotes": "No ticks received yet.",
   "live.stale_hint": "⏳ {count} quote(s) unchanged for more than {minutes} minutes — that market is probably closed.",
   "live.tile_help": "Last update: {time}",
-  "live.signal_line": "{symbol} · strength {strength} % of price · momentum {momentum} · trend {trend} ({ready} of {total} intervals)"
+  "live.signal_line": "{symbol} · strength {strength} % of price · momentum {momentum} · trend {trend} ({ready} of {total} intervals)",
+  "live.overview": "Quote overview — {count} symbols",
+  "live.overview_stale": "Quote overview — {count} symbols, {stale} stale ⏳"
 }

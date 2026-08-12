@@ -518,7 +518,7 @@ class LiveTicker(fetch_data.FetchData):
             f'</div>'
         )
 
-    def render_price_summary(self, region=st, stale_after_min=15, columns=4):
+    def render_price_summary(self, region=st, stale_after_min=15, columns=4, expanded=True):
         """Show the latest quote per symbol as a compact table.
 
         Replaces the single run-on text line, which neither rounded sensibly nor
@@ -529,6 +529,16 @@ class LiveTicker(fetch_data.FetchData):
         if summary.empty:
             region.info(t('live.no_quotes'))
             return summary
+
+        # The stale count belongs in the label: with the overview collapsed it
+        # would be the only place a stopped quote is still visible.
+        stale_count = int((summary['age'] >= stale_after_min).sum())
+        label = (t('live.overview_stale', count=len(summary), stale=stale_count)
+                 if stale_count else t('live.overview', count=len(summary)))
+        try:
+            region = region.expander(label, expanded=expanded)
+        except Exception:
+            logger.debug("no expander available", exc_info=True)
 
         # Hand-built tiles rather than a widget: st.dataframe paints on a canvas
         # (no way to align a column), st.table prints the row index whatever the
@@ -546,7 +556,6 @@ class LiveTicker(fetch_data.FetchData):
                 stale = bool(row.age and row.age >= stale_after_min)
                 slot.markdown(self.price_tile(row, stale=stale), unsafe_allow_html=True)
 
-        stale_count = int((summary['age'] >= stale_after_min).sum())
         hints = [t('live.col_change_help')]
         if stale_count:
             hints.append(t('live.stale_hint', count=stale_count, minutes=stale_after_min))
