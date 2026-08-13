@@ -2,6 +2,7 @@ from tradinglib import ( tiny_chart as tc, search as sr,
         sentiment as se, headlines as hl, multi_select as ms, fetch_data,
         system_config as sysconf, graph_tools as gt, tools as ts)
 from tradinglib.indicator import indicator  # Die Basisklasse importieren
+from tradinglib.utils import DataUtils
 from tradinglib.i18n import t, current_language
 from tradinglib.premium_availability import PAPER_TRADING_AVAILABLE, SEASONALITY_AVAILABLE
 from tradinglib.license_manager import has_feature, FEATURE_SEASONALITY, FEATURE_STRATEGY_ENGINE
@@ -609,6 +610,51 @@ class render_mainpage(fetch_data.FetchData):
             return
         render_market_stress_banner(s, index_name, region=region)
 
+    @staticmethod
+    def _quote_currency(ticker: str) -> str:
+        """Currency the chart's prices are quoted in.
+
+        The chart plots the stored OHLC untouched, so the listing currency from
+        asset_info is also the unit of its y-axis: 'GBp' (pence) for LSE
+        listings, 'USD' for US ones. Returns '' when unknown, which callers
+        treat as "do not convert".
+        """
+        try:
+            db = ts.Tools().get_path('database', 'asset_info.db')
+            with sqlite3.connect(db) as conn:
+                row = conn.execute('SELECT currency FROM asset_info WHERE ticker=?',
+                                   (ticker,)).fetchone()
+            cur = str((row[0] if row else '') or '').strip()
+            return '' if cur.lower() in ('', 'none', 'nan') else cur
+        except Exception:
+            return ''
+
+    @staticmethod
+    def _to_quote_currency(price, booked_cur: str, quote_cur: str):
+        """Convert a booked price into the currency the chart is drawn in.
+
+        The portfolio sources do not agree on a currency. The strategy engine
+        books every trade in the system currency -- trades{year}.db carries EUR
+        throughout, whatever the listing does -- while the broker's paper
+        positions are already native. Putting the booked number straight onto
+        the axis therefore misplaced the entry line: Halma's entry landed at
+        43.53 on a GBp scale running 3000-5000, Bel Fuse's at 201.75 instead of
+        234.39. The error was easy to miss because neither the line nor the
+        badge names a unit.
+
+        DataUtils.get_exchange_rate returns units of *symbol* per 1
+        *system_currency* and maps minor units itself (GBp = GBP x 100), so the
+        pence case needs no special handling here.
+        """
+        try:
+            if not price or not booked_cur or not quote_cur or booked_cur == quote_cur:
+                return price
+            rate = DataUtils.get_exchange_rate(symbol=quote_cur,
+                                               system_currency=booked_cur)
+            return float(price) * (rate or 1.0)
+        except Exception:
+            return price
+
     def _add_portfolio_markers(self, ticker: str) -> list:
         """Query Own Trades, Strategy Engine, and Paper Trading for this ticker.
 
@@ -618,15 +664,25 @@ class render_mainpage(fetch_data.FetchData):
         """
         positions = []
         _tools = ts.Tools()
+        # Unit of the chart's y-axis — every source is converted into it below.
+        quote_cur = self._quote_currency(ticker)
 
         # ── 1. Own Trades (trades.db) ─────────────────────────────────────────
         try:
             db_file = _tools.get_path('database', 'trades.db')
             with sqlite3.connect(db_file) as conn:
                 raw = pd.read_sql_query(
-                    "SELECT timestamp, action, price, shares FROM trades WHERE ticker=? ORDER BY timestamp",
+                    "SELECT timestamp, action, price, shares, currency FROM trades "
+                    "WHERE ticker=? ORDER BY timestamp",
                     conn, params=(ticker,)
                 )
+            # The broker books in its own currency (Scalable settles in EUR even
+            # for an LSE listing quoted in pence), so carry it along.
+            own_cur = ''
+            if not raw.empty and 'currency' in raw.columns:
+                _c = raw['currency'].dropna().astype(str).str.strip()
+                _c = _c[~_c.str.lower().isin(('', 'none', 'nan'))]
+                own_cur = _c.iloc[0] if not _c.empty else ''
             if not raw.empty:
                 buy_rows  = raw[raw['action'] == 'buy']
                 sell_rows = raw[raw['action'] == 'sell']
@@ -635,12 +691,17 @@ class render_mainpage(fetch_data.FetchData):
                 first_buy = str(buy_rows['timestamp'].min()) if not buy_rows.empty else None
                 if net_shares > 0.001:
                     avg_buy = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
-                    positions.append({'source': 'Own', 'entry': avg_buy, 'exit': None,
+                    positions.append({'source': 'Own',
+                                      'entry': self._to_quote_currency(avg_buy, own_cur, quote_cur),
+                                      'exit': None,
                                       'open': True, 'count': 1, 'since': first_buy})
                 elif not buy_rows.empty and not sell_rows.empty:
                     avg_buy  = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
                     avg_sell = (sell_rows['price'] * sell_rows['shares']).sum() / sell_rows['shares'].sum()
-                    positions.append({'source': 'Own', 'entry': avg_buy, 'exit': avg_sell, 'open': False, 'count': 1})
+                    positions.append({'source': 'Own',
+                                      'entry': self._to_quote_currency(avg_buy, own_cur, quote_cur),
+                                      'exit': self._to_quote_currency(avg_sell, own_cur, quote_cur),
+                                      'open': False, 'count': 1})
         except Exception:
             pass
 
@@ -652,8 +713,8 @@ class render_mainpage(fetch_data.FetchData):
             db_file = _tools.get_path('database', f'trades{year}.db')
             with sqlite3.connect(db_file) as conn:
                 strat_df = pd.read_sql_query(
-                    "SELECT Strategy, buyPrice, buyDate, sellDate, sellPrice, sellVolume "
-                    "FROM trades WHERE ticker=?",
+                    "SELECT Strategy, buyPrice, buyDate, sellDate, sellPrice, "
+                    "sellVolume, currency FROM trades WHERE ticker=?",
                     conn, params=(ticker,)
                 )
             if not strat_df.empty:
@@ -668,10 +729,18 @@ class render_mainpage(fetch_data.FetchData):
                 for (sname, is_open), grp in strat_df.groupby(['Strategy', '_open'], sort=False):
                     avg_entry = grp['buyPrice'].mean()
                     avg_exit  = grp['sellPrice'].dropna().mean()  # bei offen = Mark-to-Market
+                    # Die Engine bucht in der Systemwährung (currency-Spalte),
+                    # der Chart zeichnet in der Notierungswährung → zurückrechnen.
+                    _bc = ''
+                    if 'currency' in grp.columns:
+                        _c = grp['currency'].dropna().astype(str).str.strip()
+                        _c = _c[~_c.str.lower().isin(('', 'none', 'nan'))]
+                        _bc = _c.iloc[0] if not _c.empty else ''
                     positions.append({
                         'source': sname or 'Strategy',
-                        'entry': float(avg_entry),
-                        'exit': float(avg_exit) if pd.notna(avg_exit) else None,
+                        'entry': float(self._to_quote_currency(avg_entry, _bc, quote_cur)),
+                        'exit': (float(self._to_quote_currency(avg_exit, _bc, quote_cur))
+                                 if pd.notna(avg_exit) else None),
                         'open': bool(is_open),
                         'count': len(grp),
                         'since': str(grp['buyDate'].min())[:10],
@@ -688,6 +757,9 @@ class render_mainpage(fetch_data.FetchData):
                     conn, params=(ticker,)
                 )
             if not paper_df.empty:
+                # Nicht umrechnen: der Broker meldet Einstandskurse bereits in der
+                # Notierungswährung des Papiers (Alpaca: USD für US-Werte), also
+                # in derselben Einheit wie die Achse.
                 avg_entry = paper_df['entry_price'].mean()
                 positions.append({
                     'source': 'Paper', 'entry': float(avg_entry),
@@ -696,6 +768,12 @@ class render_mainpage(fetch_data.FetchData):
         except Exception:
             pass
 
+        # Alle Beträge stehen jetzt in der Chartwährung — mitgeben, damit die
+        # Badges dieselbe Einheit nennen können. Ohne sichtbare Einheit blieb der
+        # Umrechnungsfehler unbemerkt, solange die Zahl plausibel aussah.
+        for pos in positions:
+            pos.setdefault('currency', quote_cur)
+
         # ── Draw hlines — only open positions, one line per source ───────────
         for pos in positions:
             if not pos['open']:
@@ -703,7 +781,8 @@ class render_mainpage(fetch_data.FetchData):
             entry = pos['entry']
             src   = pos['source']
             count = pos.get('count', 1)
-            label = f"{src} Entry: {entry:.2f}"
+            _cur  = f" {quote_cur}" if quote_cur else ''
+            label = f"{src} Entry: {entry:.2f}{_cur}"
             _ex = pos.get('exit')
             if _ex and entry:
                 label += f" ({(_ex / entry - 1) * 100:+.1f}%)"
@@ -1185,7 +1264,8 @@ class render_mainpage(fetch_data.FetchData):
                                 _parts = []
                                 for p in _open:
                                     _cnt = p.get('count', 1)
-                                    _lbl = f"{p['source']}: held · entry {p['entry']:.2f}"
+                                    _cu = f" {p['currency']}" if p.get('currency') else ''
+                                    _lbl = f"{p['source']}: held · entry {p['entry']:.2f}{_cu}"
                                     _x = p.get('exit'); _pc = _pct(p)
                                     if _x and _pc is not None:
                                         _lbl += f" → now {_x:.2f} ({_pc:+.1f}% unrealised)"
@@ -1207,7 +1287,8 @@ class render_mainpage(fetch_data.FetchData):
                                         _exit_str = f" → exit {_x:.2f}"
                                         if _pc is not None:
                                             _exit_str += f" ({_pc:+.1f}% realised)"
-                                    _lbl = f"{p['source']}: entry {p['entry']:.2f}{_exit_str}"
+                                    _cu = f" {p['currency']}" if p.get('currency') else ''
+                                    _lbl = f"{p['source']}: entry {p['entry']:.2f}{_cu}{_exit_str}"
                                     if p.get('since'):
                                         _lbl += f" · from {p['since']}"
                                     if _cnt > 1:
