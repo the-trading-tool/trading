@@ -580,10 +580,25 @@ class FetchData(tt.TickerTools):
                 day_minute = pd.to_datetime(df_minute_ts).strftime("%Y-%m-%d 00:00:00")
                 existing_days = pd.to_datetime(df.index, errors="coerce").strftime("%Y-%m-%d 00:00:00")
 
-                if day_minute in existing_days.values:
-                    df = df.iloc[:-1]
+                # Die Intraday-Daten koennen aelter sein als die Tageskerzen. Bei
+                # US-Werten ist das der Regelfall, wenn die Minutensammlung nur
+                # waehrend europaeischer Handelszeiten laeuft: Minutenstand
+                # 07.08., Tagesstand 12.08. Eine solche Kerze ist nichts
+                # "Aktuelles" mehr und darf die Reihe nicht anfassen.
+                if len(existing_days) and day_minute < existing_days[-1]:
+                    return df
 
-                df = pd.concat([df, df_minute.iloc[-1:]])                
+                # Nur den Tag ersetzen, der wirklich doppelt waere. Vorher wurde
+                # pauschal die LETZTE Zeile entfernt -- traf der Treffer einen
+                # frueheren Tag, loeschte das die neueste Kerze und fuegte
+                # stattdessen eine veraltete an. Im Chart brach die Linie am
+                # rechten Rand auf den alten Zeitpunkt zurueck, und der juengste
+                # Kurs fehlte.
+                dup = existing_days.values == day_minute
+                if dup.any():
+                    df = df[~dup]
+
+                df = pd.concat([df, df_minute.iloc[-1:]])
             except Exception as e:
                 self.logger.warning("%s", e)
                 pass
