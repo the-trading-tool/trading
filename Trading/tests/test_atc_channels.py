@@ -85,7 +85,31 @@ def test_label_reports_the_value_of_the_last_bar(df):
     for t in labels(a):
         name = t.name.replace('atc_width_', '').replace('_label', '')
         expected = a.df[f'atc_width_pct_{name}'].dropna().iloc[-1]
-        assert t.text[0] == f'{expected:.1f} %'
+        want = f'{expected:.2f} %' if abs(expected) < 1 else f'{expected:.1f} %'
+        assert t.text[0] == want
+
+
+def test_narrow_channels_keep_two_decimals(df):
+    """Im Minutenchart liegen alle drei Kanaele um 0,3 % -- auf eine Stelle
+    gerundet waeren sie nicht mehr unterscheidbar."""
+    a = Atc(df=df.copy(), dev_multi=0.02)   # kuenstlich schmal
+    for t in labels(a):
+        assert len(t.text[0].split('.')[1].split(' ')[0]) == 2
+
+
+def test_labels_do_not_share_one_x_position(df):
+    """Sonst liegen die drei Zahlen uebereinander, wenn die Kanaele
+    aehnlich breit sind."""
+    xs = [t.x[0] for t in labels(Atc(df=df.copy()))]
+    assert len(set(xs)) == len(xs)
+
+
+def test_labels_are_readable(df):
+    """Fett, groesser und mit Kontrastschatten -- sie stehen ueber Kerzen."""
+    for t in labels(Atc(df=df.copy())):
+        assert t.textfont.size >= 14
+        assert t.textfont.weight == 'bold'
+        assert t.textfont.shadow
 
 
 def test_wider_deviation_multiplier_widens_the_channel(df):

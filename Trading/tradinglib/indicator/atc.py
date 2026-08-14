@@ -266,12 +266,20 @@ class Atc(_indicator._Indicator):
                         name=bot_col)
                     )
 
-                self._add_width_label(plot_df, date_col, name, color)
+                self._add_width_label(plot_df, date_col, name, color,
+                                      slot=self.anchors.index(name))
 
             except Exception:
                 pass
 
-    def _add_width_label(self, plot_df, date_col, name, color):
+    # Abstand der Beschriftung vom rechten Rand, in Balken. Gestaffelt, damit
+    # sich die drei Zahlen nicht ueberlagern, wenn die Kanaele aehnlich breit
+    # sind (im Minutenchart lagen sonst drei Labels uebereinander). In Balken
+    # statt in Prozent der Kanallaenge, weil die Kanaele unterschiedlich weit
+    # zurueckreichen, das Zoomfenster aber immer am rechten Rand endet.
+    LABEL_OFFSET_BARS = (4, 11, 18)
+
+    def _add_width_label(self, plot_df, date_col, name, color, slot=0):
         """Kanalbreite als Zahl zwischen die beiden Parallelen schreiben.
 
         Bewusst als Text-Spur und nicht als Annotation: Annotationen aus
@@ -297,18 +305,26 @@ class Atc(_indicator._Indicator):
         # draengen sich die Kurs- und EMA-Fahnen; in der Kanalmitte lag sie
         # dagegen links ausserhalb des Bildes, weil die Kanaele weiter
         # zurueckreichen als das Zoomfenster des Charts.
-        pos = plot_df.iloc[int(len(plot_df) * 0.9)]
+        offset = self.LABEL_OFFSET_BARS[slot % len(self.LABEL_OFFSET_BARS)]
+        pos = plot_df.iloc[-min(offset + 1, len(plot_df))]
         # Mittig zwischen die Parallelen -- unabhaengig davon, welche der
         # beiden gerade gezeichnet wird.
         y = (pos[top_col] + pos[bot_col]) / 2.0
+        # Unter 1 % zwei Nachkommastellen: im Minutenchart liegen alle drei
+        # Kanaele bei "0,3 %", gerundet auf eine Stelle sagt das nichts mehr.
+        txt = f'{pct:.2f} %' if abs(pct) < 1 else f'{pct:.1f} %'
         self.fig.add_trace(go.Scatter(
             x=[pos[date_col]], y=[y],
             mode='text',
-            text=[f'{pct:.1f} %'],
+            text=[txt],
             textposition='middle center',
-            textfont=dict(color=color, size=12),
+            # Fett und groesser, dazu ein Kontrastschatten: die Zahl steht
+            # ueber Kerzen und gefuellten Baendern, ohne Absetzung war sie dort
+            # kaum zu lesen. 'auto' waehlt die Schattenfarbe passend zum
+            # Hintergrund und traegt damit auch den Dunkelmodus mit.
+            textfont=dict(color=color, size=15, weight='bold', shadow='auto'),
             hoverinfo='text',
-            hovertext=f'{name}: {width:,.2f} ({pct:.1f} %)',
+            hovertext=f'{name}: {width:,.2f} ({pct:.2f} %)',
             showlegend=False,
             name=f'atc_width_{name}_label')
         )
