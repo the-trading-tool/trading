@@ -24,9 +24,30 @@ class Atc(_indicator._Indicator):
         'dev_multi':      {'type': 'float', 'default': 2.0,  'label': 'Channel deviation multiplier'},
         'use_gog_scale':  {'type': 'bool',  'default': False, 'label': 'Log scale'},
         'use_exp_weight': {'type': 'bool',  'default': False, 'label': 'Exponential weighting'},
+        'show_width':     {'type': 'bool',  'default': True,  'label': 'Show channel width'},
+        # Optional lines. Each channel always draws the line its anchor sits on
+        # (see ANCHOR_LINE) — nine lines at once made the chart unreadable and
+        # pushed channel edges far outside the price range.
+        'show_high_mid':  {'type': 'bool',  'default': False, 'label': 'High channel: middle line'},
+        'show_high_bot':  {'type': 'bool',  'default': False, 'label': 'High channel: lower line'},
+        'show_zero_mid':  {'type': 'bool',  'default': False, 'label': 'Zero channel: middle line'},
+        'show_low_mid':   {'type': 'bool',  'default': False, 'label': 'Low channel: middle line'},
+        'show_low_top':   {'type': 'bool',  'default': False, 'label': 'Low channel: upper line'},
     }
 
-    def __init__(self, df, symbol = "", dev_multi = 2.0, use_gog_scale = False, use_exp_weight = False ,anchors = ["high", "low", "zero"], channel_colors=["darkred", "darkgreen", "darkblue"]):
+    # Line each anchor is defined by — always drawn, never switchable. The high
+    # channel is anchored at the highest high (its upper edge), the low channel
+    # at the lowest low (its lower edge); the flat channel is only meaningful as
+    # a corridor, so it keeps both edges.
+    ANCHOR_LINE = {
+        'high': ('top',),
+        'zero': ('top', 'bot'),
+        'low':  ('bot',),
+    }
+
+    def __init__(self, df, symbol = "", dev_multi = 2.0, use_gog_scale = False, use_exp_weight = False ,anchors = ["high", "low", "zero"], channel_colors=["darkred", "darkgreen", "darkblue"],
+                 show_width = True, show_high_mid = False, show_high_bot = False,
+                 show_zero_mid = False, show_low_mid = False, show_low_top = False):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         if df.empty:
             logger.debug("Empty dataframe")
@@ -38,8 +59,22 @@ class Atc(_indicator._Indicator):
         self.dev_multi = dev_multi
         self.anchors = anchors
         self.channel_colors = channel_colors
+        self.show_width = show_width
+        self.optional_lines = {
+            ('high', 'mid'): show_high_mid,
+            ('high', 'bot'): show_high_bot,
+            ('zero', 'mid'): show_zero_mid,
+            ('low',  'mid'): show_low_mid,
+            ('low',  'top'): show_low_top,
+        }
         self.max_bars = len(self.df)   # use len(), not len(df['Date'])
         self.data()
+
+    def draws(self, anchor: str, line: str) -> bool:
+        """Is this line of that channel drawn? Anchor line always, rest per config."""
+        if line in self.ANCHOR_LINE.get(anchor, ()):
+            return True
+        return bool(self.optional_lines.get((anchor, line), False))
                 
     def transform_price(self, p: pd.Series) -> pd.Series:
         """Transform price data using log scale if enabled."""
@@ -128,6 +163,10 @@ class Atc(_indicator._Indicator):
             new_col[-len(values):] = values
             self.df[name] = new_col
 
+        # Mindestlaenge des Regressionsfensters: mindestens 20 % der sichtbaren
+        # Balken, nie unter 10.
+        min_length = max(10, len(self.close) // 5)
+
         for name, color in zip(self.anchors, self.channel_colors):
             if name == "high":
                 length = self.find_bar_highest(self.high, self.max_bars)
@@ -135,14 +174,30 @@ class Atc(_indicator._Indicator):
                 length = self.find_bar_lowest(self.low, self.max_bars)
             elif name == "zero":
                 length = self.find_slope_zero(self.close_t, self.max_bars)
-            length = max(2, min(length, len(self.close)))
-            pass
-        
+            # Mindestfenster: sonst legt eine 2-Balken-Regression einen Kanal
+            # ohne Aussage an, dessen Raender weit vom Kurs wegkippen.
+            length = max(min_length, min(length, len(self.close)))
+
             try:
                 mid, top, bot, slope, r2, r_val = self.calc_regression_channel(self.close_t, length)
-                add_array(self.inverse_transform_price(mid), f"atc_mid_{name}")
-                add_array(self.inverse_transform_price(top), f"atc_top_{name}")
-                add_array(self.inverse_transform_price(bot), f"atc_bot_{name}")
+                mid_p = self.inverse_transform_price(mid)
+                top_p = self.inverse_transform_price(top)
+                bot_p = self.inverse_transform_price(bot)
+                add_array(mid_p, f"atc_mid_{name}")
+                add_array(top_p, f"atc_top_{name}")
+                add_array(bot_p, f"atc_bot_{name}")
+
+                # Kanalbreite = Abstand der beiden Parallelen. Absolut in
+                # Kurseinheiten und relativ zur Mittellinie -- erst der
+                # Prozentwert ist zwischen Werten vergleichbar (ein DAX-Kanal
+                # von 60 Punkten ist eng, bei einer 5-Euro-Aktie waere er
+                # gewaltig). Beides als Spalte, damit es auch in Buy/Sell-
+                # Formeln zur Verfuegung steht.
+                width = top_p - bot_p
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    width_pct = np.where(mid_p != 0, width / mid_p * 100.0, np.nan)
+                add_array(width, f"atc_width_{name}")
+                add_array(width_pct, f"atc_width_pct_{name}")
             except Exception as e:
                 logger.error("%s", e)
                 pass
@@ -181,35 +236,82 @@ class Atc(_indicator._Indicator):
                 if plot_df.empty:
                     continue
 
-                self.fig.add_trace(go.Scatter(
-                    x=plot_df[date_col],
-                    y=plot_df[mid_col],
-                    line=dict(dash='dot', color=color, width=2),
-                    opacity=0.7,
-                    showlegend=False,
-                    name=mid_col)
-                )
+                if self.draws(name, 'mid') and mid_col in plot_df.columns:
+                    self.fig.add_trace(go.Scatter(
+                        x=plot_df[date_col],
+                        y=plot_df[mid_col],
+                        line=dict(dash='dot', color=color, width=2),
+                        opacity=0.7,
+                        showlegend=False,
+                        name=mid_col)
+                    )
 
-                self.fig.add_trace(go.Scatter(
-                    x=plot_df[date_col],
-                    y=plot_df[top_col],
-                    line=dict(color=color, width=2),
-                    opacity=0.7,
-                    showlegend=False,
-                    name=top_col)
-                )
+                if self.draws(name, 'top') and top_col in plot_df.columns:
+                    self.fig.add_trace(go.Scatter(
+                        x=plot_df[date_col],
+                        y=plot_df[top_col],
+                        line=dict(color=color, width=2),
+                        opacity=0.7,
+                        showlegend=False,
+                        name=top_col)
+                    )
 
-                self.fig.add_trace(go.Scatter(
-                    x=plot_df[date_col],
-                    y=plot_df[bot_col],
-                    line=dict(color=color, width=2),
-                    opacity=0.7,
-                    showlegend=False,
-                    name=bot_col)
-                )
+                if self.draws(name, 'bot') and bot_col in plot_df.columns:
+                    self.fig.add_trace(go.Scatter(
+                        x=plot_df[date_col],
+                        y=plot_df[bot_col],
+                        line=dict(color=color, width=2),
+                        opacity=0.7,
+                        showlegend=False,
+                        name=bot_col)
+                    )
+
+                self._add_width_label(plot_df, date_col, name, color)
 
             except Exception:
                 pass
+
+    def _add_width_label(self, plot_df, date_col, name, color):
+        """Kanalbreite als Zahl zwischen die beiden Parallelen schreiben.
+
+        Bewusst als Text-Spur und nicht als Annotation: Annotationen aus
+        Overlays uebernimmt tiny_chart mit ``xref='paper'``, ein Datums-x
+        wuerde dabei verrutschen. Eine Spur lebt in Datenkoordinaten und wird
+        wie jede andere uebertragen.
+        """
+        if not self.show_width:
+            return
+        wcol, pcol = f'atc_width_{name}', f'atc_width_pct_{name}'
+        top_col, bot_col = f'atc_top_{name}', f'atc_bot_{name}'
+        if not {wcol, pcol, top_col, bot_col} <= set(plot_df.columns):
+            return
+        # Der ausgewiesene Wert gilt fuer den letzten Balken: der absolute
+        # Abstand der Parallelen ist ueber den Kanal konstant (2 x dev_multi x
+        # stdev), der Prozentwert aber nicht -- er bezieht sich auf die
+        # Mittellinie, und die wandert. Also immer den aktuellen Rand nehmen.
+        last = plot_df.iloc[-1]
+        width, pct = last[wcol], last[pcol]
+        if pd.isna(width) or pd.isna(pct):
+            return
+        # Gesetzt wird die Zahl kurz VOR dem rechten Rand. Direkt am Rand
+        # draengen sich die Kurs- und EMA-Fahnen; in der Kanalmitte lag sie
+        # dagegen links ausserhalb des Bildes, weil die Kanaele weiter
+        # zurueckreichen als das Zoomfenster des Charts.
+        pos = plot_df.iloc[int(len(plot_df) * 0.9)]
+        # Mittig zwischen die Parallelen -- unabhaengig davon, welche der
+        # beiden gerade gezeichnet wird.
+        y = (pos[top_col] + pos[bot_col]) / 2.0
+        self.fig.add_trace(go.Scatter(
+            x=[pos[date_col]], y=[y],
+            mode='text',
+            text=[f'{pct:.1f} %'],
+            textposition='middle center',
+            textfont=dict(color=color, size=12),
+            hoverinfo='text',
+            hovertext=f'{name}: {width:,.2f} ({pct:.1f} %)',
+            showlegend=False,
+            name=f'atc_width_{name}_label')
+        )
 
 
 #            trend = "Up" if slope > 0.01 else "Down" if slope < -0.01 else "Flat"

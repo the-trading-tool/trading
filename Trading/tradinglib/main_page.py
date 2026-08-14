@@ -562,7 +562,7 @@ class render_mainpage(fetch_data.FetchData):
                                                 tr_iv,
                                                 False, 
                                                 username=self.username,
-                                                add_overlays=['atl'],
+                                                add_overlays=['atc'],
                                                 )
                                 for trace in t_chart_n.fig.data :    
                                     t_chart_n.fig.add_trace(trace, row=1, col=1)

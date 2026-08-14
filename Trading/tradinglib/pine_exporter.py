@@ -50,7 +50,6 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'scr':    'Seasonal Score Oscillator — custom forward-return seasonal average',
     # ── Overlays ─────────────────────────────────────────────────────────────
     'atc':    'Average True Channel — custom implementation',
-    'atl':    'Auto Trend Lines — custom implementation',
     'bol':    'John Bollinger (1980s) — Bollinger Bands',
     'bos':    'ICT / Smart Money Concepts community — Break of Structure',
     'bsz':    'Buy/Sell Zone — custom implementation',
@@ -147,7 +146,6 @@ _INDICATOR_LABELS: dict[str, str] = {
     'scr':    'Seasonal Score',
     # Overlays
     'atc':    'Auto Trend Channels',
-    'atl':    'Auto Trend Lines',
     'bol':    'Bollinger Bands',
     'bos':    'Break of Structure',
     'bsz':    'Buy/Sell Zones',
@@ -1224,81 +1222,6 @@ if barstate.islast
     line.new(atc_zx0, atc_z_anc + atc_dev * atc_zstd, bar_index, atc_z_cur + atc_dev * atc_zstd,
              color=color.new(color.blue, 0), width=2)
     line.new(atc_zx0, atc_z_anc - atc_dev * atc_zstd, bar_index, atc_z_cur - atc_dev * atc_zstd,
-             color=color.new(color.blue, 0), width=2)
-"""
-
-
-def _t_atl(p: dict) -> str:
-    """Return the Pine Script v5 Auto Trend Lines overlay template with configurable params."""
-    dev = float(p.get('dev_multi', 2.0))
-    return f"""\
-// ── Auto Trend Lines (line.new on last bar — mirrors Python ATL) ─────────────
-// High anchor (darkred): mid dotted + top solid.
-// Low  anchor (darkgreen): mid dotted + bot solid.
-// Zero anchor (darkblue): top solid only — full visible range (flattest-slope approx.).
-// OLS fit + residual stdev computed with for-loops (avoids ta.linreg series-int limit).
-atl_dev = {dev}
-
-// Manual OLS on close[0..length-1]: returns [anchor_val, current_val, residual_stdev]
-atl_reg(length) =>
-    float n   = float(length)
-    float sx  = 0.0
-    float sy  = 0.0
-    float sxx = 0.0
-    float sxy = 0.0
-    for i = 0 to length - 1
-        float xi = float(i)
-        float yi = close[length - 1 - i]
-        sx  += xi
-        sy  += yi
-        sxx += xi * xi
-        sxy += xi * yi
-    float denom = n * sxx - sx * sx
-    float b     = denom != 0.0 ? (n * sxy - sx * sy) / denom : 0.0
-    float a     = (sy - b * sx) / n
-    float ssr   = 0.0
-    for i = 0 to length - 1
-        float err = close[length - 1 - i] - (a + b * float(i))
-        ssr += err * err
-    [a, a + b * (n - 1.0), math.sqrt(ssr / n)]
-
-if barstate.islast
-    // ── High anchor (darkred): mid dotted + top solid ─────────────────────
-    int atl_h_off = 0
-    for i = 1 to math.min(499, bar_index)
-        if high[i] > high[atl_h_off]
-            atl_h_off := i
-    atl_hlen = math.max(2, atl_h_off + 1)
-    atl_hx0  = bar_index - atl_hlen + 1
-    [atl_h_anc, atl_h_cur, atl_hstd] = atl_reg(atl_hlen)
-    // mid — dotted, semi-transparent red
-    line.new(atl_hx0, atl_h_anc,                       bar_index, atl_h_cur,
-             color=color.new(color.red, 40), width=1, style=line.style_dotted)
-    // top — solid, opaque red
-    line.new(atl_hx0, atl_h_anc + atl_dev * atl_hstd, bar_index, atl_h_cur + atl_dev * atl_hstd,
-             color=color.new(color.red, 0), width=2)
-
-    // ── Low anchor (darkgreen): mid dotted + bot solid ────────────────────
-    int atl_l_off = 0
-    for i = 1 to math.min(499, bar_index)
-        if low[i] < low[atl_l_off]
-            atl_l_off := i
-    atl_llen = math.max(2, atl_l_off + 1)
-    atl_lx0  = bar_index - atl_llen + 1
-    [atl_l_anc, atl_l_cur, atl_lstd] = atl_reg(atl_llen)
-    // mid — dotted, semi-transparent green
-    line.new(atl_lx0, atl_l_anc,                       bar_index, atl_l_cur,
-             color=color.new(color.green, 40), width=1, style=line.style_dotted)
-    // bot — solid, opaque green
-    line.new(atl_lx0, atl_l_anc - atl_dev * atl_lstd, bar_index, atl_l_cur - atl_dev * atl_lstd,
-             color=color.new(color.green, 0), width=2)
-
-    // ── Zero anchor (darkblue — full range, flattest-slope approx.) ──────
-    atl_zlen = math.min(500, bar_index + 1)
-    atl_zx0  = bar_index - atl_zlen + 1
-    [atl_z_anc, atl_z_cur, atl_zstd] = atl_reg(atl_zlen)
-    // top — solid, opaque blue
-    line.new(atl_zx0, atl_z_anc + atl_dev * atl_zstd, bar_index, atl_z_cur + atl_dev * atl_zstd,
              color=color.new(color.blue, 0), width=2)
 """
 
@@ -2750,7 +2673,6 @@ _OSC_TEMPLATES: dict[str, Callable[[dict], str]] = {
 
 _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'atc':    _t_atc,
-    'atl':    _t_atl,
     'bol':    _t_bol,
     'bos':    _t_bos,
     'bsz':    _t_bsz,
