@@ -57,13 +57,30 @@ def test_width_is_the_distance_between_the_parallels(df):
         assert (width > 0).all()
 
 
-def test_width_percent_relates_to_the_middle_line(df):
+def test_width_percent_relates_to_the_price(df):
     a = Atc(df=df.copy())
+    close = a.df['Close'].iloc[-1]
     for name in ('high', 'low', 'zero'):
-        mid = a.df[f'atc_mid_{name}'].dropna().iloc[-1]
         width = a.df[f'atc_width_{name}'].dropna().iloc[-1]
         pct = a.df[f'atc_width_pct_{name}'].dropna().iloc[-1]
-        assert pct == pytest.approx(width / mid * 100.0)
+        assert pct == pytest.approx(width / close * 100.0)
+
+
+def test_narrower_channel_never_shows_the_bigger_number(df):
+    """Der Vergleich, an dem die alte Definition scheiterte.
+
+    Bezugsgroesse war die Mittellinie des jeweiligen Kanals. Die liegen weit
+    auseinander (KOSPI: 6.063 beim high-Kanal gegen 8.030 beim low-Kanal), also
+    bekam der sichtbar schmalere Kanal die groessere Prozentzahl -- 2.171
+    Punkte als 35,8 %, 2.846 Punkte als 35,4 %. Mit dem Kurs als gemeinsamem
+    Nenner kann das nicht mehr passieren.
+    """
+    a = Atc(df=df.copy())
+    by_abs = sorted(('high', 'low', 'zero'),
+                    key=lambda n: a.df[f'atc_width_{n}'].dropna().iloc[-1])
+    by_pct = sorted(('high', 'low', 'zero'),
+                    key=lambda n: a.df[f'atc_width_pct_{n}'].dropna().iloc[-1])
+    assert by_abs == by_pct, 'Reihenfolge muss der sichtbaren Breite folgen'
 
 
 def test_absolute_width_is_constant_but_percent_is_not(df):

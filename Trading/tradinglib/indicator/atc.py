@@ -188,14 +188,24 @@ class Atc(_indicator._Indicator):
                 add_array(bot_p, f"atc_bot_{name}")
 
                 # Kanalbreite = Abstand der beiden Parallelen. Absolut in
-                # Kurseinheiten und relativ zur Mittellinie -- erst der
-                # Prozentwert ist zwischen Werten vergleichbar (ein DAX-Kanal
-                # von 60 Punkten ist eng, bei einer 5-Euro-Aktie waere er
-                # gewaltig). Beides als Spalte, damit es auch in Buy/Sell-
-                # Formeln zur Verfuegung steht.
+                # Kurseinheiten und relativ zum Kurs -- erst der Prozentwert
+                # ist zwischen Werten vergleichbar (ein DAX-Kanal von 60
+                # Punkten ist eng, bei einer 5-Euro-Aktie waere er gewaltig).
+                # Beides als Spalte, damit es auch in Buy/Sell-Formeln zur
+                # Verfuegung steht.
+                #
+                # Bezug ist bewusst der KURS und nicht die eigene Mittellinie
+                # des Kanals. Die Mittellinien der drei Kanaele liegen weit
+                # auseinander -- beim KOSPI 6.063 (high) gegen 8.030 (low) --,
+                # und mit je eigenem Nenner bekam der sichtbar schmalere Kanal
+                # die groessere Zahl (2.171 Punkte = 35,8 %, gegen 2.846 Punkte
+                # = 35,4 %). Ein gemeinsamer Nenner macht die drei Zahlen
+                # untereinander vergleichbar und deckt sich mit dem, was man im
+                # Chart sieht.
                 width = top_p - bot_p
+                ref = np.asarray(self.close.values[-len(width):], dtype=float)
                 with np.errstate(divide='ignore', invalid='ignore'):
-                    width_pct = np.where(mid_p != 0, width / mid_p * 100.0, np.nan)
+                    width_pct = np.where(ref != 0, width / ref * 100.0, np.nan)
                 add_array(width, f"atc_width_{name}")
                 add_array(width_pct, f"atc_width_pct_{name}")
             except Exception as e:
