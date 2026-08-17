@@ -35,13 +35,13 @@ geschafft haben – und tut das erfahrungsgemäß wieder.</p>
   darunter, Rekord-Fenster 10 Jahre)</td></tr>
 <tr><td><b>3 – Ausbruch</b></td><td>Beginn des neuen Trends, Einstieg</td>
   <td>Schlusskurs über dem Basis-Hoch (+ Puffer, Standard 0,5 %) <b>und</b> über dem
-  steigenden 30-Wochen-SMA; Stop = max(Basis-Tief, Ausbruch − 8 %); Ziel = Einstieg + 80 %</td></tr>
+  steigenden 40-Wochen-SMA; Stop = max(Basis-Tief, Ausbruch − 12 %); Ziel = Einstieg + 80 %</td></tr>
 <tr><td><b>4 – Trend</b></td><td>Trend bestätigt, Position wird gehalten</td>
   <td>Kurs hält sich mehrere Wochen (Standard 2) über dem Ausbruchsniveau und über dem
-  30-Wochen-SMA</td></tr>
+  40-Wochen-SMA</td></tr>
 </table>
 
-<p><b>Verkauf:</b> Schlusskurs unter dem 30-Wochen-SMA (Trendbruch) oder unter dem Stop.
+<p><b>Verkauf:</b> Schlusskurs unter dem 40-Wochen-SMA (Trendbruch) oder unter dem Stop.
 Optional Trailing-Stop und Gewinnmitnahme am Ziel (beides standardmäßig aus – die Methode
 hält typischerweise 12–18 Monate).</p>
 
@@ -114,11 +114,24 @@ S&amp;P 500 + DAX/MDAX/SDAX seit 2015 heben die beiden Filter die Trefferquote v
 
 <h2>Was die Methode leistet</h2>
 <p>Backtest über dieselben 656 Werte seit 2015 (Signal zu Signal, ohne Kosten):
-4.209 Trades, <b>40,8 % Gewinner</b>, Median <b>−3,3 %</b>, Mittel <b>+4,4 %</b>,
-Profit-Faktor <b>2,0</b>, Haltedauer im Schnitt <b>143 Tage</b>. Das ist das typische
-Trendfolge-Profil: viele kleine Verluste am Stop, getragen von wenigen großen Gewinnern
-(173 Trades über +50 %, 37 über +100 %). Wer den Median als Maßstab nimmt, wird die
-Methode falsch einschätzen — sie lebt vom rechten Rand der Verteilung.</p>
+3.615 Trades, <b>41,2 % Gewinner</b>, Mittel <b>+6,6 %</b>, Profit-Faktor <b>2,40</b>,
+Haltedauer im Schnitt <b>190 Tage</b>. Das ist das typische Trendfolge-Profil: viele
+kleine Verluste am Stop, getragen von wenigen großen Gewinnern. Wer den Median als
+Maßstab nimmt (er ist negativ), wird die Methode falsch einschätzen — sie lebt vom
+rechten Rand der Verteilung.</p>
+
+<p>Die Ausstiegslänge ist der größte Hebel: SMA20 kommt auf PF 1,68, SMA30 auf 2,03,
+SMA40 (Standard) auf 2,32, SMA50 auf 2,46 — der Profit-Faktor steigt <b>monoton</b> mit
+der Haltedauer (99 → 209 Tage), annualisiert bleibt es aber bei rund 12 % je Position.
+Trailing-Stop und Gewinnmitnahme am Ziel <b>schaden</b> (PF 1,99 bzw. 1,93), weil sie
+genau den rechten Rand kappen — beide sind deshalb ab Werk aus. Der Standard SMA40 +
+Stop 12 % war in allen drei Teilperioden (2015–19, 2020–22, 2023–26) und in beiden
+Regionen besser als SMA30 + Stop 8 %.</p>
+
+<div class="warn"><b>Achtung bei der Übertragung auf Multi-Strategien:</b> Diese Zahlen
+sind je Position gerechnet (Signal zu Signal), nicht als Portfolio mit begrenzten Plätzen.
+Längere Haltedauern binden Kapital — mit <code>num_assets</code> kann die Reihenfolge der
+Varianten anders ausfallen.</div>
 
 <h2>Grenzen</h2>
 <ul>

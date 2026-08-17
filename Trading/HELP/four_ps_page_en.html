@@ -35,13 +35,13 @@ benchmark index historically bounces off its <b>200-week moving average</b> and 
   record window 10 years)</td></tr>
 <tr><td><b>3 – breakout</b></td><td>Start of the new trend, entry</td>
   <td>Close above the base high (+ buffer, default 0.5 %) <b>and</b> above the rising
-  30-week SMA; stop = max(base low, breakout − 8 %); target = entry + 80 %</td></tr>
+  40-week SMA; stop = max(base low, breakout − 12 %); target = entry + 80 %</td></tr>
 <tr><td><b>4 – trend</b></td><td>Trend confirmed, position held</td>
   <td>Price holds above the breakout level for a few weeks (default 2) and above the
-  30-week SMA</td></tr>
+  40-week SMA</td></tr>
 </table>
 
-<p><b>Exit:</b> close below the 30-week SMA (trend break) or below the stop. Optional
+<p><b>Exit:</b> close below the 40-week SMA (trend break) or below the stop. Optional
 trailing stop and profit taking at the target (both off by default — the method typically
 holds for 12–18 months).</p>
 
@@ -111,11 +111,22 @@ since 2015 the two filters lift the hit rate from 37.2 % to 40.8 % and the profi
 1.96 to 2.02, at about a third fewer signals.</div>
 
 <h2>What the method delivers</h2>
-<p>Backtest over the same 656 names since 2015 (signal to signal, no costs): 4,209 trades,
-<b>40.8 % winners</b>, median <b>−3.3 %</b>, mean <b>+4.4 %</b>, profit factor <b>2.0</b>,
-average holding period <b>143 days</b>. That is the classic trend-following profile: many small
-losses at the stop, carried by a few large winners (173 trades above +50 %, 37 above +100 %).
-Judging it by the median misreads the method — it lives off the right tail.</p>
+<p>Backtest over the same 656 names since 2015 (signal to signal, no costs): 3,615 trades,
+<b>41.2 % winners</b>, mean <b>+6.6 %</b>, profit factor <b>2.40</b>, average holding period
+<b>190 days</b>. That is the classic trend-following profile: many small losses at the stop,
+carried by a few large winners. Judging it by the median (which is negative) misreads the
+method — it lives off the right tail.</p>
+
+<p>Exit length is the biggest lever: SMA20 yields PF 1.68, SMA30 2.03, SMA40 (default) 2.32,
+SMA50 2.46 — the profit factor rises <b>monotonically</b> with the holding period (99 → 209
+days), while the annualised figure stays around 12 % per position. Trailing stop and profit
+taking at the target <b>hurt</b> (PF 1.99 and 1.93) because they cut off exactly that right
+tail — both are off by default. The SMA40 + 12 % stop default beat SMA30 + 8 % in all three
+sub-periods (2015–19, 2020–22, 2023–26) and in both regions.</p>
+
+<div class="warn"><b>Careful when carrying this into Multi Strategies:</b> these numbers are
+per position (signal to signal), not a portfolio with a limited number of slots. Longer holds
+tie up capital — with <code>num_assets</code> the ranking of the variants may differ.</div>
 
 <h2>Limits</h2>
 <ul>

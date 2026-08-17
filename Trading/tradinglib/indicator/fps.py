@@ -56,9 +56,9 @@ class Fps(_indicator._Indicator):
                             'label': 'Phase 3: only above a rising weekly SMA'},
         'confirm_weeks':   {'type': 'int',   'default': 2, 'min': 1, 'max': 12,
                             'label': 'Phase 4: confirmation (weeks)'},
-        'trend_sma_weeks': {'type': 'int',   'default': 30, 'min': 5, 'max': 60,
+        'trend_sma_weeks': {'type': 'int',   'default': 40, 'min': 5, 'max': 60,
                             'label': 'Phase 4: weekly trend SMA'},
-        'stop_pct':        {'type': 'float', 'default': 8.0, 'min': 1.0, 'max': 30.0,
+        'stop_pct':        {'type': 'float', 'default': 12.0, 'min': 1.0, 'max': 30.0,
                             'label': 'Stop below the breakout (%)'},
         'trail_pct':       {'type': 'float', 'default': 0.0, 'min': 0.0, 'max': 50.0,
                             'label': 'Trailing stop (%, 0 = off)'},
@@ -76,7 +76,7 @@ class Fps(_indicator._Indicator):
     def __init__(self, df, symbol="", trend_min_pct=90.0, min_trends=1, base_weeks=8,
                  base_depth_pct=25.0, near_high_pct=15.0, record_weeks=520,
                  breakout_pct=0.5, require_uptrend=True, confirm_weeks=2,
-                 trend_sma_weeks=30, stop_pct=8.0, trail_pct=0.0,
+                 trend_sma_weeks=40, stop_pct=12.0, trail_pct=0.0,
                  target_pct=80.0, benchmark='^SPX', color_base='#7CB518'):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)

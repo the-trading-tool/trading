@@ -924,4 +924,4 @@ Signal→Signal, ohne Kosten). Trades unter −60 % (Split-Artefakte) ausgeschlo
   mit begrenzten Slots. Längere Haltedauern binden Kapital — im `multi_transactions`-
   Kontext mit `num_assets` kann das die Reihenfolge der Varianten drehen.
 
-Defaults stehen weiterhin auf SMA30/Stop 8 % (Entscheidung offen).
+**Entscheidung 2026-08-17:** Defaults auf **SMA40 + Stop 12 %** umgestellt (`trend_sma_weeks` 30→40, `stop_pct` 8→12) — in allen Teilperioden und Regionen besser. Trailing/Zielverkauf bleiben aus.
