@@ -190,6 +190,33 @@ sind je Position gerechnet (Signal zu Signal), nicht als Portfolio mit begrenzte
 Längere Haltedauern binden Kapital — mit <code>num_assets</code> kann die Reihenfolge der
 Varianten anders ausfallen.</div>
 
+<h2>Datenqualität: Brüche in der Kursreihe</h2>
+<p>Die Methode rechnet über Jahrzehnte — ein <b>Stufensprung</b> in der lokalen Kursreihe
+verfälscht deshalb alles: Rekordhoch, Zickzack-Schübe, 52-Wochen-Rendite und in der Folge
+die Phasen. Typischer Fall ist ein Split, der nur ab dem Umstellungstag eingepflegt wurde;
+jede einzelne Kerze ist dabei in sich stimmig, nur der Pegel der Reihe springt.</p>
+<p><b>Beispiel Interactive Brokers:</b> Am 12.12.2023 fällt der Kurs in
+<code>yf_IBKR.db</code> von 83,44 auf 20,94 (Faktor 0,25 = Split 4:1, nicht rückwirkend
+bereinigt). Das Hoch von vor dem Bruch (94,88) bleibt zehn Jahre im Rekord-Fenster stehen,
+also verlangt Phase 2 eine Basis über 80,65 — während der Kurs zwischen 21 und 71 lief.
+Der gesamte Anstieg 2024/2025 blieb deshalb ohne Signal; erst 2026, zurück nahe dem alten
+Niveau, kam wieder ein Kauf. Mit bereinigten Daten hätte die Methode am 22.01.2024 bei
+22,77 gekauft (heute rund +313 %).</p>
+<ul>
+  <li>Die Detailansicht zeigt einen <b>Warnhinweis</b>, sobald die geladene Historie einen
+      solchen Bruch enthält; im Screener steht er als <code>⚠</code> in der Spalte
+      <b>Daten</b>.</li>
+  <li>Prüfen lässt sich das für ein ganzes Universum mit
+      <code>python -m tradinglib.data_quality /gaps /index:^SPX</code> (Windows: über
+      PowerShell, sonst mangelt MSYS die <code>/flags</code>). Der Lauf nennt Ticker, Datum,
+      Faktor, vermutliche Ursache und die passenden Bereinigungs-Befehle.</li>
+  <li><b>Bereinigung</b> = Kurse neu laden (<code>get_asset_data.py</code>), danach die
+      Simulation der betroffenen Indizes neu rechnen. Erst dann stimmen die Signale.</li>
+</ul>
+<p>Abzugrenzen von <code>scan_ohlc_issues</code>: das prüft <i>einzelne Zeilen</i>
+(<code>close</code> ausserhalb <code>[Low, High]</code>) in der Simulations-DB und findet
+Reihen-Brüche prinzipbedingt <b>nicht</b>.</p>
+
 <h2>Grenzen</h2>
 <ul>
   <li>Es werden nur Werte mit ausreichend Historie bewertet (Standard 8 Jahre) – junge

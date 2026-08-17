@@ -130,6 +130,78 @@ def write_issues_table(df: pd.DataFrame, db_path: str = 'database',
         logger.warning('data_quality: write_issues_table failed: %s', exc)
 
 
+# ── Preisreihen-Brüche (Level-Shift in yf_<TICKER>.db) ───────────────────────
+# Zweite, unabhängige Fehlerklasse: NICHT eine einzelne inkonsistente Zeile
+# (close ausserhalb [Low, High]), sondern ein sauberer Stufensprung der ganzen
+# Reihe — alle vier OHLC-Werte springen gemeinsam um denselben Faktor. Typisch
+# für einen Split, der nur ab dem Umstellungstag eingepflegt wurde: jede Bar ist
+# für sich konsistent, deshalb findet `scan_ohlc_issues` davon nichts.
+#
+# Folge: alles, was über den Bruch hinweg rechnet, ist falsch — 52W-/Allzeithoch,
+# Rekord-Fenster, Zickzack-Schübe, Renditen. Die 4PS-Methode etwa sieht einen
+# Kurssturz von -75 % und blockiert den anschliessenden Aufwärtstrend jahrelang,
+# weil der (nicht vergleichbare) Vor-Split-Höchststand im Fenster stehen bleibt.
+_GAP_LO = 0.6      # Tagesfaktor darunter  = Sprung nach unten
+_GAP_HI = 1.7      # Tagesfaktor darüber   = Sprung nach oben
+
+# Gängige Split-Verhältnisse, gegen die der gefundene Faktor geprüft wird
+_SPLIT_RATIOS = (2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 25, 30, 50, 100)
+
+
+def _gap_cause(factor: float) -> str:
+    """Vermutliche Ursache eines Stufensprungs anhand des Tagesfaktors."""
+    if factor <= 0:
+        return 'ungueltig'
+    inv = 1.0 / factor
+    for n in _SPLIT_RATIOS:
+        if abs(inv - n) / n < 0.06:
+            return f'Split {n}:1 nicht rueckwirkend bereinigt'
+        if abs(factor - n) / n < 0.06:
+            return f'Reverse-Split 1:{n} bzw. Level-Shift nach oben'
+    if factor < 0.02 or factor > 50:
+        return 'Waehrungs-/Pence-Wechsel'
+    return 'unklarer Level-Shift'
+
+
+def detect_price_gaps(daily, since: str = '2015-01-01') -> list:
+    """Stufensprünge in einer OHLC-Reihe (DataFrame mit Close, Datumsindex).
+
+    Liefert eine Liste ``{date, prev_close, close, factor, cause}`` — leer, wenn
+    die Reihe durchgehend ist. Reine Rechenfunktion, kein DB-Zugriff.
+    """
+    if daily is None or getattr(daily, 'empty', True) or 'Close' not in daily.columns:
+        return []
+    close = pd.to_numeric(daily['Close'], errors='coerce').dropna()
+    if len(close) < 30:
+        return []
+    ratio = (close / close.shift(1)).dropna()
+    if since:
+        ratio = ratio[ratio.index >= pd.Timestamp(since)]
+    hits = ratio[(ratio < _GAP_LO) | (ratio > _GAP_HI)]
+    out = []
+    for dt, val in hits.items():
+        pos = close.index.get_loc(dt)
+        out.append({'date': dt, 'prev_close': float(close.iloc[pos - 1]),
+                    'close': float(close.loc[dt]), 'factor': float(val),
+                    'cause': _gap_cause(float(val))})
+    return out
+
+
+def scan_price_gaps(tickers, db_path: str = 'database', since: str = '2015-01-01'):
+    """Wie :func:`detect_price_gaps`, aber über viele Ticker aus den lokalen DBs."""
+    from tradinglib import four_ps as fps          # lazy: reiner OHLC-Leser
+    rows = []
+    for tk in tickers or []:
+        try:
+            daily = fps.load_daily(tk, db_path)
+        except Exception:
+            continue
+        for gap in detect_price_gaps(daily, since):
+            rows.append({'ticker': tk, **gap})
+    df = pd.DataFrame(rows)
+    return df.sort_values(['date', 'ticker'], ascending=[False, True]) if not df.empty else df
+
+
 def _indices_for_tickers(tickers, db_path: str = 'database') -> dict:
     """Ticker -> Liste zugehöriger Index-Namen (aus yf_tickers.db)."""
     out: dict = {}
@@ -266,16 +338,49 @@ def render_position_anomaly_warning(trades_df, budgets: dict, db_path: str = 'da
     return True
 
 
+def _cli_gaps(index_arg: str, since: str) -> None:
+    """`/gaps`-Modus: Preisreihen auf Stufensprünge prüfen (yf_<TICKER>.db)."""
+    from tradinglib import four_ps as fps
+    indices = [i.strip() for i in (index_arg or '^SPX').split(',') if i.strip()]
+    tickers = sorted({tk for idx in indices for tk in fps.index_members(idx)})
+    logger.info('Scanne %d Ticker aus %s auf Preisreihen-Brueche …',
+                len(tickers), ','.join(indices))
+    df = scan_price_gaps(tickers, since=since)
+    if df.empty:
+        logger.info('Keine Bruechen gefunden. ✅')
+        return
+    view = df.copy()
+    view['date'] = view['date'].dt.strftime('%Y-%m-%d')
+    view['factor'] = view['factor'].round(3)
+    print(f'\n{len(df)} Bruch/Brueche in {df["ticker"].nunique()} Tickern:\n')
+    print(view[['ticker', 'date', 'prev_close', 'close', 'factor', 'cause']]
+          .to_string(index=False))
+    print('\nBereinigungs-Befehle:')
+    print('\n'.join(build_cleanup_commands(sorted(df['ticker'].unique()))))
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
     year = ''
     all_flag = False
+    gaps = False
+    gap_index = ''
+    since = '2015-01-01'
     for a in sys.argv[1:]:
         s = a.lstrip('/').lower()
         if s == 'all':
             all_flag = True
         elif s.startswith('year:'):
             year = a.split(':', 1)[1]
+        elif s == 'gaps':
+            gaps = True
+        elif s.startswith('index:'):
+            gap_index = a.split(':', 1)[1]
+        elif s.startswith('since:'):
+            since = a.split(':', 1)[1]
+    if gaps:
+        _cli_gaps(gap_index, since)
+        sys.exit(0)
     sim = _sim_db_name(year, all_flag)
     logger.info('Scanne %s auf OHLC-Inkonsistenzen …', sim)
     df = scan_ohlc_issues(sim_db=sim)

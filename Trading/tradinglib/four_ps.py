@@ -659,6 +659,12 @@ def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None 
 
     last = fps.iloc[-1]
     price = float(daily['Close'].iloc[-1])
+    try:
+        from tradinglib import data_quality as dq
+        gaps = dq.detect_price_gaps(daily)
+    except Exception:
+        logger.debug("four_ps: gap detection failed for %s", ticker, exc_info=True)
+        gaps = []
     base_high = float(last['fps_base_high'])
     phase = int(last['fps_phase'])
     # Distance to the trigger: positive = still below the breakout level
@@ -693,6 +699,12 @@ def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None 
         'dist_high': float(last['fps_dist_high']),
         # Raw window return — the sector comparison is built from these
         'ret_52w': window_return(daily, 52),
+        # Level shift in the local price series (unadjusted split & co). Every
+        # long-window figure above is wrong across such a break, so it has to be
+        # visible rather than silently distorting the phases.
+        'gap_date': (gaps[-1]['date'] if gaps else None),
+        'gap_factor': (gaps[-1]['factor'] if gaps else 0.0),
+        'gap_cause': (gaps[-1]['cause'] if gaps else ''),
         'signal': signal,
         'signal_date': signal_date,
         'days_since_signal': (int((daily.index[-1] - signal_date).days)

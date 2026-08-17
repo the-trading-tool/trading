@@ -82,6 +82,14 @@ def _signal_text(signal, when) -> str:
     return f"{label} · {ts:%Y-%m-%d}" if pd.notna(ts) else label
 
 
+def _gap_text(when, factor) -> str:
+    """Kurzmarker fuer einen Preisreihen-Bruch: '⚠ 2023-12-12 ×0.25'."""
+    ts = pd.to_datetime(when, errors='coerce')
+    if pd.isna(ts) or not factor:
+        return ''
+    return f"⚠ {ts:%Y-%m-%d} ×{float(factor):.2f}"
+
+
 def _normalize_scan(df):
     """Repair the dtypes a JSON round-trip through rotation_cache loses.
 
@@ -93,14 +101,16 @@ def _normalize_scan(df):
     if df is None or not isinstance(df, pd.DataFrame) or df.empty:
         return df
     df = df.copy()
-    if 'signal_date' in df.columns:
-        df['signal_date'] = pd.to_datetime(df['signal_date'], errors='coerce')
+    for col in ('signal_date', 'gap_date'):
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
     for col in ('phase', 'base_weeks', 'to_breakout', 'best_trend', 'trend_gain',
                 'rs', 'dist_high', 'price', 'stop', 'target', 'days_since_signal',
-                'ret_52w', 'sector_median', 'vs_sector', 'sector_rank', 'sector_peers'):
+                'ret_52w', 'sector_median', 'vs_sector', 'sector_rank', 'sector_peers',
+                'gap_factor'):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    for col in ('ticker', 'name', 'signal', 'sector'):
+    for col in ('ticker', 'name', 'signal', 'sector', 'gap_cause'):
         if col in df.columns:
             df[col] = df[col].fillna('').astype(str)
     return df
@@ -230,6 +240,9 @@ class FourPsPage:
             t('fps.col_target'): df['target'].round(2),
             t('fps.col_signal'): [_signal_text(s, d)
                                   for s, d in zip(df['signal'], df['signal_date'])],
+            t('fps.col_data'): [_gap_text(d, fct) for d, fct
+                                in zip(df.get('gap_date', pd.Series(index=df.index, dtype='datetime64[ns]')),
+                                       df.get('gap_factor', pd.Series(0.0, index=df.index)))],
         })
         event = st.dataframe(view, use_container_width=True, hide_index=True,
                              height=460, on_select='rerun',
@@ -551,6 +564,12 @@ class FourPsPage:
                       stop=f"{stop:,.2f}"))
         else:
             st.info(t('fps.plan_watch', pct=int(params['trend_min_pct'])))
+
+        if res.get('gap_date') is not None and res.get('gap_factor'):
+            gap = pd.to_datetime(res['gap_date'])
+            st.warning(t('fps.data_gap', date=f"{gap:%Y-%m-%d}",
+                         factor=f"{float(res['gap_factor']):.2f}",
+                         cause=res.get('gap_cause', ''), ticker=ticker))
 
         self._weekly_chart(res, params)
         self._monthly_chart(res, params)

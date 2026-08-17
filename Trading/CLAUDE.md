@@ -953,3 +953,26 @@ HELP-Seiten erklaert. Zwei Punkte, die vorher verwirrten:
   86 % unter seinem Hoch stehen und sich trotzdem qualifizieren (CBK.DE: Hoch 2007 bei
   282,86, aktueller Kurs 39,61, 10-Jahres-Hoch 40,13). Bewusst so gelassen — beide
   Aussagen sind fuer sich sinnvoll —, aber in Doku und Spaltentext explizit gemacht.
+
+### 4PS-Fund: Level-Shifts in yf_*.db blenden die Methode (2026-08-17)
+
+Frage aus der Praxis: „Warum loest der IBKR-Anstieg ab Dez 2023 kein Buy aus?" Ursache
+ist kein Regelproblem, sondern die Datenreihe: in `yf_IBKR.db` faellt der Kurs am
+2023-12-12 von 83,44 auf 20,94 (Faktor 0,251 = **Split 4:1, nicht rueckwirkend
+bereinigt**). Das Vor-Bruch-Hoch 94,88 bleibt 10 Jahre im Rekord-Fenster → Phase 2
+verlangt eine Basis ueber 80,65, waehrend der Kurs 21–71 lief → 614 Tage Phase 1, erstes
+Signal erst 2026-06-17. Gegenprobe mit bereinigten Daten: Kauf am 2024-01-22 zu 22,77
+(+313 % bis heute).
+
+- **Neue Fehlerklasse, neuer Detektor:** `data_quality.detect_price_gaps()` /
+  `scan_price_gaps()` + CLI `python -m tradinglib.data_quality /gaps /index:^SPX`
+  (PowerShell wegen MSYS-`/flag`-Mangling). `scan_ohlc_issues` findet das prinzipbedingt
+  **nicht** — dort ist `close` innerhalb `[Low, High]`, die ganze Reihe springt sauber.
+- **Verbreitung:** 32 von 656 Tickern (^SPX+DAX-Familie) mit Sprung > 40 % seit 2015.
+  Auffaellig sind Cluster auf gleichen Tagen (2023-12-12: IBKR/FAST/ORLY/NFLX/DD;
+  2024-08-15/16: BKNG/CRWD/KLAC/NOW/…) → das sind Umstellungen der lokalen Pipeline,
+  keine echten Unternehmensereignisse.
+- **Sichtbar gemacht:** `analyze()` liefert `gap_date`/`gap_factor`/`gap_cause`; Detail
+  zeigt eine Warnung, der Screener eine Spalte „Daten" mit `⚠ Datum ×Faktor`.
+- **Bereinigung** bleibt manuell: `get_asset_data.py` fuer die Ticker neu laden, dann
+  `asset_perf2.py /index:…` — betrifft alle Konsumenten (Scores, Charts), nicht nur 4PS.

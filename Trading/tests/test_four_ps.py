@@ -85,6 +85,24 @@ def test_no_look_ahead():
                                   trunc.loc[common].fillna(0.0))
 
 
+def test_price_gap_detection():
+    """A 4:1 split that was never applied backwards must be reported."""
+    from tradinglib import data_quality as dq
+
+    daily = _path()
+    broken = daily.copy()
+    cut = broken.index[1200]
+    for col in ('Open', 'High', 'Low', 'Close'):
+        broken.loc[broken.index >= cut, col] = broken.loc[broken.index >= cut, col] / 4.0
+
+    assert dq.detect_price_gaps(daily) == []          # sauber = keine Meldung
+    gaps = dq.detect_price_gaps(broken)
+    assert len(gaps) == 1
+    assert gaps[0]['date'] == cut
+    assert gaps[0]['factor'] == pytest.approx(0.25, abs=0.02)
+    assert '4:1' in gaps[0]['cause']
+
+
 def test_zigzag_confirms_only_after_the_reversal():
     close = pd.Series([10, 12, 15, 20, 25, 30, 22, 21, 20],
                       index=pd.date_range('2020-01-31', periods=9, freq='ME'))

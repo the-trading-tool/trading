@@ -184,6 +184,31 @@ sub-periods (2015–19, 2020–22, 2023–26) and in both regions.</p>
 per position (signal to signal), not a portfolio with a limited number of slots. Longer holds
 tie up capital — with <code>num_assets</code> the ranking of the variants may differ.</div>
 
+<h2>Data quality: breaks in the price series</h2>
+<p>The method computes across decades — a <b>level shift</b> in the local price series
+therefore corrupts everything: record high, zigzag legs, 52-week return and hence the phases.
+The typical case is a split that was only applied from the changeover day on; every single
+candle stays internally consistent, only the level of the series jumps.</p>
+<p><b>Example Interactive Brokers:</b> on 2023-12-12 the price in <code>yf_IBKR.db</code>
+drops from 83.44 to 20.94 (factor 0.25 = a 4:1 split never applied backwards). The pre-break
+high (94.88) stays in the record window for ten years, so Phase 2 demands a base above 80.65
+— while the price traded between 21 and 71. The entire 2024/2025 advance produced no signal;
+only in 2026, back near the old level, did a buy appear. With adjusted data the method would
+have bought on 2024-01-22 at 22.77 (about +313 % today).</p>
+<ul>
+  <li>The detail view shows a <b>warning</b> as soon as the loaded history contains such a
+      break; in the screener it appears as <code>⚠</code> in the <b>Data</b> column.</li>
+  <li>Check a whole universe with
+      <code>python -m tradinglib.data_quality /gaps /index:^SPX</code> (on Windows run it from
+      PowerShell, otherwise MSYS mangles the <code>/flags</code>). The run lists ticker, date,
+      factor, likely cause and the matching cleanup commands.</li>
+  <li><b>Cleanup</b> = re-download the prices (<code>get_asset_data.py</code>), then recompute
+      the simulation of the affected indices. Only then are the signals correct.</li>
+</ul>
+<p>Not to be confused with <code>scan_ohlc_issues</code>: that checks <i>individual rows</i>
+(<code>close</code> outside <code>[Low, High]</code>) in the simulation DB and by design does
+<b>not</b> find series breaks.</p>
+
 <h2>Limits</h2>
 <ul>
   <li>Only names with enough history are scored (default 8 years) — recent IPOs drop out.</li>
