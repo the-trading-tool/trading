@@ -131,6 +131,12 @@ def fear_greed_key(index: str) -> str:
     return f"fear_greed|{index}"
 
 
+def four_ps_key(universes, params_sig: str) -> str:
+    """Cache key for one 4PS screener run (universe list + parameter signature)."""
+    uni = ",".join(sorted(str(u) for u in universes))
+    return f"four_ps|{uni}|{params_sig}"
+
+
 # ── Storage paths ─────────────────────────────────────────────────────────────
 
 def _db_path() -> str:

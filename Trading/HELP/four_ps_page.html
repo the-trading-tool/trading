@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>4PS Methode – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>4PS Methode <small style="font-size:.6em;color:#888">four_ps_page.py · four_ps.py · indicator/fps.py</small></h1>
+
+<p>Die <b>4-Phasen-Sequenz</b> sucht Aktien, die <b>bereits bewiesen haben</b>, dass sie
+stärker laufen als ihr Index, und steigt am Beginn ihres nächsten Trendschubs ein.
+Grundgedanke: Der Leitindex prallt historisch an seinem <b>200-Wochen-Durchschnitt</b> ab und
+läuft danach 60–90 %. Wer den Index schlagen soll, muss in der Vergangenheit deutlich mehr
+geschafft haben – und tut das erfahrungsgemäß wieder.</p>
+
+<h2>Die vier Phasen</h2>
+<table>
+<tr><th>Phase</th><th>Bedeutung</th><th>Prüfung in der App</th></tr>
+<tr><td><b>1 – Historie</b></td><td>Bewährte Trendhistorie</td>
+  <td>Monats-Zickzack (Standard 25 % Umkehr): mindestens ein <b>abgeschlossener</b>
+  Aufwärtsschub ≥ Schwelle (Standard 90 %)</td></tr>
+<tr><td><b>2 – Basis</b></td><td>Seitwärtskonsolidierung nahe den Hochs</td>
+  <td>Längstes Wochenfenster (min. 8 Wochen), dessen Hoch/Tief-Spanne ≤ Basisbreite
+  (Standard 25 %) bleibt und dessen Hoch nahe am 52-Wochen-Hoch liegt (Standard ≤ 20 % darunter)</td></tr>
+<tr><td><b>3 – Ausbruch</b></td><td>Beginn des neuen Trends, Einstieg</td>
+  <td>Schlusskurs über dem Basis-Hoch (+ Puffer, Standard 0,5 %); Stop = max(Basis-Tief,
+  Ausbruch − 8 %); Ziel = Einstieg + 80 %</td></tr>
+<tr><td><b>4 – Trend</b></td><td>Trend bestätigt, Position wird gehalten</td>
+  <td>Kurs hält sich mehrere Wochen (Standard 2) über dem Ausbruchsniveau und über dem
+  30-Wochen-SMA</td></tr>
+</table>
+
+<p><b>Verkauf:</b> Schlusskurs unter dem 30-Wochen-SMA (Trendbruch) oder unter dem Stop.
+Optional Trailing-Stop und Gewinnmitnahme am Ziel (beides standardmäßig aus – die Methode
+hält typischerweise 12–18 Monate).</p>
+
+<div class="info"><b>Kausal, damit backtestfähig:</b> Basislevel stammen ausschließlich aus
+<b>abgeschlossenen</b> Wochen, die Phase-1-Historie aus <b>bestätigten</b> Monatsschüben
+(ein Hoch zählt erst, wenn die Gegenbewegung es bestätigt hat). Kein Wert am Tag D benutzt
+Daten nach D – die Signale sind damit im Backtest verwendbar und keine Rückschau.</div>
+
+<h2>Die Seite</h2>
+<ul>
+  <li><b>Index-Regime</b> (Kopfbereich): Vergleichsindex gegen seinen 200-Wochen-SMA,
+      Größe des laufenden Aufwärtsschubs sowie die vergangenen Schübe als Tabelle.</li>
+  <li><b>🔎 Screener:</b> alle Mitglieder der gewählten Indizes, sortiert nach Phase und
+      relativer Stärke. Filter nach Phase, RS und Abstand zum Ausbruch. Ergebnis lässt sich
+      als <i>überwachte Assets</i> speichern oder als Ticker-Liste kopieren; Klick auf eine
+      Zeile füllt den Detail-Tab.</li>
+  <li><b>📈 Detail:</b> Wochenchart mit Basis, Ausbruch, Stop, Ziel und Signalen sowie
+      Monatschart mit allen vergangenen Aufwärtsschüben (grün = Phase-1-Nachweis).
+      Dazu der Handelsplan mit Stop, Ziel und CRV.</li>
+  <li><b>📘 Methode:</b> Kurzbeschreibung und fertiger Strategie-Block zum Einfügen in
+      Multi-Strategien.</li>
+</ul>
+
+<h2>Spalten (live wie im Backtest)</h2>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><code>fps_phase</code></td><td>0 = keine Historie, 1 = Watchlist, 2 = Basis, 3 = Ausbruch, 4 = Trend</td></tr>
+<tr><td><code>fps_best_trend</code></td><td>bester abgeschlossener Monatsschub bis heute (%)</td></tr>
+<tr><td><code>fps_trend_gain</code></td><td>laufender Aufwärtsschub seit dem letzten bestätigten Tief (%)</td></tr>
+<tr><td><code>fps_base_high</code> / <code>fps_base_low</code></td><td>Hoch/Tief der aktiven Basis (0 = keine Basis)</td></tr>
+<tr><td><code>fps_base_weeks</code></td><td>Länge der Basis in Wochen</td></tr>
+<tr><td><code>fps_breakout</code></td><td>1 am Tag des Ausbruchs, sonst 0</td></tr>
+<tr><td><code>fps_buy</code> / <code>fps_sell</code></td><td>Kurs am Signaltag (sonst leer bzw. 0 in der DB)</td></tr>
+<tr><td><code>fps_stop</code> / <code>fps_target</code></td><td>Stop- und Zielniveau der offenen Position</td></tr>
+<tr><td><code>fps_rs</code></td><td>relative Stärke 52 Wochen gegen den Vergleichsindex (Prozentpunkte)</td></tr>
+<tr><td><code>fps_dist_high</code></td><td>Abstand zum Allzeithoch (%, ≤ 0)</td></tr>
+</table>
+
+<h2>Verwendung in Chart, Strategy Finder und Multi-Strategien</h2>
+<ul>
+  <li><b>Asset Viewer:</b> Overlay <code>fps</code> aktivieren – zeichnet Basis, Ausbruch,
+      Stop, Ziel und die Kauf-/Verkaufsmarker.</li>
+  <li><b>Buy/Sell-Formeln:</b> z. B. Kauf <code>(fps_buy &gt; 0)</code>, strenger
+      <code>(fps_breakout &gt; 0) &amp; (fps_rs &gt; 0) &amp; (fps_best_trend &gt; 150)</code>,
+      Verkauf <code>(fps_sell &gt; 0)</code>. Alternativ Positionslogik ohne Signalspalten:
+      <code>(fps_phase &gt;= 3)</code> kaufen, <code>(fps_phase &lt; 3)</code> verkaufen.</li>
+  <li><b>Sortierung</b> der Kandidaten je Index über <code>'order_by': 'fps_best_trend'</code>
+      oder <code>'fps_rs'</code>.</li>
+</ul>
+
+<div class="warn"><b>Voraussetzung für den Backtest:</b> Die Spalten müssen einmal in die
+Simulations-Datenbanken geschrieben werden:
+<code>python asset_perf2.py /backfill:fps /force</code> (zusätzlich je Jahr
+<code>/year:2024</code> bzw. <code>/all</code>). Ein vollständiger <code>init</code>-Lauf
+füllt sie ebenfalls. Ohne Backfill stehen überall Nullen – die Formeln liefern dann keine
+Signale.</div>
+
+<h2>Parameter</h2>
+<p>Alle Schwellen sind im Expander <b>⚙ Parameter der Methode</b> einstellbar und werden
+pro Nutzer in <code>config.db</code> (<code>fps_params</code>) gespeichert. Der Indikator
+<code>fps</code> hat dieselben Parameter im ⚙-Dialog der Indikator-Einstellungen; beide
+Wege greifen auf denselben Rechenkern zu (<code>tradinglib/four_ps.py</code>).</p>
+
+<h2>Grenzen</h2>
+<ul>
+  <li>Es werden nur Werte mit ausreichend Historie bewertet (Standard 8 Jahre) – junge
+      IPOs fallen heraus.</li>
+  <li>Die Methode ist <b>long-only</b> und trendfolgend; in Seitwärts- oder Bärenmärkten
+      entstehen Fehlausbrüche. Das Index-Regime im Kopfbereich ist dafür der Kontext.</li>
+  <li>Kurse stammen aus den lokalen <code>yf_&lt;TICKER&gt;.db</code>-Dateien; Splits oder
+      Pence-Notierungen (LSE) verzerren die Historie, solange sie nicht bereinigt sind.</li>
+  <li>Ein Scan über mehrere Indizes dauert beim ersten Mal etwa eine Minute; das Ergebnis
+      wird tageweise zwischengespeichert (<code>rotation_cache.db</code>).</li>
+</ul>
+</body>
+</html>

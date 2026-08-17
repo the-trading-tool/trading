@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>4PS Method – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>4PS Method <small style="font-size:.6em;color:#888">four_ps_page.py · four_ps.py · indicator/fps.py</small></h1>
+
+<p>The <b>four phase sequence</b> looks for stocks that have <b>already proven</b> they can
+run harder than their index, and enters at the start of their next trend leg. The idea: the
+benchmark index historically bounces off its <b>200-week moving average</b> and then runs
+60–90 %. A name that is supposed to outperform must have done considerably more in the past
+— and tends to do it again.</p>
+
+<h2>The four phases</h2>
+<table>
+<tr><th>Phase</th><th>Meaning</th><th>How the app checks it</th></tr>
+<tr><td><b>1 – history</b></td><td>Proven trend history</td>
+  <td>Monthly zigzag (default 25 % reversal): at least one <b>completed</b> up-leg above the
+  threshold (default 90 %)</td></tr>
+<tr><td><b>2 – base</b></td><td>Sideways consolidation near the highs</td>
+  <td>Longest weekly window (min. 8 weeks) whose high/low range stays within the base width
+  (default 25 %) and whose high sits close to the 52-week high (default ≤ 20 % below)</td></tr>
+<tr><td><b>3 – breakout</b></td><td>Start of the new trend, entry</td>
+  <td>Close above the base high (+ buffer, default 0.5 %); stop = max(base low,
+  breakout − 8 %); target = entry + 80 %</td></tr>
+<tr><td><b>4 – trend</b></td><td>Trend confirmed, position held</td>
+  <td>Price holds above the breakout level for a few weeks (default 2) and above the
+  30-week SMA</td></tr>
+</table>
+
+<p><b>Exit:</b> close below the 30-week SMA (trend break) or below the stop. Optional
+trailing stop and profit taking at the target (both off by default — the method typically
+holds for 12–18 months).</p>
+
+<div class="info"><b>Causal, therefore backtestable:</b> base levels come exclusively from
+<b>completed</b> weeks, the Phase 1 history from <b>confirmed</b> monthly legs (a high only
+counts once the counter-move has confirmed it). No value on day D uses data after D — the
+signals are usable in a backtest and are not hindsight.</div>
+
+<h2>The page</h2>
+<ul>
+  <li><b>Index regime</b> (header): benchmark vs its 200-week SMA, size of the running
+      up-leg and a table of past legs.</li>
+  <li><b>🔎 Screener:</b> every member of the selected indices, ranked by phase and relative
+      strength. Filters for phase, RS and distance to the breakout. The result can be stored
+      as <i>monitored assets</i> or copied as a ticker list; clicking a row fills the detail
+      tab.</li>
+  <li><b>📈 Detail:</b> weekly chart with base, breakout, stop, target and signals, plus a
+      monthly chart of all past up-legs (green = Phase 1 proof), together with the trade plan
+      (stop, target, R/R).</li>
+  <li><b>📘 Method:</b> short description and a ready-made strategy block for Multi
+      Strategies.</li>
+</ul>
+
+<h2>Columns (identical live and in the backtest)</h2>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><code>fps_phase</code></td><td>0 = no history, 1 = watchlist, 2 = base, 3 = breakout, 4 = trend</td></tr>
+<tr><td><code>fps_best_trend</code></td><td>best completed monthly up-leg so far (%)</td></tr>
+<tr><td><code>fps_trend_gain</code></td><td>running up-leg since the last confirmed low (%)</td></tr>
+<tr><td><code>fps_base_high</code> / <code>fps_base_low</code></td><td>high/low of the active base (0 = no base)</td></tr>
+<tr><td><code>fps_base_weeks</code></td><td>length of the base in weeks</td></tr>
+<tr><td><code>fps_breakout</code></td><td>1 on the breakout day, else 0</td></tr>
+<tr><td><code>fps_buy</code> / <code>fps_sell</code></td><td>price on the signal day (empty otherwise, 0 in the DB)</td></tr>
+<tr><td><code>fps_stop</code> / <code>fps_target</code></td><td>stop and target level of the open position</td></tr>
+<tr><td><code>fps_rs</code></td><td>52-week relative strength vs the benchmark (percentage points)</td></tr>
+<tr><td><code>fps_dist_high</code></td><td>distance to the all-time high (%, ≤ 0)</td></tr>
+</table>
+
+<h2>Use in the chart, Strategy Finder and Multi Strategies</h2>
+<ul>
+  <li><b>Asset Viewer:</b> enable the <code>fps</code> overlay — it draws base, breakout,
+      stop, target and the buy/sell markers.</li>
+  <li><b>Buy/sell formulas:</b> e.g. buy <code>(fps_buy &gt; 0)</code>, stricter
+      <code>(fps_breakout &gt; 0) &amp; (fps_rs &gt; 0) &amp; (fps_best_trend &gt; 150)</code>,
+      sell <code>(fps_sell &gt; 0)</code>. Or state-based without signal columns:
+      buy <code>(fps_phase &gt;= 3)</code>, sell <code>(fps_phase &lt; 3)</code>.</li>
+  <li><b>Ranking</b> per index via <code>'order_by': 'fps_best_trend'</code> or
+      <code>'fps_rs'</code>.</li>
+</ul>
+
+<div class="warn"><b>Prerequisite for the backtest:</b> the columns have to be written to the
+simulation databases once: <code>python asset_perf2.py /backfill:fps /force</code> (plus per
+year <code>/year:2024</code> or <code>/all</code>). A full <code>init</code> run fills them as
+well. Without the backfill everything is zero and the formulas produce no signals.</div>
+
+<h2>Parameters</h2>
+<p>Every threshold can be edited in the <b>⚙ Method parameters</b> expander and is stored per
+user in <code>config.db</code> (<code>fps_params</code>). The <code>fps</code> indicator
+exposes the same parameters in the indicator settings dialog; both paths use the same engine
+(<code>tradinglib/four_ps.py</code>).</p>
+
+<h2>Limits</h2>
+<ul>
+  <li>Only names with enough history are scored (default 8 years) — recent IPOs drop out.</li>
+  <li>The method is <b>long only</b> and trend following; sideways or bear markets produce
+      failed breakouts. The index regime in the header provides that context.</li>
+  <li>Prices come from the local <code>yf_&lt;TICKER&gt;.db</code> files; splits or pence
+      quotations (LSE) distort the history until they are cleaned up.</li>
+  <li>A scan across several indices takes about a minute the first time; the result is cached
+      per day (<code>rotation_cache.db</code>).</li>
+</ul>
+</body>
+</html>

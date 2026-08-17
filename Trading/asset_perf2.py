@@ -40,6 +40,12 @@ INDICATOR_BACKFILL_MAP: dict = {
     'sup':     ['sup_support', 'sup_resistance'],
     'relvol':  ['relvol_ratio', 'relvol_direction'],
     'atc':     ['atc_top_high', 'atc_bot_low'],
+    # 4 Phase Sequence — phases, base levels and signals (tradinglib/four_ps.py).
+    # The indicator reloads the full local daily history itself, so /backfill:fps
+    # yields the same values as a full init run.
+    'fps':     ['fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
+                'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
+                'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high'],
     'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
@@ -818,6 +824,14 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['pctTargetHighPrice'] = indicator.trend_pct(get_ticker_value(ticker, 'targetHighPrice'), pdict['close'])
         pdict['logVola'] = float(DataUtils.safe_last(df, 'log_vola', default=0))
 
+        # 4PS columns — the signal columns are NaN except on a signal day, so
+        # they are stored as 0 to keep the sim-DB plain REALs.
+        for _fps_col in ('fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
+                         'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
+                         'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high'):
+            _fps_val = DataUtils.safe_last(df, _fps_col, default=0)
+            pdict[_fps_col] = 0.0 if _fps_val is None or pd.isna(_fps_val) else float(_fps_val)
+
         pdict['predictedLow'] = getattr(ft.pre, 'pr_low', 0)
         pdict['predictedHigh'] = getattr(ft.pre, 'pr_high', 0)
         pdict['High'] = DataUtils.safe_last(df, 'High', default=0)
@@ -1189,7 +1203,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """Funktion, die pro Ticker in einem separaten Prozess läuft."""
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling

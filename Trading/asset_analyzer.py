@@ -92,6 +92,7 @@ _START_PAGE_ROUTES = {
     'fear_greed':      {'fear_greed': 'true'},
     'global_rotation': {'global_rotation': 'true'},
     'asset_search':    {'asset_search': 'true'},
+    'four_ps':         {'four_ps': 'true'},
 }
 
 # Server-side mobile detection via the request User-Agent. Not 100 % (recent
@@ -776,12 +777,14 @@ class TradingApp:
                         _nav(t('nav.market_overview'), market_overview='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'summary', 'performance', 'compound')):
+            if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'four_ps', 'summary', 'performance', 'compound')):
                 with st.sidebar.expander(t('nav.group_assets'), expanded=True):
                     if _sb_items.get('asset'):
                         _nav(t('nav.asset_viewer'), asset='true')
                     if _sb_items.get('asset_search'):
                         _nav(t('nav.asset_search'), asset_search='true')
+                    if _sb_items.get('four_ps'):
+                        _nav(t('nav.four_ps'), four_ps='true')
                     if _sb_items.get('summary'):
                         _nav(t('nav.asset_summary'), summary='true')
                     if _sb_items.get('performance'):
@@ -1097,6 +1100,14 @@ class TradingApp:
                             GlobalRotationPage(username=self.username).render()
                         except Exception as e:
                             st.error(t('error.load_global_rotation', error=e))
+                elif parms.get('four_ps'):
+                    self.set_page_config(t('page.four_ps'))
+                    with st.spinner(t('page.four_ps') + " …"):
+                        try:
+                            from tradinglib.four_ps_page import FourPsPage
+                            FourPsPage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_four_ps', error=e))
                 elif parms.get('asset_search'):
                     self.set_page_config(t('page.asset_search'))
                     with st.spinner(t('page.asset_search') + " …"):

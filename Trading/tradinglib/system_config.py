@@ -35,6 +35,7 @@ DEFAULT_SIDEBAR_ITEMS = {
     'global_rotation': True,
     'asset': True,
     'asset_search': True,
+    'four_ps': True,
     'summary': False,
     'performance': False,
     'compound': False,
@@ -54,7 +55,7 @@ DEFAULT_SIDEBAR_ITEMS = {
 # checkbox editor and the sidebar's own render order.
 SIDEBAR_MENU_GROUPS = [
     ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed', 'global_rotation']),
-    ('nav.group_assets', ['asset', 'asset_search', 'summary', 'performance', 'compound']),
+    ('nav.group_assets', ['asset', 'asset_search', 'four_ps', 'summary', 'performance', 'compound']),
     ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades']),
     ('nav.group_admin', ['admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine']),
 ]
@@ -68,6 +69,7 @@ SIDEBAR_ITEM_LABEL_KEYS = {
     'global_rotation': 'nav.global_rotation',
     'asset': 'nav.asset_viewer',
     'asset_search': 'nav.asset_search',
+    'four_ps': 'nav.four_ps',
     'summary': 'nav.asset_summary',
     'performance': 'nav.performance',
     'compound': 'nav.compound_simulation',
@@ -775,6 +777,7 @@ class SystemConfig(tools.Db_tools):
                 self._render_help_pages([
                     ("Asset Details", "main_page"),
                     ("Asset-Suche", "asset_search_page"),
+                    ("4PS Methode", "four_ps_page"),
                     ("Dashboard", "banner_page"),
                     ("Market Map", "market_map"),
                     ("Sektorrotation", "sector_rotation_page"),

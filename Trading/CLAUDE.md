@@ -817,3 +817,48 @@ zusammengequetscht). `ovt` nutzt deshalb reine `add_hline`-Referenzlinien (nur
 Shapes, die als `x{row} domain` sauber übertragen werden). Latent: der Sub-Plot-
 Annotations-Pfad in `tiny_chart` ist generell fehlerhaft (homed nach `row=1`
 statt `row=row` + xref-Override) — bisher ohne Konsumenten.
+
+---
+
+## Neu in dieser Session (2026-08-17) — 4PS-Methode (4 Phase Sequence)
+
+Neue Seite + Indikator + Backtest-Spalten für die "4 Phase Sequence"-Methode
+(Trendfolge: bewährte Historie → Konsolidierung → Ausbruch → bestätigter Trend).
+
+| Datei | Rolle |
+|---|---|
+| `tradinglib/four_ps.py` | Rechenkern (kein Streamlit): `compute()`, `analyze()`, `scan()`, `index_regime()`, `zigzag()`, CLI |
+| `tradinglib/indicator/fps.py` | Overlay `fps` — lädt die volle lokale Tageshistorie, projiziert das Ergebnis auf die Chart-Zeitebene |
+| `tradinglib/four_ps_page.py` | Seite (`?four_ps=true`): Index-Regime, Screener, Detail, Methode |
+| `HELP/four_ps_page[_en].html` | Hilfeseite (in `system_config` unter "Hauptansichten" registriert) |
+| `tests/test_four_ps.py` | Phasenlauf + Kausalitätstest auf synthetischen Kursen |
+
+**Phasen-Logik (alles kausal):**
+- Phase 1: Monats-Zickzack (25 % Umkehr) — ein Aufwärtsschub zählt erst mit
+  **bestätigter** Gegenbewegung, nie am (dann noch unbekannten) Extrempunkt.
+- Phase 2: längstes Wochenfenster (≥ 8 W) mit Spanne ≤ 25 % **und** nahe 52W-Hoch.
+- Phase 3/4: Zustandsautomat auf **Tages**-Closes; Basislevel kommen aus
+  `_to_daily(..., completed_only=True)`, also aus abgeschlossenen Wochen/Monaten
+  (`PeriodIndex` + `shift(1)`) — deshalb kein Look-ahead.
+- Verifiziert: `compute()` auf abgeschnittener Historie == `compute()` auf voller
+  Historie für den überlappenden Teil (Test `test_no_look_ahead`, zusätzlich
+  gegen echte Ticker geprüft).
+
+**Spalten (live == Backtest):** `fps_phase` (0–4), `fps_best_trend`,
+`fps_trend_gain`, `fps_base_high/_low/_weeks`, `fps_breakout`, `fps_buy`,
+`fps_sell`, `fps_stop`, `fps_target`, `fps_rs`, `fps_dist_high`.
+Verdrahtet in `asset_perf2.py`: `INDICATOR_BACKFILL_MAP['fps']`, `'fps'` in der
+Indikatorliste von `process_symbol`, pdict-Schleife (NaN → 0.0).
+**Bestandsdaten füllen:** `python asset_perf2.py /backfill:fps /force`
+(+ `/year:YYYY` bzw. `/all`) — noch **nicht** gelaufen, das ist der nächste Schritt.
+
+**Performance-Falle:** `scan()` läuft bewusst **single-threaded**
+(`workers=1`). Gemessen an 60 SPX-Mitgliedern: 6,3 s mit 1 Worker, 21,6 s mit 8 —
+die Arbeit ist CPU-gebunden (pandas + Zustandsautomat), Threads bringen nur
+GIL-Contention. Ergebnis wird tageweise in `rotation_cache.db` persistiert
+(`rotation_cache.four_ps_key`), ein SPX+DAX-Scan dauert einmalig ~70 s.
+
+**Sonstiges:** Sidebar-Eintrag `four_ps` (Gruppe Assets, Default an), Route in
+`_START_PAGE_ROUTES` + `app_edition._ROUTE_PARAMS`, 98 Locale-Keys je Sprache
+(`fps.*`, `nav/page/error.four_ps`). Parameter pro Nutzer in `config.db`
+(`fps_params`), Universen-Default `^GDAXI,^MDAXI,^SDAXI,^SPX` (`fps_universes`).

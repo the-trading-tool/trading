@@ -18,7 +18,7 @@ def print_help():
           "  /worker:N - number of workers to use,\n"
           "  /rescore - re-compute overallTrend/overallValueTrend from stored DB columns (fast, no yfinance),\n"
           "  /backfill:ind1,ind2 - fill missing indicator columns from local OHLCV (fast, no yfinance),\n"
-          "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc\n"
+          "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
           "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
           "                      (use when column was added with DEFAULT 0 and all values are 0),\n"
           "  /log:LEVEL - enable console logging at LEVEL (DEBUG, INFO, ...),\n"
