@@ -96,13 +96,45 @@ def _normalize_scan(df):
     if 'signal_date' in df.columns:
         df['signal_date'] = pd.to_datetime(df['signal_date'], errors='coerce')
     for col in ('phase', 'base_weeks', 'to_breakout', 'best_trend', 'trend_gain',
-                'rs', 'dist_high', 'price', 'stop', 'target', 'days_since_signal'):
+                'rs', 'dist_high', 'price', 'stop', 'target', 'days_since_signal',
+                'ret_52w', 'sector_median', 'vs_sector', 'sector_rank', 'sector_peers'):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-    for col in ('ticker', 'name', 'signal'):
+    for col in ('ticker', 'name', 'signal', 'sector'):
         if col in df.columns:
             df[col] = df[col].fillna('').astype(str)
     return df
+
+
+# A sector median is only meaningful with enough peers — below this the column
+# stays empty instead of comparing a stock against two others.
+_MIN_PEERS = 5
+
+
+def _sector_col(df: pd.DataFrame, col: str) -> list:
+    """Sector figure per row, blanked out where the peer group is too small."""
+    if col not in df.columns:
+        return [None] * len(df)
+    peers = df['sector_peers'] if 'sector_peers' in df.columns else pd.Series(0, index=df.index)
+    return [round(float(v), 1) if pd.notna(v) and int(p or 0) >= _MIN_PEERS else None
+            for v, p in zip(df[col], peers)]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _sector_reference(universes: tuple, db_path: str, day: str) -> dict:
+    """Median 52-week return per sector over the selected universes.
+
+    The peer group is deliberately the same universe the screener runs on, so the
+    detail tab and the table answer "above its sector?" the same way.
+    """
+    members: list[str] = []
+    for uni in universes:
+        for tk in fps.index_members(uni, db_path):
+            if tk not in members:
+                members.append(tk)
+    return rotation_cache.get_or_compute(
+        f"four_ps_sector|{','.join(sorted(universes))}",
+        lambda: fps.sector_reference(members, 52, db_path))
 
 
 def _cached_scan_lookup(universes: list[str], params: dict):
@@ -179,13 +211,16 @@ class FourPsPage:
     def _screener_table(self, df: pd.DataFrame, params: dict) -> None:
         view = pd.DataFrame({
             t('fps.col_ticker'): df['ticker'],
-            t('fps.col_name'): df['name'].str.slice(0, 38),
+            t('fps.col_name'): df['name'].str.slice(0, 28),
             t('fps.col_phase'): [f"{int(p)} · {_phase_label(p)}" for p in df['phase']],
             t('fps.col_base_weeks'): df['base_weeks'],
             t('fps.col_to_breakout'): df['to_breakout'].round(1),
             t('fps.col_best_trend'): df['best_trend'].round(0),
             t('fps.col_trend_gain'): df['trend_gain'].round(0),
             t('fps.col_rs'): df['rs'].round(1),
+            t('fps.col_sector'): [str(x)[:22] for x in df.get('sector', '')],
+            t('fps.col_vs_sector'): _sector_col(df, 'vs_sector'),
+            t('fps.col_sector_rank'): _sector_col(df, 'sector_rank'),
             t('fps.col_dist_high'): df['dist_high'].round(1),
             t('fps.col_price'): df['price'].round(2),
             t('fps.col_stop'): df['stop'].round(2),
@@ -379,6 +414,9 @@ class FourPsPage:
                                  key='_fps_filter_rs')
         max_to_break = c4.number_input(t('fps.filter_to_break'), 0.0, 100.0, 100.0, 1.0,
                                        key='_fps_filter_break')
+        only_above = st.checkbox(t('fps.filter_sector'), value=False,
+                                 key='_fps_filter_sector',
+                                 help=t('fps.filter_sector_help'))
 
         if not universes:
             st.info(t('fps.pick_universe'))
@@ -401,11 +439,39 @@ class FourPsPage:
         # rerun drops the user's row selection.
         flt = df[df['phase'].isin(phases) & (df['rs'] >= min_rs)]
         flt = flt[(flt['phase'] >= 3) | (flt['to_breakout'] <= max_to_break)]
+        if only_above and 'vs_sector' in flt.columns:
+            flt = flt[(flt['vs_sector'] > 0) & (flt.get('sector_peers', 0) >= _MIN_PEERS)]
         st.caption(t('fps.result_count', shown=len(flt), total=len(df)))
         if flt.empty:
             st.warning(t('fps.no_candidates'))
             return
         self._screener_table(flt.reset_index(drop=True), params)
+
+    def _sector_context(self, ticker: str, res: dict) -> dict:
+        """Where the ticker stands inside its sector.
+
+        Prefers the figures the current scan already carries (same peer group as
+        the table); otherwise builds the reference from the selected universes.
+        """
+        scan = st.session_state.get('_fps_result')
+        if isinstance(scan, pd.DataFrame) and not scan.empty and 'sector' in scan.columns:
+            row = scan[scan['ticker'] == ticker]
+            if not row.empty and str(row['sector'].iloc[0]):
+                r = row.iloc[0]
+                return {'sector': str(r['sector']), 'ret': float(r.get('ret_52w', 0) or 0),
+                        'median': float(r.get('sector_median', 0) or 0),
+                        'vs_median': float(r.get('vs_sector', 0) or 0),
+                        'rank': float(r.get('sector_rank', 0) or 0),
+                        'above': float(r.get('vs_sector', 0) or 0) >= 0,
+                        'peers': int(r.get('sector_peers', 0) or 0)}
+        try:
+            universes = st.session_state.get('_fps_universes') or self._universes()
+            ref = _sector_reference(tuple(universes), self.db_path,
+                                    dt.date.today().isoformat())
+            return fps.sector_context(ticker, ref, res.get('ret_52w'))
+        except Exception:
+            logger.debug("four_ps_page: sector context failed for %s", ticker, exc_info=True)
+            return {}
 
     def _select_detail(self, ticker: str) -> None:
         """Hand a screener row over to the detail tab.
@@ -445,12 +511,24 @@ class FourPsPage:
             f"{t('fps.phase_badge', n=phase, name=_phase_label(phase))}</div>",
             unsafe_allow_html=True)
 
-        m = st.columns(5)
+        sector = self._sector_context(ticker, res)
+        m = st.columns(6)
         m[0].metric(t('fps.m_price'), f"{res['price']:,.2f}")
         m[1].metric(t('fps.m_best_trend'), f"{res['best_trend']:,.0f} %")
         m[2].metric(t('fps.m_trend_gain'), f"{res['trend_gain']:+,.0f} %")
         m[3].metric(t('fps.m_rs'), f"{res['rs']:+,.1f} pp")
         m[4].metric(t('fps.m_dist_high'), f"{res['dist_high']:,.1f} %")
+        if sector.get('vs_median') is not None and sector.get('peers', 0) >= _MIN_PEERS:
+            m[5].metric(t('fps.m_vs_sector'), f"{sector['vs_median']:+,.1f} pp",
+                        delta=t('fps.sector_above') if sector['above']
+                        else t('fps.sector_below'),
+                        delta_color='normal' if sector['above'] else 'inverse')
+            st.caption(t('fps.sector_note', sector=sector['sector'],
+                         own=f"{sector['ret']:+.1f}", median=f"{sector['median']:+.1f}",
+                         rank=f"{sector['rank']:.0f}", peers=sector['peers']))
+        else:
+            m[5].metric(t('fps.m_vs_sector'), '—')
+            st.caption(t('fps.sector_no_peers'))
 
         # Trade plan
         if phase >= 3 and res['stop'] > 0:

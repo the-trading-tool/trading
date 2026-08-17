@@ -1785,5 +1785,15 @@
   "fps.p_record_weeks_help": "The period the record high is taken from (520 weeks = 10 years). Smaller = more tolerant towards names that have long been trading below their old high.",
   "fps.p_require_uptrend": "Phase 3: only above a rising SMA",
   "fps.p_require_uptrend_help": "Only buy the breakout when price is above the weekly SMA and that SMA is rising. Without the filter, entries happen below the very average the exit rule is built on — the position would be due for the exit right away.",
-  "fps.p_slope_weeks": "Phase 3: slope over (weeks)"
+  "fps.p_slope_weeks": "Phase 3: slope over (weeks)",
+  "fps.col_sector": "Sector",
+  "fps.col_vs_sector": "vs. sector (pp)",
+  "fps.col_sector_rank": "rank in sector %",
+  "fps.filter_sector": "Only names above the sector median",
+  "fps.filter_sector_help": "Hides names that do not beat their own sector over 52 weeks. The peer group is the sector inside the selected universe; sectors with fewer than 5 members stay unrated.",
+  "fps.m_vs_sector": "vs. sector",
+  "fps.sector_above": "above the median",
+  "fps.sector_below": "below the median",
+  "fps.sector_note": "Sector **{sector}**: own 52-week return {own} % against the sector median {median} % — rank {rank} % among {peers} names of that sector in the selected universe.",
+  "fps.sector_no_peers": "No sector comparison — too few names of that sector in the selected universe (at least 5 needed), or no sector recorded in asset_info."
 }

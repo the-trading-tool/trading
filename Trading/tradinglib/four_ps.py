@@ -180,6 +180,123 @@ def index_list(db_path: str | None = None) -> list[str]:
     return idx + grp
 
 
+def sector_map(tickers: list[str], db_path: str | None = None) -> dict[str, str]:
+    """ticker → sector from asset_info.db (tickers without a sector are omitted)."""
+    if not tickers:
+        return {}
+    con = sqlite3.connect(_p("asset_info.db", db_path))
+    try:
+        out: dict[str, str] = {}
+        for i in range(0, len(tickers), 500):
+            chunk = tickers[i:i + 500]
+            ph = ",".join("?" * len(chunk))
+            rows = con.execute(
+                f"SELECT ticker, sector FROM asset_info WHERE ticker IN ({ph})",
+                chunk).fetchall()
+            out.update({r[0]: r[1] for r in rows if r[1]})
+        return out
+    except Exception:
+        logger.debug("four_ps: sector lookup failed", exc_info=True)
+        return {}
+    finally:
+        con.close()
+
+
+def window_return(daily: pd.DataFrame, weeks: int = 52) -> float | None:
+    """Percentage return of the last *weeks* weeks (None when the history is short)."""
+    if daily is None or daily.empty or 'Close' not in daily.columns:
+        return None
+    close = pd.to_numeric(daily['Close'], errors='coerce').dropna()
+    if close.empty:
+        return None
+    start = close.index[-1] - pd.Timedelta(weeks=weeks)
+    past = close[close.index <= start]
+    if past.empty or not past.iloc[-1]:
+        return None
+    return float((close.iloc[-1] / past.iloc[-1] - 1.0) * 100.0)
+
+
+def quick_return(ticker: str, weeks: int = 52, db_path: str | None = None) -> float | None:
+    """Window return without loading the full history — reads only the tail rows.
+
+    Used to build the sector peer group, where hundreds of tickers are needed but
+    none of them has to be scored.
+    """
+    path = _p(f"yf_{ticker}.db", db_path)
+    if not os.path.exists(path):
+        return None
+    con = sqlite3.connect(path)
+    try:
+        rows = con.execute(
+            "SELECT Date, Close FROM day_data WHERE Close IS NOT NULL "
+            "ORDER BY Date DESC LIMIT ?", (int(weeks * 5 + 40),)).fetchall()
+    except Exception:
+        return None
+    finally:
+        con.close()
+    if len(rows) < 20:
+        return None
+    df = pd.DataFrame(rows, columns=['Date', 'Close'])
+    df.index = pd.to_datetime(df['Date'], errors='coerce')
+    return window_return(df.sort_index()[['Close']], weeks)
+
+
+def sector_reference(tickers: list[str], weeks: int = 52, db_path: str | None = None,
+                     returns: dict[str, float] | None = None) -> dict:
+    """Median return per sector over a peer group.
+
+    ``returns`` lets a caller reuse figures it already has (the screener computes
+    them while scoring anyway); everything missing is read from the local OHLC.
+    The peer group is always the passed ticker list — i.e. "the sector inside the
+    universe you are looking at", not some global sector index.
+    """
+    sectors = sector_map(tickers, db_path)
+    rets: dict[str, float] = {}
+    for tk in tickers:
+        sec = sectors.get(tk)
+        if not sec:
+            continue
+        val = (returns or {}).get(tk)
+        if val is None:
+            val = quick_return(tk, weeks, db_path)
+        if val is not None:
+            rets[tk] = float(val)
+    if not rets:
+        return {'weeks': weeks, 'medians': {}, 'counts': {}, 'returns': {}, 'sectors': {}}
+
+    frame = pd.DataFrame({'ticker': list(rets), 'ret': list(rets.values())})
+    frame['sector'] = frame['ticker'].map(sectors)
+    grp = frame.groupby('sector')['ret']
+    return {
+        'weeks': weeks,
+        'medians': grp.median().to_dict(),
+        'counts': grp.size().to_dict(),
+        'returns': rets,
+        'sectors': {tk: sectors[tk] for tk in rets},
+    }
+
+
+def sector_context(ticker: str, reference: dict, own_return: float | None = None) -> dict:
+    """Where *ticker* stands inside its sector: median, distance and percentile."""
+    empty = {'sector': '', 'ret': None, 'median': None, 'vs_median': None,
+             'rank': None, 'above': None, 'peers': 0}
+    if not reference or not reference.get('medians'):
+        return empty
+    sector = reference['sectors'].get(ticker) or sector_map([ticker]).get(ticker, '')
+    if not sector or sector not in reference['medians']:
+        return empty
+    ret = own_return if own_return is not None else reference['returns'].get(ticker)
+    median = float(reference['medians'][sector])
+    peers = [v for tk, v in reference['returns'].items()
+             if reference['sectors'].get(tk) == sector]
+    if ret is None:
+        return {**empty, 'sector': sector, 'median': median, 'peers': len(peers)}
+    rank = float(np.mean([ret >= v for v in peers]) * 100.0) if peers else None
+    return {'sector': sector, 'ret': float(ret), 'median': median,
+            'vs_median': float(ret - median), 'rank': rank,
+            'above': bool(ret >= median), 'peers': len(peers)}
+
+
 def long_names(tickers: list[str], db_path: str | None = None) -> dict[str, str]:
     """ticker → longName map from asset_info.db (missing entries are omitted)."""
     if not tickers:
@@ -574,6 +691,8 @@ def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None 
         'target': float(last['fps_target']),
         'rs': float(last['fps_rs']),
         'dist_high': float(last['fps_dist_high']),
+        # Raw window return — the sector comparison is built from these
+        'ret_52w': window_return(daily, 52),
         'signal': signal,
         'signal_date': signal_date,
         'days_since_signal': (int((daily.index[-1] - signal_date).days)
@@ -640,6 +759,19 @@ def scan(tickers: list[str], db_path: str | None = None, workers: int = 1,
     df = pd.DataFrame(rows)
     names = long_names(list(df['ticker']), db_path)
     df['name'] = df['ticker'].map(names).fillna('')
+
+    # Sector standing — peer group is the scanned universe itself. The window
+    # returns already exist from the scoring pass, so this costs one asset_info
+    # query and no extra price reads.
+    own = {r['ticker']: r['ret_52w'] for _, r in df.iterrows() if r.get('ret_52w') is not None}
+    ref = sector_reference(list(df['ticker']), 52, db_path, returns=own)
+    ctx = [sector_context(tk, ref, own.get(tk)) for tk in df['ticker']]
+    df['sector'] = [c['sector'] for c in ctx]
+    df['sector_median'] = [c['median'] for c in ctx]
+    df['vs_sector'] = [c['vs_median'] for c in ctx]
+    df['sector_rank'] = [c['rank'] for c in ctx]
+    df['sector_peers'] = [c['peers'] for c in ctx]
+
     return df.sort_values(['phase', 'rs'], ascending=[False, False]).reset_index(drop=True)
 
 

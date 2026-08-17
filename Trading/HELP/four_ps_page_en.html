@@ -80,6 +80,26 @@ signals are usable in a backtest and are not hindsight.</div>
 <tr><td><code>fps_dist_high</code></td><td>distance to the all-time high (%, ≤ 0)</td></tr>
 </table>
 
+<h2>Sector comparison</h2>
+<p>Screener and detail view also show where a name stands <b>inside its sector</b>, over
+52 weeks:</p>
+<ul>
+  <li><b>Sector</b> — from <code>asset_info.sector</code>.</li>
+  <li><b>vs. sector (pp)</b> — own 52-week return minus the sector <b>median</b>.
+      Positive = the name outperforms its sector.</li>
+  <li><b>Rank in sector %</b> — percentile among the sector peers (100 = best).</li>
+  <li>The filter <b>“Only names above the sector median”</b> hides the laggards.</li>
+</ul>
+<p>The <b>peer group</b> is the sector <i>inside the selected universe</i> — not a sector ETF
+and not a global sector index — so the statement is "better than the typical name of that
+sector in my selection". Sectors with fewer than 5 members stay empty; a median of two names
+says nothing. The reference is computed once a day and stored in
+<code>rotation_cache.db</code> (~8 s for 656 tickers).</p>
+<div class="warn">The sector comparison is a <b>snapshot</b> and deliberately does <b>not</b>
+become an <code>fps_*</code> column in the simulation DB: it depends on the selected universe
+and is not a causal time series. For backtest formulas <code>fps_rs</code> (relative strength
+against the index) remains the right measure.</div>
+
 <h2>Use in the chart, Strategy Finder and Multi Strategies</h2>
 <ul>
   <li><b>Asset Viewer:</b> enable the <code>fps</code> overlay — it draws base, breakout,

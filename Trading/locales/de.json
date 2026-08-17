@@ -1785,5 +1785,15 @@
   "fps.p_record_weeks_help": "Zeitraum, aus dem das Rekordhoch stammt (520 Wochen = 10 Jahre). Kleiner = toleranter gegenüber Werten, die längst unter ihrem alten Hoch liegen.",
   "fps.p_require_uptrend": "Phase 3: nur über steigendem SMA",
   "fps.p_require_uptrend_help": "Ausbruch nur kaufen, wenn der Kurs über dem Wochen-SMA liegt und dieser steigt. Ohne den Filter entstehen Käufe unter genau dem Durchschnitt, auf dem die Verkaufsregel beruht — die Position wäre sofort wieder ausstiegsreif.",
-  "fps.p_slope_weeks": "Phase 3: Steigung über (Wochen)"
+  "fps.p_slope_weeks": "Phase 3: Steigung über (Wochen)",
+  "fps.col_sector": "Sektor",
+  "fps.col_vs_sector": "vs. Sektor (pp)",
+  "fps.col_sector_rank": "Rang im Sektor %",
+  "fps.filter_sector": "Nur Werte über dem Sektor-Median",
+  "fps.filter_sector_help": "Blendet Werte aus, die ihren eigenen Sektor auf Sicht von 52 Wochen nicht schlagen. Vergleichsgruppe sind die Sektor-Kollegen im gewählten Universum; Sektoren mit weniger als 5 Werten bleiben unbewertet.",
+  "fps.m_vs_sector": "vs. Sektor",
+  "fps.sector_above": "über dem Median",
+  "fps.sector_below": "unter dem Median",
+  "fps.sector_note": "Sektor **{sector}**: eigene 52-Wochen-Rendite {own} % gegen Sektor-Median {median} % — Rang {rank} % unter {peers} Werten des Sektors im gewählten Universum.",
+  "fps.sector_no_peers": "Kein Sektor-Vergleich möglich — zum Sektor liegen im gewählten Universum zu wenige Werte (mindestens 5) oder keine Sektor-Angabe in asset_info vor."
 }

@@ -925,3 +925,17 @@ Signal→Signal, ohne Kosten). Trades unter −60 % (Split-Artefakte) ausgeschlo
   Kontext mit `num_assets` kann das die Reihenfolge der Varianten drehen.
 
 **Entscheidung 2026-08-17:** Defaults auf **SMA40 + Stop 12 %** umgestellt (`trend_sma_weeks` 30→40, `stop_pct` 8→12) — in allen Teilperioden und Regionen besser. Trailing/Zielverkauf bleiben aus.
+
+### 4PS: Sektor-Vergleich (2026-08-17)
+
+Screener + Detail zeigen `sector`, `vs_sector` (eigene 52W-Rendite − Sektor-**Median**, pp)
+und `sector_rank` (Perzentil im Sektor) plus Filter „nur über dem Sektor-Median“.
+Engine: `four_ps.sector_map/window_return/quick_return/sector_reference/sector_context`.
+
+- **Vergleichsgruppe = Sektor im gewählten Universum** (nicht Sektor-ETF, nicht global).
+  `scan()` nutzt die beim Scoring ohnehin berechneten Renditen → keine zusätzliche IO;
+  die Detailansicht baut die Referenz über `quick_return` (liest nur den Tail von
+  `day_data`, ~8 s für 656 Ticker) und cached sie tageweise in `rotation_cache.db`.
+- Sektoren mit < 5 Werten bleiben leer (`_MIN_PEERS`).
+- **Bewusst KEINE `fps_*`-Spalte in der Sim-DB**: universumsabhängige Momentaufnahme,
+  keine kausale Zeitreihe. Für Backtests bleibt `fps_rs` (gegen den Index) zuständig.

@@ -80,6 +80,26 @@ Daten nach D – die Signale sind damit im Backtest verwendbar und keine Rücksc
 <tr><td><code>fps_dist_high</code></td><td>Abstand zum Allzeithoch (%, ≤ 0)</td></tr>
 </table>
 
+<h2>Sektor-Vergleich</h2>
+<p>Screener und Detailansicht zeigen zusätzlich, wo der Wert <b>innerhalb seines Sektors</b>
+steht — auf Sicht von 52 Wochen:</p>
+<ul>
+  <li><b>Sektor</b> — aus <code>asset_info.sector</code>.</li>
+  <li><b>vs. Sektor (pp)</b> — eigene 52-Wochen-Rendite minus <b>Median</b> des Sektors.
+      Positiv = der Wert outperformt seinen Sektor.</li>
+  <li><b>Rang im Sektor %</b> — Perzentil unter den Sektor-Kollegen (100 = bester Wert).</li>
+  <li>Der Filter <b>„Nur Werte über dem Sektor-Median“</b> blendet die Nachzügler aus.</li>
+</ul>
+<p><b>Vergleichsgruppe</b> sind die Sektor-Kollegen <i>im gewählten Universum</i>, nicht ein
+Sektor-ETF und kein globaler Sektorindex — die Aussage lautet also „besser als der typische
+Wert dieses Sektors in meiner Auswahl“. Sektoren mit weniger als 5 Werten bleiben leer, ein
+Median aus zwei Titeln sägt keine Aussage. Die Referenz wird einmal pro Tag berechnet und in
+<code>rotation_cache.db</code> abgelegt (~8 s für 656 Ticker).</p>
+<div class="warn">Der Sektor-Vergleich ist eine <b>Momentaufnahme</b> und geht bewusst
+<b>nicht</b> als <code>fps_*</code>-Spalte in die Simulations-DB: er hängt vom gewählten
+Universum ab und ist keine kausale Zeitreihe. Für Backtest-Formeln bleibt <code>fps_rs</code>
+(relative Stärke gegen den Index) die richtige Größe.</div>
+
 <h2>Verwendung in Chart, Strategy Finder und Multi-Strategien</h2>
 <ul>
   <li><b>Asset Viewer:</b> Overlay <code>fps</code> aktivieren – zeichnet Basis, Ausbruch,
