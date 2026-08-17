@@ -1725,7 +1725,7 @@
   "fps.p_min_trends": "Phase 1: Anzahl solcher Trends",
   "fps.p_base_weeks": "Phase 2: min. Basis (Wochen)",
   "fps.p_base_depth": "Phase 2: max. Basisbreite (%)",
-  "fps.p_near_high": "Phase 2: max. Abstand 52W-Hoch (%)",
+  "fps.p_near_high": "Phase 2: max. Abstand Rekordhoch (%)",
   "fps.p_breakout": "Phase 3: Ausbruchspuffer (%)",
   "fps.p_confirm": "Phase 4: Bestätigung (Wochen)",
   "fps.p_trend_sma": "Phase 4: Wochen-SMA",
@@ -1779,5 +1779,11 @@
   "fps.method_md": "### Die 4-Phasen-Sequenz\n\n**Phase 1 — bewährte Historie.** Der Wert hat in der Vergangenheit mindestens einen Aufwärtsschub über der Schwelle (Standard 90 %) geschafft. Gemessen wird auf Monatsbasis über eine Zickzack-Zerlegung; ein Schub zählt erst, wenn ihn eine Gegenbewegung bestätigt hat — dadurch entsteht kein Blick in die Zukunft. Der Vergleichsindex selbst schafft nach einem Abpraller am 200-Wochen-SMA historisch 60–90 %; wer outperformen soll, muss mehr können.\n\n**Phase 2 — Konsolidierungsbasis.** Auf Wochenbasis wird die längste Seitwärtsphase gesucht, deren Spanne (Hoch/Tief) unter der Basisbreite bleibt und die nahe am 52-Wochen-Hoch liegt. Nur Werte nahe ihrer Rekordstände gelten als gesund.\n\n**Phase 3 — Ausbruch.** Schlusskurs über dem Hoch der abgeschlossenen Basis (plus Puffer). Das ist das Einstiegssignal; Stop unterhalb des Ausbruchs bzw. am Basis-Tief.\n\n**Phase 4 — bestätigter Trend.** Der Kurs hält sich einige Wochen über dem Ausbruchsniveau und über dem steigenden Wochen-SMA. Positionen werden gehalten, bis der Kurs unter den Wochen-SMA fällt oder der Stop greift.\n\n**Verkauf.** Schlusskurs unter dem Wochen-SMA (Trendbruch) oder unter dem Stop. Optional Trailing-Stop und Gewinnmitnahme am Ziel.\n\n**Wichtig:** Alle Werte sind kausal — Basislevel stammen aus abgeschlossenen Wochen, die Phase-1-Historie aus bestätigten Monats-Schüben. Die Signale sind damit backtestfähig und keine Rückschau.",
   "fps.integration_header": "Verwendung im Strategy Finder und in Multi-Strategies",
   "fps.integration_md": "Die Spalten der Methode heißen live wie im Backtest: `fps_phase`, `fps_buy`, `fps_sell`, `fps_base_high`, `fps_base_low`, `fps_stop`, `fps_target`, `fps_best_trend`, `fps_trend_gain`, `fps_rs`, `fps_dist_high`, `fps_breakout`, `fps_base_weeks`.\n\nIm Asset Viewer den Overlay **fps** aktivieren, um Basis, Ausbruch, Stop und Ziel im Chart zu sehen. In Buy/Sell-Formeln (Strategy Finder, Multi-Strategies) lassen sich dieselben Spalten verwenden, z. B. Kauf `(fps_buy > 0)` oder strenger `(fps_breakout > 0) & (fps_rs > 0) & (fps_best_trend > 150)`, Verkauf `(fps_sell > 0)`.",
-  "fps.integration_note": "Damit die Spalten im Backtest gefüllt sind, muss asset_perf2 einmal mit /backfill:fps gelaufen sein (bzw. ein vollständiger init-Lauf)."
+  "fps.integration_note": "Damit die Spalten im Backtest gefüllt sind, muss asset_perf2 einmal mit /backfill:fps gelaufen sein (bzw. ein vollständiger init-Lauf).",
+  "fps.p_near_high_help": "Wie weit die Basis unter dem Rekordhoch liegen darf. Gemessen wird gegen das Hoch des Rekord-Fensters — nicht gegen das 52-Wochen-Hoch, das mit einem fallenden Kurs mitsinkt und den Filter wirkungslos macht.",
+  "fps.p_record_weeks": "Phase 2: Rekord-Fenster (Wochen)",
+  "fps.p_record_weeks_help": "Zeitraum, aus dem das Rekordhoch stammt (520 Wochen = 10 Jahre). Kleiner = toleranter gegenüber Werten, die längst unter ihrem alten Hoch liegen.",
+  "fps.p_require_uptrend": "Phase 3: nur über steigendem SMA",
+  "fps.p_require_uptrend_help": "Ausbruch nur kaufen, wenn der Kurs über dem Wochen-SMA liegt und dieser steigt. Ohne den Filter entstehen Käufe unter genau dem Durchschnitt, auf dem die Verkaufsregel beruht — die Position wäre sofort wieder ausstiegsreif.",
+  "fps.p_slope_weeks": "Phase 3: Steigung über (Wochen)"
 }

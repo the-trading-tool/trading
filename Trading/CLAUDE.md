@@ -862,3 +862,36 @@ GIL-Contention. Ergebnis wird tageweise in `rotation_cache.db` persistiert
 `_START_PAGE_ROUTES` + `app_edition._ROUTE_PARAMS`, 98 Locale-Keys je Sprache
 (`fps.*`, `nav/page/error.four_ps`). Parameter pro Nutzer in `config.db`
 (`fps_params`), Universen-Default `^GDAXI,^MDAXI,^SDAXI,^SPX` (`fps_universes`).
+
+### 4PS-Nachbesserung: zwei Filter, die die Methode erst tragfähig machen
+
+Erster Praxistest zeigte Kaufsignale in Abwärtstrends (Beispiel KMB 2026-07-02:
+Basis 92,42–111,82, Kurs 26 % unter dem Rekordhoch, **fallender** 30W-SMA):
+
+1. **`near_high` lief gegen das 52-Wochen-Hoch.** Das sinkt mit dem Kurs mit → nach
+   einem Jahr Abwärtstrend ist „20 % unter dem 52W-Hoch" praktisch immer erfüllt.
+   Jetzt gegen ein **Rekordhoch-Fenster** (`record_weeks`, Default 520 Wochen),
+   Toleranz enger (`near_high_pct` 20 → 15 %).
+2. **Einstieg hatte keinen Trendfilter, Ausstieg schon.** Verkauft wird bei
+   `close < Wochen-SMA30`; gekauft wurde ohne diese Bedingung → Positionen, die am
+   Folgetag ausstiegsreif waren. Neu `require_uptrend` (Default True): Ausbruch nur
+   über dem SMA30 **und** wenn dieser über `slope_weeks` (8) steigt.
+
+Gemessen über ^SPX+^GDAXI+^MDAXI+^SDAXI (656 Ticker, Signale seit 2015, Signal→Signal,
+ohne Kosten):
+
+| Variante | Trades | Trefferquote | Ø | PF |
+|---|---|---|---|---|
+| alt (52W-Hoch, kein Trendfilter) | 6566 | 37,2 % | +4,2 % | 1,96 |
+| nur Rekordhoch-Filter | 4744 | 38,8 % | +4,2 % | 1,95 |
+| nur Trendfilter | 5229 | 40,0 % | +4,8 % | 2,08 |
+| **neu (beides)** | **4209** | **40,8 %** | **+4,4 %** | **2,02** |
+
+Profil der Methode (neue Defaults): Median −3,3 %, Haltedauer Ø 143 Tage, ~11 % p. a.
+je Position; getragen vom rechten Rand (173 Trades > +50 %, 37 > +100 %). Zusätzliche
+Entry-Filter (RS > 0, `fps_best_trend` ≥ 150, Abstand zum ATH, lange Basen) brachten
+**nichts** — lange Basen (≥ 20 W) sind sogar schlechter (PF 1,81).
+
+**Datenqualität schlägt durch:** die 16 Trades unter −20 % (bis −93 %) sind
+Split-Artefakte in `yf_*.db` (ORLY, MNST, FAST, VST …), keine Methodenverluste →
+`tradinglib/data_quality.py` gegenprüfen, bevor Ergebnisse interpretiert werden.

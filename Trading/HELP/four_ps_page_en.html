@@ -31,10 +31,11 @@ benchmark index historically bounces off its <b>200-week moving average</b> and 
   threshold (default 90 %)</td></tr>
 <tr><td><b>2 – base</b></td><td>Sideways consolidation near the highs</td>
   <td>Longest weekly window (min. 8 weeks) whose high/low range stays within the base width
-  (default 25 %) and whose high sits close to the 52-week high (default ≤ 20 % below)</td></tr>
+  (default 25 %) and whose high sits close to the <b>record high</b> (default ≤ 15 % below,
+  record window 10 years)</td></tr>
 <tr><td><b>3 – breakout</b></td><td>Start of the new trend, entry</td>
-  <td>Close above the base high (+ buffer, default 0.5 %); stop = max(base low,
-  breakout − 8 %); target = entry + 80 %</td></tr>
+  <td>Close above the base high (+ buffer, default 0.5 %) <b>and</b> above the rising
+  30-week SMA; stop = max(base low, breakout − 8 %); target = entry + 80 %</td></tr>
 <tr><td><b>4 – trend</b></td><td>Trend confirmed, position held</td>
   <td>Price holds above the breakout level for a few weeks (default 2) and above the
   30-week SMA</td></tr>
@@ -102,13 +103,29 @@ user in <code>config.db</code> (<code>fps_params</code>). The <code>fps</code> i
 exposes the same parameters in the indicator settings dialog; both paths use the same engine
 (<code>tradinglib/four_ps.py</code>).</p>
 
+<div class="warn"><b>Why those two filters matter:</b> without them a stock that has been
+falling for a year still qualifies — the 52-week high sinks along with the price, so a relief
+rally inside a downtrend looks like a breakout (example Kimberly-Clark 2026: 26 % below its
+record high, falling weekly SMA, buy signal anyway). Measured across S&amp;P 500 + DAX/MDAX/SDAX
+since 2015 the two filters lift the hit rate from 37.2 % to 40.8 % and the profit factor from
+1.96 to 2.02, at about a third fewer signals.</div>
+
+<h2>What the method delivers</h2>
+<p>Backtest over the same 656 names since 2015 (signal to signal, no costs): 4,209 trades,
+<b>40.8 % winners</b>, median <b>−3.3 %</b>, mean <b>+4.4 %</b>, profit factor <b>2.0</b>,
+average holding period <b>143 days</b>. That is the classic trend-following profile: many small
+losses at the stop, carried by a few large winners (173 trades above +50 %, 37 above +100 %).
+Judging it by the median misreads the method — it lives off the right tail.</p>
+
 <h2>Limits</h2>
 <ul>
   <li>Only names with enough history are scored (default 8 years) — recent IPOs drop out.</li>
   <li>The method is <b>long only</b> and trend following; sideways or bear markets produce
       failed breakouts. The index regime in the header provides that context.</li>
   <li>Prices come from the local <code>yf_&lt;TICKER&gt;.db</code> files; splits or pence
-      quotations (LSE) distort the history until they are cleaned up.</li>
+      quotations (LSE) distort the history until they are cleaned up. In a backtest those data
+      errors show up as apparent “trades” of −30 % to −90 % (16 out of 4,209) — check with
+      <code>tradinglib/data_quality.py</code>.</li>
   <li>A scan across several indices takes about a minute the first time; the result is cached
       per day (<code>rotation_cache.db</code>).</li>
 </ul>

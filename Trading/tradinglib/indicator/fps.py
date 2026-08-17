@@ -46,10 +46,14 @@ class Fps(_indicator._Indicator):
                             'label': 'Phase 2: min. base length (weeks)'},
         'base_depth_pct':  {'type': 'float', 'default': 25.0, 'min': 5.0, 'max': 60.0,
                             'label': 'Phase 2: max. base range (%)'},
-        'near_high_pct':   {'type': 'float', 'default': 20.0, 'min': 2.0, 'max': 60.0,
-                            'label': 'Phase 2: max. distance to 52w high (%)'},
+        'near_high_pct':   {'type': 'float', 'default': 15.0, 'min': 2.0, 'max': 60.0,
+                            'label': 'Phase 2: max. distance to the record high (%)'},
+        'record_weeks':    {'type': 'int',   'default': 520, 'min': 52, 'max': 1040,
+                            'label': 'Phase 2: record-high window (weeks)'},
         'breakout_pct':    {'type': 'float', 'default': 0.5, 'min': 0.0, 'max': 10.0,
                             'label': 'Phase 3: breakout buffer (%)'},
+        'require_uptrend': {'type': 'bool',  'default': True,
+                            'label': 'Phase 3: only above a rising weekly SMA'},
         'confirm_weeks':   {'type': 'int',   'default': 2, 'min': 1, 'max': 12,
                             'label': 'Phase 4: confirmation (weeks)'},
         'trend_sma_weeks': {'type': 'int',   'default': 30, 'min': 5, 'max': 60,
@@ -60,22 +64,27 @@ class Fps(_indicator._Indicator):
                             'label': 'Trailing stop (%, 0 = off)'},
         'target_pct':      {'type': 'float', 'default': 80.0, 'min': 10.0, 'max': 300.0,
                             'label': 'Target (% above entry)'},
-        'benchmark':       {'type': 'text',  'default': '^SPX',
+        # 'select', not free text — the params dialog only renders the types it
+        # knows, a 'text' spec would silently disappear from it.
+        'benchmark':       {'type': 'select', 'default': '^SPX',
+                            'options': ['^SPX', '^GDAXI', '^STOXX50E', '^NDX', '^N225'],
                             'label': 'Relative-strength benchmark'},
         'color_base':      {'type': 'color', 'default': '#7CB518',
                             'label': 'Base color'},
     }
 
     def __init__(self, df, symbol="", trend_min_pct=90.0, min_trends=1, base_weeks=8,
-                 base_depth_pct=25.0, near_high_pct=20.0, breakout_pct=0.5,
-                 confirm_weeks=2, trend_sma_weeks=30, stop_pct=8.0, trail_pct=0.0,
+                 base_depth_pct=25.0, near_high_pct=15.0, record_weeks=520,
+                 breakout_pct=0.5, require_uptrend=True, confirm_weeks=2,
+                 trend_sma_weeks=30, stop_pct=8.0, trail_pct=0.0,
                  target_pct=80.0, benchmark='^SPX', color_base='#7CB518'):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
         self.opts = dict(
             trend_min_pct=trend_min_pct, min_trends=min_trends, base_weeks=base_weeks,
             base_depth_pct=base_depth_pct, near_high_pct=near_high_pct,
-            breakout_pct=breakout_pct, confirm_weeks=confirm_weeks,
+            record_weeks=record_weeks, breakout_pct=breakout_pct,
+            require_uptrend=require_uptrend, confirm_weeks=confirm_weeks,
             trend_sma_weeks=trend_sma_weeks, stop_pct=stop_pct, trail_pct=trail_pct,
             target_pct=target_pct, benchmark=benchmark,
         )

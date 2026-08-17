@@ -1725,7 +1725,7 @@
   "fps.p_min_trends": "Phase 1: number of such trends",
   "fps.p_base_weeks": "Phase 2: min. base (weeks)",
   "fps.p_base_depth": "Phase 2: max. base range (%)",
-  "fps.p_near_high": "Phase 2: max. distance to 52w high (%)",
+  "fps.p_near_high": "Phase 2: max. distance to record high (%)",
   "fps.p_breakout": "Phase 3: breakout buffer (%)",
   "fps.p_confirm": "Phase 4: confirmation (weeks)",
   "fps.p_trend_sma": "Phase 4: weekly SMA",
@@ -1779,5 +1779,11 @@
   "fps.method_md": "### The four phase sequence\n\n**Phase 1 — proven history.** The stock produced at least one past up-leg above the threshold (default 90 %). Measured on monthly bars via a zigzag decomposition; a leg only counts once a counter-move has confirmed it, so nothing looks into the future. The benchmark index itself runs 60–90 % after bouncing off its 200-week SMA — an outperformer has to beat that.\n\n**Phase 2 — consolidation base.** On weekly bars the longest sideways window is searched whose high/low range stays inside the base width and which sits near the 52-week high. Only names close to their record highs qualify.\n\n**Phase 3 — breakout.** Close above the high of the completed base (plus buffer). That is the entry; the stop sits below the breakout or at the base low.\n\n**Phase 4 — confirmed trend.** Price holds above the breakout level for a few weeks and above the rising weekly SMA. Positions are held until the close drops below the weekly SMA or the stop triggers.\n\n**Exit.** Close below the weekly SMA (trend break) or below the stop. Optional trailing stop and profit taking at the target.\n\n**Important:** every value is causal — base levels come from completed weeks, the Phase 1 history from confirmed monthly legs. The signals are therefore backtestable, not hindsight.",
   "fps.integration_header": "Use in Strategy Finder and Multi Strategies",
   "fps.integration_md": "The method's columns are named identically live and in the backtest: `fps_phase`, `fps_buy`, `fps_sell`, `fps_base_high`, `fps_base_low`, `fps_stop`, `fps_target`, `fps_best_trend`, `fps_trend_gain`, `fps_rs`, `fps_dist_high`, `fps_breakout`, `fps_base_weeks`.\n\nEnable the **fps** overlay in the Asset Viewer to see base, breakout, stop and target on the chart. The same columns work in buy/sell formulas (Strategy Finder, Multi Strategies), e.g. buy `(fps_buy > 0)` or stricter `(fps_breakout > 0) & (fps_rs > 0) & (fps_best_trend > 150)`, sell `(fps_sell > 0)`.",
-  "fps.integration_note": "For the backtest columns to be filled, asset_perf2 has to have run once with /backfill:fps (or a full init run)."
+  "fps.integration_note": "For the backtest columns to be filled, asset_perf2 has to have run once with /backfill:fps (or a full init run).",
+  "fps.p_near_high_help": "How far below the record high the base may sit. Measured against the high of the record window — not the 52-week high, which sinks along with a falling price and makes the filter meaningless.",
+  "fps.p_record_weeks": "Phase 2: record window (weeks)",
+  "fps.p_record_weeks_help": "The period the record high is taken from (520 weeks = 10 years). Smaller = more tolerant towards names that have long been trading below their old high.",
+  "fps.p_require_uptrend": "Phase 3: only above a rising SMA",
+  "fps.p_require_uptrend_help": "Only buy the breakout when price is above the weekly SMA and that SMA is rising. Without the filter, entries happen below the very average the exit rule is built on — the position would be due for the exit right away.",
+  "fps.p_slope_weeks": "Phase 3: slope over (weeks)"
 }

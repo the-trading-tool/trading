@@ -31,10 +31,11 @@ geschafft haben – und tut das erfahrungsgemäß wieder.</p>
   Aufwärtsschub ≥ Schwelle (Standard 90 %)</td></tr>
 <tr><td><b>2 – Basis</b></td><td>Seitwärtskonsolidierung nahe den Hochs</td>
   <td>Längstes Wochenfenster (min. 8 Wochen), dessen Hoch/Tief-Spanne ≤ Basisbreite
-  (Standard 25 %) bleibt und dessen Hoch nahe am 52-Wochen-Hoch liegt (Standard ≤ 20 % darunter)</td></tr>
+  (Standard 25 %) bleibt und dessen Hoch nahe am <b>Rekordhoch</b> liegt (Standard ≤ 15 %
+  darunter, Rekord-Fenster 10 Jahre)</td></tr>
 <tr><td><b>3 – Ausbruch</b></td><td>Beginn des neuen Trends, Einstieg</td>
-  <td>Schlusskurs über dem Basis-Hoch (+ Puffer, Standard 0,5 %); Stop = max(Basis-Tief,
-  Ausbruch − 8 %); Ziel = Einstieg + 80 %</td></tr>
+  <td>Schlusskurs über dem Basis-Hoch (+ Puffer, Standard 0,5 %) <b>und</b> über dem
+  steigenden 30-Wochen-SMA; Stop = max(Basis-Tief, Ausbruch − 8 %); Ziel = Einstieg + 80 %</td></tr>
 <tr><td><b>4 – Trend</b></td><td>Trend bestätigt, Position wird gehalten</td>
   <td>Kurs hält sich mehrere Wochen (Standard 2) über dem Ausbruchsniveau und über dem
   30-Wochen-SMA</td></tr>
@@ -104,6 +105,21 @@ pro Nutzer in <code>config.db</code> (<code>fps_params</code>) gespeichert. Der 
 <code>fps</code> hat dieselben Parameter im ⚙-Dialog der Indikator-Einstellungen; beide
 Wege greifen auf denselben Rechenkern zu (<code>tradinglib/four_ps.py</code>).</p>
 
+<div class="warn"><b>Warum diese zwei Filter wichtig sind:</b> Ohne sie qualifiziert sich
+auch ein Wert, der seit einem Jahr fällt — das 52-Wochen-Hoch sinkt mit dem Kurs mit, und
+eine Erholungsrallye im Abwärtstrend sieht dann wie ein Ausbruch aus (Beispiel Kimberly-Clark
+2026: 26 % unter dem Rekordhoch, fallender Wochen-SMA, trotzdem Kaufsignal). Gemessen über
+S&amp;P 500 + DAX/MDAX/SDAX seit 2015 heben die beiden Filter die Trefferquote von 37,2 % auf
+40,8 % und den Profit-Faktor von 1,96 auf 2,02, bei rund einem Drittel weniger Signalen.</div>
+
+<h2>Was die Methode leistet</h2>
+<p>Backtest über dieselben 656 Werte seit 2015 (Signal zu Signal, ohne Kosten):
+4.209 Trades, <b>40,8 % Gewinner</b>, Median <b>−3,3 %</b>, Mittel <b>+4,4 %</b>,
+Profit-Faktor <b>2,0</b>, Haltedauer im Schnitt <b>143 Tage</b>. Das ist das typische
+Trendfolge-Profil: viele kleine Verluste am Stop, getragen von wenigen großen Gewinnern
+(173 Trades über +50 %, 37 über +100 %). Wer den Median als Maßstab nimmt, wird die
+Methode falsch einschätzen — sie lebt vom rechten Rand der Verteilung.</p>
+
 <h2>Grenzen</h2>
 <ul>
   <li>Es werden nur Werte mit ausreichend Historie bewertet (Standard 8 Jahre) – junge
@@ -111,7 +127,9 @@ Wege greifen auf denselben Rechenkern zu (<code>tradinglib/four_ps.py</code>).</
   <li>Die Methode ist <b>long-only</b> und trendfolgend; in Seitwärts- oder Bärenmärkten
       entstehen Fehlausbrüche. Das Index-Regime im Kopfbereich ist dafür der Kontext.</li>
   <li>Kurse stammen aus den lokalen <code>yf_&lt;TICKER&gt;.db</code>-Dateien; Splits oder
-      Pence-Notierungen (LSE) verzerren die Historie, solange sie nicht bereinigt sind.</li>
+      Pence-Notierungen (LSE) verzerren die Historie, solange sie nicht bereinigt sind.
+      Im Backtest schlagen genau diese Datenfehler als scheinbare „Trades“ mit −30 %
+      bis −90 % durch (16 von 4.209) — prüfbar mit <code>tradinglib/data_quality.py</code>.</li>
   <li>Ein Scan über mehrere Indizes dauert beim ersten Mal etwa eine Minute; das Ergebnis
       wird tageweise zwischengespeichert (<code>rotation_cache.db</code>).</li>
 </ul>

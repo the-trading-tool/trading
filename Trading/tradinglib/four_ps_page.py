@@ -37,7 +37,8 @@ _BENCHMARKS = ['^SPX', '^GDAXI', '^STOXX50E', '^NDX', '^N225']
 
 # Parameters the sidebar/expander exposes — the rest stays at four_ps.DEFAULTS
 _EDITABLE = ('trend_min_pct', 'min_trends', 'base_weeks', 'base_depth_pct',
-             'near_high_pct', 'breakout_pct', 'confirm_weeks', 'trend_sma_weeks',
+             'near_high_pct', 'record_weeks', 'breakout_pct', 'require_uptrend',
+             'confirm_weeks', 'trend_sma_weeks', 'slope_weeks',
              'stop_pct', 'trail_pct', 'target_pct', 'min_years')
 
 _PHASE_COLORS = {0: '#9E9E9E', 1: '#7F8C8D', 2: '#E8890C', 3: '#7CB518', 4: '#2E7D32'}
@@ -323,13 +324,23 @@ class FourPsPage:
                 t('fps.p_base_depth'), 5.0, 60.0, float(params['base_depth_pct']), 1.0)
             c = st.columns(4)
             out['near_high_pct'] = c[0].number_input(
-                t('fps.p_near_high'), 2.0, 60.0, float(params['near_high_pct']), 1.0)
-            out['breakout_pct'] = c[1].number_input(
+                t('fps.p_near_high'), 2.0, 60.0, float(params['near_high_pct']), 1.0,
+                help=t('fps.p_near_high_help'))
+            out['record_weeks'] = c[1].number_input(
+                t('fps.p_record_weeks'), 52, 1040, int(params['record_weeks']), 52,
+                help=t('fps.p_record_weeks_help'))
+            out['breakout_pct'] = c[2].number_input(
                 t('fps.p_breakout'), 0.0, 10.0, float(params['breakout_pct']), 0.5)
-            out['confirm_weeks'] = c[2].number_input(
+            out['require_uptrend'] = c[3].checkbox(
+                t('fps.p_require_uptrend'), bool(params['require_uptrend']),
+                help=t('fps.p_require_uptrend_help'))
+            c = st.columns(4)
+            out['confirm_weeks'] = c[0].number_input(
                 t('fps.p_confirm'), 1, 12, int(params['confirm_weeks']))
-            out['trend_sma_weeks'] = c[3].number_input(
+            out['trend_sma_weeks'] = c[1].number_input(
                 t('fps.p_trend_sma'), 5, 60, int(params['trend_sma_weeks']))
+            out['slope_weeks'] = c[2].number_input(
+                t('fps.p_slope_weeks'), 1, 26, int(params['slope_weeks']))
             c = st.columns(4)
             out['stop_pct'] = c[0].number_input(
                 t('fps.p_stop'), 1.0, 30.0, float(params['stop_pct']), 0.5)

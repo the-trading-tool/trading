@@ -6,9 +6,15 @@ then buys them at the start of their next trend leg. Four phases:
   Phase 1  Proven performance history — at least one completed monthly up-leg of
            ``trend_min_pct`` (default 90 %). The benchmark index itself bounces
            60–90 % off its weekly 200 SMA, so an outperformer must beat that.
-  Phase 2  Consolidation base — a sideways range near the highs from which the
-           next trend starts.
-  Phase 3  Consolidation breakout — close above the base high; entry.
+  Phase 2  Consolidation base — a sideways range near the *record* high from
+           which the next trend starts. The reference is the high of a long
+           window (``record_weeks``, 10 years by default), never the trailing
+           52-week high: that one falls along with a declining price, so a stock
+           deep in a downtrend would pass the "near the highs" test trivially.
+  Phase 3  Consolidation breakout — close above the base high and above a rising
+           weekly trend average (``require_uptrend``); entry. The trend condition
+           mirrors the exit rule — entering below that average would open a
+           position that is already due to be sold.
   Phase 4  Trend confirmed — price holds above the breakout level and above the
            rising weekly trend average; position is held.
 
@@ -71,10 +77,20 @@ DEFAULTS: dict = {
     'base_weeks':      8,      # minimum length of the base
     'max_base_weeks':  60,     # maximum length considered
     'base_depth_pct':  25.0,   # max (high-low)/low of the base
-    'near_high_pct':   20.0,   # base high must sit within this % of the 52w high
+    'near_high_pct':   15.0,   # base high must sit within this % of the record high
+    'record_weeks':    520,    # window the "record high" is taken from (10 years).
+                               # Using the 52-week high instead lets a stock that
+                               # has been falling for a year pass trivially — its
+                               # reference falls with it. The method wants names
+                               # AT their records, so the window has to be long.
     # Phase 3 — breakout
     'breakout_pct':    0.5,    # close must exceed the base high by this much
     'vol_factor':      0.0,    # volume vs 10-week average (0 = no volume filter)
+    'require_uptrend': True,   # only break out above a RISING weekly trend average
+                               # — the exit uses that same average, so entering
+                               # below it would open a position that is already
+                               # due for the exit
+    'slope_weeks':     8,      # lookback for "the trend average is rising"
     # Phase 4 — confirmation / position management
     'confirm_weeks':   2,      # weeks above the breakout level before "confirmed"
     'trend_sma_weeks': 30,     # weekly trend average (exit + confirmation filter)
@@ -343,10 +359,11 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     # ── Phase 2: weekly consolidation base ───────────────────────────────────
     weekly = _bars(daily, 'W-FRI')
     lv = _base_levels(weekly, p)
-    high_52 = weekly['High'].rolling(52, min_periods=20).max()
-    near_high = lv['base_high'] >= (1.0 - float(p['near_high_pct']) / 100.0) * high_52
+    record_high = weekly['High'].rolling(int(p['record_weeks']), min_periods=20).max()
+    near_high = lv['base_high'] >= (1.0 - float(p['near_high_pct']) / 100.0) * record_high
     sma_w = weekly['Close'].rolling(int(p['trend_sma_weeks']),
                                     min_periods=int(p['trend_sma_weeks'])).mean()
+    slope_up = sma_w > sma_w.shift(int(p['slope_weeks']))
     vol_ok = pd.Series(True, index=weekly.index)
     if float(p['vol_factor']) > 0:
         vol_avg = weekly['Volume'].rolling(10, min_periods=4).mean()
@@ -358,6 +375,7 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     base_near = _to_daily(near_high.astype(float), daily.index, 'W-FRI').fillna(0.0) > 0
     trend_sma = _to_daily(sma_w, daily.index, 'W-FRI')
     vol_flag = _to_daily(vol_ok.astype(float), daily.index, 'W-FRI').fillna(1.0) > 0
+    slope_flag = _to_daily(slope_up.astype(float), daily.index, 'W-FRI').fillna(0.0) > 0
 
     has_base = (base_len >= float(p['base_weeks'])) & (base_high > 0) & base_near & qualified
 
@@ -381,6 +399,8 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     qz = qualified.to_numpy(dtype=bool)
     sw = trend_sma.to_numpy(dtype=float)
     vk = vol_flag.to_numpy(dtype=bool)
+    sl = slope_flag.to_numpy(dtype=bool)
+    need_up = bool(p['require_uptrend'])
     n = len(c)
 
     phase = np.zeros(n)
@@ -436,8 +456,11 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
             act_len[i] = pos_len
             continue
 
-        # Not in a position — watch for the breakout out of an intact base
-        if hb[i] and price > bh[i] * buf and vk[i]:
+        # Not in a position — watch for the breakout out of an intact base.
+        # The uptrend filter mirrors the exit rule: no entry below/against the
+        # weekly trend average the position would immediately be sold on.
+        trend_ok = (not need_up) or (not np.isnan(sw[i]) and price > sw[i] and sl[i])
+        if hb[i] and price > bh[i] * buf and vk[i] and trend_ok:
             level = bh[i]
             stop = max(bl[i], level * (1.0 - float(p['stop_pct']) / 100.0))
             target = price * (1.0 + float(p['target_pct']) / 100.0)
