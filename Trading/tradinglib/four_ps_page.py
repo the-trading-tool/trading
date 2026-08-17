@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import logging
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -60,6 +61,15 @@ def _cached_regime(benchmark: str, db_path: str, day: str) -> dict:
 def _params_signature(params: dict) -> str:
     """Stable signature of the full parameter set (cache key input)."""
     return json.dumps({k: params.get(k) for k in sorted(fps.DEFAULTS)}, default=str)
+
+
+def _viewer_url(ticker: str) -> str:
+    """Asset Viewer link for *ticker* with the details tab active.
+
+    Relative to the app's own origin, so it works behind the reverse proxy as
+    well; ``st.link_button`` opens it in a new browser tab.
+    """
+    return f"/?asset=true&symbol={quote(str(ticker))}&details=true"
 
 
 def _signal_text(signal, when) -> str:
@@ -186,8 +196,9 @@ class FourPsPage:
                              height=460, on_select='rerun',
                              selection_mode='single-row', key='_fps_table')
         rows = (event.selection.rows if event and getattr(event, 'selection', None) else [])
-        if rows:
-            st.session_state['_fps_detail_ticker'] = str(df['ticker'].iloc[rows[0]])
+        selected = str(df['ticker'].iloc[rows[0]]) if rows else ''
+        if selected:
+            self._select_detail(selected)
 
         c1, c2, c3 = st.columns([0.3, 0.35, 0.35])
         tickers = list(df['ticker'])
@@ -195,11 +206,9 @@ class FourPsPage:
                      use_container_width=True):
             self.sys_config.set_value('monitored_assets', ", ".join(tickers))
             st.success(t('fps.saved_monitored', n=len(tickers)))
-        if rows and c2.button(t('fps.open_viewer'), key='_fps_open_viewer',
-                              use_container_width=True):
-            st.session_state['_nav_params'] = {'asset': 'true',
-                                               'symbol': str(df['ticker'].iloc[rows[0]])}
-            st.rerun()
+        if selected:
+            c2.link_button(t('fps.open_viewer'), _viewer_url(selected),
+                           use_container_width=True)
         c3.caption(t('fps.select_hint'))
         with st.expander(t('fps.ticker_list'), expanded=False):
             st.code(", ".join(tickers), language='text')
@@ -387,11 +396,28 @@ class FourPsPage:
             return
         self._screener_table(flt.reset_index(drop=True), params)
 
+    def _select_detail(self, ticker: str) -> None:
+        """Hand a screener row over to the detail tab.
+
+        The detail tab's text_input is keyed, so its ``value=`` argument is
+        ignored from the second run on — the selection has to be written into the
+        widget's own session-state slot instead. That is only legal *before* the
+        widget is created in this run, which holds here: the screener tab renders
+        before the detail tab.
+        """
+        if st.session_state.get('_fps_detail_ticker') == ticker:
+            return
+        st.session_state['_fps_detail_ticker'] = ticker
+        st.session_state['_fps_detail_input'] = ticker
+
     def _tab_detail(self, params: dict):
         default_tk = st.session_state.get('_fps_detail_ticker', '')
         c1, c2 = st.columns([0.4, 0.6])
         ticker = c1.text_input(t('fps.detail_ticker'), value=default_tk,
                                key='_fps_detail_input').strip()
+        # Keep the marker in sync with what is actually in the box, so picking the
+        # same screener row again after manual typing still takes effect.
+        st.session_state['_fps_detail_ticker'] = ticker
         if not ticker:
             st.info(t('fps.detail_hint'))
             return
@@ -437,9 +463,7 @@ class FourPsPage:
         self._weekly_chart(res, params)
         self._monthly_chart(res, params)
 
-        if st.button(t('fps.open_viewer'), key='_fps_detail_open'):
-            st.session_state['_nav_params'] = {'asset': 'true', 'symbol': ticker}
-            st.rerun()
+        st.link_button(t('fps.open_viewer'), _viewer_url(ticker))
 
     def _tab_method(self, params: dict):
         st.markdown(t('fps.method_md'))
