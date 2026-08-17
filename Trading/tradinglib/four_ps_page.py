@@ -62,10 +62,42 @@ def _params_signature(params: dict) -> str:
     return json.dumps({k: params.get(k) for k in sorted(fps.DEFAULTS)}, default=str)
 
 
+def _signal_text(signal, when) -> str:
+    """'Kauf · 2026-06-18' — tolerates a missing or non-Timestamp date."""
+    if not signal:
+        return ''
+    ts = pd.to_datetime(when, errors='coerce')
+    label = t(f'fps.signal_{signal}')
+    return f"{label} · {ts:%Y-%m-%d}" if pd.notna(ts) else label
+
+
+def _normalize_scan(df):
+    """Repair the dtypes a JSON round-trip through rotation_cache loses.
+
+    The persisted frame comes back with ``signal_date`` as an ISO *string* and the
+    numeric columns possibly as objects — formatting those like a Timestamp raises
+    "Invalid format specifier". Applied to every scan result, fresh or cached, so
+    both paths behave identically.
+    """
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+    df = df.copy()
+    if 'signal_date' in df.columns:
+        df['signal_date'] = pd.to_datetime(df['signal_date'], errors='coerce')
+    for col in ('phase', 'base_weeks', 'to_breakout', 'best_trend', 'trend_gain',
+                'rs', 'dist_high', 'price', 'stop', 'target', 'days_since_signal'):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+    for col in ('ticker', 'name', 'signal'):
+        if col in df.columns:
+            df[col] = df[col].fillna('').astype(str)
+    return df
+
+
 def _cached_scan_lookup(universes: list[str], params: dict):
     """Return an already persisted scan for this configuration, else None."""
-    return rotation_cache.get(rotation_cache.four_ps_key(
-        universes, _params_signature(params)))
+    return _normalize_scan(rotation_cache.get(rotation_cache.four_ps_key(
+        universes, _params_signature(params))))
 
 
 class FourPsPage:
@@ -113,7 +145,7 @@ class FourPsPage:
         if force:
             rotation_cache.drop(key)
         else:
-            hit = rotation_cache.get(key)
+            hit = _normalize_scan(rotation_cache.get(key))
             if hit is not None and not (isinstance(hit, pd.DataFrame) and hit.empty):
                 return hit
 
@@ -131,7 +163,7 @@ class FourPsPage:
         bar.empty()
         if not df.empty:
             rotation_cache.put(key, df)
-        return df
+        return _normalize_scan(df)
 
     def _screener_table(self, df: pd.DataFrame, params: dict) -> None:
         view = pd.DataFrame({
@@ -147,9 +179,8 @@ class FourPsPage:
             t('fps.col_price'): df['price'].round(2),
             t('fps.col_stop'): df['stop'].round(2),
             t('fps.col_target'): df['target'].round(2),
-            t('fps.col_signal'): [
-                (f"{t('fps.signal_' + s)} · {d:%Y-%m-%d}" if s and pd.notna(d) else '')
-                for s, d in zip(df['signal'], df['signal_date'])],
+            t('fps.col_signal'): [_signal_text(s, d)
+                                  for s, d in zip(df['signal'], df['signal_date'])],
         })
         event = st.dataframe(view, use_container_width=True, hide_index=True,
                              height=460, on_select='rerun',
