@@ -60,6 +60,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'repair': False,    # get_asset_info: nur Ticker ohne Namen nachziehen
         'apply': False,     # sync_index_members: schreiben statt Trockenlauf
         'nocheck': False,   # sync_index_members: neue Symbole nicht validieren
+        'tickers': None,    # repair_intraday_tz: nur diese Ticker (kommagetrennt)
     }
 
     if len(argv) <= 1:
@@ -142,6 +143,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['apply'] = True
             if pref == 'nocheck':
                 result['nocheck'] = True
+            if pref == 'tickers' and suf:
+                result['tickers'] = suf
 
     return result
 
