@@ -2,6 +2,20 @@
 
 Provides a thin abstraction for downloading historical price data so callers
 use a single point for logging, retries, and future caching.
+
+Zeitzonen-Konvention: was dieses Modul zurueckgibt, ist tz-naiv in UTC. Die
+Speicherung (save_ohlc_to_sql) schreibt den Zeitstempel per strftime und
+verliert dabei jede tz-Angabe -- die Normalisierung muss also VOR dem Speichern
+passieren, sonst landet Boersen-Ortszeit in der Datenbank und die Anzeige
+rechnet die Zeitzone ein zweites Mal drauf.
+
+WARNUNG an kuenftige Aenderungen: kein `import pandas as pd` innerhalb einer
+Funktion dieses Moduls. Ein solcher Import macht `pd` fuer die GESAMTE Funktion
+lokal; jeder frueheren Zugriff laeuft dann in einen UnboundLocalError. Genau das
+hat hier die Zeitzonen-Normalisierung in download() ausgehebelt -- unbemerkt,
+weil ein `except Exception` sie verschluckte und yfinance bis 1.2.0 ohnehin UTC
+lieferte. Ab 1.5.2 gibt download() Boersen-Ortszeit zurueck, und der Fehler
+wurde sichtbar.
 """
 from typing import Optional, Union, List
 import logging
@@ -54,7 +68,6 @@ def download(tickers: Union[str, List[str]], start: Optional[str] = None, end: O
     logger.debug(f"market_data.download called tickers={tickers} period={period} interval={interval} force_remote={force_remote}")
     if yf is None:
         logger.warning("yfinance not available; returning empty DataFrame")
-        import pandas as pd
         return pd.DataFrame()
 
     # keep yfinance quieter
@@ -187,11 +200,14 @@ def download(tickers: Union[str, List[str]], start: Optional[str] = None, end: O
             from tradinglib.utils import DataUtils
             DataUtils.normalize_index_to_tz_naive(df, tz='UTC')
         except Exception:
-            pass
+            # Nicht stillschweigend weitergehen: genau hier ist die
+            # Zeitzonen-Normalisierung jahrelang uebersprungen worden, ohne
+            # dass es auffiel (siehe Modulkopf).
+            logger.warning("market_data.download: Nachbearbeitung fehlgeschlagen "
+                           "(Adj Close / Zeitzone) fuer %s", tickers, exc_info=True)
         return df
     except Exception as e:
         logging.getLogger(__name__).exception(f"market_data.download failed for {tickers}: {e}")
-        import pandas as pd
         return pd.DataFrame()
 
 
