@@ -61,6 +61,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'apply': False,     # sync_index_members: schreiben statt Trockenlauf
         'nocheck': False,   # sync_index_members: neue Symbole nicht validieren
         'tickers': None,    # repair_intraday_tz: nur diese Ticker (kommagetrennt)
+        'purge_h60': False, # repair_intraday_tz: Stundendaten verwerfen (einmalig!)
     }
 
     if len(argv) <= 1:
@@ -145,6 +146,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['nocheck'] = True
             if pref == 'tickers' and suf:
                 result['tickers'] = suf
+            if pref == 'purge_h60':
+                result['purge_h60'] = True
 
     return result
 

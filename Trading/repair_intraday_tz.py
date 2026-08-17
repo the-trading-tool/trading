@@ -51,7 +51,11 @@ TABLES = {'min_data': 7, 'h60_data': 60}
 # Erkennung ist dort ueberfluessig und waere sogar unsicher: bei US-Werten mit
 # vorboerslichen Daten faellt die UTC-Startzeit zufaellig mit der lokalen
 # zusammen (^DJI: Juli 09:30 UTC = 05:30 New York, August 09:30 New York).
-PURGE_TABLES = {'h60_data'}
+# NICHT als Vorgabe: das Verwerfen ist ein EINMALIGER Schritt. Laeuft es bei
+# jedem Aufruf mit, zerstoert es genau den Anker, den die min_data-Erkennung
+# braucht -- und legt das Loch neu an, das der Nachlauf gerade gefuellt hat.
+# Nur mit /purge_h60 einschalten.
+PURGE_TABLES = set()
 
 # Vor diesem Tag ist die Ablage sicher in UTC -- das yfinance-Upgrade lag am
 # 6./7. August. Der Puffer haelt die Referenz sauber.
@@ -59,8 +63,10 @@ CLEAN_BEFORE = '2026-08-01'
 # Tage, die von den laufenden Jobs ohnehin neu geholt werden. Fuer 1m sind es
 # sieben Tage, fuer 60m sechzig -- die kleinere Zahl ist die sichere.
 REFETCHABLE_DAYS = 3
+# Ab hier sind die Stundendaten frisch geholt und damit als Anker brauchbar.
+H60_ANCHOR_FROM = '2026-08-10'
 # Zulaessige Abweichung der ersten Tagesuhrzeit gegen die Referenz, in Minuten.
-TOLERANCE_MIN = 15
+TOLERANCE_MIN = 30
 
 
 def _tz_map():
@@ -121,7 +127,25 @@ def _day_stats(conn, table):
             if r[0] and r[1] and r[2]}
 
 
-def classify(stats, tz_name, today, refetch_days):
+def h60_anchor(conn):
+    """Korrekte Sitzungs-Startzeit in UTC, aus den frisch geholten Stundendaten.
+
+    Das ist der belastbare Anker. Die frueher benutzte Referenz -- die uebliche
+    Startzeit aus der eigenen min_data-Historie -- war es nicht: bei Tickern,
+    deren Sammel-Zeitfenster sich einmal geaendert hat, kam ein unpassender Wert
+    heraus und die Verschiebung ging in die falsche Richtung. h60_data wurde
+    dagegen komplett verworfen und neu geladen, steht also nachweislich in UTC.
+    """
+    rows = [r[0] for r in conn.execute(
+        "SELECT MIN(substr(Date,12,8)) FROM h60_data "
+        "WHERE Date >= ? GROUP BY substr(Date,1,10)", (H60_ANCHOR_FROM,))]
+    rows = [r for r in rows if r]
+    if len(rows) < 2:
+        return None
+    return _minutes(Counter(rows).most_common(1)[0][0])
+
+
+def classify(stats, tz_name, today, refetch_days, anchor):
     """Tage einteilen: unveraendert, umzurechnen, verwerfen oder ausklammern.
 
     Rueckgabe (shift_days, drop_days, skipped_mixed, ref_first). ref_first ist
@@ -131,12 +155,18 @@ def classify(stats, tz_name, today, refetch_days):
     kann (1m sieben Tage, 60m sechzig). Nur innerhalb davon darf verworfen
     werden.
     """
-    ref = [v[0] for d, v in stats.items() if d < CLEAN_BEFORE]
-    if len(ref) < 5:
-        return [], [], [], None             # zu wenig Referenz -> Finger weg
-    ref_first = _minutes(Counter(ref).most_common(1)[0][0])
+    if anchor is None:
+        return [], [], [], None             # kein Anker -> Finger weg
+    ref_first = anchor
     counts = sorted(v[2] for d, v in stats.items() if d < CLEAN_BEFORE)
-    ref_count = counts[len(counts) // 2]    # Median der sauberen Tage
+    if not counts:
+        # Ticker ohne Historie vor dem Bruch -- etwa die heute neu aufgenommenen
+        # Nikkei-/KOSPI-/Hongkong-Werte. Der Anker traegt trotzdem, nur die
+        # Dubletten-Schwelle braucht dann alle vorhandenen Tage als Bezug.
+        counts = sorted(v[2] for v in stats.values())
+    if not counts:
+        return [], [], [], None
+    ref_count = counts[len(counts) // 2]
 
     # Die juengsten Tage werden nicht eingestuft, sondern verworfen. Seit dem
     # Fix schreiben die laufenden Jobs wieder UTC, ohne die alten Zeilen zu
@@ -245,6 +275,8 @@ def main():
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
     apply = bool(args.get('apply'))
+    if args.get('purge_h60'):
+        PURGE_TABLES.add('h60_data')
     only = args.get('tickers')
     only = {t.strip() for t in str(only).split(',')} if only else None
 
@@ -285,13 +317,14 @@ def main():
                 if table not in tabs:
                     continue
                 stats = _day_stats(conn, table)
+                anchor = h60_anchor(conn) if 'h60_data' in tabs else None
                 if table in PURGE_TABLES:
                     # Alles ab dem Bruch weg -- die Jobs holen es sauber nach.
                     shift, drop, mixed, ref = [], [
                         (d, 0) for d in stats if d >= CLEAN_BEFORE], [], 0
                 else:
                     shift, drop, mixed, ref = classify(stats, tz_name, today,
-                                                       refetch_days)
+                                                       refetch_days, anchor)
                 if ref is None:
                     no_ref += 1
                     continue
