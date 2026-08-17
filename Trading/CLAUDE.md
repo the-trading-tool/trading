@@ -895,3 +895,33 @@ Entry-Filter (RS > 0, `fps_best_trend` ≥ 150, Abstand zum ATH, lange Basen) br
 **Datenqualität schlägt durch:** die 16 Trades unter −20 % (bis −93 %) sind
 Split-Artefakte in `yf_*.db` (ORLY, MNST, FAST, VST …), keine Methodenverluste →
 `tradinglib/data_quality.py` gegenprüfen, bevor Ergebnisse interpretiert werden.
+
+### 4PS-Ausstiegsvarianten (Messung 2026-08-17)
+
+Gleiche Einstiege, nur anderes Positionsmanagement (656 Ticker, Signale seit 2015,
+Signal→Signal, ohne Kosten). Trades unter −60 % (Split-Artefakte) ausgeschlossen:
+
+| Ausstieg | Trades | Win | Ø | PF | Haltedauer | p. a. |
+|---|---|---|---|---|---|---|
+| SMA20 | 5111 | 39,7 % | +2,6 % | 1,68 | 99 d | +9,6 % |
+| SMA30 (Default) | 4208 | 40,8 % | +4,4 % | 2,03 | 143 d | +11,4 % |
+| SMA35 | 3955 | 40,4 % | +5,3 % | 2,18 | 162 d | +12,1 % |
+| SMA40 | 3721 | 39,6 % | +6,1 % | 2,32 | 181 d | +12,4 % |
+| SMA45 | 3565 | 39,2 % | +6,6 % | 2,39 | 195 d | +12,4 % |
+| SMA50 | 3419 | 38,9 % | +7,2 % | 2,46 | 209 d | +12,6 % |
+| SMA40 + Stop 12 % | 3615 | 41,2 % | +6,6 % | 2,40 | 190 d | +12,6 % |
+| SMA30 + Trailing 20 % | 4227 | 40,9 % | +4,2 % | 1,99 | 141 d | +11,0 % |
+| SMA30 + Zielverkauf | 4346 | 40,5 % | +4,1 % | 1,93 | 137 d | +10,8 % |
+
+- **Monotone Rampe, kein Peak:** PF steigt durchgehend mit der SMA-Länge, weil die
+  Haltedauer proportional mitwächst — annualisiert bleibt es bei ~12 %. Also kein
+  überangepasster Sweet Spot, aber auch kein großer Hebel.
+- **Trailing-Stop und Gewinnmitnahme schaden** (kappen den rechten Rand) → bleiben aus.
+- Robustheit von SMA40+Stop 12 % gegen SMA30+Stop 8 %: **in allen drei Teilperioden
+  (2015–19, 2020–22, 2023–26) und beiden Regionen besser** (PF 6/6, Win 5/6).
+  Schwächste Phase bei beiden: 2020–2022 (PF 1,76 bzw. 1,89).
+- **Einschränkung:** Alles gerechnet je Position (Signal→Signal), NICHT als Portfolio
+  mit begrenzten Slots. Längere Haltedauern binden Kapital — im `multi_transactions`-
+  Kontext mit `num_assets` kann das die Reihenfolge der Varianten drehen.
+
+Defaults stehen weiterhin auf SMA30/Stop 8 % (Entscheidung offen).
