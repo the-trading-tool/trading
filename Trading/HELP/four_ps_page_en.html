@@ -65,7 +65,43 @@ signals are usable in a backtest and are not hindsight.</div>
       Strategies.</li>
 </ul>
 
-<h2>Columns (identical live and in the backtest)</h2>
+<h2>Screener columns</h2>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Phase</b></td><td>0 no history · 1 watchlist · 2 base · 3 breakout · 4 trend</td></tr>
+<tr><td><b>Base (w)</b></td><td>Length of the current sideways base in weeks. Empty = no valid
+  base right now (too wide, too short, or too far below the record high).</td></tr>
+<tr><td><b>to breakout %</b></td><td>How much the price still has to rise to take out the base
+  high (0.4 = 0.4 % below the trigger). <b>Empty from phase 3 on</b> — the breakout already
+  happened.</td></tr>
+<tr><td><b>best trend %</b></td><td>Largest <b>completed</b> past up-leg (monthly zigzag) — the
+  Phase 1 proof. What the stock managed before, the method expects it to manage again.</td></tr>
+<tr><td><b>running %</b></td><td>The <b>current</b> leg: price against the last confirmed zigzag
+  low. Compared with <i>best trend</i> it shows how much room this trend historically still has.
+  While a stock is falling it measures the rebound off the running low. Equals
+  <code>fps_trend_gain</code>.</td></tr>
+<tr><td><b>RS 52w (pp)</b></td><td>Relative strength: own 52-week return minus the benchmark's,
+  in percentage points. Equals <code>fps_rs</code>.</td></tr>
+<tr><td><b>Sector</b></td><td>Sector from <code>asset_info</code>.</td></tr>
+<tr><td><b>vs. sector (pp)</b></td><td>Own 52-week return minus the sector <b>median</b>.
+  Positive = beats its own sector. Empty with fewer than 5 sector peers.</td></tr>
+<tr><td><b>Rank in sector %</b></td><td>Percentile among the sector peers: 100 = best of the
+  sector, 50 = exactly the median.</td></tr>
+<tr><td><b>off high %</b></td><td>Distance to the highest <b>close</b> ever reached in the local
+  history (<b>all-time high</b>), always ≤ 0. Equals <code>fps_dist_high</code>.
+  <b>Do not confuse:</b> the Phase 2 filter measures against the <b>record window</b>
+  (<code>record_weeks</code>, 10 years by default). Commerzbank sits 86 % below its 2007 high yet
+  at a 10-year high — which is why it qualifies.</td></tr>
+<tr><td><b>Price</b></td><td>Last close in quotation currency.</td></tr>
+<tr><td><b>Stop / Target</b></td><td>Only with an open position (phase 3/4): stop = max(base low,
+  breakout − stop percent), target = entry + target percent.</td></tr>
+<tr><td><b>last signal</b></td><td>The method's most recent buy/sell signal, with date.</td></tr>
+</table>
+<p>The detail view shows the same figures as metrics (<i>best trend</i>, <i>running trend</i>,
+<i>RS 52w</i>, <i>off all-time high</i>, <i>vs. sector</i>). The same table is available in the
+app under the <b>📘 Method</b> tab.</p>
+
+<h2>Columns in chart and backtest (fps_*)</h2>
 <table>
 <tr><th>Column</th><th>Meaning</th></tr>
 <tr><td><code>fps_phase</code></td><td>0 = no history, 1 = watchlist, 2 = base, 3 = breakout, 4 = trend</td></tr>

@@ -939,3 +939,17 @@ Engine: `four_ps.sector_map/window_return/quick_return/sector_reference/sector_c
 - Sektoren mit < 5 Werten bleiben leer (`_MIN_PEERS`).
 - **Bewusst KEINE `fps_*`-Spalte in der Sim-DB**: universumsabhängige Momentaufnahme,
   keine kausale Zeitreihe. Für Backtests bleibt `fps_rs` (gegen den Index) zuständig.
+
+### 4PS: Spaltenerklaerung + zwei Hoch-Referenzen (2026-08-17)
+
+Screener-Spalten sind jetzt im Tab **Methode** (`fps.columns_md`, de/en) und in beiden
+HELP-Seiten erklaert. Zwei Punkte, die vorher verwirrten:
+
+- **`bis Ausbruch %`** stand ab Phase 3 auf 0 (las sich wie „direkt am Ausloeser") →
+  wird jetzt leer gelassen, sobald der Ausbruch passiert ist.
+- **Zwei verschiedene Hoch-Referenzen:** `fps_dist_high` („vom Hoch %") misst gegen das
+  **Allzeithoch** (`close.cummax()` ueber die volle lokale Historie), der Phase-2-Filter
+  dagegen gegen das **Rekord-Fenster** (`record_weeks`, 10 Jahre). Deshalb kann ein Wert
+  86 % unter seinem Hoch stehen und sich trotzdem qualifizieren (CBK.DE: Hoch 2007 bei
+  282,86, aktueller Kurs 39,61, 10-Jahres-Hoch 40,13). Bewusst so gelassen — beide
+  Aussagen sind fuer sich sinnvoll —, aber in Doku und Spaltentext explizit gemacht.

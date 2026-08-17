@@ -214,7 +214,10 @@ class FourPsPage:
             t('fps.col_name'): df['name'].str.slice(0, 28),
             t('fps.col_phase'): [f"{int(p)} · {_phase_label(p)}" for p in df['phase']],
             t('fps.col_base_weeks'): df['base_weeks'],
-            t('fps.col_to_breakout'): df['to_breakout'].round(1),
+            # Blank once the breakout has happened — a hard 0 there reads like
+            # "right at the trigger", which is not what it means.
+            t('fps.col_to_breakout'): [round(float(v), 1) if p <= 2 else None
+                                       for v, p in zip(df['to_breakout'], df['phase'])],
             t('fps.col_best_trend'): df['best_trend'].round(0),
             t('fps.col_trend_gain'): df['trend_gain'].round(0),
             t('fps.col_rs'): df['rs'].round(1),
@@ -556,6 +559,8 @@ class FourPsPage:
 
     def _tab_method(self, params: dict):
         st.markdown(t('fps.method_md'))
+        st.markdown(f"##### {t('fps.columns_header')}")
+        st.markdown(t('fps.columns_md'))
         st.markdown(f"##### {t('fps.integration_header')}")
         st.markdown(t('fps.integration_md'))
         st.code(

@@ -65,7 +65,44 @@ Daten nach D – die Signale sind damit im Backtest verwendbar und keine Rücksc
       Multi-Strategien.</li>
 </ul>
 
-<h2>Spalten (live wie im Backtest)</h2>
+<h2>Spalten im Screener</h2>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><b>Phase</b></td><td>0 keine Historie · 1 Watchlist · 2 Basis · 3 Ausbruch · 4 Trend</td></tr>
+<tr><td><b>Basis (W)</b></td><td>Länge der aktuellen Seitwärtsbasis in Wochen. Leer = derzeit
+  keine gültige Basis (zu breit, zu kurz oder zu weit unter dem Rekordhoch).</td></tr>
+<tr><td><b>bis Ausbruch %</b></td><td>Wie viel der Kurs noch steigen muss, um das Basis-Hoch zu
+  nehmen (0,4 = 0,4 % unter dem Auslöser). <b>Ab Phase 3 leer</b> — der Ausbruch ist bereits
+  passiert.</td></tr>
+<tr><td><b>bester Trend %</b></td><td>Größter <b>abgeschlossener</b> Aufwärtsschub der
+  Vergangenheit (Monats-Zickzack) — der Phase-1-Nachweis. Was der Wert früher geschafft hat,
+  traut die Methode ihm wieder zu.</td></tr>
+<tr><td><b>läuft %</b></td><td>Der <b>laufende</b> Schub: Kurs gegen das letzte bestätigte
+  Zickzack-Tief. Im Vergleich zu <i>bester Trend</i> zeigt es, wie viel Weg dieser Trend
+  historisch noch vor sich haben könnte. Fällt der Wert gerade, misst es die Erholung seit dem
+  laufenden Tief. Entspricht <code>fps_trend_gain</code>.</td></tr>
+<tr><td><b>RS 52W (pp)</b></td><td>Relative Stärke: eigene 52-Wochen-Rendite minus die des
+  Vergleichsindex, in Prozentpunkten. Entspricht <code>fps_rs</code>.</td></tr>
+<tr><td><b>Sektor</b></td><td>Branche aus <code>asset_info</code>.</td></tr>
+<tr><td><b>vs. Sektor (pp)</b></td><td>Eigene 52-Wochen-Rendite minus <b>Median</b> des Sektors.
+  Positiv = schlägt den eigenen Sektor. Leer bei weniger als 5 Sektor-Kollegen.</td></tr>
+<tr><td><b>Rang im Sektor %</b></td><td>Perzentil unter den Sektor-Kollegen: 100 = bester Wert
+  des Sektors, 50 = genau der Median.</td></tr>
+<tr><td><b>vom Hoch %</b></td><td>Abstand zum höchsten je erreichten <b>Schlusskurs</b> der
+  lokalen Historie (<b>Allzeithoch</b>), immer ≤ 0. Entspricht <code>fps_dist_high</code>.
+  <b>Nicht verwechseln:</b> der Phase-2-Filter misst gegen das <b>Rekord-Fenster</b>
+  (<code>record_weeks</code>, Standard 10 Jahre). Commerzbank steht 86 % unter dem Hoch von 2007,
+  aber auf dem Höchststand der letzten 10 Jahre — und qualifiziert sich deshalb.</td></tr>
+<tr><td><b>Kurs</b></td><td>Letzter Schlusskurs in Notierungswährung.</td></tr>
+<tr><td><b>Stop / Ziel</b></td><td>Nur bei offener Position (Phase 3/4): Stop = max(Basis-Tief,
+  Ausbruch − Stop-Prozent), Ziel = Einstieg + Zielprozent.</td></tr>
+<tr><td><b>letztes Signal</b></td><td>Letztes Kauf-/Verkaufssignal der Methode mit Datum.</td></tr>
+</table>
+<p>Die Detailansicht zeigt dieselben Größen als Kennzahlen (<i>bester Trend</i>,
+<i>laufender Trend</i>, <i>RS 52W</i>, <i>vom Allzeithoch</i>, <i>vs. Sektor</i>). Dieselbe
+Tabelle steht in der App im Tab <b>📘 Methode</b>.</p>
+
+<h2>Spalten in Chart und Backtest (fps_*)</h2>
 <table>
 <tr><th>Spalte</th><th>Bedeutung</th></tr>
 <tr><td><code>fps_phase</code></td><td>0 = keine Historie, 1 = Watchlist, 2 = Basis, 3 = Ausbruch, 4 = Trend</td></tr>
