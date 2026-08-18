@@ -82,7 +82,8 @@ SCALABLE_FREE_ROUTES = frozenset({
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
     'strategy_finder', 'trading', 'rotation', 'rotation_hub', 'market_overview',
-    'correlation', 'compound', 'marketmap', 'summary', 'four_ps', 'option_calc',
+    'correlation', 'compound', 'marketmap', 'summary', 'candidates', 'four_ps',
+    'option_calc',
     'upgrade',
 )
 

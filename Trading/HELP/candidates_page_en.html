@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Candidates – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Candidates <small style="font-size:.6em;color:#888">candidates_page.py · candidates.py</small></h1>
+
+<p>This page leads from the whole universe down to a <b>shortlist</b>: a handful of names worth
+a closer look in the Asset Viewer. The building blocks already existed, but scattered across
+five pages — market picture on the dashboard, rotation under Market, formula filters in the
+asset overview, signal in the own-trades tab. Here they form one chain, and every step shows
+how much it removes.</p>
+
+<div class="warn"><b>The list is a shortlist, not a buy order.</b> It says which names are worth
+the analysis — not which to buy. That decision stays with the chart and with you.</div>
+
+<h2>The chain</h2>
+<p>The order is deliberate: the steps run from cheap to expensive. The broad filters work on
+the simulation database (one pass over every ticker), relative strength needs a price series
+per name, and the live signal path computes one name at a time.</p>
+
+<table>
+<tr><th>Step</th><th>What it does</th><th>Data source</th></tr>
+<tr><td><b>Names with simulation data</b></td>
+  <td>Starting set: every ticker computed within the last ten days.</td>
+  <td><code>asset_simulation_*.db</code> + <code>asset_info.db</code></td></tr>
+<tr><td><b>Prefilter</b></td>
+  <td>The formula from the filter box, run as a SQL condition.</td>
+  <td>the same row</td></tr>
+<tr><td><b>Universe</b></td>
+  <td>Restriction to the chosen indices/groups. Skipped when nothing is selected.</td>
+  <td><code>yf_tickers.db</code></td></tr>
+<tr><td><b>Tradable</b></td>
+  <td>Names marked as renamed or delisted drop out.</td>
+  <td><code>asset_status</code></td></tr>
+<tr><td><b>ISIN present</b></td>
+  <td>Optional, a rough proxy for orderable.</td>
+  <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Sector with inflow</b></td>
+  <td>Keeps sectors whose ETF shows relative strength (Mansfield RSC).</td>
+  <td>sector rotation, same as the dashboard</td></tr>
+<tr><td><b>Pre-selection by strength</b></td>
+  <td>The cut before the expensive part, spread evenly over the qualifying sectors.</td>
+  <td>the chosen metric</td></tr>
+<tr><td><b>Beats its own sector</b></td>
+  <td>Four-week return against the stock's <i>own</i> sector ETF.</td>
+  <td>price series (download)</td></tr>
+<tr><td><b>Shortlist</b></td>
+  <td>Sorted by sector strength, then by lead; capped per sector.</td>
+  <td>—</td></tr>
+<tr><td><b>Signal</b></td>
+  <td>The short list through the same live path as the chart, using your own buy/sell
+  formulas.</td>
+  <td>OHLC + formulas</td></tr>
+</table>
+
+<h2>Why two different filters?</h2>
+<p>The <b>prefilter</b> is deliberately <b>not</b> your buy formula. Two reasons:</p>
+<ul>
+<li>The buy formula may use columns that exist only live — <code>ovtEma9</code> or
+  <code>atc_mid_zero</code>, for instance, are not in <code>asset_simulation</code>. Run as
+  SQL against the database, it fails.</li>
+<li>The chart markers are <b>position-aware</b>: a sell signal only applies while you hold. A
+  plain column query cannot express that.</li>
+</ul>
+<p>Hence a broader, database-capable prefilter here — and the authoritative check at the end,
+on the short list.</p>
+
+<div class="info"><b>Prefilter errors read usefully:</b> if the message names a missing column,
+that is exactly the answer — the column exists only live. Available are all columns of
+<code>asset_simulation</code>, such as <code>overallValueTrend</code>, <code>ewo</code>,
+<code>ewo_ema</code>, <code>relvol_ratio</code>, <code>sup_support</code>,
+<code>sup_resistance</code>, <code>adx</code>, <code>rsi</code>, <code>fps_phase</code>, plus
+the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</code>.</div>
+
+<h2>Settings</h2>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td>Universe</td><td>Empty = every name with simulation data. Multiple selections allowed.</td></tr>
+<tr><td>Pre-sort by</td><td>Metric used to rank before the expensive measurement.</td></tr>
+<tr><td>Prefilter</td><td>The SQL condition. Combine terms with <code>&amp;</code>, each in
+  parentheses.</td></tr>
+<tr><td>Minimum sector strength</td><td>Mansfield RSC of the sector ETF. 0 = every sector with
+  a positive reading.</td></tr>
+<tr><td>Minimum lead</td><td>Percentage points by which the name must beat its sector ETF over
+  four weeks.</td></tr>
+<tr><td>Pool for the measurement</td><td>How many names enter the relative-strength step.
+  Larger = more thorough and slower (one price download per name).</td></tr>
+<tr><td>At most per sector</td><td>Stops one sector from filling the whole list.
+  0 = no cap.</td></tr>
+<tr><td>Only with an entry signal</td><td>Keeps names whose most recent marker was an entry.
+  Shortens the list below the requested length.</td></tr>
+</table>
+
+<h2>Result columns</h2>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td>Sector strength</td><td>Mansfield RSC of the sector ETF. Identical for every name in a
+  sector — it ranks the sectors, not the names.</td></tr>
+<tr><td>vs. sector</td><td>Four-week return minus that of the name's own sector ETF, in
+  percentage points. <b>This</b> is the column that ranks the name within its sector.</td></tr>
+<tr><td>Price / Currency</td><td>Last simulated close in the listing currency —
+  <b>not</b> converted. LSE names are quoted in pence (GBp).</td></tr>
+<tr><td>Signal</td><td>Type and date of the last marker. <code>⚡</code> means the signal sits
+  on the latest bar, so it is fresh.</td></tr>
+</table>
+
+<h2>Pitfalls</h2>
+<ul>
+<li><b>The most recent day is often incomplete.</b> While the simulation run is still going,
+  only a few hundred tickers exist for today. The page therefore takes the most recent row per
+  ticker from the last ten days, not the most recent day overall.</li>
+<li><b>Use the ISIN filter with care.</b> Only about 70 % of tickers have an ISIN on file; a
+  missing one usually means "not resolved yet" rather than "not tradable".</li>
+<li><b>A run costs time</b> (typically 25–40 seconds), almost entirely in the relative-strength
+  step and the signal path. The result stays in the session until a setting changes — sorting
+  and selecting in the table recomputes nothing.</li>
+<li><b>Empty result?</b> Usually the sector threshold is too high (in a weak market no sector
+  qualifies) or the prefilter too narrow. The funnel shows which step did it.</li>
+</ul>
+
+</body>
+</html>
