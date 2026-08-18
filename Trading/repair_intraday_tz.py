@@ -187,9 +187,15 @@ def classify(stats, tz_name, today, refetch_days, anchor):
             # verwerfen macht den Lauf nicht wiederholbar: ein zweiter Aufruf
             # loescht dann die Tage, die der Nachlauf gerade sauber gefuellt
             # hat -- und braucht wieder einen Nachlauf, endlos.
-            clean = (abs(first_m - ref_first) <= TOLERANCE_MIN
-                     and n <= ref_count * 1.3)
-            if not clean:
+            # Verworfen wird nur, was auch nach Ortszeit AUSSIEHT. Die
+            # Zeilenzahl allein taugt dafuer nicht: ein frisch nachgeladener Tag
+            # ist vollstaendiger als die historisch gesammelten, und der
+            # Median-Vergleich stufte ihn dann faelschlich als verdaechtig ein --
+            # ein erneuter Lauf haette gerade geholte, korrekte Daten geloescht.
+            looks_local = abs(first_m - (ref_first + off * 60)) <= TOLERANCE_MIN
+            mixed = (abs(first_m - ref_first) <= TOLERANCE_MIN
+                     and n > ref_count * 1.3)
+            if looks_local or mixed:
                 drop.append((day, 0))
             continue
         if off == 0:
