@@ -180,10 +180,18 @@ def classify(stats, tz_name, today, refetch_days, anchor):
     for day, (first, _last, n) in stats.items():
         if day < CLEAN_BEFORE:
             continue
-        if day >= cutoff:
-            drop.append((day, 0))
-            continue
         off = _offset_hours(tz_name, day)
+        first_m = _minutes(first)
+        if day >= cutoff:
+            # Nur verwerfen, wenn der Tag auch verdaechtig ist. Pauschal zu
+            # verwerfen macht den Lauf nicht wiederholbar: ein zweiter Aufruf
+            # loescht dann die Tage, die der Nachlauf gerade sauber gefuellt
+            # hat -- und braucht wieder einen Nachlauf, endlos.
+            clean = (abs(first_m - ref_first) <= TOLERANCE_MIN
+                     and n <= ref_count * 1.3)
+            if not clean:
+                drop.append((day, 0))
+            continue
         if off == 0:
             continue                        # Zone == UTC, nichts zu tun
         # Deutlich mehr Zeilen als ueblich heisst: der Tag enthaelt BEIDE
@@ -203,7 +211,7 @@ def classify(stats, tz_name, today, refetch_days, anchor):
         # schwankt um ein paar Minuten (09:00 vs 09:02). Die Toleranz ist klein
         # gegen jeden Zeitzonen-Versatz (>= 60 Minuten), beide Faelle bleiben
         # also unterscheidbar.
-        if abs(_minutes(first) - (ref_first + off * 60)) <= TOLERANCE_MIN:
+        if abs(first_m - (ref_first + off * 60)) <= TOLERANCE_MIN:
             shift.append((day, off))
     return shift, drop, mixed, ref_first
 

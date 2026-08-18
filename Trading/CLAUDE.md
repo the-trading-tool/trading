@@ -976,3 +976,26 @@ Signal erst 2026-06-17. Gegenprobe mit bereinigten Daten: Kauf am 2024-01-22 zu 
   zeigt eine Warnung, der Screener eine Spalte „Daten" mit `⚠ Datum ×Faktor`.
 - **Bereinigung** bleibt manuell: `get_asset_data.py` fuer die Ticker neu laden, dann
   `asset_perf2.py /index:…` — betrifft alle Konsumenten (Scores, Charts), nicht nur 4PS.
+
+### get_asset_data: `/tickers:A,B,C` statt `/select:'WHERE …'` (2026-08-18)
+
+Der aus `data_quality.build_cleanup_commands()` kopierte Befehl scheiterte in der
+Praxis: `python get_asset_data.py /select:'WHERE Ticker IN ("IBKR",…)'` zerbricht in
+PowerShell/cmd am ersten Leerzeichen →
+`Execution failed on sql 'SELECT Ticker FROM stocks 'WHERE;'`. Ursache ist nicht der
+Parser (`cli.parse_args` nimmt alles nach dem ersten `:`), sondern die Shell: der
+Wert enthaelt Leerzeichen **und** Anfuehrungszeichen.
+
+- **Neu:** `get_asset_data.py` wertet `/tickers:A,B,C` aus (Parsing lag in `cli.py`
+  schon vor, nur die Auswertung fehlte). Keine Leerzeichen, keine Quotes, laeuft in
+  jeder Shell. Symbole, die nicht in `stocks` stehen, werden geladen und nur geloggt.
+- `build_cleanup_commands()` gibt jetzt
+  `python get_asset_data.py /tickers:… 1d:max` aus. **`1d:max` ist entscheidend** —
+  ein normaler Tageslauf schreibt nur die juengsten Zeilen und laesst den alten,
+  falsch skalierten Teil stehen.
+- **Verifiziert gegen ein Scratch-`TradingDB`** (Produktion unberuehrt): nach
+  `/tickers:IBKR 1d:max` liefert Yahoo die vollstaendig adjustierte Historie,
+  `detect_price_gaps` meldet nichts mehr, und 4PS kauft am 2024-01-22 zu 22,77
+  (Phase 4) statt erst 2026 — genau die Gegenprobe aus der Analyse.
+- `/select:'WHERE …'` bleibt als maechtigere Variante erhalten (unter PowerShell das
+  **ganze** Argument quoten: `"…/select:WHERE Ticker LIKE '%.MC'"`).

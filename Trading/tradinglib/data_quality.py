@@ -234,10 +234,13 @@ def build_cleanup_commands(tickers, db_path: str = 'database') -> list:
         return []
     idx_map = _indices_for_tickers(tickers, db_path)
     indices = sorted({i for lst in idx_map.values() for i in lst})
-    tk_sql = ','.join(f'"{t}"' for t in tickers)
+    # /tickers statt /select: der Befehl wird oft kopiert und in PowerShell/cmd
+    # eingefuegt, wo `/select:'WHERE Ticker IN (...)'` am ersten Leerzeichen
+    # zerbricht ("SELECT Ticker FROM stocks 'WHERE;"). /tickers:A,B,C hat weder
+    # Leerzeichen noch Anfuehrungszeichen und laeuft in jeder Shell.
     cmds = [
         '# 1) OHLC gezielt neu vom aktiven Provider laden (fixt nur, wenn der Provider korrekt liefert):',
-        f'''python get_asset_data.py /select:'WHERE Ticker IN ({tk_sql})' ''',
+        f'python get_asset_data.py /tickers:{",".join(tickers)} 1d:max',
         '# 2) Simulation der betroffenen Indizes neu rechnen (close wird konsistent):',
     ]
     if indices:

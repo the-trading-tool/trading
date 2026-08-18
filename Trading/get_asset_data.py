@@ -44,9 +44,11 @@ if __name__ == "__main__":
     all = args.get('all', False)
     inverse = args.get('inverse', False)
     group = args.get('group') or []
+    only_tickers = [t.strip() for t in (args.get('tickers') or '').split(',') if t.strip()]
 
     # if we have no interval pairs and no actionable pref flags, show usage
-    actionable = bool(intervals_parsed) or any([select, index_members_only, index_only, all, inverse, bool(group)])
+    actionable = bool(intervals_parsed) or any([select, index_members_only, index_only, all,
+                                                inverse, bool(group), bool(only_tickers)])
     if not actionable:
         print("Wrong arguments. Use pairs of 'interval:period', e.g. '1d:1mo'")
         exit()
@@ -101,6 +103,23 @@ if __name__ == "__main__":
         ticker_list = info_db.read_data(ticker_query)['Ticker'].tolist()
         if not ticker_list:
             logger.warning("No tickers found for group(s): %s", group)
+    elif only_tickers:
+        # /tickers:A,B,C — gezieltes Nachladen einzelner Symbole ohne SQL im
+        # Argument. /select:'WHERE ...' enthaelt Leerzeichen und Anfuehrungs-
+        # zeichen und zerbricht deshalb je nach Shell (PowerShell schneidet am
+        # ersten Leerzeichen ab -> "SELECT Ticker FROM stocks 'WHERE;").
+        try:
+            known = set(info_db.read_data('SELECT Ticker FROM stocks;')['Ticker'].tolist())
+            unknown = [t for t in only_tickers if t not in known]
+            if unknown:
+                logger.warning("Nicht in yf_tickers.db/stocks: %s (werden trotzdem geladen)",
+                               ", ".join(unknown))
+        except Exception as exc:
+            # Die Symbole stehen explizit im Argument — eine fehlende/leere
+            # stocks-Tabelle darf den Lauf nicht verhindern, sie dient hier nur
+            # der Plausibilitaetsmeldung.
+            logger.debug("stocks-Abgleich uebersprungen: %s", exc)
+        ticker_list = list(only_tickers)
     elif select:
         # prefer selection from pref-style arg if provided (e.g. /select:WHERE ...),
         # otherwise fall back to last colon-pair's right-hand side

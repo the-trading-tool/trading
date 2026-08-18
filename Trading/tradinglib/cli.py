@@ -10,6 +10,7 @@ def print_help():
           "  /all - all = all tickers but does not send Pushover notifications,\n"
           "  /year:[YYYY] - get data for a specific year (max 6 years back),\n"
           "  /index:^SPX[,^DJI,...] - scan only the given index/indices (comma-separated, case-insensitive),\n"
+          "  /tickers:A,B,C - only these ticker symbols (comma-separated, no quotes needed),\n"
           "  /group:NAME1,NAME2 - only tickers of the given groups from the indices table\n"
           "                       (e.g. /group:CRYPTO or /group:METALS,COMMODITIES),\n"
           "  /add_current - adds the last close price,\n"

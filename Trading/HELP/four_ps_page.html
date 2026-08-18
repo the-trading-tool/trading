@@ -210,8 +210,11 @@ Niveau, kam wieder ein Kauf. Mit bereinigten Daten hätte die Methode am 22.01.2
       <code>python -m tradinglib.data_quality /gaps /index:^SPX</code> (Windows: über
       PowerShell, sonst mangelt MSYS die <code>/flags</code>). Der Lauf nennt Ticker, Datum,
       Faktor, vermutliche Ursache und die passenden Bereinigungs-Befehle.</li>
-  <li><b>Bereinigung</b> = Kurse neu laden (<code>get_asset_data.py</code>), danach die
-      Simulation der betroffenen Indizes neu rechnen. Erst dann stimmen die Signale.</li>
+  <li><b>Bereinigung</b> = Kurse neu laden (<code>python get_asset_data.py /tickers:IBKR,NFLX 1d:max</code>), danach die
+      Simulation der betroffenen Indizes neu rechnen (<code>asset_perf2.py /index:^SPX</code>).
+      Wichtig ist <code>1d:max</code> — ein normaler Tageslauf schreibt nur die letzten Zeilen
+      und laesst den alten, falsch skalierten Teil stehen. Verifiziert: nach dem Neu-Laden ist
+      die IBKR-Reihe durchgehend und die Methode kauft am 22.01.2024 zu 22,77.</li>
 </ul>
 <p>Abzugrenzen von <code>scan_ohlc_issues</code>: das prüft <i>einzelne Zeilen</i>
 (<code>close</code> ausserhalb <code>[Low, High]</code>) in der Simulations-DB und findet
