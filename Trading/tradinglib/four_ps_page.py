@@ -38,10 +38,13 @@ _BENCHMARKS = ['^SPX', '^GDAXI', '^STOXX50E', '^NDX', '^N225']
 # Parameters the sidebar/expander exposes — the rest stays at four_ps.DEFAULTS
 _EDITABLE = ('trend_min_pct', 'min_trends', 'base_weeks', 'base_depth_pct',
              'near_high_pct', 'record_weeks', 'breakout_pct', 'require_uptrend',
-             'confirm_weeks', 'trend_sma_weeks', 'slope_weeks',
+             'entry_mode', 'confirm_weeks', 'trend_sma_weeks', 'slope_weeks',
              'stop_pct', 'trail_pct', 'target_pct', 'min_years')
 
 _PHASE_COLORS = {0: '#9E9E9E', 1: '#7F8C8D', 2: '#E8890C', 3: '#7CB518', 4: '#2E7D32'}
+
+# Einstiegsarten in der Reihenfolge, in der sie im Auswahlfeld stehen
+_ENTRY_MODES = ['breakout', 'record_high', 'new_high', 'both']
 
 
 def _phase_label(phase: int) -> str:
@@ -312,6 +315,12 @@ class FourPsPage:
                                       params['trend_min_pct'])
         idx = monthly.index.to_timestamp()
 
+        # Signale auf die Monatsraster legen — sonst laesst sich nicht sehen, wie
+        # die (rueckblickenden) Legs und die (kausalen) Kaeufe zueinander stehen.
+        fm = res['frame'].copy()
+        fm['_m'] = fm.index.to_period('M')
+        sig = fm.groupby('_m')[['fps_buy', 'fps_sell']].max().reindex(monthly.index)
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=idx, y=monthly['Close'], name=t('fps.lg_close'),
                                  line=dict(color='#455A64', width=1.6)))
@@ -331,10 +340,31 @@ class FourPsPage:
                 text=['', f"{leg['gain']:.0f} %"], textposition='top center',
                 textfont=dict(color='#2E7D32' if qualified else '#90A4AE', size=12),
                 hovertemplate=f"{leg['gain']:.0f} %<extra></extra>"))
+        # Bestaetigungspunkte: erst hier war der Schub ueberhaupt bekannt
+        conf_x, conf_y = [], []
+        for leg in legs:
+            if leg['gain'] > 0 and leg['confirmed'] in monthly.index:
+                conf_x.append(leg['confirmed'].to_timestamp())
+                conf_y.append(float(monthly['Close'][leg['confirmed']]))
+        if conf_x:
+            fig.add_trace(go.Scatter(
+                x=conf_x, y=conf_y, mode='markers', name=t('fps.lg_confirmed'),
+                marker=dict(symbol='x', size=8, color='#90A4AE'), showlegend=True,
+                hovertemplate=t('fps.lg_confirmed') + '<extra></extra>'))
+
+        fig.add_trace(go.Scatter(x=idx, y=sig['fps_buy'], mode='markers',
+                                 name=t('fps.lg_buy'), marker_symbol='triangle-up',
+                                 marker_size=12, marker_color='#7CB518', showlegend=True))
+        fig.add_trace(go.Scatter(x=idx, y=sig['fps_sell'], mode='markers',
+                                 name=t('fps.lg_sell'), marker_symbol='triangle-down',
+                                 marker_size=12, marker_color='#C0392B', showlegend=True))
+
         fig.update_layout(height=380, margin=dict(t=20, b=10, l=10, r=10),
-                          yaxis_type='log', showlegend=False)
+                          yaxis_type='log', showlegend=True,
+                          legend=dict(orientation='h', y=1.08, x=0))
         st.plotly_chart(fig, use_container_width=True, key=f"_fps_mo_{res['ticker']}")
         st.caption(t('fps.monthly_caption', pct=int(params['trend_min_pct'])))
+        st.caption(t('fps.monthly_hindsight'))
 
     # ── Page sections ────────────────────────────────────────────────────────
     def _regime(self, benchmark: str):
@@ -386,11 +416,17 @@ class FourPsPage:
                 t('fps.p_require_uptrend'), bool(params['require_uptrend']),
                 help=t('fps.p_require_uptrend_help'))
             c = st.columns(4)
-            out['confirm_weeks'] = c[0].number_input(
+            _mode = str(params.get('entry_mode', 'breakout'))
+            out['entry_mode'] = c[0].selectbox(
+                t('fps.p_entry_mode'), _ENTRY_MODES,
+                index=_ENTRY_MODES.index(_mode) if _mode in _ENTRY_MODES else 0,
+                format_func=lambda m: t(f'fps.entry_{m}'),
+                help=t('fps.p_entry_mode_help'))
+            out['confirm_weeks'] = c[1].number_input(
                 t('fps.p_confirm'), 1, 12, int(params['confirm_weeks']))
-            out['trend_sma_weeks'] = c[1].number_input(
+            out['trend_sma_weeks'] = c[2].number_input(
                 t('fps.p_trend_sma'), 5, 60, int(params['trend_sma_weeks']))
-            out['slope_weeks'] = c[2].number_input(
+            out['slope_weeks'] = c[3].number_input(
                 t('fps.p_slope_weeks'), 1, 26, int(params['slope_weeks']))
             c = st.columns(4)
             out['stop_pct'] = c[0].number_input(
@@ -580,6 +616,8 @@ class FourPsPage:
         st.markdown(t('fps.method_md'))
         st.markdown(f"##### {t('fps.columns_header')}")
         st.markdown(t('fps.columns_md'))
+        st.markdown(f"##### {t('fps.entries_header')}")
+        st.markdown(t('fps.entries_md'))
         st.markdown(f"##### {t('fps.integration_header')}")
         st.markdown(t('fps.integration_md'))
         st.code(

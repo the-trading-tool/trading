@@ -112,3 +112,36 @@ def test_zigzag_confirms_only_after_the_reversal():
     assert best.iloc[6] == pytest.approx(200.0)
     assert count.iloc[6] == 1
     assert legs[0]['gain'] == pytest.approx(200.0)
+
+
+def test_entry_modes_fire_differently():
+    """Base-less modes must find entries the breakout mode cannot see."""
+    daily = _path()
+    brk = fps.compute(daily, entry_mode='breakout')
+    rec = fps.compute(daily, entry_mode='record_high')
+    both = fps.compute(daily, entry_mode='both')
+
+    brk_buys, rec_buys = brk['fps_buy'].dropna(), rec['fps_buy'].dropna()
+    assert len(brk_buys) >= 1 and len(rec_buys) >= 1
+
+    # Different triggers, different timing: the base high (~30) sits below the
+    # old peak of 40, so the breakout fires first and the record-high entry has
+    # to wait until price actually takes out that peak.
+    assert rec_buys.index[0] > brk_buys.index[0]
+    assert rec_buys.iloc[0] > 40.0 * 0.99
+
+    # 'both' fires on whichever comes first -> never later than the breakout
+    both_buys = both['fps_buy'].dropna()
+    assert len(both_buys) >= 1
+    assert both_buys.index[0] <= brk_buys.index[0]
+
+
+@pytest.mark.parametrize('mode', ['record_high', 'new_high', 'both'])
+def test_no_look_ahead_in_entry_modes(mode):
+    daily = _path()
+    full = fps.compute(daily, entry_mode=mode)
+    cut = daily.index[-400]
+    trunc = fps.compute(daily[daily.index <= cut], entry_mode=mode)
+    common = trunc.index[-250:]
+    pd.testing.assert_frame_equal(full.loc[common].fillna(0.0),
+                                  trunc.loc[common].fillna(0.0))

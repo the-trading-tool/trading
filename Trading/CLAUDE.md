@@ -999,3 +999,43 @@ Wert enthaelt Leerzeichen **und** Anfuehrungszeichen.
   (Phase 4) statt erst 2026 — genau die Gegenprobe aus der Analyse.
 - `/select:'WHERE …'` bleibt als maechtigere Variante erhalten (unter PowerShell das
   **ganze** Argument quoten: `"…/select:WHERE Ticker LIKE '%.MC'"`).
+
+### 4PS: weitere Einstiege gemessen — neue Hochs schlagen den Basis-Ausbruch (2026-08-18)
+
+Frage: „Gibt es weitere optimale Einstiegspunkte?“ Testbank (Scratch `fps_entries.py`):
+gleiche Qualifikation (Phase 1), gleicher Trendfilter, **gleicher Ausstieg**, nur der
+Ausloeser variiert. 656 Ticker, Signale seit 2015, Reihen mit Level-Shift ausgeschlossen:
+
+| Ausloeser | Trades | Win | Ø | PF | p. a. |
+|---|---|---|---|---|---|
+| breakout (Basis-Ausbruch, Standard) | 3560 | 41,2 % | +6,5 % | 2,41 | +12,6 % |
+| **record_high** (neues Rekordhoch) | 3053 | 42,3 % | +7,8 % | **2,59** | **+14,5 %** |
+| new_high (52-Wochen-Hoch) | 4175 | 41,3 % | +7,5 % | 2,52 | +14,4 % |
+| both (Ausbruch oder Rekordhoch) | 3762 | 41,0 % | +7,2 % | 2,55 | +13,9 % |
+| retest (Ruecklauf ans gebrochene Niveau) | 3830 | 40,1 % | +6,2 % | 2,39 | +12,7 % |
+| reclaim (SMA-Rueckeroberung) | 6855 | 18,6 % | +1,4 % | 1,87 | +11,2 % |
+| pullback (Ruecksetzer an den SMA) | 11023 | 21,1 % | +1,8 % | 2,03 | +12,0 % |
+
+- `record_high` ist in **allen** Teilperioden und beiden Regionen besser als der Ausbruch
+  (2020-22 PF 2,12 vs 1,94; 2023-26 PF 3,30 vs 2,74).
+- **Nur 861 von ~3000 Einsätzen ueberschneiden sich** → die Arten finden verschiedene
+  Trades; `both` nimmt, was zuerst kommt. Werte, die durchmarschieren, bilden nie eine
+  enge Basis und waren mit `breakout` grundsaetzlich unerreichbar.
+- Ruecksetzer-Varianten sind eine **andere Strategie** (kurze Haltedauer, ~20 % Treffer),
+  kein besserer Einstieg in dieselbe.
+- Umgesetzt als Parameter `entry_mode` (Engine, Indikator-Dialog, Seiten-Expander,
+  Locale de/en, Tests inkl. Look-ahead je Modus). **Default bleibt `breakout`** — die
+  Methode des Artikels; die Umstellung ist bewusst eine Nutzerentscheidung.
+
+### 4PS: Legs im Monatschart sind Rueckschau (2026-08-18)
+
+Frage: „Warum passen die Legs nicht zu den Buy/Sell-Signalen (WAT)?“ Antwort: Ein Leg ist
+erst mit der **bestaetigenden Gegenbewegung** bekannt. WAT: Schub 10/2023 → 01/2025 (+74 %)
+wurde erst 07/2025 bei 288,76 bestaetigt = 30 % unter dem Hoch, ein halbes Jahr spaeter.
+Alle vier WAT-Legs zeigen dasselbe Muster (-25 bis -30 %, 4-8 Monate Verzug). Signale
+koennen also gar nicht auf Leg-Enden liegen — sonst waeren sie Rueckschau.
+
+- Der Monatschart zeigt jetzt **zusaetzlich** die Kauf-/Verkaufsmarker und ein `X` am
+  Bestaetigungspunkt jedes Legs, dazu eine Bildunterschrift, die den Unterschied benennt.
+- Wie nah der Einstieg an den Leg-Anfang rueckt, haengt am `entry_mode`: bei WAT kaufte
+  `breakout` 11/2024 zu 387, `new_high` schon 02/2024 zu 338 (Leg-Start 10/2023 bei 238).

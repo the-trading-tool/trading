@@ -184,6 +184,33 @@ sub-periods (2015–19, 2020–22, 2023–26) and in both regions.</p>
 per position (signal to signal), not a portfolio with a limited number of slots. Longer holds
 tie up capital — with <code>num_assets</code> the ranking of the variants may differ.</div>
 
+<h2>Entry triggers</h2>
+<p>The article buys the <b>breakout out of the base</b>. Measured over 656 index members since
+2015 (same exit, same filters) there are equal-or-better triggers — selectable via the
+<code>entry_mode</code> parameter or the <b>⚙ Method parameters</b> expander:</p>
+<table>
+<tr><th>Trigger</th><th>Trades</th><th>Win</th><th>Avg</th><th>PF</th><th>p.a.</th></tr>
+<tr><td>Base breakout (default)</td><td>3,560</td><td>41.2 %</td><td>+6.5 %</td><td>2.41</td><td>+12.6 %</td></tr>
+<tr><td><b>New record high</b></td><td>3,053</td><td>42.3 %</td><td>+7.8 %</td><td><b>2.59</b></td><td><b>+14.5 %</b></td></tr>
+<tr><td>New 52-week high</td><td>4,175</td><td>41.3 %</td><td>+7.5 %</td><td>2.52</td><td>+14.4 %</td></tr>
+<tr><td>Breakout <b>or</b> record high</td><td>3,762</td><td>41.0 %</td><td>+7.2 %</td><td>2.55</td><td>+13.9 %</td></tr>
+<tr><td>Retest of the broken level</td><td>3,830</td><td>40.1 %</td><td>+6.2 %</td><td>2.39</td><td>+12.7 %</td></tr>
+<tr><td>Reclaim of the SMA</td><td>6,855</td><td>18.6 %</td><td>+1.4 %</td><td>1.87</td><td>+11.2 %</td></tr>
+<tr><td>Pullback to the SMA</td><td>11,023</td><td>21.1 %</td><td>+1.8 %</td><td>2.03</td><td>+12.0 %</td></tr>
+</table>
+<p><b>Buying new highs is the strongest trigger</b> — better than the base breakout in all three
+sub-periods and both regions. The reason: a name that marches straight up never forms the tight
+base Phase 2 demands and would stay out of reach. Only 861 of about 3,000 entries are identical
+between the two. <b>Waiting for pullbacks does not pay</b>: three times the trades, a ~20 % hit
+rate, short holds — that is a different strategy.</p>
+
+<div class="info"><b>Legs are hindsight, signals are not.</b> The monthly legs are only fixed once
+the counter-move confirms them — for Waters (WAT) the leg 10/2023 → 01/2025 (+74 %) was confirmed
+in July 2025 at 288.76, i.e. 30 % below the high and half a year later. Buying at the start of a
+leg is therefore impossible; the markers in the monthly chart (✕ = confirmation, triangles =
+signals) make that distance visible. For WAT the base breakout bought 11/2024 at 387, while the
+record-high trigger would have bought back in 02/2024 at 338.</div>
+
 <h2>Data quality: breaks in the price series</h2>
 <p>The method computes across decades — a <b>level shift</b> in the local price series
 therefore corrupts everything: record high, zigzag legs, 52-week return and hence the phases.

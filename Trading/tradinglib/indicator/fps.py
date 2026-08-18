@@ -54,6 +54,9 @@ class Fps(_indicator._Indicator):
                             'label': 'Phase 3: breakout buffer (%)'},
         'require_uptrend': {'type': 'bool',  'default': True,
                             'label': 'Phase 3: only above a rising weekly SMA'},
+        'entry_mode':      {'type': 'select', 'default': 'breakout',
+                            'options': ['breakout', 'record_high', 'new_high', 'both'],
+                            'label': 'Entry trigger'},
         'confirm_weeks':   {'type': 'int',   'default': 2, 'min': 1, 'max': 12,
                             'label': 'Phase 4: confirmation (weeks)'},
         'trend_sma_weeks': {'type': 'int',   'default': 40, 'min': 5, 'max': 60,
@@ -75,7 +78,8 @@ class Fps(_indicator._Indicator):
 
     def __init__(self, df, symbol="", trend_min_pct=90.0, min_trends=1, base_weeks=8,
                  base_depth_pct=25.0, near_high_pct=15.0, record_weeks=520,
-                 breakout_pct=0.5, require_uptrend=True, confirm_weeks=2,
+                 breakout_pct=0.5, require_uptrend=True, entry_mode='breakout',
+                 confirm_weeks=2,
                  trend_sma_weeks=40, stop_pct=12.0, trail_pct=0.0,
                  target_pct=80.0, benchmark='^SPX', color_base='#7CB518'):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
@@ -84,7 +88,8 @@ class Fps(_indicator._Indicator):
             trend_min_pct=trend_min_pct, min_trends=min_trends, base_weeks=base_weeks,
             base_depth_pct=base_depth_pct, near_high_pct=near_high_pct,
             record_weeks=record_weeks, breakout_pct=breakout_pct,
-            require_uptrend=require_uptrend, confirm_weeks=confirm_weeks,
+            require_uptrend=require_uptrend, entry_mode=entry_mode,
+            confirm_weeks=confirm_weeks,
             trend_sma_weeks=trend_sma_weeks, stop_pct=stop_pct, trail_pct=trail_pct,
             target_pct=target_pct, benchmark=benchmark,
         )

@@ -91,6 +91,18 @@ DEFAULTS: dict = {
                                # below it would open a position that is already
                                # due for the exit
     'slope_weeks':     8,      # lookback for "the trend average is rising"
+    'entry_mode':      'breakout',  # what triggers the entry:
+                               #   'breakout'    close above the base high (the
+                               #                 method as described)
+                               #   'record_high' close above the record window high
+                               #                 — no base required
+                               #   'new_high'    close above the 52-week high
+                               #   'both'        breakout OR record high
+                               # Measured over 656 index members since 2015 (same
+                               # exit, same filters): breakout PF 2.41 / +12.6 % p.a.,
+                               # record_high PF 2.59 / +14.5 %, new_high PF 2.52 /
+                               # +14.4 %, both PF 2.55. Only 861 of ~3000 entries
+                               # overlap, so the modes find largely different trades.
     # Phase 4 — confirmation / position management
     'confirm_weeks':   2,      # weeks above the breakout level before "confirmed"
     'trend_sma_weeks': 40,     # weekly trend average (exit + confirmation filter).
@@ -495,6 +507,10 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     base_low = _to_daily(lv['base_low'], daily.index, 'W-FRI').fillna(0.0)
     base_len = _to_daily(lv['base_len'], daily.index, 'W-FRI').fillna(0.0)
     base_near = _to_daily(near_high.astype(float), daily.index, 'W-FRI').fillna(0.0) > 0
+    # Trigger-Level der basislosen Einstiege (aus abgeschlossenen Wochen)
+    high_52w = weekly['High'].rolling(52, min_periods=20).max()
+    record_daily = _to_daily(record_high, daily.index, 'W-FRI')
+    high52_daily = _to_daily(high_52w, daily.index, 'W-FRI')
     trend_sma = _to_daily(sma_w, daily.index, 'W-FRI')
     vol_flag = _to_daily(vol_ok.astype(float), daily.index, 'W-FRI').fillna(1.0) > 0
     slope_flag = _to_daily(slope_up.astype(float), daily.index, 'W-FRI').fillna(0.0) > 0
@@ -523,6 +539,9 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     vk = vol_flag.to_numpy(dtype=bool)
     sl = slope_flag.to_numpy(dtype=bool)
     need_up = bool(p['require_uptrend'])
+    mode = str(p.get('entry_mode', 'breakout') or 'breakout')
+    rec = record_daily.to_numpy(dtype=float)
+    h52 = high52_daily.to_numpy(dtype=float)
     n = len(c)
 
     phase = np.zeros(n)
@@ -582,12 +601,27 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
         # The uptrend filter mirrors the exit rule: no entry below/against the
         # weekly trend average the position would immediately be sold on.
         trend_ok = (not need_up) or (not np.isnan(sw[i]) and price > sw[i] and sl[i])
-        if hb[i] and price > bh[i] * buf and vk[i] and trend_ok:
-            level = bh[i]
-            stop = max(bl[i], level * (1.0 - float(p['stop_pct']) / 100.0))
+        breakout_fires = hb[i] and price > bh[i] * buf and vk[i] and trend_ok
+        # Basislose Einstiege: ein neues Hoch IST der Ausbruch. Sie brauchen
+        # weiterhin die bewaehrte Historie (Phase 1) und den steigenden Trend,
+        # nur eben keine vorherige Seitwaertsbasis — genau die Trends, die nie
+        # eine enge Basis bilden, waren sonst unerreichbar.
+        _hi = rec[i] if mode in ('record_high', 'both') else h52[i]
+        high_fires = (mode != 'breakout' and qz[i] and trend_ok
+                      and not np.isnan(_hi) and _hi > 0 and price > _hi)
+        if mode == 'breakout':
+            high_fires = False
+        elif mode in ('record_high', 'new_high'):
+            breakout_fires = False
+
+        if breakout_fires or high_fires:
+            level = bh[i] if breakout_fires else price
+            stop = max(bl[i] if breakout_fires else 0.0,
+                       level * (1.0 - float(p['stop_pct']) / 100.0))
             target = price * (1.0 + float(p['target_pct']) / 100.0)
             peak = price
-            pos_low, pos_len = bl[i], blen[i]
+            pos_low = bl[i] if breakout_fires else 0.0
+            pos_len = blen[i] if breakout_fires else 0.0
             in_pos, confirmed, days_above = True, False, 0
             breakout[i] = 1.0
             buy[i] = price
@@ -595,8 +629,8 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
             stop_col[i] = stop
             target_col[i] = target
             act_high[i] = level
-            act_low[i] = bl[i]
-            act_len[i] = blen[i]
+            act_low[i] = pos_low
+            act_len[i] = pos_len
         elif hb[i]:
             phase[i] = 2.0
             act_high[i] = bh[i]
@@ -667,8 +701,17 @@ def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None 
         gaps = []
     base_high = float(last['fps_base_high'])
     phase = int(last['fps_phase'])
-    # Distance to the trigger: positive = still below the breakout level
-    to_break = ((base_high / price - 1.0) * 100.0) if base_high > 0 and phase <= 2 else 0.0
+    # Distance to the trigger: positive = still below it. Without a base the
+    # trigger of the base-less modes is the record / 52-week high, so the column
+    # keeps its meaning there instead of silently reading 0.
+    trigger = base_high
+    if trigger <= 0 and str(p.get('entry_mode', 'breakout')) != 'breakout':
+        weekly = _bars(daily, 'W-FRI')
+        win = int(p['record_weeks']) if p['entry_mode'] in ('record_high', 'both') else 52
+        ref = weekly['High'].rolling(win, min_periods=20).max()
+        if len(ref) > 1 and not pd.isna(ref.iloc[-2]):
+            trigger = float(ref.iloc[-2])          # letzte ABGESCHLOSSENE Woche
+    to_break = ((trigger / price - 1.0) * 100.0) if trigger > 0 and phase <= 2 else 0.0
 
     buys = fps['fps_buy'].dropna()
     sells = fps['fps_sell'].dropna()

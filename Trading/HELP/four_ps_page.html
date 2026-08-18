@@ -190,6 +190,33 @@ sind je Position gerechnet (Signal zu Signal), nicht als Portfolio mit begrenzte
 Längere Haltedauern binden Kapital — mit <code>num_assets</code> kann die Reihenfolge der
 Varianten anders ausfallen.</div>
 
+<h2>Einstiegs-Auslöser</h2>
+<p>Der Artikel kauft den <b>Ausbruch aus der Basis</b>. Gemessen über 656 Indexmitglieder seit
+2015 (gleicher Ausstieg, gleiche Filter) gibt es ebenbürtige bis bessere Auslöser — wählbar
+über den Parameter <code>entry_mode</code> bzw. im Expander <b>⚙ Parameter der Methode</b>:</p>
+<table>
+<tr><th>Auslöser</th><th>Trades</th><th>Treffer</th><th>Ø</th><th>PF</th><th>p.&nbsp;a.</th></tr>
+<tr><td>Basis-Ausbruch (Standard)</td><td>3.560</td><td>41,2 %</td><td>+6,5 %</td><td>2,41</td><td>+12,6 %</td></tr>
+<tr><td><b>Neues Rekordhoch</b></td><td>3.053</td><td>42,3 %</td><td>+7,8 %</td><td><b>2,59</b></td><td><b>+14,5 %</b></td></tr>
+<tr><td>Neues 52-Wochen-Hoch</td><td>4.175</td><td>41,3 %</td><td>+7,5 %</td><td>2,52</td><td>+14,4 %</td></tr>
+<tr><td>Ausbruch <b>oder</b> Rekordhoch</td><td>3.762</td><td>41,0 %</td><td>+7,2 %</td><td>2,55</td><td>+13,9 %</td></tr>
+<tr><td>Rücklauf an das gebrochene Niveau</td><td>3.830</td><td>40,1 %</td><td>+6,2 %</td><td>2,39</td><td>+12,7 %</td></tr>
+<tr><td>Rückeroberung des SMA</td><td>6.855</td><td>18,6 %</td><td>+1,4 %</td><td>1,87</td><td>+11,2 %</td></tr>
+<tr><td>Rücksetzer an den SMA</td><td>11.023</td><td>21,1 %</td><td>+1,8 %</td><td>2,03</td><td>+12,0 %</td></tr>
+</table>
+<p><b>Neue Hochs zu kaufen ist der stärkste Auslöser</b> — in allen drei Teilperioden und beiden
+Regionen besser als der Basis-Ausbruch. Der Grund: ein Wert, der durchmarschiert, bildet nie die
+enge Basis, die Phase 2 verlangt, und bliebe sonst unerreichbar. Nur 861 von rund 3.000 Einsätzen
+sind bei beiden Arten identisch. <b>Auf Rücksetzer zu warten lohnt nicht</b>: dreimal so viele
+Trades, Trefferquote um 20 %, kurze Haltedauer — das ist eine andere Strategie.</p>
+
+<div class="info"><b>Legs sind Rückschau, Signale sind es nicht.</b> Die Schübe im Monatschart
+stehen erst fest, wenn die Gegenbewegung sie bestätigt — bei Waters (WAT) wurde der Schub
+10/2023 → 01/2025 (+74 %) erst im Juli 2025 bei 288,76 bestätigt, also 30 % unter dem Hoch und
+ein halbes Jahr später. Ein Kauf am Leg-Anfang ist deshalb unmöglich; die Marker im Monatschart
+(✕ = Bestätigung, Dreiecke = Signale) machen den Abstand sichtbar. Bei WAT kaufte der
+Basis-Ausbruch 11/2024 zu 387, das Rekordhoch-Signal hätte schon 02/2024 zu 338 gekauft.</div>
+
 <h2>Datenqualität: Brüche in der Kursreihe</h2>
 <p>Die Methode rechnet über Jahrzehnte — ein <b>Stufensprung</b> in der lokalen Kursreihe
 verfälscht deshalb alles: Rekordhoch, Zickzack-Schübe, 52-Wochen-Rendite und in der Folge
