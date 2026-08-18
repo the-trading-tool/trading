@@ -1039,3 +1039,37 @@ koennen also gar nicht auf Leg-Enden liegen — sonst waeren sie Rueckschau.
   Bestaetigungspunkt jedes Legs, dazu eine Bildunterschrift, die den Unterschied benennt.
 - Wie nah der Einstieg an den Leg-Anfang rueckt, haengt am `entry_mode`: bei WAT kaufte
   `breakout` 11/2024 zu 387, `new_high` schon 02/2024 zu 338 (Leg-Start 10/2023 bei 238).
+
+### 4PS: Wie viel eines Legs die Signale wirklich mitnehmen (2026-08-18)
+
+Einwand: „Wenn die Legs Rueckschau sind, dann sollten die Buy-Signale dazu passen."
+Gemessen ueber 1010 qualifizierte Legs (>= 90 %) seit 2015, ALLE Trades im Leg verkettet:
+
+| Einstieg | Legs mit Kauf | Kaeufe/Leg | mitgenommen (Median) | Anteil am Leg |
+|---|---|---|---|---|
+| breakout | 76,3 % | 3,9 | +25,3 % | 7,4 % |
+| record_high | 76,5 % | 3,5 | +21,2 % | 5,8 % |
+| **new_high** | **90,6 %** | 3,9 | +28,7 % | 10,3 % |
+| both | 78,6 % | 4,0 | +27,0 % | 8,0 % |
+
+**Der Massstab „Anteil am ganzen Leg" ist unfair** (Korrektur meiner ersten Deutung, der
+Ausstieg sei die Hauptursache): ein Leg wird ab seinem TIEF gemessen, die Methode kauft
+aber bewusst Staerke. Von einem Median-Leg von 236 % sind ab dem ersten moeglichen
+Einstieg nur noch **114 %** offen — die untere Haelfte ist strukturell unerreichbar.
+Am offenen Teil gemessen (250 SPX-Werte, Einstieg new_high):
+
+| Ausstieg | Anteil am offenen Teil | oberes Viertel | PF | p. a. | Haltedauer |
+|---|---|---|---|---|---|
+| SMA40 (Default) | 19,9 % | 44,7 % | 2,57 | +14,2 % | 193 d |
+| **SMA60** | **26,7 %** | 46,9 % | **3,20** | **+15,9 %** | 272 d |
+| nur Trail 25 % | — | — | 3,27 | +13,5 % | 395 d |
+| SMA40 + Trail 25 % | — | — | 2,52 | +13,9 % | 191 d |
+
+Also: **rund die Haelfte der Luecke ist strukturell** (Kauf bei Staerke), die andere
+Haelfte haengt am Ausstieg und ist verbesserbar. Ein reiner 25-%-Trailing-Stop (= die
+Zickzack-Definition) hebt den PF, kostet aber p. a., weil Kapital 395 Tage gebunden ist.
+Kein Default geaendert — die Messung ist ^SPX-only mit einem Einstiegsmodus.
+
+**Chart:** Der Monatschart zeigt die tatsaechlich gehaltenen Abschnitte als dicke gruene
+Auflage auf der Kurve (`fps.lg_held`), dazu Signale und Bestaetigungspunkte. Damit ist im
+Bild sichtbar, welcher Teil eines Legs im Depot lag und welcher nicht.

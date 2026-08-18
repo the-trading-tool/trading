@@ -340,6 +340,27 @@ class FourPsPage:
                 text=['', f"{leg['gain']:.0f} %"], textposition='top center',
                 textfont=dict(color='#2E7D32' if qualified else '#90A4AE', size=12),
                 hovertemplate=f"{leg['gain']:.0f} %<extra></extra>"))
+        # Gehaltene Abschnitte: macht sichtbar, welchen Teil der Kurve die
+        # Methode tatsaechlich im Depot hatte — der Rest des Legs lag entweder
+        # vor dem ersten moeglichen Einstieg oder nach dem Trendbruch.
+        held_x, held_y = [], []
+        b_all = res['frame']['fps_buy'].dropna()
+        s_all = res['frame']['fps_sell'].dropna()
+        mo_ts = monthly.index.to_timestamp()
+        for bd in b_all.index:
+            later = s_all[s_all.index > bd]
+            sd = later.index[0] if len(later) else res['frame'].index[-1]
+            mask = (mo_ts >= bd) & (mo_ts <= sd)
+            if mask.sum() < 1:
+                continue
+            held_x += list(mo_ts[mask]) + [None]
+            held_y += list(monthly['Close'][mask]) + [None]
+        if held_x:
+            fig.add_trace(go.Scatter(
+                x=held_x, y=held_y, mode='lines', name=t('fps.lg_held'),
+                line=dict(color='#2E7D32', width=6), opacity=0.35,
+                connectgaps=False, hoverinfo='skip'))
+
         # Bestaetigungspunkte: erst hier war der Schub ueberhaupt bekannt
         conf_x, conf_y = [], []
         for leg in legs:
