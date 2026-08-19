@@ -187,6 +187,117 @@ def detect_price_gaps(daily, since: str = '2015-01-01') -> list:
     return out
 
 
+# Tabellen, die ein Level-Shift betrifft, und ob sie ueblicherweise schon
+# bereinigt sind. h60/min werden beim Nachladen von Yahoo frisch und bereits
+# angepasst geliefert -- day/month nicht, weil dort nur angehaengt wird.
+_OHLC_COLS = ('Open', 'High', 'Low', 'Close')
+_ADJUST_TABLES = ('day_data', 'week_data', 'month_data', 'min_data')
+
+
+def derive_split_factor(ticker: str, gap_date, db_path: str = 'database'):
+    """Split-Faktor aus dem Ueberlapp von Tages- und Stundendaten ableiten.
+
+    Warum nicht einfach das Sprungverhaeltnis nehmen: das enthaelt neben dem
+    Split auch die echte Tagesbewegung. Die Stundenreihe dagegen ist nach einem
+    Nachladen bereits bereinigt, also liefert ``h60_close / day_close`` auf
+    denselben Vor-Split-Tagen den reinen Faktor -- gemessen an BYND ueber 16
+    Tage: Median 30,22 bei 0,37 Streuung, also ein Reverse Split 1:30.
+
+    Gibt ``(faktor, quelle, n_tage)`` zurueck; ``faktor`` ist None, wenn sich
+    nichts ableiten laesst. Ein Wert nahe an einem gaengigen Verhaeltnis wird
+    darauf gerundet -- Splits sind glatte Zahlen.
+    """
+    p = Tools().get_path(path=db_path, file_name=f'yf_{ticker}.db')
+    try:
+        with open_db(p, readonly=True) as conn:
+            day = pd.read_sql_query(
+                'SELECT DATE(Date) d, Close FROM day_data WHERE DATE(Date) < ? '
+                'ORDER BY d DESC LIMIT 30', conn, params=(str(gap_date)[:10],))
+            h60 = pd.read_sql_query(
+                'SELECT DATE(Date) d, Close FROM h60_data WHERE DATE(Date) < ? '
+                'ORDER BY Date', conn, params=(str(gap_date)[:10],))
+    except Exception:
+        logger.debug('derive_split_factor: %s nicht lesbar', ticker, exc_info=True)
+        return None, 'keine Daten', 0
+    if day.empty or h60.empty:
+        return None, 'kein Stunden-Ueberlapp', 0
+    last = h60.groupby('d')['Close'].last().rename('h')
+    m = day.set_index('d').join(last, how='inner')
+    m = m[(m['Close'] > 0) & (m['h'] > 0)]
+    if len(m) < 3:
+        return None, 'kein Stunden-Ueberlapp', len(m)
+    raw = float((m['h'] / m['Close']).median())
+    # Nur ein Faktor, der auf ein gaengiges Split-Verhaeltnis passt, wird
+    # zurueckgegeben. Alles andere ist KEIN Faktor, sondern ein Hinweis, dass
+    # die Methode hier nicht traegt -- und das muss der Aufrufer merken, statt
+    # eine krumme Zahl anzuwenden. Gemessen ueber die betroffenen Ticker:
+    # bei TBIO, JZ, MVIS, CANG liegt der Rohwert bei ~1,0 (Stunden- und
+    # Tagesreihe stehen auf derselben Skala, der Sprung ist also entweder echt
+    # oder beide Tabellen sind gleich falsch), bei FFAI bei 152, waehrend der
+    # Tagessprung 106 sagt -- widerspruechlich, also unbrauchbar.
+    if abs(raw - 1.0) < 0.1:
+        return None, f'Stundendaten auf gleicher Skala (roh {raw:.3f})', len(m)
+    for n in _SPLIT_RATIOS:
+        if abs(raw - n) / n < 0.06:
+            return float(n), f'Stundendaten ({len(m)} Tage, roh {raw:.2f})', len(m)
+        if abs(raw - 1.0 / n) * n < 0.06:
+            return 1.0 / n, f'Stundendaten ({len(m)} Tage, roh {raw:.4f})', len(m)
+    return None, f'kein glattes Verhaeltnis (roh {raw:.2f})', len(m)
+
+
+def apply_split_adjustment(ticker: str, gap_date, factor: float,
+                           db_path: str = 'database', dry_run: bool = True) -> dict:
+    """Kurse VOR ``gap_date`` mit ``factor`` multiplizieren, Volumen teilen.
+
+    Fuer den Fall, dass die Quelle den Split nicht rueckwirkend einrechnet --
+    bei BYND liefert Yahoo selbst auf den Vor-Split-Tagen unbereinigte Werte,
+    ``Adj Close`` eingeschlossen. ``get_asset_data.py 1d:max`` kann das deshalb
+    nicht heilen: es holt genau die unbereinigte Reihe erneut.
+
+    ``dry_run=True`` (Vorgabe) zaehlt nur. Der Aufrufer muss den Faktor selbst
+    bestimmen (siehe :func:`derive_split_factor`) -- die Funktion raet nicht.
+
+    **Nicht mehrfach anwenden.** Ein zweiter Lauf wuerde erneut skalieren; die
+    Absicherung ist der Aufrufer, der vorher :func:`detect_price_gaps` prueft.
+    """
+    if not factor or factor <= 0:
+        return {'ticker': ticker, 'error': 'ungueltiger Faktor'}
+    cut = str(gap_date)[:10]
+    out = {'ticker': ticker, 'factor': factor, 'before': cut,
+           'dry_run': dry_run, 'tables': {}}
+    p = Tools().get_path(path=db_path, file_name=f'yf_{ticker}.db')
+    try:
+        with open_db(p) as conn:
+            have = {r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
+            for tbl in _ADJUST_TABLES:
+                if tbl not in have:
+                    continue
+                cols = {r[1] for r in conn.execute(f'PRAGMA table_info({tbl})')}
+                price = [c for c in _OHLC_COLS if c in cols]
+                if not price:
+                    continue
+                n = conn.execute(
+                    f'SELECT COUNT(*) FROM {tbl} WHERE DATE(Date) < ?',
+                    (cut,)).fetchone()[0]
+                out['tables'][tbl] = n
+                if dry_run or not n:
+                    continue
+                sets = ", ".join(f'{c} = {c} * ?' for c in price)
+                params = [factor] * len(price)
+                if 'Volume' in cols:
+                    sets += ', Volume = CAST(Volume / ? AS INTEGER)'
+                    params.append(factor)
+                conn.execute(f'UPDATE {tbl} SET {sets} WHERE DATE(Date) < ?',
+                             (*params, cut))
+            if not dry_run:
+                conn.commit()
+    except Exception as exc:
+        logger.warning('apply_split_adjustment %s: %s', ticker, exc, exc_info=True)
+        out['error'] = str(exc)
+    return out
+
+
 def scan_price_gaps(tickers, db_path: str = 'database', since: str = '2015-01-01'):
     """Wie :func:`detect_price_gaps`, aber über viele Ticker aus den lokalen DBs."""
     from tradinglib import four_ps as fps          # lazy: reiner OHLC-Leser
@@ -362,6 +473,48 @@ def _cli_gaps(index_arg: str, since: str) -> None:
     print('\n'.join(build_cleanup_commands(sorted(df['ticker'].unique()))))
 
 
+def _cli_fix_splits(tickers_arg: str, since: str, apply: bool) -> None:
+    """`/fix_splits`-Modus: Level-Shifts lokal ausgleichen.
+
+    Nur fuer den Fall, dass die QUELLE den Split nicht rueckwirkend einrechnet.
+    Bei BYND liefert Yahoo selbst auf den Vor-Split-Tagen unbereinigte Werte
+    (Adj Close = Close = 0,418), deshalb heilt ein erneutes `1d:max` dort nichts.
+
+    Der Faktor kommt aus dem Ueberlapp mit den Stundendaten, nicht aus dem
+    Sprungverhaeltnis -- letzteres enthaelt auch die echte Tagesbewegung. Ohne
+    `/apply` wird nur gezaehlt.
+    """
+    from tradinglib import four_ps as fps
+    tickers = [t.strip() for t in (tickers_arg or '').split(',') if t.strip()]
+    if not tickers:
+        logger.error('Bitte /tickers:A,B,C angeben.')
+        return
+    for tk in tickers:
+        try:
+            gaps = detect_price_gaps(fps.load_daily(tk, 'database'), since=since)
+        except Exception as exc:
+            print(f'{tk}: nicht lesbar ({exc})')
+            continue
+        if not gaps:
+            print(f'{tk}: kein Stufensprung')
+            continue
+        gap = gaps[-1]
+        factor, src, _n = derive_split_factor(tk, gap['date'])
+        head = f"{tk}: Sprung {gap['date']:%Y-%m-%d} Faktor {gap['factor']:.2f}"
+        if not factor:
+            print(f'{head} -> KEIN Faktor ableitbar ({src}) -- nicht angefasst')
+            continue
+        res = apply_split_adjustment(tk, gap['date'], factor, dry_run=not apply)
+        rows = sum(res.get('tables', {}).values())
+        what = 'angepasst' if apply else 'wuerden angepasst'
+        print(f'{head} -> Faktor {factor:g} aus {src}; {rows} Zeilen {what}')
+        if apply:
+            rest = detect_price_gaps(fps.load_daily(tk, 'database'), since=since)
+            print(f'   Kontrolle: {"kein Sprung mehr" if not rest else rest}')
+    if not apply:
+        print('\nTrockenlauf. Mit /apply schreiben.')
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
     year = ''
@@ -369,6 +522,9 @@ if __name__ == '__main__':
     gaps = False
     gap_index = ''
     since = '2015-01-01'
+    fix_splits = False
+    apply_fix = False
+    tickers_arg = ''
     for a in sys.argv[1:]:
         s = a.lstrip('/').lower()
         if s == 'all':
@@ -381,6 +537,15 @@ if __name__ == '__main__':
             gap_index = a.split(':', 1)[1]
         elif s.startswith('since:'):
             since = a.split(':', 1)[1]
+        elif s == 'fix_splits':
+            fix_splits = True
+        elif s == 'apply':
+            apply_fix = True
+        elif s.startswith('tickers:'):
+            tickers_arg = a.split(':', 1)[1]
+    if fix_splits:
+        _cli_fix_splits(tickers_arg, since, apply_fix)
+        sys.exit(0)
     if gaps:
         _cli_gaps(gap_index, since)
         sys.exit(0)
