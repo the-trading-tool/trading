@@ -108,8 +108,11 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   the step is skipped and the Level and Distance columns disappear.</td></tr>
 <tr><td>Universe</td><td>Empty = every name with simulation data. Multiple selections allowed.</td></tr>
 <tr><td>Pre-sort by</td><td>Metric used to rank before the expensive measurement.</td></tr>
-<tr><td>Prefilter</td><td>The SQL condition. Combine terms with <code>&amp;</code>, each in
-  parentheses.</td></tr>
+<tr><td>Prefilter</td><td>The SQL condition, <b>one per line</b>. Within a line combine
+  terms with <code>&amp;</code>, each in parentheses.</td></tr>
+<tr><td>Conditions over (bars)</td><td>1 = every line must hold on the same (most recent) day.
+  Larger = each line may have been met within that many <b>trading days</b>; the signal carries
+  the day the last one fell into place.</td></tr>
 <tr><td>Minimum sector strength</td><td>Mansfield RSC of the sector ETF. 0 = every sector with
   a positive reading.</td></tr>
 <tr><td>Beats its own sector</td><td>Switches the relative-strength step off entirely. Off
@@ -158,6 +161,14 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <li><b>Short is mirrored but not equivalent.</b> 4PS has no falling trend, so only the
   structural measure applies there; and the signal path is long-only, so the only
   agreement available is the long strategy having exited.</li>
+<li><b>A window deliberately loosens things.</b> A condition keeps counting even if it has
+  since turned false again — the meaning is "the setup happened, then the trigger came", not
+  "everything holds at once". For MDT on 3 June the EWO crossover of 28 May carried the signal
+  although it no longer held that day. The larger the window, the weaker the statement: measured
+  on the example formula, 0 hits at 1 bar, 29 at 3, 113 at 5, 613 at 10 and 2180 at 20.</li>
+<li><b>Bars are trading days with real coverage.</b> Weekends sit in the table with 11 to 36
+  rows (crypto and FX trade through) and do not count — otherwise a 5-bar window would waste two
+  slots on the weekend.</li>
 <li><b>The most recent day is often incomplete.</b> While the simulation run is still going,
   only a few hundred tickers exist for today. The page therefore takes the most recent row per
   ticker from the last ten days, not the most recent day overall.</li>

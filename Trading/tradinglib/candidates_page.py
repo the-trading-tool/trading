@@ -128,8 +128,13 @@ class CandidatesPage:
                     index=(list(cand.RANK_COLUMNS).index(opt['rank_col'])
                            if opt['rank_col'] in cand.RANK_COLUMNS else 0),
                     format_func=_rank_label, help=t('cand.rank_col_help'))
-                prefilter = st.text_area(t('cand.prefilter'), opt['prefilter'],
-                                         height=68, help=t('cand.prefilter_help'))
+                c1, c2 = st.columns([0.8, 0.2])
+                prefilter = c1.text_area(t('cand.prefilter'), opt['prefilter'],
+                                         height=96, help=t('cand.prefilter_help'))
+                prefilter_window = c2.number_input(
+                    t('cand.prefilter_window'), 1, 60,
+                    int(opt.get('prefilter_window') or 1),
+                    help=t('cand.prefilter_window_help'))
 
                 c1, c2, c3 = st.columns(3)
                 use_rotation = c1.checkbox(t('cand.use_rotation'),
@@ -181,6 +186,7 @@ class CandidatesPage:
 
         values = {
             'universe': universe, 'prefilter': prefilter,
+            'prefilter_window': int(prefilter_window),
             'direction': direction, 'trend_mode': trend_mode,
             'retest': retest, 'retest_window': int(retest_window),
             'retest_tol': float(retest_tol), 'retest_lift': float(retest_lift),
@@ -283,6 +289,9 @@ class CandidatesPage:
             t('cand.col_ticker'): df['ticker'].astype(str),
             t('cand.col_name'): [str(x)[:38] for x in df.get('longName', '')],
             t('cand.col_sector'): [str(x)[:22] for x in df.get('sector', '')],
+            t('cand.col_signal_date'): [str(x)[:10] if x else ''
+                                        for x in df.get('signal_date',
+                                                        pd.Series([''] * len(df)))],
             t('cand.col_level'): [t(f'cand.lvl_{k}') if k else ''
                                   for k in df.get('level_test', pd.Series([''] * len(df)))],
             t('cand.col_level_gap'): col('level_gap', 2),

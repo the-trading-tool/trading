@@ -63,6 +63,10 @@ DEFAULTS = {
     'universe': [],            # leer = alle Ticker mit Simulationsdaten
     'direction': 'long',
     'prefilter': DEFAULT_PREFILTER,
+    # 1 = alle Bedingungen auf demselben (juengsten) Balken, wie bisher.
+    # Groesser = jede Zeile der Formel darf innerhalb dieser Zahl von Bars
+    # erfuellt worden sein; das Signal traegt den Tag der letzten.
+    'prefilter_window': 1,
     'trend_mode': 'fps',
     'retest': True,            # Unterstuetzung/Widerstand wird getestet
     'retest_window': 20,       # Bars, ueber die der Test gesucht wird
@@ -155,6 +159,79 @@ def available_columns(db_path: str = 'database') -> list[str]:
         except Exception:
             continue
     return []
+
+
+def _prefilter_window(prefilter, window, db_path='database'):
+    """Bedingungen duerfen auf VERSCHIEDENEN Tagen erfuellt sein.
+
+    Jede Zeile der Formel ist eine eigene Bedingung. Erfuellt heisst: irgendwann
+    innerhalb des Fensters wahr. Das Signal traegt den Tag, an dem die letzte
+    fehlende Bedingung dazukam.
+
+    Der Grund fuer den Umbau steckt in den Daten: bei COP lag der Test der
+    Unterstuetzung am 6. Juli, die EWO-Kreuzung am 7.; bei MDT verteilten sich
+    Support, RSI und EWO auf drei Tage. Auf einen einzigen Balken gezwungen,
+    treffen solche Bedingungen fast nie zusammen -- und je mehr man
+    hinzunimmt, desto unwahrscheinlicher wird es.
+
+    **Bewusste Lockerung:** eine Bedingung zaehlt weiter, auch wenn sie spaeter
+    wieder falsch wird. Gemeint ist "Setup ist passiert, dann kam der
+    Ausloeser", nicht "alles gilt gleichzeitig".
+
+    Gibt (``{ticker: Signaldatum}``, ``[(Bedingung, Trefferzahl)]``) zurueck.
+    """
+    lines = [ln.strip() for ln in str(prefilter).splitlines() if ln.strip()]
+    if not lines:
+        return None, []
+    since = (pd.Timestamp.today() - pd.Timedelta(days=int(window) * 2 + 14)
+             ).strftime('%Y-%m-%d')
+    for db_name in ('asset_simulation_all', 'asset_simulation_', 'asset_simulation'):
+        p = Tools().get_path(path=db_path, file_name=f'{db_name}.db')
+        try:
+            conn = open_db(p, readonly=True)
+        except Exception:
+            continue
+        try:
+            # Handelstage des Fensters. Das Fenster zaehlt Bars, nicht
+            # Kalendertage -- und "Tag" heisst hier: ein Termin mit echter
+            # Abdeckung. Wochenenden stehen mit 11 bis 36 Zeilen in der Tabelle
+            # (Krypto und Devisen handeln durch), Handelstage mit 4000 bis 5500.
+            # Ohne diese Huerde verschenkt ein Fenster von 5 Bars zwei Plaetze
+            # ans Wochenende -- gemessen lieferten 3 und 5 Bars fast dieselbe
+            # Menge, weil dazwischen nur Samstag und Sonntag lagen.
+            counts = conn.execute(
+                'SELECT DATE(Date) d, COUNT(*) n FROM asset_simulation '
+                'WHERE DATE(Date) >= ? GROUP BY d ORDER BY d DESC',
+                (since,)).fetchall()
+            if not counts:
+                continue
+            busy = sorted(n for _d, n in counts)[len(counts) // 2] * 0.25
+            days = [d for d, n in counts if n >= busy][:int(window)]
+            if not days:
+                continue
+            first = min(days)
+            per_cond, stats = [], []
+            for cond in lines:
+                d = pd.read_sql_query(
+                    'SELECT ticker, MAX(DATE(Date)) AS d FROM asset_simulation '
+                    f'WHERE DATE(Date) >= ? AND ({cond}) GROUP BY ticker',
+                    conn, params=(first,))
+                per_cond.append(dict(zip(d['ticker'], d['d'])))
+                stats.append((cond, len(d)))
+            ok = set(per_cond[0])
+            for m in per_cond[1:]:
+                ok &= set(m)
+            hits = {t: max(m[t] for m in per_cond) for t in ok}
+            return hits, stats
+        except Exception as exc:
+            logger.warning("candidates: Fensterprüfung fehlgeschlagen", exc_info=True)
+            raise RuntimeError(str(exc)) from exc
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return None, []
 
 
 def _universe_tickers(groups, db_path='database'):
@@ -371,13 +448,39 @@ def find(username: str, db_path: str = 'database', **kw):
 
     # 1 — Ausgangsmenge, Vorfilter, Universum (jeweils eigene Zeile im Trichter)
     uni = _universe_tickers(opt['universe'], db_path)
-    df, note, n_total = _latest_rows(opt['prefilter'], db_path)
+    win = int(opt.get('prefilter_window') or 1)
+    lines = [ln for ln in str(opt['prefilter']).splitlines() if ln.strip()]
+    hits = cond_stats = None
+    if win > 1 and lines:
+        # Fensterpfad: erst die Ticker bestimmen, dann ihre juengsten Zeilen
+        # holen. Der Vorfilter darf dabei nicht noch einmal als WHERE laufen --
+        # er wurde ja gerade ueber mehrere Tage geprueft.
+        try:
+            hits, cond_stats = _prefilter_window(opt['prefilter'], win, db_path)
+        except RuntimeError as exc:
+            steps.append({'key': 'base', 'label': 'Werte mit Simulationsdaten',
+                          'before': 0, 'after': 0, 'note': str(exc),
+                          'note_key': 'note_error',
+                          'note_args': {'db': 'asset_simulation', 'error': exc}})
+            return pd.DataFrame(), steps
+        df, note, n_total = _latest_rows('', db_path)
+    else:
+        df, note, n_total = _latest_rows(opt['prefilter'], db_path)
     nk, na = note if isinstance(note, tuple) else ('', {})
     _fb = {'source': '{db}, Stand {date}', 'error': '{db}: {error}',
            'no_db': 'keine Simulationsdatenbank gefunden'}.get(nk, '')
     step('base', 'Werte mit Simulationsdaten', n_total, n_total,
          _fb.format(**na) if _fb else '', f'note_{nk}' if nk else '', **na)
-    step('prefilter', 'Vorfilter', n_total, len(df))
+    if hits is not None:
+        before = len(df)
+        df = df[df['ticker'].isin(hits)].copy()
+        df['signal_date'] = df['ticker'].map(hits)
+        detail = "/".join(str(n) for _c, n in cond_stats)
+        step('prefilter', 'Vorfilter', before, len(df),
+             f"{len(lines)} Bedingungen über {win} Bars (je {detail})",
+             'note_window', n=len(lines), win=win, detail=detail)
+    else:
+        step('prefilter', 'Vorfilter', n_total, len(df))
     if df.empty:
         return df.drop(columns=['_rank', '_sec', '_second'], errors='ignore'), steps
     if uni is not None:

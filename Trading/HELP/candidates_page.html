@@ -109,8 +109,11 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   der Schritt entfällt, und die Spalten Level und Abstand verschwinden.</td></tr>
 <tr><td>Universum</td><td>Leer = alle Werte mit Simulationsdaten. Mehrfachauswahl möglich.</td></tr>
 <tr><td>Vorsortierung</td><td>Kennzahl, nach der vor der teuren Messung sortiert wird.</td></tr>
-<tr><td>Vorfilter</td><td>Die SQL-Bedingung. Bedingungen mit <code>&amp;</code> verknüpfen,
-  jede in Klammern.</td></tr>
+<tr><td>Vorfilter</td><td>Die SQL-Bedingung, <b>eine je Zeile</b>. Innerhalb einer Zeile mit
+  <code>&amp;</code> verknüpfen, jede Teilbedingung in Klammern.</td></tr>
+<tr><td>Bedingungen über (Bars)</td><td>1 = alle Zeilen müssen am selben (jüngsten) Tag
+  zutreffen. Größer = jede Zeile darf innerhalb dieser Zahl von <b>Handelstagen</b> erfüllt
+  worden sein; das Signal trägt den Tag, an dem die letzte dazukam.</td></tr>
 <tr><td>Mindest-Sektorstärke</td><td>Mansfield-RSC des Sektor-ETF. 0 = alle Sektoren mit
   positivem Wert.</td></tr>
 <tr><td>Schlägt den eigenen Sektor</td><td>Schaltet den Relativstärke-Schritt ganz ab. Aus
@@ -160,6 +163,15 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <li><b>Short ist gespiegelt, aber nicht gleichwertig.</b> 4PS kennt keinen fallenden
   Trend, dort greift nur das strukturelle Maß; und der Signalpfad ist long-only, sodass
   als Zustimmung lediglich der Ausstieg der Long-Strategie zählt.</li>
+<li><b>Ein Fenster lockert bewusst.</b> Eine Bedingung zählt weiter, auch wenn sie
+  inzwischen wieder falsch ist — gemeint ist „das Setup ist passiert, dann kam der Auslöser“,
+  nicht „alles gilt gleichzeitig“. Bei MDT trug am 3. Juni die EWO-Kreuzung vom 28. Mai, obwohl
+  sie an dem Tag selbst nicht mehr galt. Je größer das Fenster, desto schwächer die Aussage:
+  über die Beispielformel gemessen 0 Treffer bei 1 Bar, 29 bei 3, 113 bei 5, 613 bei 10 und
+  2180 bei 20.</li>
+<li><b>Bars sind Handelstage mit echter Abdeckung.</b> Wochenenden stehen mit 11 bis 36 Zeilen
+  in der Tabelle (Krypto und Devisen handeln durch) und zählen nicht mit — sonst verschenkte
+  ein Fenster von 5 Bars zwei Plätze ans Wochenende.</li>
 <li><b>Der jüngste Tag ist oft unvollständig.</b> Läuft der Simulationslauf noch, stehen für
   heute nur ein paar hundert Ticker in der Datenbank. Die Seite nimmt deshalb je Ticker die
   jüngste Zeile aus den letzten zehn Tagen, nicht den jüngsten Tag insgesamt.</li>

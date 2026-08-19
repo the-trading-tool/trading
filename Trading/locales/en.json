@@ -1822,7 +1822,7 @@
   "cand.rank_col": "Pre-sort by",
   "cand.rank_col_help": "Ranking used before relative strength is measured.",
   "cand.prefilter": "Prefilter (formula)",
-  "cand.prefilter_help": "Runs against asset_simulation. Only stored columns work here — live-only ones such as ovtEma9 do not exist; the signal step at the end checks those.",
+  "cand.prefilter_help": "Runs against asset_simulation. **One condition per line.** With “Conditions over (bars)” = 1 they must all hold on the same day; otherwise it is enough for each to have been true once within the window. Only stored columns work here — live-only ones such as ovtEma9 do not exist; the signal step at the end checks those.",
   "cand.use_rotation": "Only sectors with inflow",
   "cand.use_rotation_help": "Keeps sectors whose ETF shows Mansfield relative strength above the threshold.",
   "cand.min_sector_rsc": "Minimum sector strength",
@@ -1936,5 +1936,9 @@
   "cand.note_signal": "timeframe {tf}, {n} of {total}",
   "cand.prefilter_error": "The prefilter could not be executed: {error}",
   "cand.hint_parens": "The parentheses do not balance: {open}× “(” against {close}× “)”.",
-  "cand.hint_live_only": "`{col}` is not in the simulation data — such columns often exist only live in the chart. Similar names there: {near}"
+  "cand.hint_live_only": "`{col}` is not in the simulation data — such columns often exist only live in the chart. Similar names there: {near}",
+  "cand.prefilter_window": "Conditions over (bars)",
+  "cand.prefilter_window_help": "1 = every condition must hold on the same (most recent) day. Larger = each line of the formula may have been met within that many trading days; the signal carries the day the last one fell into place. Note: a condition keeps counting even if it has since turned false again.",
+  "cand.col_signal_date": "Signal on",
+  "cand.note_window": "{n} conditions over {win} bars ({detail} each)"
 }

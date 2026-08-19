@@ -1822,7 +1822,7 @@
   "cand.rank_col": "Vorsortierung",
   "cand.rank_col_help": "Nach dieser Kennzahl wird vorsortiert, bevor die Relativstärke gemessen wird.",
   "cand.prefilter": "Vorfilter (Formel)",
-  "cand.prefilter_help": "Läuft gegen asset_simulation. Nur dort gespeicherte Spalten sind nutzbar — Live-Spalten wie ovtEma9 gibt es hier nicht; die prüft der Signalschritt am Ende.",
+  "cand.prefilter_help": "Läuft gegen asset_simulation. **Eine Bedingung je Zeile.** Mit „Bedingungen über (Bars)“ = 1 müssen alle am selben Tag zutreffen, sonst genügt es, wenn jede innerhalb des Fensters einmal wahr war. Nur gespeicherte Spalten sind nutzbar — Live-Spalten wie ovtEma9 gibt es hier nicht; die prüft der Signalschritt am Ende.",
   "cand.use_rotation": "Nur Sektoren mit Zufluss",
   "cand.use_rotation_help": "Behält nur Sektoren, deren ETF eine Mansfield-Relativstärke über der Schwelle hat.",
   "cand.min_sector_rsc": "Mindest-Sektorstärke",
@@ -1936,5 +1936,9 @@
   "cand.note_signal": "Zeitebene {tf}, {n} von {total}",
   "cand.prefilter_error": "Der Vorfilter konnte nicht ausgeführt werden: {error}",
   "cand.hint_parens": "Die Klammern gehen nicht auf: {open}× „(“ gegen {close}× „)“.",
-  "cand.hint_live_only": "`{col}` steht nicht in den Simulationsdaten — solche Spalten gibt es oft nur live im Chart. Ähnlich heißen dort: {near}"
+  "cand.hint_live_only": "`{col}` steht nicht in den Simulationsdaten — solche Spalten gibt es oft nur live im Chart. Ähnlich heißen dort: {near}",
+  "cand.prefilter_window": "Bedingungen über (Bars)",
+  "cand.prefilter_window_help": "1 = alle Bedingungen müssen am selben (jüngsten) Tag zutreffen. Größer = jede Zeile der Formel darf innerhalb dieser Zahl von Handelstagen erfüllt worden sein; das Signal trägt den Tag, an dem die letzte dazukam. Achtung: eine Bedingung zählt weiter, auch wenn sie inzwischen wieder falsch ist.",
+  "cand.col_signal_date": "Signal am",
+  "cand.note_window": "{n} Bedingungen über {win} Bars (je {detail})"
 }
