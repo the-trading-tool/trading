@@ -734,6 +734,41 @@ class ExpressionEvaluator():
             raise ValueError(f"Fehler bei Auswertung: {e}")
 
 
+def split_conditions(expression) -> list:
+    """Zerlegt eine (ggf. mehrzeilige) Formel in einzelne Bedingungen.
+
+    Nachsichtig gegenueber den zwei Fallen, die in der Praxis auftraten:
+
+    * **Literales ``\\n``.** Im JSON muessen es die zwei Zeichen Backslash+n
+      sein (ein echter Umbruch im String-Literal ist ein Syntaxfehler), im
+      Textfeld dagegen ein echter Umbruch. Wer die Formel zwischen beiden Orten
+      kopiert, hat prompt die falsche Form -- und bekam bisher nur ein
+      kryptisches "Python keyword not valid identifier in numexpr query".
+    * **Verknuepfung am Zeilenrand.** ``(a) &`` am Ende oder ``& (b)`` am Anfang
+      heisst "gehoert noch zusammen". Solche Zeilen werden zusammengefuegt statt
+      als eigene Bedingung genommen -- als eigene waeren sie kein gueltiger
+      Ausdruck und wuerden die ganze Formel scheitern lassen.
+
+    Gibt die Liste der Bedingungen zurueck (leer, wenn nichts uebrig bleibt).
+    """
+    text = str(expression or '').replace('\\n', '\n')
+    out: list = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        joins_back = line[0] in '&|'
+        continues = bool(out) and out[-1].rstrip().endswith(('&', '|'))
+        if out and (joins_back or continues):
+            out[-1] = f'{out[-1]} {line}'.strip()
+        else:
+            out.append(line)
+    # Eine Verknuepfung am Ende der letzten Zeile hat nichts mehr zum Verbinden.
+    if out:
+        out[-1] = out[-1].rstrip().rstrip('&|').rstrip()
+    return [ln for ln in out if ln]
+
+
 def _window_mask(df: pd.DataFrame, lines: list, group_col: str, window: int) -> pd.Series:
     """Alle Bedingungen erfuellt -- aber nicht zwingend auf demselben Balken.
 
@@ -798,7 +833,7 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
     # Mehrzeilige Bedingung: jede Zeile ist eine eigene Bedingung. Bei Fenster 1
     # bleibt es beim bisherigen Verhalten -- die Zeilen werden schlicht mit '&'
     # verknuepft, was genau der frueheren einzeiligen Schreibweise entspricht.
-    lines = [ln.strip() for ln in str(condition).splitlines() if ln.strip()]
+    lines = split_conditions(condition)
     if len(lines) > 1:
         if int(window or 1) > 1:
             return _window_mask(df, lines, group_col, int(window))

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import pandas as pd
 
-from tradinglib.tools import compute_signal_mask, BuySellSignalGenerator, ExpressionEvaluator
+from tradinglib.tools import compute_signal_mask, BuySellSignalGenerator, ExpressionEvaluator, split_conditions
 
 
 def make_df():
@@ -190,3 +190,36 @@ def test_window_einzeilig_bleibt_einzeilig():
     df = _win_df()
     assert (compute_signal_mask(df, "a > 0", window=5).tolist()
             == compute_signal_mask(df, "a > 0", window=1).tolist())
+
+
+# ---------------------------------------------------------------- Formel-Zerlegung
+def test_split_echte_umbrueche():
+    got = split_conditions("(a > 0)\n(b > 0)\n\n  (c > 0)  ")
+    assert got == ["(a > 0)", "(b > 0)", "(c > 0)"]
+
+
+def test_split_literales_n_wird_umbruch():
+    """Aus dem JSON kopiert: die zwei Zeichen Backslash+n statt eines Umbruchs."""
+    assert split_conditions("(a > 0)\n(b > 0)") == ["(a > 0)", "(b > 0)"]
+
+
+def test_split_verknuepfung_am_zeilenanfang_haengt_an():
+    """'& (b)' am Zeilenanfang gehoert zur vorigen Zeile, ist allein kein Ausdruck."""
+    assert split_conditions("(a > 0)\n& (b > 0)\n(c > 0)") == ["(a > 0) & (b > 0)", "(c > 0)"]
+
+
+def test_split_verknuepfung_am_zeilenende_haengt_an():
+    assert split_conditions("(a > 0) &\n(b > 0)\n(c > 0)") == ["(a > 0) & (b > 0)", "(c > 0)"]
+
+
+def test_split_haengende_verknuepfung_am_ende_faellt_weg():
+    assert split_conditions("(a > 0)\n(b > 0) &") == ["(a > 0)", "(b > 0)"]
+
+
+def test_split_leer():
+    assert split_conditions("") == [] and split_conditions(None) == []
+
+
+def test_split_einzeilig_bleibt_eine_bedingung():
+    q = "(a > 0) & (b > 0) & (c > 0)"
+    assert split_conditions(q) == [q]

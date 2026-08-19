@@ -21,7 +21,7 @@ import logging
 
 import pandas as pd
 
-from tradinglib.tools import Tools, open_db, attach_db
+from tradinglib.tools import Tools, open_db, attach_db, split_conditions
 from tradinglib.utils import display_name_sql
 
 logger = logging.getLogger(__name__)
@@ -194,7 +194,8 @@ def _prefilter_window(prefilter, window, db_path='database'):
 
     Gibt (``{ticker: Signaldatum}``, ``[(Bedingung, Trefferzahl)]``) zurueck.
     """
-    lines = [ln.strip() for ln in str(prefilter).splitlines() if ln.strip()]
+    from tradinglib.tools import split_conditions
+    lines = split_conditions(prefilter)
     if not lines:
         return None, []
     since = (pd.Timestamp.today() - pd.Timedelta(days=int(window) * 2 + 14)
@@ -463,7 +464,7 @@ def find(username: str, db_path: str = 'database', **kw):
     # 1 — Ausgangsmenge, Vorfilter, Universum (jeweils eigene Zeile im Trichter)
     uni = _universe_tickers(opt['universe'], db_path)
     win = int(opt.get('prefilter_window') or 1)
-    lines = [ln for ln in str(opt['prefilter']).splitlines() if ln.strip()]
+    lines = split_conditions(opt['prefilter'])
     hits = cond_stats = None
     if win > 1 and lines:
         # Fensterpfad: erst die Ticker bestimmen, dann ihre juengsten Zeilen
