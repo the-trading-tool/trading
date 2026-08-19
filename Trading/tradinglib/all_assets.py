@@ -184,10 +184,12 @@ class AllAssetsView(tt.TickerTools):
             df = df.sort_values(['Date'], ascending=[True])
 
             try:
-                signal_gen = ass.tools.BuySellSignalGenerator(df=df, 
-                                                    buy_condition=bq_input, 
+                signal_gen = ass.tools.BuySellSignalGenerator(df=df,
+                                                    buy_condition=bq_input,
                                                     sell_condition=sq_input,
-                                                    buy_delay_days = 1)
+                                                    buy_delay_days = 1,
+                                                    signal_window=ass.tools.signal_window(
+                                                        self.username or ''))
 
                 combined_df = signal_gen.apply_signals()
                 portfolio = ass.PortfolioSimulator(data = combined_df, initial_cash=iv_input, max_assets=na_input)

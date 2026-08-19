@@ -680,6 +680,7 @@
   "tp.pos_manual_send": "▶ Send order",
   "tp.pos_empty_symbol": "Symbol must not be empty.",
   "tp.pos_dry_order": "🧪 Dry run: {side} {qty}× {symbol} — no order sent.",
+  "tp.pos_manual_freed": "🔓 Cancelled {n} resting sell order(s) for {symbol} (shares freed).",
   "tp.pos_order_ok": "{side} {qty}× {symbol} submitted (ID: {id}…)",
   "tp.pos_order_error": "Order failed: {error}",
   "tp.hist_sync_btn": "🔄 Sync with Alpaca",

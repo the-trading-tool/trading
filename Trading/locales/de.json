@@ -680,6 +680,7 @@
   "tp.pos_manual_send": "▶ Order senden",
   "tp.pos_empty_symbol": "Symbol darf nicht leer sein.",
   "tp.pos_dry_order": "🧪 Testbetrieb: {side} {qty}× {symbol} — keine Order gesendet.",
+  "tp.pos_manual_freed": "🔓 {n} reservierende Sell-Order(s) für {symbol} storniert (Stücke freigegeben).",
   "tp.pos_order_ok": "{side} {qty}× {symbol} gesendet (ID: {id}…)",
   "tp.pos_order_error": "Order fehlgeschlagen: {error}",
   "tp.hist_sync_btn": "🔄 Mit Alpaca synchronisieren",
