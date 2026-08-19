@@ -424,6 +424,11 @@ def find(username: str, db_path: str = 'database', **kw):
         n_re = int((df['level_test'] == 'retest').sum())
         step('retest', 'Testet Unterstützung/Widerstand', before, len(df),
              f"{n_re}× Re-Test, {len(df) - n_re}× erster Test")
+    elif not opt['retest']:
+        # Abgeschaltet stehenlassen statt die Zeile verschwinden zu lassen --
+        # sonst sieht der Trichter aus, als haette es den Schritt nie gegeben.
+        step('retest', 'Testet Unterstützung/Widerstand', len(df), len(df),
+             'abgeschaltet')
 
     # 4 — Sektor-Rotation: nur Sektoren mit Zufluss
     from tradinglib.sector_stocks import SECTOR_ETF_MAP

@@ -103,8 +103,9 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   support.</td></tr>
 <tr><td>Weekly trend</td><td>4PS phase 3/4, <code>sma50</code> vs <code>sma200</code>,
   or off.</td></tr>
-<tr><td>Level is being tested</td><td>Enables the time-series step. Window, tolerance and
-  "previously away" control what counts as a test.</td></tr>
+<tr><td>Only names testing their level</td><td>Turns the time-series step on and off.
+  Window, tolerance and "previously away" control what counts as a test. Off means off:
+  the step is skipped and the Level and Distance columns disappear.</td></tr>
 <tr><td>Universe</td><td>Empty = every name with simulation data. Multiple selections allowed.</td></tr>
 <tr><td>Pre-sort by</td><td>Metric used to rank before the expensive measurement.</td></tr>
 <tr><td>Prefilter</td><td>The SQL condition. Combine terms with <code>&amp;</code>, each in
