@@ -1948,5 +1948,7 @@
   "cand.trend_fps234": "4PS-Phase 2/3/4 (ab der Basis)",
   "cand.trend_fps12": "4PS-Phase 1/2 (vor dem Ausbruch)",
   "cand.note_trend_fps234": "4PS-Phase 2/3/4",
-  "cand.note_trend_fps12": "4PS-Phase 1/2"
+  "cand.note_trend_fps12": "4PS-Phase 1/2",
+  "sf.signal_window": "Signalfenster (Bars)",
+  "sf.signal_window_help": "Gilt für mehrzeilige Buy-/Sell-Formeln: eine Bedingung je Zeile. 1 = alle müssen auf demselben Balken zutreffen. Größer = jede Zeile darf innerhalb dieser Zahl von Balken erfüllt worden sein. Der Wert gilt für diesen Lauf und für den Optimierer; die globale Einstellung bleibt unberührt."
 }

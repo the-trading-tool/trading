@@ -1948,5 +1948,7 @@
   "cand.trend_fps234": "4PS phase 2/3/4 (from the base onwards)",
   "cand.trend_fps12": "4PS phase 1/2 (before the breakout)",
   "cand.note_trend_fps234": "4PS phase 2/3/4",
-  "cand.note_trend_fps12": "4PS phase 1/2"
+  "cand.note_trend_fps12": "4PS phase 1/2",
+  "sf.signal_window": "Signal window (bars)",
+  "sf.signal_window_help": "Applies to multi-line buy/sell formulas: one condition per line. 1 = all must hold on the same bar. Larger = each line may have been met within that many bars. The value applies to this run and to the optimizer; the global setting is left untouched."
 }
