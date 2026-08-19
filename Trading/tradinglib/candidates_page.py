@@ -219,12 +219,21 @@ class CandidatesPage:
             txt = t(key)
             return s['label'] if txt == key else txt
 
+        def note(s):
+            # Der Rechenkern liefert Schluessel plus deutsche Rueckfallebene.
+            key = s.get('note_key') or ''
+            if not key:
+                return s.get('note', '')
+            full = f'cand.{key}'
+            txt = t(full, **(s.get('note_args') or {}))
+            return s.get('note', '') if txt == full else txt
+
         tbl = pd.DataFrame({
             t('cand.col_step'): [label(s) for s in steps],
             t('cand.col_before'): [s['before'] for s in steps],
             t('cand.col_after'): [s['after'] for s in steps],
             t('cand.col_removed'): [s['before'] - s['after'] for s in steps],
-            t('cand.col_note'): [s['note'] for s in steps],
+            t('cand.col_note'): [note(s) for s in steps],
         })
         st.dataframe(tbl, hide_index=True, use_container_width=True)
 
@@ -274,7 +283,12 @@ class CandidatesPage:
                              on_select='rerun', selection_mode='single-row',
                              key='_cand_table')
         rows = (event.selection.rows if event and getattr(event, 'selection', None) else [])
-        selected = str(df['ticker'].iloc[rows[0]]) if rows else ''
+        # Die Auswahl haengt am Widget-Schluessel und ueberlebt einen neuen Lauf.
+        # Wird die Liste dabei kuerzer -- 13 Treffer, dann einer --, zeigt der
+        # gemerkte Index ins Leere und .iloc wirft "single positional indexer is
+        # out-of-bounds". Deshalb gegen die aktuelle Laenge pruefen.
+        selected = (str(df['ticker'].iloc[rows[0]])
+                    if rows and 0 <= rows[0] < len(df) else '')
 
         c1, c2, c3 = st.columns([0.3, 0.35, 0.35])
         tickers = [str(x) for x in df['ticker']]

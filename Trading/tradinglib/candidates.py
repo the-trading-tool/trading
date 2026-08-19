@@ -210,16 +210,17 @@ def _latest_rows(prefilter, db_path='database', lookback_days=LOOKBACK_DAYS):
                 continue
             df = pd.read_sql_query(q, conn, params=(since,))
             df = df.drop(columns=['_rn'], errors='ignore')
-            newest = str(df['Date'].max())[:10] if not df.empty and 'Date' in df.columns                 else max_date
-            return df, f"{db_name}.db, Stand {newest}", n_total
+            newest = (str(df['Date'].max())[:10]
+                      if not df.empty and 'Date' in df.columns else max_date)
+            return df, ('source', {'db': f'{db_name}.db', 'date': newest}), n_total
         except Exception as exc:
-            return pd.DataFrame(), f"{db_name}.db: {exc}", 0
+            return pd.DataFrame(), ('error', {'db': f'{db_name}.db', 'error': exc}), 0
         finally:
             try:
                 conn.close()
             except Exception:
                 pass
-    return pd.DataFrame(), "keine Simulationsdatenbank gefunden", 0
+    return pd.DataFrame(), ('no_db', {}), 0
 
 
 def _level_test(tickers, direction, db_path='database', window=20,
@@ -334,9 +335,12 @@ def find(username: str, db_path: str = 'database', **kw):
     # Schluessel + deutsche Beschriftung nebeneinander: der Schluessel ist fuer
     # die Seite (uebersetzbar), die Beschriftung fuer den CLI-/Testlauf, der
     # keine i18n-Schicht hat.
-    def step(key, label, before, after, note=''):
-        steps.append({'key': key, 'label': label,
-                      'before': before, 'after': after, 'note': note})
+    def step(key, label, before, after, note='', note_key='', **note_args):
+        # Die deutsche Notiz bleibt als Rueckfallebene fuer CLI- und Testlaeufe,
+        # die keine i18n-Schicht haben; die Seite bevorzugt note_key/note_args.
+        steps.append({'key': key, 'label': label, 'before': before,
+                      'after': after, 'note': note,
+                      'note_key': note_key, 'note_args': note_args})
 
     # Richtung. `sign` dreht jedes richtungsabhaengige Mass um, statt an jeder
     # Stelle den Vergleich zu spiegeln -- so bleibt "Schwelle" ueberall
@@ -347,7 +351,11 @@ def find(username: str, db_path: str = 'database', **kw):
     # 1 — Ausgangsmenge, Vorfilter, Universum (jeweils eigene Zeile im Trichter)
     uni = _universe_tickers(opt['universe'], db_path)
     df, note, n_total = _latest_rows(opt['prefilter'], db_path)
-    step('base', 'Werte mit Simulationsdaten', n_total, n_total, note)
+    nk, na = note if isinstance(note, tuple) else ('', {})
+    _fb = {'source': '{db}, Stand {date}', 'error': '{db}: {error}',
+           'no_db': 'keine Simulationsdatenbank gefunden'}.get(nk, '')
+    step('base', 'Werte mit Simulationsdaten', n_total, n_total,
+         _fb.format(**na) if _fb else '', f'note_{nk}' if nk else '', **na)
     step('prefilter', 'Vorfilter', n_total, len(df))
     if df.empty:
         return df.drop(columns=['_rank', '_sec', '_second'], errors='ignore'), steps
@@ -385,24 +393,30 @@ def find(username: str, db_path: str = 'database', **kw):
     mode = opt['trend_mode'] if opt['trend_mode'] in TREND_MODES else 'fps'
     if mode != 'off' and not df.empty:
         note = ''
+        nkey = ''
         if mode == 'fps' and direction == 'short':
-            mode, note = 'structure', '4PS kennt keinen fallenden Trend → Struktur'
+            mode = 'structure'
+            note, nkey = ('4PS kennt keinen fallenden Trend → Struktur',
+                          'note_no_short_fps')
         if mode == 'fps' and 'fps_phase' in df.columns:
             mask = pd.to_numeric(df['fps_phase'], errors='coerce') >= 3
-            note = note or '4PS-Phase 3/4'
+            note, nkey = note or '4PS-Phase 3/4', nkey or 'note_trend_fps'
         elif {'sma50', 'sma200'} <= set(df.columns):
             a = pd.to_numeric(df['sma50'], errors='coerce')
             b = pd.to_numeric(df['sma200'], errors='coerce')
             mask = (a > b) if direction == 'long' else (a < b)
+            # Ein Spaltenvergleich liest sich in jeder Sprache gleich -- nur die
+            # Vorbemerkung fuer Short braucht eine Uebersetzung.
             note = note or ('sma50 > sma200' if direction == 'long'
                             else 'sma50 < sma200')
         else:
             mask = None
-            note = 'Spalten fehlen — übersprungen'
+            note, nkey = 'Spalten fehlen — übersprungen', 'note_cols_missing'
         before = len(df)
         if mask is not None:
             df = df[mask.fillna(False)]
-        step('trend', 'Wochentrend passt zur Richtung', before, len(df), note)
+        step('trend', 'Wochentrend passt zur Richtung', before, len(df),
+             note, nkey)
 
     # 3c — Testet das Level? Zeitreihe, aber aus derselben Datenbank.
     #
@@ -423,12 +437,13 @@ def find(username: str, db_path: str = 'database', **kw):
         df = df[df['level_test'] != '']
         n_re = int((df['level_test'] == 'retest').sum())
         step('retest', 'Testet Unterstützung/Widerstand', before, len(df),
-             f"{n_re}× Re-Test, {len(df) - n_re}× erster Test")
+             f"{n_re}× Re-Test, {len(df) - n_re}× erster Test", 'note_retest',
+             retest=n_re, test=len(df) - n_re)
     elif not opt['retest']:
         # Abgeschaltet stehenlassen statt die Zeile verschwinden zu lassen --
         # sonst sieht der Trichter aus, als haette es den Schritt nie gegeben.
         step('retest', 'Testet Unterstützung/Widerstand', len(df), len(df),
-             'abgeschaltet')
+             'abgeschaltet', 'note_off')
 
     # 4 — Sektor-Rotation: nur Sektoren mit Zufluss
     from tradinglib.sector_stocks import SECTOR_ETF_MAP
@@ -447,9 +462,11 @@ def find(username: str, db_path: str = 'database', **kw):
                     if sign * v >= opt['min_sector_rsc']}
             df = df[df['sector_etf'].isin(keep)]
             step('sector', 'Sektor mit Zufluss', before, len(df),
-                 f"{len(keep)} von {len(strength)} Sektoren")
+                 f"{len(keep)} von {len(strength)} Sektoren", 'note_sectors',
+                 n=len(keep), total=len(strength))
         else:
-            step('sector', 'Sektor mit Zufluss', len(df), len(df), 'keine Sektordaten')
+            step('sector', 'Sektor mit Zufluss', len(df), len(df),
+                 'keine Sektordaten', 'note_no_sector_data')
     df['sector_rsc'] = df['sector_etf'].map(strength)
 
     # 5 — Vorauswahl nach Staerke, BEVOR es teuer wird.
@@ -477,7 +494,7 @@ def find(username: str, db_path: str = 'database', **kw):
             df = (df.groupby('sector', group_keys=False, sort=False)
                     .head(quota).head(max(pool, quota)))
         step('pool', 'Vorauswahl nach Stärke', before, len(df),
-             f"sortiert nach {rank_col}")
+             f"sortiert nach {rank_col}", 'note_sorted_by', col=rank_col)
 
     # 6 — Relativstaerke gegen den eigenen Sektor-ETF (braucht Kursreihen).
     #
@@ -494,11 +511,13 @@ def find(username: str, db_path: str = 'database', **kw):
             df = df.dropna(subset=['RSC_vs_ETF'])
             df = df[sign * df['RSC_vs_ETF'] >= opt['min_rsc']]
             step('rsc', 'Schlägt den eigenen Sektor', before, len(df),
-                 '' if direction == 'long' else 'gesucht wird Rückstand')
+                 '' if direction == 'long' else 'gesucht wird Rückstand',
+                 '' if direction == 'long' else 'note_short_lag')
         except Exception:
             logger.warning("candidates: RSC-Anreicherung fehlgeschlagen", exc_info=True)
     elif not opt['use_rsc']:
-        step('rsc', 'Schlägt den eigenen Sektor', len(df), len(df), 'abgeschaltet')
+        step('rsc', 'Schlägt den eigenen Sektor', len(df), len(df),
+             'abgeschaltet', 'note_off')
 
     # 7 — Bestenliste: erst der Sektor, dann der Titel darin.
     # Ohne Relativstaerke ist die zweite Sortierstufe leer -- dann entscheidet
@@ -512,15 +531,15 @@ def find(username: str, db_path: str = 'database', **kw):
                             ascending=[False, False], na_position='last')
         before = len(df)
         mps = int(opt['max_per_sector'] or 0)
-        note = ''
+        note, nkey = '', ''
         if mps:
             df = df.groupby('sector', group_keys=False, sort=False).head(mps)
             df = df.sort_values(['_sec', '_second'],
                                 ascending=[False, False], na_position='last')
-            note = f"höchstens {mps} je Sektor"
+            note, nkey = f"höchstens {mps} je Sektor", 'note_max_per_sector'
         if opt['top_n']:
             df = df.head(int(opt['top_n']))
-        step('best', 'Bestenliste', before, len(df), note)
+        step('best', 'Bestenliste', before, len(df), note, nkey, n=mps)
 
     # 8 — Signal ueber den Live-Pfad, nur noch auf der kurzen Liste
     df['signal'] = None
@@ -560,7 +579,8 @@ def find(username: str, db_path: str = 'database', **kw):
                 label = ('Letztes Signal war ein Einstieg' if direction == 'long'
                          else 'Long-Strategie ist ausgestiegen')
                 step('signal', label, before, len(df),
-                     f"Zeitebene {tf}, {n_hit} von {before}")
+                     f"Zeitebene {tf}, {n_hit} von {before}", 'note_signal',
+                     tf=tf, n=n_hit, total=before)
         except Exception:
             logger.warning("candidates: Signalberechnung fehlgeschlagen", exc_info=True)
 

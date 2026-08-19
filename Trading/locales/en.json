@@ -1919,5 +1919,19 @@
   "cand.lvl_test": "Test",
   "cand.lvl_retest": "Retest",
   "cand.step_trend": "Weekly trend matches the direction",
-  "cand.step_retest": "Tests support/resistance"
+  "cand.step_retest": "Tests support/resistance",
+  "cand.note_source": "{db}, as of {date}",
+  "cand.note_error": "{db}: {error}",
+  "cand.note_no_db": "no simulation database found",
+  "cand.note_sectors": "{n} of {total} sectors",
+  "cand.note_no_sector_data": "no sector data",
+  "cand.note_trend_fps": "4PS phase 3/4",
+  "cand.note_no_short_fps": "4PS has no falling trend → structure",
+  "cand.note_cols_missing": "columns missing — skipped",
+  "cand.note_retest": "{retest}× retest, {test}× first test",
+  "cand.note_off": "switched off",
+  "cand.note_sorted_by": "sorted by {col}",
+  "cand.note_short_lag": "looking for a lag",
+  "cand.note_max_per_sector": "at most {n} per sector",
+  "cand.note_signal": "timeframe {tf}, {n} of {total}"
 }
