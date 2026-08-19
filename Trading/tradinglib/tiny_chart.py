@@ -249,6 +249,22 @@ class tiny_chart(gt.GraphTools):
             indicators.extend(self.add_overlays)
         if not self.add_sub_plots == [] and not self.add_sub_plots == None:
             indicators.extend(self.add_sub_plots)
+        # Was die Buy/Sell-Formeln brauchen, zusaetzlich rechnen -- auch wenn der
+        # Indikator gar nicht angezeigt wird. Sonst haengt es an der Overlay-
+        # Auswahl, ob eine Formel ueberhaupt auswertbar ist: `close < atc_mid_zero`
+        # lief im Chart ins Leere, solange `atc` nicht als Overlay gewaehlt war,
+        # waehrend derselbe Ausdruck ueber den Signalpfad (Own Trades,
+        # Kandidaten) funktionierte -- der leitet die Indikatoren seit jeher aus
+        # den Formeln ab. Gezeichnet wird weiterhin nur, was in add_overlays /
+        # add_sub_plots steht; diese Liste steuert allein die Berechnung.
+        try:
+            from tradinglib.portfolio_analysis import _indicators_for_queries
+            for name in _indicators_for_queries(self.buy_query, self.sell_query):
+                if name not in indicators:
+                    indicators.append(name)
+        except Exception:
+            logger.debug('tiny_chart: Indikatoren aus den Formeln nicht ableitbar',
+                         exc_info=True)
         self.fd = ft.FetchData(database_path='database', tz_info=self.tz_info, indicators=indicators, buy_query=self.buy_query, sell_query=self.sell_query, sys_conf=self.sys_conf)
         (self.df, self.ticker) = self.fd.fetch_data(self.symbol, period=self.period, interval=self.interval, add_current=self.add_current, max_periods=self.max_periods, pips_select=self.pips_select, region=self.region)
 
