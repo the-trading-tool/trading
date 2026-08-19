@@ -30,15 +30,52 @@ logger = logging.getLogger(__name__)
 # die referenziert Live-Only-Spalten und liefe hier auf einen SQL-Fehler.
 # Gemeint ist ein Trichter, kein Signal -- grosszuegig genug, dass nichts
 # Interessantes vorher rausfaellt.
-DEFAULT_PREFILTER = ("(overallValueTrend > 0) & (ewo > ewo_ema) "
-                     "& (relvol_ratio > 0.5)")
+#
+# Der Vorfilter ist jetzt bewusst **richtungsneutral** und schmal: die Richtung
+# kommt aus dem Trendschritt und dem Level-Test, jeder Schritt traegt genau eine
+# Aussage. Zwei Gruende, warum hier weder Momentum noch ein Punktwert steht:
+#
+#   * Momentum widerspricht dem Ruecksetzer. Gemessen: `macd_trend_wk > 0` liess
+#     von 201 Support-Tests 4 uebrig, zusammen mit `sma50 > sma200` keinen.
+#   * `overallValueTrend` ist ein Punktwert von 0 bis 76 (Median 34), kein
+#     vorzeichenbehafteter Trend. `> 0` ist fast wirkungslos (5468 von 5513),
+#     `< 0` trifft 45 Werte -- als Richtungsschalter beides untauglich.
+#
+# Was bleibt, ist eine Qualitaetsschwelle: handelbares Volumen und ein Band
+# zwischen Unterstuetzung und Widerstand, das breit genug ist, damit ein Test
+# des Levels ueberhaupt etwas bedeutet.
+DEFAULT_PREFILTER = ("(relvol_ratio > 0.5) "
+                     "& (sup_resistance / sup_support > 1.03)")
+
+# Richtungen. 'short' spiegelt jeden richtungsabhaengigen Schritt: schwaechste
+# statt staerkste Sektoren, Rueckstand statt Vorsprung, Widerstand statt
+# Unterstuetzung.
+DIRECTIONS = ('long', 'short')
+
+# Wie der Wochentrend geprueft wird.
+#   fps       -- 4PS-Phase 3/4: Einstieg und Halten nur ueber einem STEIGENDEN
+#                40-Wochen-Durchschnitt, ueberlebt einen Ruecksetzer.
+#   structure -- sma50 gegen sma200, das breitere strukturelle Mass.
+#   off       -- kein Trendfilter.
+TREND_MODES = ('fps', 'structure', 'off')
 
 DEFAULTS = {
     'universe': [],            # leer = alle Ticker mit Simulationsdaten
+    'direction': 'long',
     'prefilter': DEFAULT_PREFILTER,
+    'trend_mode': 'fps',
+    'retest': True,            # Unterstuetzung/Widerstand wird getestet
+    'retest_window': 20,       # Bars, ueber die der Test gesucht wird
+    'retest_tol': 1.5,         # % Naehe, die als "am Level" zaehlt
+    'retest_lift': 3.0,        # % Abstand, den der Kurs vorher hatte
     'use_rotation': True,      # nur Sektoren mit Zufluss
     'min_sector_rsc': 0.0,     # Mansfield-RSC des Sektor-ETF
-    'use_rsc': True,           # Relativstaerke ggue. dem eigenen Sektor pruefen
+    # Standardmaessig AUS, und das ist gemessen: ein Wert, der seine
+    # Unterstuetzung testet, liegt fast zwangslaeufig hinter seinem Sektor. In
+    # zwei Durchlaeufen raeumte der Schritt die Liste restlos ab (10 -> 0 und
+    # 5 -> 0). Fuer eine Momentum-Auswahl ist er der nuetzlichste der Kette,
+    # fuer eine Ruecksetzer-Auswahl der schaedlichste.
+    'use_rsc': False,          # Relativstaerke ggue. dem eigenen Sektor pruefen
     'min_rsc': 0.0,            # Outperformance ggue. dem eigenen Sektor-ETF
     'require_isin': False,
     'rank_col': 'overallValueTrend',
@@ -185,6 +222,104 @@ def _latest_rows(prefilter, db_path='database', lookback_days=LOOKBACK_DAYS):
     return pd.DataFrame(), "keine Simulationsdatenbank gefunden", 0
 
 
+def _level_test(tickers, direction, db_path='database', window=20,
+                tol=1.5, lift=3.0):
+    """Wer testet gerade sein Level -- und kommt er von der richtigen Seite?
+
+    Gibt ``{ticker: ('test'|'retest', Abstand in %)}`` zurueck. Long prueft die
+    Unterstuetzung, Short den Widerstand.
+
+    Unterschieden wird zweierlei:
+      * **test**   -- der Kurs laeuft das Level von der richtigen Seite an und
+                      war im Fenster deutlich weiter weg (sonst klebt er nur
+                      seit Wochen daran, was keine Gelegenheit ist),
+      * **retest** -- der Kurs war schon durch das Level hindurch und ist
+                      zurueckgekommen.
+
+    Gelesen wird aus ``asset_simulation`` und nicht aus den Kursreihen: dort
+    stehen ``close`` und ``sup_support``/``sup_resistance`` bereits als
+    Tagesreihe nebeneinander, in einer Abfrage fuer alle Ticker. Damit stammen
+    Level und Kurs aus derselben Quelle wie der Vorfilter -- ein Download je
+    Titel waere teurer und koennte den beiden widersprechen.
+    """
+    out = {}
+    tickers = [t for t in dict.fromkeys(tickers) if t]
+    if not tickers:
+        return out
+    level_col = 'sup_support' if direction == 'long' else 'sup_resistance'
+    # Kalendertage grosszuegiger als Bars, weil die Simulationstabelle Luecken
+    # hat (Wochenenden, unvollstaendige Laeufe).
+    since = (pd.Timestamp.today() - pd.Timedelta(days=int(window) * 2 + 14)
+             ).strftime('%Y-%m-%d')
+    for db_name in ('asset_simulation_all', 'asset_simulation_', 'asset_simulation'):
+        p = Tools().get_path(path=db_path, file_name=f'{db_name}.db')
+        try:
+            conn = open_db(p, readonly=True)
+        except Exception:
+            continue
+        try:
+            ph = ','.join('?' * len(tickers))
+            df = pd.read_sql_query(
+                f"""SELECT ticker, DATE(Date) AS d, close, {level_col} AS lvl
+                    FROM asset_simulation
+                    WHERE ticker IN ({ph}) AND DATE(Date) >= ?
+                    ORDER BY ticker, d""",
+                conn, params=(*tickers, since))
+        except Exception:
+            logger.warning("candidates: Level-Test nicht lesbar", exc_info=True)
+            return out
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if df.empty:
+            continue
+
+        df = df[(df['lvl'] > 0) & df['close'].notna()]
+        # Abstand zum Level in Prozent, vorzeichenbehaftet: positiv = auf der
+        # "sicheren" Seite (long ueber der Unterstuetzung, short unter dem
+        # Widerstand), negativ = durchbrochen.
+        sign = 1.0 if direction == 'long' else -1.0
+        for tk, g in df.groupby('ticker'):
+            g = g.tail(int(window))
+            if len(g) < 3:
+                continue
+            lvl_now = float(g['lvl'].iloc[-1])
+            lvl_then = float(g['lvl'].iloc[0])
+            if lvl_now <= 0 or lvl_then <= 0:
+                continue
+            gap = sign * (g['close'] / g['lvl'] - 1.0) * 100.0
+            now = float(gap.iloc[-1])
+            if abs(now) > tol:
+                continue                      # steht nicht am laufenden Level
+
+            # Beide Zweige werden gegen das EINGEFRORENE Niveau vom
+            # Fensteranfang geprueft, nicht gegen das mitlaufende. Der Grund
+            # steckt in den Daten: ueber ~150.000 Zeilen liegt der Schlusskurs
+            # nur in zwei unter `sup_support`, nie tiefer als 1,21 % -- die
+            # Spalte zieht mit dem Kurs nach. Am laufenden Niveau gemessen sieht
+            # deshalb JEDER stetig fallende Wert aus wie einer, der "seine
+            # Unterstuetzung testet" (nachgerechnet an ABEV: durch 3,00
+            # gefallen, weiter bis -6,7 %, Unterstuetzung von 3,00 auf 2,76
+            # nachgezogen, laufender Abstand +1,45 %). Fuer einen Einstieg ist
+            # das das Gegenteil eines Tests.
+            frozen = sign * (g['close'] / lvl_then - 1.0) * 100.0
+            # Haelt das Level ueberhaupt? Rutscht es im Fenster mit dem Kurs
+            # davon, war es keine Unterstuetzung, sondern eine Spur.
+            level_held = sign * (lvl_now / lvl_then - 1.0) * 100.0 >= -tol
+
+            if float(frozen.iloc[:-1].min()) < -tol:
+                # War durch das damalige Niveau -- zaehlt nur, wenn er auch
+                # wieder dort steht, sonst faellt er bloss weiter.
+                if abs(float(frozen.iloc[-1])) <= tol:
+                    out[tk] = ('retest', round(now, 2))
+            elif level_held and float(gap.iloc[:-1].max()) >= lift:
+                out[tk] = ('test', round(now, 2))
+        return out
+    return out
+
+
 def find(username: str, db_path: str = 'database', **kw):
     """Trichter durchlaufen. Gibt (DataFrame, Schritte) zurueck.
 
@@ -203,20 +338,26 @@ def find(username: str, db_path: str = 'database', **kw):
         steps.append({'key': key, 'label': label,
                       'before': before, 'after': after, 'note': note})
 
+    # Richtung. `sign` dreht jedes richtungsabhaengige Mass um, statt an jeder
+    # Stelle den Vergleich zu spiegeln -- so bleibt "Schwelle" ueberall
+    # "mindestens so viel davon", nur eben Rueckstand statt Vorsprung.
+    direction = opt['direction'] if opt['direction'] in DIRECTIONS else 'long'
+    sign = 1.0 if direction == 'long' else -1.0
+
     # 1 — Ausgangsmenge, Vorfilter, Universum (jeweils eigene Zeile im Trichter)
     uni = _universe_tickers(opt['universe'], db_path)
     df, note, n_total = _latest_rows(opt['prefilter'], db_path)
     step('base', 'Werte mit Simulationsdaten', n_total, n_total, note)
     step('prefilter', 'Vorfilter', n_total, len(df))
     if df.empty:
-        return df, steps
+        return df.drop(columns=['_rank', '_sec', '_second'], errors='ignore'), steps
     if uni is not None:
         before = len(df)
         df = df[df['ticker'].isin(uni)]
         step('universe', 'Universum', before, len(df),
              ", ".join(opt['universe']))
     if df.empty:
-        return df, steps
+        return df.drop(columns=['_rank', '_sec', '_second'], errors='ignore'), steps
 
     # 2 — delistete/umbenannte raus
     try:
@@ -234,6 +375,56 @@ def find(username: str, db_path: str = 'database', **kw):
         df = df[df['isin'].astype(str).str.match(_ISIN_RE, na=False)]
         step('isin', 'ISIN vorhanden', before, len(df))
 
+    # 3b — Wochentrend. Strukturell, nicht als Momentum.
+    #
+    # 4PS-Phase 3/4 heisst: eingestiegen und gehalten ueber einem STEIGENDEN
+    # 40-Wochen-Durchschnitt -- die Phase ueberlebt einen Ruecksetzer, ein
+    # Momentum-Mass nicht. Fuer Short gibt es dazu kein Gegenstueck: `fps_phase
+    # = 0` bedeutet "keine bewaehrte Historie" und nicht "faellt". Deshalb faellt
+    # Short auf das strukturelle Mass zurueck, sichtbar im Trichter.
+    mode = opt['trend_mode'] if opt['trend_mode'] in TREND_MODES else 'fps'
+    if mode != 'off' and not df.empty:
+        note = ''
+        if mode == 'fps' and direction == 'short':
+            mode, note = 'structure', '4PS kennt keinen fallenden Trend → Struktur'
+        if mode == 'fps' and 'fps_phase' in df.columns:
+            mask = pd.to_numeric(df['fps_phase'], errors='coerce') >= 3
+            note = note or '4PS-Phase 3/4'
+        elif {'sma50', 'sma200'} <= set(df.columns):
+            a = pd.to_numeric(df['sma50'], errors='coerce')
+            b = pd.to_numeric(df['sma200'], errors='coerce')
+            mask = (a > b) if direction == 'long' else (a < b)
+            note = note or ('sma50 > sma200' if direction == 'long'
+                            else 'sma50 < sma200')
+        else:
+            mask = None
+            note = 'Spalten fehlen — übersprungen'
+        before = len(df)
+        if mask is not None:
+            df = df[mask.fillna(False)]
+        step('trend', 'Wochentrend passt zur Richtung', before, len(df), note)
+
+    # 3c — Testet das Level? Zeitreihe, aber aus derselben Datenbank.
+    #
+    # Bewusst frueh: der Schritt ist billig (eine Abfrage) und sehr selektiv --
+    # gemessen 201 von 5513. Damit schrumpft die Menge, bevor der teure
+    # Relativstaerke-Schritt Kursreihen laedt.
+    df['level_test'] = ''
+    df['level_gap'] = float('nan')
+    if opt['retest'] and not df.empty:
+        hits = _level_test(df['ticker'].tolist(), direction, db_path,
+                           window=int(opt['retest_window']),
+                           tol=float(opt['retest_tol']),
+                           lift=float(opt['retest_lift']))
+        before = len(df)
+        df['level_test'] = df['ticker'].map(lambda t: (hits.get(t) or ('', 0))[0])
+        df['level_gap'] = df['ticker'].map(
+            lambda t: (hits.get(t) or ('', float('nan')))[1])
+        df = df[df['level_test'] != '']
+        n_re = int((df['level_test'] == 'retest').sum())
+        step('retest', 'Testet Unterstützung/Widerstand', before, len(df),
+             f"{n_re}× Re-Test, {len(df) - n_re}× erster Test")
+
     # 4 — Sektor-Rotation: nur Sektoren mit Zufluss
     from tradinglib.sector_stocks import SECTOR_ETF_MAP
     df['sector_etf'] = df['sector'].map(SECTOR_ETF_MAP)
@@ -246,7 +437,9 @@ def find(username: str, db_path: str = 'database', **kw):
             logger.warning("candidates: Sektorstaerke nicht ermittelbar", exc_info=True)
         if strength:
             before = len(df)
-            keep = {etf for etf, v in strength.items() if v >= opt['min_sector_rsc']}
+            # sign dreht das Mass: long sucht Zufluss, short Abfluss.
+            keep = {etf for etf, v in strength.items()
+                    if sign * v >= opt['min_sector_rsc']}
             df = df[df['sector_etf'].isin(keep)]
             step('sector', 'Sektor mit Zufluss', before, len(df),
                  f"{len(keep)} von {len(strength)} Sektoren")
@@ -264,7 +457,9 @@ def find(username: str, db_path: str = 'database', **kw):
         rank_col = 'overallValueTrend'
     pool = int(opt['pool_n'] or 0)
     if not df.empty and rank_col in df.columns:
-        df = df.sort_values(['sector_rsc', rank_col], ascending=[False, False],
+        df['_rank'] = sign * pd.to_numeric(df[rank_col], errors='coerce')
+        df['_sec'] = sign * pd.to_numeric(df['sector_rsc'], errors='coerce')
+        df = df.sort_values(['_sec', '_rank'], ascending=[False, False],
                             na_position='last')
         before = len(df)
         if pool:
@@ -292,8 +487,9 @@ def find(username: str, db_path: str = 'database', **kw):
             before = len(df)
             df = ss.enrich_with_rsc_multi(df, sector_col='sector_etf', weeks=4)
             df = df.dropna(subset=['RSC_vs_ETF'])
-            df = df[df['RSC_vs_ETF'] >= opt['min_rsc']]
-            step('rsc', 'Schlägt den eigenen Sektor', before, len(df))
+            df = df[sign * df['RSC_vs_ETF'] >= opt['min_rsc']]
+            step('rsc', 'Schlägt den eigenen Sektor', before, len(df),
+                 '' if direction == 'long' else 'gesucht wird Rückstand')
         except Exception:
             logger.warning("candidates: RSC-Anreicherung fehlgeschlagen", exc_info=True)
     elif not opt['use_rsc']:
@@ -303,15 +499,18 @@ def find(username: str, db_path: str = 'database', **kw):
     # Ohne Relativstaerke ist die zweite Sortierstufe leer -- dann entscheidet
     # innerhalb des Sektors die gewaehlte Kennzahl.
     if not df.empty:
-        second = 'RSC_vs_ETF' if opt['use_rsc'] else rank_col
-        df = df.sort_values(['sector_rsc', second],
+        df['_rank'] = sign * pd.to_numeric(df[rank_col], errors='coerce')
+        df['_sec'] = sign * pd.to_numeric(df['sector_rsc'], errors='coerce')
+        df['_second'] = (sign * pd.to_numeric(df['RSC_vs_ETF'], errors='coerce')
+                         if opt['use_rsc'] else df['_rank'])
+        df = df.sort_values(['_sec', '_second'],
                             ascending=[False, False], na_position='last')
         before = len(df)
         mps = int(opt['max_per_sector'] or 0)
         note = ''
         if mps:
             df = df.groupby('sector', group_keys=False, sort=False).head(mps)
-            df = df.sort_values(['sector_rsc', second],
+            df = df.sort_values(['_sec', '_second'],
                                 ascending=[False, False], na_position='last')
             note = f"höchstens {mps} je Sektor"
         if opt['top_n']:
@@ -342,13 +541,22 @@ def find(username: str, db_path: str = 'database', **kw):
                 # ein Einstieg (Strategie ist long), 'reduce' = ausgestiegen
                 # oder gerade flach. Fuer eine Einstiegsliste ist 'reduce' ein
                 # Gegenargument, kein Signal.
+                # Der Signalpfad ist long-only: ein Verkaufsmarker entsteht nur,
+                # solange eine Long-Position offen ist. Fuer Short gibt es
+                # deshalb kein eigenes Einstiegssignal -- als Zustimmung zaehlt,
+                # dass die Long-Strategie ausgestiegen ist ('reduce'). Das ist
+                # ein schwaecheres Argument als ein echtes Short-Signal, und es
+                # steht so im Trichter.
+                want = 'add' if direction == 'long' else 'reduce'
                 before = len(df)
-                n_add = int((df['last_signal'] == 'add').sum())
+                n_hit = int((df['last_signal'] == want).sum())
                 if opt['only_add']:
-                    df = df[df['last_signal'] == 'add']
-                step('signal', 'Letztes Signal war ein Einstieg', before, len(df),
-                     f"Zeitebene {tf}, {n_add} von {before}")
+                    df = df[df['last_signal'] == want]
+                label = ('Letztes Signal war ein Einstieg' if direction == 'long'
+                         else 'Long-Strategie ist ausgestiegen')
+                step('signal', label, before, len(df),
+                     f"Zeitebene {tf}, {n_hit} von {before}")
         except Exception:
             logger.warning("candidates: Signalberechnung fehlgeschlagen", exc_info=True)
 
-    return df, steps
+    return df.drop(columns=['_rank', '_sec', '_second'], errors='ignore'), steps

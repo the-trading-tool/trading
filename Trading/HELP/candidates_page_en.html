@@ -48,8 +48,18 @@ per name, and the live signal path computes one name at a time.</p>
 <tr><td><b>ISIN present</b></td>
   <td>Optional, a rough proxy for orderable.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Weekly trend</b></td>
+  <td>4PS phase 3/4 (entered and held above a <i>rising</i> 40-week average) or
+  <code>sma50</code> vs <code>sma200</code>. Structural, so a pullback does not break
+  it.</td>
+  <td><code>fps_phase</code>, <code>sma50/sma200</code></td></tr>
+<tr><td><b>Level test</b></td>
+  <td>Is the price approaching its support (long) or resistance (short), or has it
+  returned there after a break?</td>
+  <td>daily series from <code>asset_simulation</code></td></tr>
 <tr><td><b>Sector with inflow</b></td>
-  <td>Keeps sectors whose ETF shows relative strength (Mansfield RSC).</td>
+  <td>Keeps sectors whose ETF shows relative strength (Mansfield RSC); for short, those
+  with the strongest outflow.</td>
   <td>sector rotation, same as the dashboard</td></tr>
 <tr><td><b>Pre-selection by strength</b></td>
   <td>The cut before the expensive part, spread evenly over the qualifying sectors.</td>
@@ -88,6 +98,13 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <h2>Settings</h2>
 <table>
 <tr><th>Field</th><th>Meaning</th></tr>
+<tr><td>Direction</td><td>Long or short. Mirrors every direction-dependent step:
+  weakest instead of strongest sectors, lag instead of lead, resistance instead of
+  support.</td></tr>
+<tr><td>Weekly trend</td><td>4PS phase 3/4, <code>sma50</code> vs <code>sma200</code>,
+  or off.</td></tr>
+<tr><td>Level is being tested</td><td>Enables the time-series step. Window, tolerance and
+  "previously away" control what counts as a test.</td></tr>
 <tr><td>Universe</td><td>Empty = every name with simulation data. Multiple selections allowed.</td></tr>
 <tr><td>Pre-sort by</td><td>Metric used to rank before the expensive measurement.</td></tr>
 <tr><td>Prefilter</td><td>The SQL condition. Combine terms with <code>&amp;</code>, each in
@@ -110,6 +127,10 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <h2>Result columns</h2>
 <table>
 <tr><th>Column</th><th>Meaning</th></tr>
+<tr><td>Level</td><td><b>Test</b> = approaching the level from the right side.
+  <b>Retest</b> = was through the level and is back at it.</td></tr>
+<tr><td>Distance %</td><td>Distance to the current level. Positive = on the safe side
+  (long above support, short below resistance).</td></tr>
 <tr><td>Sector strength</td><td>Mansfield RSC of the sector ETF. Identical for every name in a
   sector — it ranks the sectors, not the names.</td></tr>
 <tr><td>vs. sector</td><td>Four-week return minus that of the name's own sector ETF, in
@@ -122,6 +143,20 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 
 <h2>Pitfalls</h2>
 <ul>
+<li><b><code>sup_support</code> is not a fixed level but a trailing floor.</b>
+  Measured across some 150,000 rows: the close sits below it in just <b>two</b>, and
+  never more than 1.21 % below. Two consequences: a formula like
+  <code>close &lt; sup_support*1.008</code> does not find "below support" but "at most
+  0.8 % above it" — and a break has to be measured against the <i>frozen</i> level from
+  the start of the window. Measured against the running one, every steadily falling name
+  would look like one testing its support (checked on ABEV: fell through 3.00, on down to
+  −6.7 %, support trailed to 2.76, running distance +1.45 %).</li>
+<li><b>The tolerance is absolute, not volatility-relative.</b> Low-volatility instruments
+  (bond funds) meet "within 1.5 % of the level" more easily than volatile stocks and are
+  correspondingly over-represented among the retests.</li>
+<li><b>Short is mirrored but not equivalent.</b> 4PS has no falling trend, so only the
+  structural measure applies there; and the signal path is long-only, so the only
+  agreement available is the long strategy having exited.</li>
 <li><b>The most recent day is often incomplete.</b> While the simulation run is still going,
   only a few hundred tickers exist for today. The page therefore takes the most recent row per
   ticker from the last ten days, not the most recent day overall.</li>

@@ -87,6 +87,36 @@ class CandidatesPage:
 
         with st.expander(t('cand.filters'), expanded=True):
             with st.form('_cand_form'):
+                c1, c2 = st.columns([0.5, 0.5])
+                direction = c1.radio(
+                    t('cand.direction'), cand.DIRECTIONS, horizontal=True,
+                    index=(list(cand.DIRECTIONS).index(opt['direction'])
+                           if opt['direction'] in cand.DIRECTIONS else 0),
+                    format_func=lambda d: t(f'cand.dir_{d}'),
+                    help=t('cand.direction_help'))
+                trend_mode = c2.selectbox(
+                    t('cand.trend_mode'), cand.TREND_MODES,
+                    index=(list(cand.TREND_MODES).index(opt['trend_mode'])
+                           if opt['trend_mode'] in cand.TREND_MODES else 0),
+                    format_func=lambda m: t(f'cand.trend_{m}'),
+                    help=t('cand.trend_mode_help'))
+
+                c1, c2, c3, c4 = st.columns(4)
+                retest = c1.checkbox(t('cand.retest'), value=bool(opt['retest']),
+                                     help=t('cand.retest_help'))
+                retest_window = c2.number_input(t('cand.retest_window'), 5, 120,
+                                                int(opt['retest_window']),
+                                                disabled=not retest,
+                                                help=t('cand.retest_window_help'))
+                retest_tol = c3.number_input(t('cand.retest_tol'), 0.1, 15.0,
+                                             float(opt['retest_tol']), step=0.5,
+                                             format='%.1f', disabled=not retest,
+                                             help=t('cand.retest_tol_help'))
+                retest_lift = c4.number_input(t('cand.retest_lift'), 0.0, 50.0,
+                                              float(opt['retest_lift']), step=0.5,
+                                              format='%.1f', disabled=not retest,
+                                              help=t('cand.retest_lift_help'))
+
                 c1, c2 = st.columns([0.55, 0.45])
                 universe = c1.multiselect(t('cand.universe'), ordered,
                                           default=universe,
@@ -149,6 +179,9 @@ class CandidatesPage:
 
         values = {
             'universe': universe, 'prefilter': prefilter,
+            'direction': direction, 'trend_mode': trend_mode,
+            'retest': retest, 'retest_window': int(retest_window),
+            'retest_tol': float(retest_tol), 'retest_lift': float(retest_lift),
             'use_rotation': use_rotation, 'min_sector_rsc': float(min_sector_rsc),
             'use_rsc': use_rsc, 'min_rsc': float(min_rsc),
             'require_isin': require_isin,
@@ -214,6 +247,9 @@ class CandidatesPage:
             t('cand.col_ticker'): df['ticker'].astype(str),
             t('cand.col_name'): [str(x)[:38] for x in df.get('longName', '')],
             t('cand.col_sector'): [str(x)[:22] for x in df.get('sector', '')],
+            t('cand.col_level'): [t(f'cand.lvl_{k}') if k else ''
+                                  for k in df.get('level_test', pd.Series([''] * len(df)))],
+            t('cand.col_level_gap'): col('level_gap', 2),
             t('cand.col_sector_rsc'): col('sector_rsc', 2),
             t('cand.col_vs_sector'): col('RSC_vs_ETF', 1),
             # Spaltenkopf folgt der gewaehlten Vorsortierung -- sonst stuende
@@ -231,7 +267,8 @@ class CandidatesPage:
         # Ticker-Spalte bleibt immer stehen, damit nie eine leere Tabelle
         # entsteht.
         keep = [c for i, c in enumerate(view.columns)
-                if i == 0 or not view[c].isna().all()]
+                if i == 0 or not (view[c].isna().all()
+                                  or (view[c].astype(str).str.strip() == '').all())]
         view = view[keep]
         event = st.dataframe(view, use_container_width=True, hide_index=True,
                              on_select='rerun', selection_mode='single-row',

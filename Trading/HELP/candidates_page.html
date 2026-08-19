@@ -49,8 +49,18 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
 <tr><td><b>ISIN vorhanden</b></td>
   <td>Optional, grobe Näherung für orderbar.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Wochentrend</b></td>
+  <td>4PS-Phase 3/4 (Einstieg und Halten über einem <i>steigenden</i> 40-Wochen-Schnitt)
+  oder <code>sma50</code> gegen <code>sma200</code>. Strukturell, damit ein Rücksetzer
+  ihn nicht aushebelt.</td>
+  <td><code>fps_phase</code>, <code>sma50/sma200</code></td></tr>
+<tr><td><b>Level-Test</b></td>
+  <td>Läuft der Kurs seine Unterstützung (long) bzw. seinen Widerstand (short) an, oder
+  ist er nach einem Bruch dorthin zurückgekehrt?</td>
+  <td>Tagesreihe aus <code>asset_simulation</code></td></tr>
 <tr><td><b>Sektor mit Zufluss</b></td>
-  <td>Behält nur Sektoren, deren ETF relative Stärke zeigt (Mansfield-RSC).</td>
+  <td>Behält nur Sektoren, deren ETF relative Stärke zeigt (Mansfield-RSC); bei Short
+  die mit dem stärksten Abfluss.</td>
   <td>Sektorrotation, wie im Dashboard</td></tr>
 <tr><td><b>Vorauswahl nach Stärke</b></td>
   <td>Kappung vor dem teuren Teil, gleichmäßig auf die zugelassenen Sektoren verteilt.</td>
@@ -89,6 +99,13 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <h2>Einstellungen</h2>
 <table>
 <tr><th>Feld</th><th>Bedeutung</th></tr>
+<tr><td>Richtung</td><td>Long oder Short. Dreht jeden richtungsabhängigen Schritt um:
+  schwächste statt stärkste Sektoren, Rückstand statt Vorsprung, Widerstand statt
+  Unterstützung.</td></tr>
+<tr><td>Wochentrend</td><td>4PS-Phase 3/4, <code>sma50</code> gegen <code>sma200</code>,
+  oder aus.</td></tr>
+<tr><td>Level wird getestet</td><td>Schaltet den Zeitreihen-Schritt ein. Fenster, Toleranz
+  und „vorher entfernt“ steuern, was als Test gilt.</td></tr>
 <tr><td>Universum</td><td>Leer = alle Werte mit Simulationsdaten. Mehrfachauswahl möglich.</td></tr>
 <tr><td>Vorsortierung</td><td>Kennzahl, nach der vor der teuren Messung sortiert wird.</td></tr>
 <tr><td>Vorfilter</td><td>Die SQL-Bedingung. Bedingungen mit <code>&amp;</code> verknüpfen,
@@ -111,6 +128,10 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <h2>Spalten im Ergebnis</h2>
 <table>
 <tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td>Level</td><td><b>Test</b> = läuft das Level von der richtigen Seite an.
+  <b>Re-Test</b> = war durch das Niveau hindurch und steht wieder dort.</td></tr>
+<tr><td>Abstand %</td><td>Abstand zum aktuellen Level. Positiv = auf der sicheren Seite
+  (long über der Unterstützung, short unter dem Widerstand).</td></tr>
 <tr><td>Sektorstärke</td><td>Mansfield-RSC des Sektor-ETF. Gleicher Wert für alle Titel eines
   Sektors — er ordnet die Sektoren, nicht die Titel.</td></tr>
 <tr><td>vs. Sektor</td><td>Vier-Wochen-Rendite abzüglich der des eigenen Sektor-ETF, in
@@ -123,6 +144,21 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 
 <h2>Fallstricke</h2>
 <ul>
+<li><b><code>sup_support</code> ist kein festes Niveau, sondern ein mitlaufender
+  Boden.</b> Nachgemessen über rund 150 000 Zeilen: der Schlusskurs liegt nur in
+  <b>zwei</b> darunter, und nie tiefer als 1,21 %. Zwei Folgen: eine Formel wie
+  <code>close &lt; sup_support*1.008</code> findet nicht „unter der Unterstützung“,
+  sondern „höchstens 0,8 % darüber“ — und ein Bruch muss gegen das <i>eingefrorene</i>
+  Niveau vom Fensteranfang gemessen werden. Am laufenden gemessen sähe jeder stetig
+  fallende Wert aus wie einer, der seinen Support testet (nachgerechnet an ABEV: durch
+  3,00 gefallen, weiter bis −6,7 %, Unterstützung auf 2,76 nachgezogen, laufender
+  Abstand +1,45 %).</li>
+<li><b>Die Toleranz ist absolut, nicht volatilitätsbezogen.</b> Schwankungsarme Papiere
+  (Anleihenfonds) erfüllen „1,5 % am Level“ leichter als volatile Aktien und sind bei
+  den Re-Tests entsprechend überrepräsentiert.</li>
+<li><b>Short ist gespiegelt, aber nicht gleichwertig.</b> 4PS kennt keinen fallenden
+  Trend, dort greift nur das strukturelle Maß; und der Signalpfad ist long-only, sodass
+  als Zustimmung lediglich der Ausstieg der Long-Strategie zählt.</li>
 <li><b>Der jüngste Tag ist oft unvollständig.</b> Läuft der Simulationslauf noch, stehen für
   heute nur ein paar hundert Ticker in der Datenbank. Die Seite nimmt deshalb je Ticker die
   jüngste Zeile aus den letzten zehn Tagen, nicht den jüngsten Tag insgesamt.</li>
