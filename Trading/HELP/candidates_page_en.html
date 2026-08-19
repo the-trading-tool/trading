@@ -101,8 +101,10 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <tr><td>Direction</td><td>Long or short. Mirrors every direction-dependent step:
   weakest instead of strongest sectors, lag instead of lead, resistance instead of
   support.</td></tr>
-<tr><td>Weekly trend</td><td>4PS phase 3/4, <code>sma50</code> vs <code>sma200</code>,
-  or off.</td></tr>
+<tr><td>Weekly trend</td><td>Five ranges: <b>4PS phase 3/4</b> (breakout done), <b>2/3/4</b>
+  (from the tight base onwards), <b>1/2</b> (before the breakout), <code>sma50</code> vs
+  <code>sma200</code>, or off. The 4PS ranges do not apply to short — the method has no falling
+  trend, so it falls back to the structural measure there.</td></tr>
 <tr><td>Only names testing their level</td><td>Turns the time-series step on and off.
   Window, tolerance and "previously away" control what counts as a test. Off means off:
   the step is skipped and the Level and Distance columns disappear.</td></tr>

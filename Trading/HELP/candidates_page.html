@@ -102,8 +102,10 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <tr><td>Richtung</td><td>Long oder Short. Dreht jeden richtungsabhängigen Schritt um:
   schwächste statt stärkste Sektoren, Rückstand statt Vorsprung, Widerstand statt
   Unterstützung.</td></tr>
-<tr><td>Wochentrend</td><td>4PS-Phase 3/4, <code>sma50</code> gegen <code>sma200</code>,
-  oder aus.</td></tr>
+<tr><td>Wochentrend</td><td>Fünf Zuschnitte: <b>4PS-Phase 3/4</b> (Ausbruch vollzogen),
+  <b>2/3/4</b> (ab der engen Basis), <b>1/2</b> (vor dem Ausbruch), <code>sma50</code> gegen
+  <code>sma200</code>, oder aus. Für Short greifen die 4PS-Zuschnitte nicht — die Methode kennt
+  keinen fallenden Trend, dort wird auf das strukturelle Maß zurückgefallen.</td></tr>
 <tr><td>Nur Werte, die ihr Level testen</td><td>Schaltet den Zeitreihen-Schritt ein und
   aus. Fenster, Toleranz und „vorher entfernt“ steuern, was als Test gilt. Aus heißt aus:
   der Schritt entfällt, und die Spalten Level und Abstand verschwinden.</td></tr>

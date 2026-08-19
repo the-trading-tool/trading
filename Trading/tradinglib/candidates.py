@@ -57,7 +57,21 @@ DIRECTIONS = ('long', 'short')
 #                40-Wochen-Durchschnitt, ueberlebt einen Ruecksetzer.
 #   structure -- sma50 gegen sma200, das breitere strukturelle Mass.
 #   off       -- kein Trendfilter.
-TREND_MODES = ('fps', 'structure', 'off')
+# Welche 4PS-Phasen ein Modus zulaesst. Die Phasen sind: 0 = nichts,
+# 1 = bewaehrte Trendhistorie, 2 = enge Basis nahe dem Rekordhoch,
+# 3 = Ausbruch, 4 = bestaetigter Trend.
+#
+# Warum drei Zuschnitte statt einem: 3/4 verlangt den vollzogenen Ausbruch und
+# schliesst damit genau die Ruecksetzer aus, die man kaufen will -- COP stand am
+# Umkehrtag in Phase 2, MDT in Phase 1, beide fielen durch. 2/3/4 nimmt die
+# Basis dazu, 1/2 sucht ausschliesslich das, was den Ausbruch noch vor sich hat.
+FPS_PHASES = {
+    'fps':    (3, 4),
+    'fps234': (2, 3, 4),
+    'fps12':  (1, 2),
+}
+
+TREND_MODES = ('fps', 'fps234', 'fps12', 'structure', 'off')
 
 DEFAULTS = {
     'universe': [],            # leer = alle Ticker mit Simulationsdaten
@@ -518,13 +532,15 @@ def find(username: str, db_path: str = 'database', **kw):
     if mode != 'off' and not df.empty:
         note = ''
         nkey = ''
-        if mode == 'fps' and direction == 'short':
+        if mode in FPS_PHASES and direction == 'short':
             mode = 'structure'
             note, nkey = ('4PS kennt keinen fallenden Trend → Struktur',
                           'note_no_short_fps')
-        if mode == 'fps' and 'fps_phase' in df.columns:
-            mask = pd.to_numeric(df['fps_phase'], errors='coerce') >= 3
-            note, nkey = note or '4PS-Phase 3/4', nkey or 'note_trend_fps'
+        if mode in FPS_PHASES and 'fps_phase' in df.columns:
+            want = FPS_PHASES[mode]
+            mask = pd.to_numeric(df['fps_phase'], errors='coerce').isin(want)
+            label = '4PS-Phase ' + "/".join(str(x) for x in want)
+            note, nkey = note or label, nkey or f'note_trend_{mode}'
         elif {'sma50', 'sma200'} <= set(df.columns):
             a = pd.to_numeric(df['sma50'], errors='coerce')
             b = pd.to_numeric(df['sma200'], errors='coerce')
