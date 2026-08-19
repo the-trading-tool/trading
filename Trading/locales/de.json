@@ -1940,5 +1940,8 @@
   "cand.prefilter_window": "Bedingungen über (Bars)",
   "cand.prefilter_window_help": "1 = alle Bedingungen müssen am selben (jüngsten) Tag zutreffen. Größer = jede Zeile der Formel darf innerhalb dieser Zahl von Handelstagen erfüllt worden sein; das Signal trägt den Tag, an dem die letzte dazukam. Achtung: eine Bedingung zählt weiter, auch wenn sie inzwischen wieder falsch ist.",
   "cand.col_signal_date": "Signal am",
-  "cand.note_window": "{n} Bedingungen über {win} Bars (je {detail})"
+  "cand.note_window": "{n} Bedingungen über {win} Bars (je {detail})",
+  "cfg.signal_window": "Signalfenster (Bars)",
+  "cfg.signal_window_help": "Gilt für mehrzeilige Buy-/Sell-Formeln: eine Bedingung je Zeile. 1 = alle müssen auf demselben Balken zutreffen (bisheriges Verhalten). Größer = jede Zeile darf innerhalb dieser Zahl von Balken erfüllt worden sein; das Signal fällt auf den Balken, an dem die letzte dazukommt. Wirkt auf Chart und Strategy Finder; Multi Strategies überschreibt es je Index über das Feld signal_window im JSON.",
+  "cfg.query_help": "Eine Bedingung je Zeile. Bei einem Signalfenster von 1 werden die Zeilen schlicht mit & verknüpft."
 }

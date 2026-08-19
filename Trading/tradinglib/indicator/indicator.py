@@ -130,7 +130,8 @@ def angle(df):
     angle = np.degrees(np.arctan(slope))
     return angle
 
-def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)', sell_query = '(zcr<0.7)|(ewo<ewo_ema)'):
+def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)',
+             sell_query = '(zcr<0.7)|(ewo<ewo_ema)', signal_window: int = 1):
     """Attach buy_close/sell_close chart markers from the buy/sell queries.
 
     Delegates to the position-aware BuySellSignalGenerator — the same engine
@@ -159,7 +160,8 @@ def buy_sell(df: pd.DataFrame, buy_query = '(zcr>-0.7)&(ewo>ewo_ema)', sell_quer
 
     try:
         gen = tools.BuySellSignalGenerator(
-            df, buy_condition=buy_query, sell_condition=sell_query, buy_delay_days=0)
+            df, buy_condition=buy_query, sell_condition=sell_query, buy_delay_days=0,
+            signal_window=signal_window)
         out = gen.apply_signals()
 
         # apply_signals() does reset_index(drop=True); restore the original

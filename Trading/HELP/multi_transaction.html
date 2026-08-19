@@ -39,6 +39,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><code>stop_loss</code> <small style="color:#888">optional</small></td><td>Harter Stop-Loss in % nur für diesen Index; überschreibt den globalen Wert <code>stop_loss_pct</code> aus den Einstellungen. Verkauft, sobald das Tages-Low <code>Einstand × (1 − %/100)</code> berührt (0 = aus). Deckt Positionen ab, die sonst nie ein Verkaufssignal bekämen.</td></tr>
 <tr><td><code>trailing_stop</code> <small style="color:#888">optional</small></td><td>Trailing-Stop in % unter dem höchsten Close seit Einstieg (zieht mit dem Kurs mit; 0 = aus).</td></tr>
 <tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Beschränkt diesen Index auf Werte mit gültiger ISIN; überschreibt den globalen Schalter.</td></tr>
+<tr><td><code>signal_window</code> <small style="color:#888">optional</small></td><td>Nachleucht-Fenster in Balken für <b>mehrzeilige</b> Buy-/Sell-Formeln: eine Bedingung je Zeile, jede darf innerhalb dieser Zahl von Balken erfüllt worden sein. 1 = alle auf demselben Balken (bisheriges Verhalten). Überschreibt die globale Einstellung „Signalfenster“.<br>Beispiel: <code>'buy': '(close &lt;= sup_support*1.015) &amp; (rsi &lt; 40)
+(ewo &gt; ewo_ema)', 'signal_window': 5</code></td></tr>
 </table>
 
 <h2>Bedienung</h2>

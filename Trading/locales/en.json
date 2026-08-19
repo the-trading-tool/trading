@@ -1940,5 +1940,8 @@
   "cand.prefilter_window": "Conditions over (bars)",
   "cand.prefilter_window_help": "1 = every condition must hold on the same (most recent) day. Larger = each line of the formula may have been met within that many trading days; the signal carries the day the last one fell into place. Note: a condition keeps counting even if it has since turned false again.",
   "cand.col_signal_date": "Signal on",
-  "cand.note_window": "{n} conditions over {win} bars ({detail} each)"
+  "cand.note_window": "{n} conditions over {win} bars ({detail} each)",
+  "cfg.signal_window": "Signal window (bars)",
+  "cfg.signal_window_help": "Applies to multi-line buy/sell formulas: one condition per line. 1 = all must hold on the same bar (previous behaviour). Larger = each line may have been met within that many bars; the signal falls on the bar where the last one arrives. Affects the chart and the Strategy Finder; Multi Strategies overrides it per index via the signal_window field in the JSON.",
+  "cfg.query_help": "One condition per line. With a signal window of 1 the lines are simply combined with &."
 }

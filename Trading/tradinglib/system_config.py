@@ -420,8 +420,18 @@ class SystemConfig(tools.Db_tools):
 
         with tabs[2]:
             self.set_value('multi_transactions', st.text_area(i18n.t("cfg.transactions"), self.get_value('multi_transactions', self.transactions)))
-            self.set_value('buy_query', st.text_input(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)')))
-            self.set_value('sell_query', st.text_input(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)')))
+            self.set_value('buy_query', st.text_area(i18n.t("cfg.buy_query"), self.get_value('buy_query', '(ha_close > ha_open) & (Close > ha_ema_high) & (macd > macd_signal) & (rsi > 50) & (markov_regime < 2)'), height=68, help=i18n.t("cfg.query_help")))
+            self.set_value('sell_query', st.text_area(i18n.t("cfg.sell_query"), self.get_value('sell_query', '(ha_close < ha_open) & (Close < ha_ema_low)'), height=68, help=i18n.t("cfg.query_help")))
+            # Nachleucht-Fenster fuer MEHRZEILIGE Buy/Sell-Formeln: jede Zeile ist
+            # eine eigene Bedingung und darf innerhalb dieser Zahl von Balken
+            # erfuellt worden sein. 1 = aus, also das bisherige Verhalten.
+            try:
+                _sw_default = int(self.get_value('signal_window', 1) or 1)
+            except (TypeError, ValueError):
+                _sw_default = 1
+            self.set_value('signal_window', st.number_input(
+                i18n.t("cfg.signal_window"), min_value=1, max_value=60,
+                value=max(1, _sw_default), step=1, help=i18n.t("cfg.signal_window_help")))
             self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
             self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
             # Globaler harter Stop-Loss in % unter dem Einstandskurs für die Multi-

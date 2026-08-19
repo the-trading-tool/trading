@@ -734,8 +734,49 @@ class ExpressionEvaluator():
             raise ValueError(f"Fehler bei Auswertung: {e}")
 
 
-def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'ticker') -> pd.Series:
+def _window_mask(df: pd.DataFrame, lines: list, group_col: str, window: int) -> pd.Series:
+    """Alle Bedingungen erfuellt -- aber nicht zwingend auf demselben Balken.
+
+    Jede Zeile wird einzeln ausgewertet und dann pro Ticker ueber ``window``
+    Bars "nachleuchten" gelassen: erfuellt heisst "irgendwann in den letzten
+    ``window`` Balken wahr". Wahr ist der Balken, auf dem die letzte fehlende
+    Bedingung dazukommt.
+
+    Hintergrund: auf einen einzigen Balken gezwungen treffen mehrere Bedingungen
+    fast nie zusammen. Gemessen an zwei Praxisfaellen -- COP hatte den Test der
+    Unterstuetzung am 6. Juli und die EWO-Kreuzung am 7., MDT verteilte Support,
+    RSI und EWO auf drei Tage -- lieferte dieselbe dreizeilige Formel bei
+    Fenster 1 null Treffer und bei Fenster 5 die beiden gesuchten Umkehrtage.
+
+    **Bewusste Lockerung:** eine Bedingung zaehlt weiter, auch wenn sie spaeter
+    wieder falsch wird. Gemeint ist "Setup ist passiert, dann kam der
+    Ausloeser", nicht "alles gilt gleichzeitig".
+    """
+    out = None
+    for line in lines:
+        m = compute_signal_mask(df, line, group_col=group_col, window=1)
+        s = m.astype(float)
+        if group_col and group_col in df.columns:
+            # Rolling MUSS pro Ticker laufen, sonst leuchtet ein Signal in den
+            # naechsten Ticker hinein.
+            s = s.groupby(df[group_col]).transform(
+                lambda x: x.rolling(int(window), min_periods=1).max())
+        else:
+            s = s.rolling(int(window), min_periods=1).max()
+        held = s.fillna(0) > 0
+        out = held if out is None else (out & held)
+    return out if out is not None else pd.Series(False, index=df.index)
+
+
+def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'ticker',
+                        window: int = 1) -> pd.Series:
     """Wertet eine Buy/Sell-Bedingung zu einer Bool-Serie aus (auf df.index ausgerichtet).
+
+    ``window`` > 1 zusammen mit einer **mehrzeiligen** Bedingung erlaubt, dass die
+    Zeilen auf verschiedenen Balken erfuellt werden (siehe :func:`_window_mask`).
+    ``window = 1`` ist der Vorgabewert und laesst das Verhalten unveraendert --
+    entscheidend, weil an dieser Funktion Chart, Strategy Finder, All Assets und
+    Multi Strategies gemeinsam haengen.
 
     Geteilte Evaluierungs-Schicht fuer Strategy Finder (BuySellSignalGenerator) und
     Multi Strategies. Die Auswertung erfolgt **pro Ticker-Gruppe** (group_col), damit
@@ -753,6 +794,15 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
     """
     if not condition:
         return pd.Series(False, index=df.index)
+
+    # Mehrzeilige Bedingung: jede Zeile ist eine eigene Bedingung. Bei Fenster 1
+    # bleibt es beim bisherigen Verhalten -- die Zeilen werden schlicht mit '&'
+    # verknuepft, was genau der frueheren einzeiligen Schreibweise entspricht.
+    lines = [ln.strip() for ln in str(condition).splitlines() if ln.strip()]
+    if len(lines) > 1:
+        if int(window or 1) > 1:
+            return _window_mask(df, lines, group_col, int(window))
+        condition = " & ".join(f"({ln})" for ln in lines)
 
     needs_group = bool(re.search(r'\.(rolling|shift|mean)\s*\(|\w\s*\[\s*-?\d+\s*\]', condition))
     if not (needs_group and group_col and group_col in df.columns):
@@ -848,6 +898,21 @@ def excel_download_button(data, button_label, file_name, region=st, lazy=False,
     )
 
 
+def signal_window(username: str = '', db_path: str = 'database') -> int:
+    """Wie viele Bars eine erfuellte Bedingung nachleuchtet (Vorgabe 1 = aus).
+
+    Gilt fuer den Chart des Asset Viewers und den Strategy Finder. Multi
+    Strategies setzt den Wert je Index im JSON (Feld ``signal_window``), damit
+    eine Strategie ihn unabhaengig von der globalen Einstellung fuehren kann.
+    """
+    try:
+        from tradinglib import system_config as _sysconf
+        v = _sysconf.SystemConfig(username=username, db_path=db_path).get_value(
+            'signal_window', 1)
+        return max(1, int(v))
+    except Exception:
+        return 1
+
 class BuySellSignalGenerator:
     # OHLCV columns that may appear in either capitalised (live df) or
     # lowercase (simulation db) form.  We add the missing alias so that
@@ -856,7 +921,8 @@ class BuySellSignalGenerator:
     _OHLCV_PAIRS = [('Close', 'close'), ('Open', 'open'),
                     ('High', 'high'),   ('Low', 'low'), ('Volume', 'volume')]
 
-    def __init__(self, df: pd.DataFrame, buy_condition: str, sell_condition: str, buy_delay_days: int = 0):
+    def __init__(self, df: pd.DataFrame, buy_condition: str, sell_condition: str,
+                 buy_delay_days: int = 0, signal_window: int = 1):
         """Set up the signal generator with buy/sell expressions and an optional entry delay.
 
         OHLCV columns are aliased bidirectionally (Close↔close etc.) so
@@ -878,6 +944,9 @@ class BuySellSignalGenerator:
         self.buy_condition = buy_condition
         self.sell_condition = sell_condition
         self.buy_delay_days = buy_delay_days
+        # > 1 erlaubt mehrzeiligen Bedingungen, auf verschiedenen Balken erfuellt
+        # zu werden. 1 = bisheriges Verhalten.
+        self.signal_window = int(signal_window or 1)
         self.df['buySell'] = 0
 
     def apply_signals(self):
@@ -898,7 +967,8 @@ class BuySellSignalGenerator:
 
         # Step 1: Evaluate buy condition group-wise (shared layer).
         try:
-            buy_mask_global = compute_signal_mask(self.df, self.buy_condition)
+            buy_mask_global = compute_signal_mask(self.df, self.buy_condition,
+                                                  window=self.signal_window)
         except Exception as e:
             logger.error("[BUY-ERROR] %s", e)
             # UI feedback only when a Streamlit context exists (headless-safe).
@@ -937,7 +1007,8 @@ class BuySellSignalGenerator:
         sell_mask_global = None
         if not uses_entry_state:
             try:
-                sell_mask_global = compute_signal_mask(self.df, self.sell_condition)
+                sell_mask_global = compute_signal_mask(self.df, self.sell_condition,
+                                                       window=self.signal_window)
             except Exception:
                 # On any problem fall back completely to the per-row path.
                 sell_mask_global = None

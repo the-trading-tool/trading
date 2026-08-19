@@ -140,3 +140,53 @@ def test_multistrategies_marking_equivalent_rowwise():
     df = make_df()
     buy, sell = "(ewo_angle >= 20)", "(ewo_angle <= -20)"
     assert np.array_equal(_old_marking(df, buy, sell), _new_marking(df, buy, sell))
+
+
+# ---------------------------------------------------------------- Signalfenster
+def _win_df():
+    """Zwei Ticker, je 6 Bars. Bedingung A trifft frueh, B spaet -- nie am
+    selben Balken. Genau der Fall aus der Praxis (COP/MDT)."""
+    return pd.DataFrame({
+        'ticker': ['X'] * 6 + ['Y'] * 6,
+        'Date': list(pd.date_range('2026-01-01', periods=6)) * 2,
+        'a': [1, 0, 0, 0, 0, 0] + [0, 0, 0, 0, 0, 0],
+        'b': [0, 0, 1, 0, 0, 0] + [0, 0, 1, 0, 0, 0],
+    })
+
+
+def test_window_1_unveraendert():
+    """Fenster 1 verknuepft die Zeilen mit & -- identisch zur Einzeiler-Form."""
+    df = _win_df()
+    multi = compute_signal_mask(df, "a > 0\nb > 0", window=1)
+    single = compute_signal_mask(df, "(a > 0) & (b > 0)")
+    assert multi.tolist() == single.tolist()
+    assert not multi.any()          # treffen nie auf demselben Balken zusammen
+
+
+def test_window_verbindet_verschiedene_balken():
+    """Mit Fenster 3 feuert X genau dort, wo beide Bedingungen im Fenster liegen.
+
+    Das Fenster laeuft mit: a trifft auf Bar 0, b auf Bar 2 -- auf Bar 2 deckt
+    das Dreier-Fenster die Bars 0-2 ab, beide sind drin. Auf Bar 3 deckt es die
+    Bars 1-3 ab, a faellt heraus, das Signal endet. Ein Signal haelt also nur so
+    lange, wie alle Bedingungen noch im Fenster liegen.
+    """
+    got = compute_signal_mask(_win_df(), "a > 0\nb > 0", window=3)
+    assert got.tolist()[:6] == [False, False, True, False, False, False]
+    # Y: a nie erfuellt -> kein Signal
+    assert not any(got.tolist()[6:])
+
+
+def test_window_leuchtet_nicht_in_anderen_ticker():
+    """Das Nachleuchten darf die Ticker-Grenze nicht ueberschreiten."""
+    df = _win_df()
+    df.loc[df.ticker == 'Y', 'a'] = [0, 0, 0, 0, 0, 0]
+    got = compute_signal_mask(df, "a > 0\nb > 0", window=6)
+    assert not any(got[df.ticker == 'Y'])
+
+
+def test_window_einzeilig_bleibt_einzeilig():
+    """Eine einzeilige Bedingung ignoriert das Fenster (nichts nachzuleuchten)."""
+    df = _win_df()
+    assert (compute_signal_mask(df, "a > 0", window=5).tolist()
+            == compute_signal_mask(df, "a > 0", window=1).tolist())

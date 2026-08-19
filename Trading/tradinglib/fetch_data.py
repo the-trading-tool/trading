@@ -103,6 +103,12 @@ class FetchData(tt.TickerTools):
         self.tz_info = self.sys_conf.get_value("tz_info", default=tz_info)
         self.system_currency = self.sys_conf.get_value("system_currency", "EUR")
         self.buy_query = buy_query
+        # Nachleucht-Fenster fuer mehrzeilige Buy/Sell-Formeln; 1 = aus.
+        try:
+            from tradinglib.tools import signal_window as _sig_win
+            self.signal_window = _sig_win(getattr(sys_conf, 'username', '') or '')
+        except Exception:
+            self.signal_window = 1
         self.sell_query = sell_query
 
     def load_ticker_data(self, symbol, period='max', interval='1d'):
@@ -522,7 +528,9 @@ class FetchData(tt.TickerTools):
                     pass
 
             try:
-                df = indicator.buy_sell(df,buy_query=self.buy_query,sell_query=self.sell_query)
+                df = indicator.buy_sell(df, buy_query=self.buy_query,
+                                        sell_query=self.sell_query,
+                                        signal_window=self.signal_window)
             except Exception as e:
                 self.logger.error(f"Error {symbol} calculating buy/sell signals: {e}")
                 pass
