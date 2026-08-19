@@ -95,6 +95,9 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   jede in Klammern.</td></tr>
 <tr><td>Mindest-Sektorstärke</td><td>Mansfield-RSC des Sektor-ETF. 0 = alle Sektoren mit
   positivem Wert.</td></tr>
+<tr><td>Schlägt den eigenen Sektor</td><td>Schaltet den Relativstärke-Schritt ganz ab. Aus
+  ist wirklich aus: der Download entfällt, und es fällt niemand mehr wegen fehlender Kursreihe
+  raus. Innerhalb eines Sektors sortiert dann die gewählte Kennzahl.</td></tr>
 <tr><td>Mindest-Vorsprung</td><td>Prozentpunkte, die der Wert über vier Wochen vor seinem
   Sektor-ETF liegen muss.</td></tr>
 <tr><td>Pool für die Messung</td><td>So viele Werte gehen in die Relativstärke-Messung.
@@ -128,6 +131,10 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <li><b>Ein Lauf kostet Zeit</b> (typisch 25–40 Sekunden), fast ausschließlich im
   Relativstärke-Schritt und im Signalpfad. Das Ergebnis bleibt in der Sitzung stehen, bis
   eine Einstellung geändert wird — Sortieren und Auswählen in der Tabelle rechnet nichts neu.</li>
+<li><b>Ein Vorfilter auf Schwäche und der Sektorvergleich widersprechen sich.</b> Wer mit
+  <code>close &lt; sup_support</code> gezielt Rücksetzer sucht, findet Werte, die gerade
+  <i>hinter</i> ihrem Sektor liegen — der Schritt „Schlägt den eigenen Sektor“ räumt sie dann
+  restlos ab. Für solche Filter den Schritt abschalten.</li>
 <li><b>Leeres Ergebnis?</b> Meist ist die Sektorschwelle zu hoch (in einem schwachen Markt
   qualifiziert sich kein Sektor) oder der Vorfilter zu eng. Der Trichter zeigt, welcher
   Schritt zugeschlagen hat.</li>

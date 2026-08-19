@@ -1894,5 +1894,7 @@
   "cand.rank_relvol_ratio": "Relative volume",
   "cand.rank_fps_rs": "4PS relative strength",
   "cand.step_base": "Names with simulation data",
-  "cand.step_universe": "Universe"
+  "cand.step_universe": "Universe",
+  "cand.use_rsc": "Beats its own sector",
+  "cand.use_rsc_help": "Compares every name against its own sector ETF over four weeks. Switched off, the by far most expensive step is skipped — the list is faster, but within a sector it then ranks by the chosen metric alone."
 }

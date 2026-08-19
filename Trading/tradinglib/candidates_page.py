@@ -107,10 +107,15 @@ class CandidatesPage:
                                                  value=float(opt['min_sector_rsc']),
                                                  step=0.5, format='%.1f',
                                                  help=t('cand.min_sector_rsc_help'))
-                min_rsc = c3.number_input(t('cand.min_rsc'),
-                                          value=float(opt['min_rsc']),
-                                          step=1.0, format='%.1f',
-                                          help=t('cand.min_rsc_help'))
+                with c3:
+                    use_rsc = st.checkbox(t('cand.use_rsc'),
+                                          value=bool(opt['use_rsc']),
+                                          help=t('cand.use_rsc_help'))
+                    min_rsc = st.number_input(t('cand.min_rsc'),
+                                              value=float(opt['min_rsc']),
+                                              step=1.0, format='%.1f',
+                                              disabled=not use_rsc,
+                                              help=t('cand.min_rsc_help'))
 
                 c1, c2, c3, c4 = st.columns(4)
                 pool_n = c1.number_input(t('cand.pool_n'), 10, 400,
@@ -145,7 +150,8 @@ class CandidatesPage:
         values = {
             'universe': universe, 'prefilter': prefilter,
             'use_rotation': use_rotation, 'min_sector_rsc': float(min_sector_rsc),
-            'min_rsc': float(min_rsc), 'require_isin': require_isin,
+            'use_rsc': use_rsc, 'min_rsc': float(min_rsc),
+            'require_isin': require_isin,
             'rank_col': rank_col, 'pool_n': int(pool_n),
             'max_per_sector': int(max_per_sector), 'top_n': int(top_n),
             'with_signal': with_signal, 'only_add': only_add,
@@ -220,6 +226,13 @@ class CandidatesPage:
                 df.get('last_signal', pd.Series([None] * len(df))),
                 df.get('last_signal_date', pd.Series([None] * len(df))))],
         })
+        # Abgeschaltete Schritte hinterlassen leere Spalten (ohne Rotation gibt
+        # es keine Sektorstaerke, ohne Relativstaerke keinen Vorsprung). Die
+        # Ticker-Spalte bleibt immer stehen, damit nie eine leere Tabelle
+        # entsteht.
+        keep = [c for i, c in enumerate(view.columns)
+                if i == 0 or not view[c].isna().all()]
+        view = view[keep]
         event = st.dataframe(view, use_container_width=True, hide_index=True,
                              on_select='rerun', selection_mode='single-row',
                              key='_cand_table')

@@ -94,6 +94,9 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   parentheses.</td></tr>
 <tr><td>Minimum sector strength</td><td>Mansfield RSC of the sector ETF. 0 = every sector with
   a positive reading.</td></tr>
+<tr><td>Beats its own sector</td><td>Switches the relative-strength step off entirely. Off
+  means off: the download is skipped and nothing is dropped for a missing price series. Within
+  a sector the chosen metric then does the ranking.</td></tr>
 <tr><td>Minimum lead</td><td>Percentage points by which the name must beat its sector ETF over
   four weeks.</td></tr>
 <tr><td>Pool for the measurement</td><td>How many names enter the relative-strength step.
@@ -127,6 +130,10 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <li><b>A run costs time</b> (typically 25–40 seconds), almost entirely in the relative-strength
   step and the signal path. The result stays in the session until a setting changes — sorting
   and selecting in the table recomputes nothing.</li>
+<li><b>A weakness-seeking prefilter and the sector comparison contradict each other.</b>
+  Hunting pullbacks with <code>close &lt; sup_support</code> finds names currently <i>behind</i>
+  their sector — the "beats its own sector" step then removes every one of them. Switch that
+  step off for such filters.</li>
 <li><b>Empty result?</b> Usually the sector threshold is too high (in a weak market no sector
   qualifies) or the prefilter too narrow. The funnel shows which step did it.</li>
 </ul>

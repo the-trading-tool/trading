@@ -38,6 +38,7 @@ DEFAULTS = {
     'prefilter': DEFAULT_PREFILTER,
     'use_rotation': True,      # nur Sektoren mit Zufluss
     'min_sector_rsc': 0.0,     # Mansfield-RSC des Sektor-ETF
+    'use_rsc': True,           # Relativstaerke ggue. dem eigenen Sektor pruefen
     'min_rsc': 0.0,            # Outperformance ggue. dem eigenen Sektor-ETF
     'require_isin': False,
     'rank_col': 'overallValueTrend',
@@ -278,9 +279,14 @@ def find(username: str, db_path: str = 'database', **kw):
         step('pool', 'Vorauswahl nach Stärke', before, len(df),
              f"sortiert nach {rank_col}")
 
-    # 6 — Relativstaerke gegen den eigenen Sektor-ETF (braucht Kursreihen)
+    # 6 — Relativstaerke gegen den eigenen Sektor-ETF (braucht Kursreihen).
+    #
+    # Ganz abschaltbar, nicht nur ueber die Schwelle: eine sehr negative Schwelle
+    # laesst zwar jeden durch, wirft aber weiterhin alles ohne ladbare Kursreihe
+    # raus und laedt trotzdem. Aus ist hier also wirklich aus -- und der mit
+    # Abstand teuerste Schritt entfaellt.
     df['RSC_vs_ETF'] = float('nan')
-    if not df.empty:
+    if opt['use_rsc'] and not df.empty:
         try:
             from tradinglib import sector_stocks as ss
             before = len(df)
@@ -290,17 +296,22 @@ def find(username: str, db_path: str = 'database', **kw):
             step('rsc', 'Schlägt den eigenen Sektor', before, len(df))
         except Exception:
             logger.warning("candidates: RSC-Anreicherung fehlgeschlagen", exc_info=True)
+    elif not opt['use_rsc']:
+        step('rsc', 'Schlägt den eigenen Sektor', len(df), len(df), 'abgeschaltet')
 
-    # 7 — Bestenliste: erst der Sektor, dann der Titel darin
+    # 7 — Bestenliste: erst der Sektor, dann der Titel darin.
+    # Ohne Relativstaerke ist die zweite Sortierstufe leer -- dann entscheidet
+    # innerhalb des Sektors die gewaehlte Kennzahl.
     if not df.empty:
-        df = df.sort_values(['sector_rsc', 'RSC_vs_ETF'],
+        second = 'RSC_vs_ETF' if opt['use_rsc'] else rank_col
+        df = df.sort_values(['sector_rsc', second],
                             ascending=[False, False], na_position='last')
         before = len(df)
         mps = int(opt['max_per_sector'] or 0)
         note = ''
         if mps:
             df = df.groupby('sector', group_keys=False, sort=False).head(mps)
-            df = df.sort_values(['sector_rsc', 'RSC_vs_ETF'],
+            df = df.sort_values(['sector_rsc', second],
                                 ascending=[False, False], na_position='last')
             note = f"höchstens {mps} je Sektor"
         if opt['top_n']:

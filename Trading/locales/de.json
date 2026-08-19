@@ -1894,5 +1894,7 @@
   "cand.rank_relvol_ratio": "Relatives Volumen",
   "cand.rank_fps_rs": "4PS-Relativstärke",
   "cand.step_base": "Werte mit Simulationsdaten",
-  "cand.step_universe": "Universum"
+  "cand.step_universe": "Universum",
+  "cand.use_rsc": "Schlägt den eigenen Sektor",
+  "cand.use_rsc_help": "Vergleicht jeden Wert über vier Wochen mit seinem eigenen Sektor-ETF. Abgeschaltet entfällt der mit Abstand teuerste Schritt — die Liste wird schneller, aber sie sortiert innerhalb des Sektors dann nur noch nach der gewählten Kennzahl."
 }
