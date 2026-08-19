@@ -39,7 +39,11 @@ INDICATOR_BACKFILL_MAP: dict = {
     'hor':     ['hor_val', 'hor_threshold'],
     'sup':     ['sup_support', 'sup_resistance'],
     'relvol':  ['relvol_ratio', 'relvol_direction'],
-    'atc':     ['atc_top_high', 'atc_bot_low'],
+    # atc_mid_zero ist die Mittellinie des Null-Steigungs-Kanals -- das Niveau,
+    # um das der Kurs pendelt, wenn man den Trend herausrechnet. Als Spalte hier,
+    # damit Buy/Sell-Formeln sie auch im Backtest und in der Kandidatensuche
+    # verwenden koennen; live lag sie ohnehin schon vor.
+    'atc':     ['atc_top_high', 'atc_bot_low', 'atc_mid_zero'],
     # 4 Phase Sequence — phases, base levels and signals (tradinglib/four_ps.py).
     # The indicator reloads the full local daily history itself, so /backfill:fps
     # yields the same values as a full init run.
@@ -760,6 +764,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         moRelVolDir = DataUtils.safe_last(df_monthly, 'relvol_direction', default=0)
         atc_top_high = DataUtils.safe_last(df, 'atc_top_high', default=0)
         atc_bot_low = DataUtils.safe_last(df, 'atc_bot_low', default=0)
+        atc_mid_zero = DataUtils.safe_last(df, 'atc_mid_zero', default=0)
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
         cci = DataUtils.safe_last(df, 'cci', default=0)
         adx = DataUtils.safe_last(df, 'adx', default=0)
@@ -790,6 +795,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['close'] = close
         pdict['atc_top_high'] = atc_top_high
         pdict['atc_bot_low'] = atc_bot_low
+        pdict['atc_mid_zero'] = atc_mid_zero
         pdict['rsi'] = rsi
         pdict['cci'] = cci
         pdict['adx'] = adx
