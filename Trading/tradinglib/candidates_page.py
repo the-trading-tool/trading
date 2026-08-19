@@ -11,8 +11,10 @@ abschalten oder verschieben. Gerechnet wird in :mod:`tradinglib.candidates`.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import logging
+import re
 from urllib.parse import quote
 
 import pandas as pd
@@ -204,8 +206,33 @@ class CandidatesPage:
         if not res:
             st.info(t('cand.no_run_yet'))
             return
+        self._prefilter_error(res['steps'])
         self._funnel(res['steps'])
         self._table(res['df'], res.get('opt') or {})
+
+    def _prefilter_error(self, steps: list):
+        """Scheitert die Formel, endet der Trichter sofort -- die SQLite-Meldung
+        stand dann nur klein in der Hinweisspalte, oft unterhalb des
+        Bildschirms. Sie gehoert nach oben, mitsamt einem brauchbaren Tipp."""
+        first = steps[0] if steps else {}
+        if first.get('note_key') != 'note_error':
+            return
+        err = str((first.get('note_args') or {}).get('error', ''))
+        # Der SQLite-Text steckt hinter der eingebetteten Abfrage.
+        short = err.rsplit("':", 1)[-1].strip() or err
+        st.error(t('cand.prefilter_error', error=short))
+
+        if 'incomplete input' in short or 'unrecognized token' in short:
+            f = (st.session_state.get(_STATE_KEY, {}).get('opt') or {}).get('prefilter', '')
+            st.info(t('cand.hint_parens', open=f.count('('), close=f.count(')')))
+        m = re.search(r'no such column:\s*([\w.]+)', short)
+        if m:
+            missing = m.group(1)
+            near = difflib.get_close_matches(missing.split('.')[-1],
+                                             cand.available_columns(self.db_path),
+                                             n=5, cutoff=0.4)
+            st.info(t('cand.hint_live_only', col=missing,
+                      near=", ".join(near) if near else "—"))
 
     def _funnel(self, steps: list):
         if not steps:

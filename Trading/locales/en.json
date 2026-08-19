@@ -1933,5 +1933,8 @@
   "cand.note_sorted_by": "sorted by {col}",
   "cand.note_short_lag": "looking for a lag",
   "cand.note_max_per_sector": "at most {n} per sector",
-  "cand.note_signal": "timeframe {tf}, {n} of {total}"
+  "cand.note_signal": "timeframe {tf}, {n} of {total}",
+  "cand.prefilter_error": "The prefilter could not be executed: {error}",
+  "cand.hint_parens": "The parentheses do not balance: {open}× “(” against {close}× “)”.",
+  "cand.hint_live_only": "`{col}` is not in the simulation data — such columns often exist only live in the chart. Similar names there: {near}"
 }

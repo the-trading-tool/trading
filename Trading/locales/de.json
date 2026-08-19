@@ -1933,5 +1933,8 @@
   "cand.note_sorted_by": "sortiert nach {col}",
   "cand.note_short_lag": "gesucht wird Rückstand",
   "cand.note_max_per_sector": "höchstens {n} je Sektor",
-  "cand.note_signal": "Zeitebene {tf}, {n} von {total}"
+  "cand.note_signal": "Zeitebene {tf}, {n} von {total}",
+  "cand.prefilter_error": "Der Vorfilter konnte nicht ausgeführt werden: {error}",
+  "cand.hint_parens": "Die Klammern gehen nicht auf: {open}× „(“ gegen {close}× „)“.",
+  "cand.hint_live_only": "`{col}` steht nicht in den Simulationsdaten — solche Spalten gibt es oft nur live im Chart. Ähnlich heißen dort: {near}"
 }

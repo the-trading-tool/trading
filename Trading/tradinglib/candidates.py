@@ -136,6 +136,27 @@ def universe_options(db_path: str = 'database') -> list[str]:
         return []
 
 
+def available_columns(db_path: str = 'database') -> list[str]:
+    """Spalten, die der Vorfilter verwenden darf.
+
+    Gedacht fuer die Fehlermeldung: nennt SQLite eine unbekannte Spalte, ist die
+    Antwort fast immer "die gibt es nur live". Mit der echten Liste kann die
+    Seite gleich die naechstliegenden Treffer vorschlagen, statt den Nutzer
+    raten zu lassen.
+    """
+    for db_name in ('asset_simulation_all', 'asset_simulation_', 'asset_simulation'):
+        try:
+            p = Tools().get_path(path=db_path, file_name=f'{db_name}.db')
+            with open_db(p, readonly=True) as conn:
+                cols = [r[1] for r in conn.execute(
+                    'PRAGMA table_info(asset_simulation)')]
+            if cols:
+                return sorted(cols)
+        except Exception:
+            continue
+    return []
+
+
 def _universe_tickers(groups, db_path='database'):
     if not groups:
         return None                      # kein Filter
