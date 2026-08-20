@@ -186,6 +186,26 @@ def _render_panel(group: str, data: dict, region) -> None:
             help=t('fund.percentile_help'))})
 
 
+def _render_method(region) -> None:
+    """Formula reference for every metric the tab can show.
+
+    Rows are generated from the registry rather than hand-listed, so a metric
+    added to the engine cannot silently end up undocumented.
+    """
+    rows = []
+    for key, (group, _unit, higher) in fu.METRICS.items():
+        rows.append({
+            t('fund.col_group'): t(f'fund.group_{group}'),
+            t('fund.col_metric'): t(f'fund.m_{key}'),
+            t('fund.col_formula'): t(f'fund.f_{key}'),
+            t('fund.col_source'): t(f'fund.src_{fu.METRIC_SOURCE.get(key, "stmt")}'),
+            t('fund.col_better'): t('fund.better_high') if higher else t('fund.better_low'),
+        })
+    region.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+    region.caption(t('fund.method_fallbacks'))
+    region.caption(t('fund.method_sources'))
+
+
 def _render_piotroski(data: dict, region) -> None:
     score, maximum, checks = data['piotroski']
     if not maximum:
@@ -322,5 +342,9 @@ def render(ticker: str, region=st) -> None:
             if val_hist[key].notna().any():
                 _plot(col, _band_chart(val_hist[key], label))
         region.caption(t('fund.bands_note'))
+
+    region.divider()
+    with region.expander(t('fund.method_header'), expanded=False):
+        _render_method(st)
 
     region.caption(t('fund.disclaimer'))

@@ -112,6 +112,31 @@ METRICS: dict[str, tuple[str, str, bool]] = {
 # table are already on the Trend and Kennzahlen tabs — a second, worse copy of the
 # technical view does not belong in a fundamental one.
 
+# Where each metric's inputs come from — rendered in the method reference so a
+# reader can tell a four-year statement figure from a Yahoo TTM snapshot.
+#   'stmt' annual statements only · 'ttm' Yahoo TTM column only
+#   'both' statement with a TTM fallback (or the two combined)
+#   'mix'  market figure against a statement figure — the currency-sensitive ones
+# Keep in step with metrics(): if a metric changes its source, change it here.
+METRIC_SOURCE: dict[str, str] = {
+    'cash_to_debt': 'both', 'equity_to_asset': 'stmt', 'debt_to_equity': 'both',
+    'debt_to_ebitda': 'both', 'interest_coverage': 'stmt', 'altman_z': 'mix',
+    'piotroski': 'both',
+    'rev_cagr3': 'stmt', 'ebitda_cagr3': 'stmt', 'eps_cagr3': 'stmt',
+    'book_cagr3': 'stmt', 'rev_yoy': 'ttm', 'eps_yoy': 'ttm',
+    'gross_margin': 'both', 'operating_margin': 'both', 'net_margin': 'both',
+    'ebitda_margin': 'both', 'fcf_margin': 'ttm', 'roe': 'both', 'roa': 'both',
+    'roic': 'stmt', 'roce': 'stmt', 'roc_greenblatt': 'stmt', 'years_profitable': 'stmt',
+    'pe': 'ttm', 'forward_pe': 'ttm', 'ps': 'ttm', 'pb': 'ttm',
+    'ev_ebitda': 'ttm', 'ev_revenue': 'ttm',
+    'p_tangible_book': 'mix', 'p_fcf': 'mix', 'p_ocf': 'mix', 'ev_ebit': 'mix',
+    'earnings_yield': 'mix', 'fcf_yield': 'mix',
+    'current_ratio': 'both', 'quick_ratio': 'ttm', 'cash_ratio': 'stmt',
+    'days_inventory': 'stmt', 'days_sales_outstanding': 'stmt', 'days_payable': 'stmt',
+    'dividend_yield': 'ttm', 'payout_ratio': 'ttm', 'avg_yield_5y': 'ttm',
+    'buyback_yield': 'stmt', 'shareholder_yield': 'both',
+}
+
 # Order of the panels in the UI.
 GROUPS = ['strength', 'growth', 'profit', 'value', 'liquidity', 'dividend']
 
