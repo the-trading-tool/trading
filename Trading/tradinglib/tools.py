@@ -752,6 +752,13 @@ def split_conditions(expression) -> list:
     Gibt die Liste der Bedingungen zurueck (leer, wenn nichts uebrig bleibt).
     """
     text = str(expression or '').replace('\\n', '\n')
+    # Zwei Klammerausdruecke ohne Trennzeichen -- `(a)(b)` -- sind in diesen
+    # Formeln immer ein Fehler: Python liest das als Funktionsaufruf und meldet
+    # "Only named functions are supported". In der Praxis entsteht es beim
+    # Tippen im schmalen Feld, wo ein Zeilenumbruch und ein blosser Umbruch der
+    # Anzeige gleich aussehen. Die Stelle wird deshalb als Bedingungsgrenze
+    # gelesen; ein `) & (` bleibt unberuehrt, dort steht ja eine Verknuepfung.
+    text = re.sub(r'\)\s*\(', ')\n(', text)
     out: list = []
     for raw in text.splitlines():
         line = raw.strip()

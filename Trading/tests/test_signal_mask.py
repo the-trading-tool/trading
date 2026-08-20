@@ -223,3 +223,27 @@ def test_split_leer():
 def test_split_einzeilig_bleibt_eine_bedingung():
     q = "(a > 0) & (b > 0) & (c > 0)"
     assert split_conditions(q) == [q]
+
+
+def test_split_klammern_ohne_trennzeichen():
+    """'(a)(b)' ist immer ein Fehler -- als Bedingungsgrenze lesen.
+
+    Entsteht beim Tippen im schmalen Feld: dort sieht ein fehlender Umbruch
+    genauso aus wie ein umgebrochener.
+    """
+    assert split_conditions("(a > 0)(b > 0)") == ["(a > 0)", "(b > 0)"]
+    assert split_conditions("(a > 0) (b > 0)") == ["(a > 0)", "(b > 0)"]
+
+
+def test_split_verknuepfung_zwischen_klammern_bleibt():
+    """'(a) & (b)' hat eine Verknuepfung und bleibt EINE Bedingung."""
+    assert split_conditions("(a > 0) & (b > 0)") == ["(a > 0) & (b > 0)"]
+    assert split_conditions("(a > 0)&(b > 0)") == ["(a > 0)&(b > 0)"]
+
+
+def test_split_gemischt_wie_in_der_praxis():
+    """Der reale Fall: erste Grenze fehlt, zweite ist ein echter Umbruch."""
+    q = "(close<=sup_support*1.02)(relvol_ratio > 2)\n(close>Open)"
+    assert split_conditions(q) == ["(close<=sup_support*1.02)",
+                                   "(relvol_ratio > 2)",
+                                   "(close>Open)"]
