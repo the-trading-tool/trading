@@ -738,3 +738,133 @@ def test_closing_the_browsers_forgets_the_reload_clock():
 
     # The next session opens a fresh page — its clock starts then, not now.
     assert app.last_reload is None
+
+
+def _transport_app(ws_results):
+    """A TradingApp whose websocket returns the queued results in order."""
+    app = lt.TradingApp.__new__(lt.TradingApp)
+    app.messages_only = False
+    app.dry_run = False
+    app.transport = 'auto'
+    app.stream = None
+    app.target = None
+    app.symbols = lt.INDICES
+    app.sys_config = types.SimpleNamespace(get_value=lambda key, default=None: 'secret')
+    app.ws_failures = 0
+    app.ws_blocked_until = None
+    app.ws_backoff_min = lt.WS_RETRY_MINUTES
+    app.ws_probing = False
+
+    app.ws_calls = 0
+    app.browser_calls = 0
+
+    def _ws(body, expected):
+        app.ws_calls += 1
+        return ws_results[min(app.ws_calls - 1, len(ws_results) - 1)]
+
+    def _browser(payload):
+        app.browser_calls += 1
+        return True
+
+    app._send_via_websocket = _ws
+    app._send_via_browser = _browser
+    return app
+
+
+def _send(app):
+    return lt.TradingApp.send_message(app, {"^GDAXI": {"price": 1.0, "time": "10:00:00"}})
+
+
+def test_a_single_websocket_hiccup_does_not_start_a_browser():
+    """One dropped connection used to cost the fast route for the whole session."""
+    app = _transport_app([None, True])
+
+    assert _send(app) is False               # this cycle's quotes are simply retried
+    assert app.browser_calls == 0
+    assert _send(app) is True                # recovered on the next cycle
+    assert app.browser_calls == 0
+    assert app.ws_failures == 0              # success clears the count
+
+
+def test_the_browser_takes_over_after_the_failure_budget():
+    app = _transport_app([None])
+
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+
+    assert app.browser_calls == 1            # only the last attempt fell back
+    assert app.ws_calls == lt.WS_FAIL_LIMIT
+    assert app.ws_blocked_until is not None
+
+
+def test_while_blocked_the_websocket_is_not_tried_at_all():
+    app = _transport_app([None])
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+    calls_before = app.ws_calls
+
+    _send(app)
+
+    assert app.ws_calls == calls_before      # no knocking during the wait
+    assert app.browser_calls == 2
+
+
+def test_the_websocket_is_probed_again_when_the_wait_is_over():
+    app = _transport_app([None] * lt.WS_FAIL_LIMIT + [True])
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+    app.ws_blocked_until = dt.datetime.now() - dt.timedelta(seconds=1)
+
+    assert _send(app) is True                # back on the fast route
+    assert app.ws_blocked_until is None
+    assert app.ws_backoff_min == lt.WS_RETRY_MINUTES
+    assert app.browser_calls == 1            # no further browser sends
+
+
+def test_a_failed_probe_waits_twice_as_long_next_time():
+    """A dead endpoint must not be knocked on every quarter hour forever."""
+    app = _transport_app([None])
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+    first_wait = app.ws_backoff_min
+
+    app.ws_blocked_until = dt.datetime.now() - dt.timedelta(seconds=1)
+    _send(app)                               # the probe fails again
+
+    assert app.ws_backoff_min == first_wait * 2
+    assert app.ws_blocked_until is not None   # straight back to the browser
+
+
+def test_the_backoff_stops_at_the_ceiling():
+    app = _transport_app([None])
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+    for _ in range(20):
+        app.ws_blocked_until = dt.datetime.now() - dt.timedelta(seconds=1)
+        _send(app)
+
+    assert app.ws_backoff_min == lt.WS_RETRY_MAX_MINUTES
+
+
+def test_a_recovered_websocket_releases_the_fallback_browser():
+    app = _transport_app([None] * lt.WS_FAIL_LIMIT + [True])
+    for _ in range(lt.WS_FAIL_LIMIT):
+        _send(app)
+
+    closed = []
+    app.target = types.SimpleNamespace(quit=lambda: closed.append(True))
+    app.ws_blocked_until = dt.datetime.now() - dt.timedelta(seconds=1)
+    _send(app)
+
+    assert closed == [True]
+    assert app.target is None                # reopened on demand if ever needed
+
+
+def test_an_explicit_ws_transport_never_reaches_the_browser():
+    app = _transport_app([None])
+    app.transport = 'ws'
+
+    for _ in range(lt.WS_FAIL_LIMIT + 2):
+        assert _send(app) is False
+
+    assert app.browser_calls == 0

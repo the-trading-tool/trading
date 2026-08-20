@@ -29,6 +29,15 @@ Usage::
 ``ws``       websocket only — no browser at all, fails loudly instead
 ``browser``  the legacy route: drive a browser to the ingest URL
 
+In ``auto`` the switch works in both directions. A single unusable websocket
+only costs the current cycle: the quotes stay unsent and are retried, and no
+browser is started. Only after ``WS_FAIL_LIMIT`` cycles in a row does the
+browser take over, and it keeps the job for ``WS_RETRY_MINUTES`` — then the
+websocket is probed again. A failed probe doubles the wait (capped at
+``WS_RETRY_MAX_MINUTES``), so a dead endpoint is not knocked on all day, while a
+restarted app is picked up within the quarter hour and the fallback Chrome is
+closed again.
+
 ``/target:`` picks the app instance the ticks are streamed to. It defaults to the
 local app (http://localhost:8080); the live instance has to be named explicitly:
 ``/target:https://trading.cloogidoo.com``. Scheme and port are optional —
@@ -448,6 +457,14 @@ MAX_QUOTE_AGE_MIN = 90      # quote timestamps older than this are reported as s
 # section it is.
 RELOAD_MINUTES = 30
 CHUNK_SIZE = 20             # symbols per API call (keeps the GET URL short)
+# The websocket is the cheap route (no browser at all), so a hiccup must not
+# cost it for the rest of the day. It is given a few cycles before the browser
+# takes over, and the browser only holds the job for a while: after that the
+# websocket is probed again, with the wait doubling up to the cap so a genuinely
+# dead endpoint is not polled every quarter hour.
+WS_FAIL_LIMIT = 3           # consecutive unusable websockets before the browser takes over
+WS_RETRY_MINUTES = 15       # first probe back to the websocket after this long
+WS_RETRY_MAX_MINUTES = 120  # ceiling for the doubling wait
 # Where the ticks are streamed to. Defaults to the local app; a remote instance
 # is selected explicitly with /target:https://trading.cloogidoo.com.
 DEFAULT_TARGET = "http://localhost:8080"
@@ -1306,6 +1323,13 @@ class TradingApp:
         self.stall_cycles = 0
         self.refresh_counter = 0
 
+        # Websocket health (auto transport only). transport itself stays at the
+        # configured value — which route is used right now is decided by these.
+        self.ws_failures = 0          # consecutive unusable websockets
+        self.ws_blocked_until = None  # while set, the browser carries the ticks
+        self.ws_backoff_min = WS_RETRY_MINUTES
+        self.ws_probing = False       # this send is the probe back to the websocket
+
         # Browsers are opened lazily by ensure_browsers(): outside trading hours
         # the collector must not touch the site at all — and it must not park two
         # idle Chrome instances over the weekend either.
@@ -1357,6 +1381,12 @@ class TradingApp:
         self.last_sent = {}
         self.pending = {}
         self.stale_reported = set()
+        # Yesterday's websocket trouble says nothing about today — a new session
+        # starts on the fast route again, whatever ended the last one.
+        self.ws_failures = 0
+        self.ws_blocked_until = None
+        self.ws_backoff_min = WS_RETRY_MINUTES
+        self.ws_probing = False
         self.last_reload = None
 
     # -- schedule -------------------------------------------------------------
@@ -1414,16 +1444,71 @@ class TradingApp:
         body = dict(payload)
         body['api_key'] = self.sys_config.get_value('api_key', '')
 
-        if self.transport in ('auto', 'ws'):
+        if self.transport in ('auto', 'ws') and self.websocket_allowed():
             sent = self._send_via_websocket(body, len(payload))
             if sent is not None:
+                self.note_websocket_success()
                 return sent
             if self.transport == 'ws':
                 return False
-            logger.warning("falling back to the browser transport for this session")
-            self.transport = 'browser'
+            if self.note_websocket_failure():
+                # Budget left — no browser is started for a hiccup. The quotes
+                # stay unsent, so the next cycle retries them in CYCLE_SECONDS.
+                return False
 
         return self._send_via_browser(payload)
+
+    # -- transport health -----------------------------------------------------
+
+    def websocket_allowed(self, now=None):
+        """True when the websocket may be used (or probed) right now."""
+        if self.ws_blocked_until is None:
+            return True
+        now = now or dt.datetime.now()
+        if now < self.ws_blocked_until:
+            return False
+        logger.info("probing the websocket transport again after %s minutes on the browser",
+                    self.ws_backoff_min)
+        self.ws_blocked_until = None
+        self.ws_probing = True
+        return True
+
+    def note_websocket_failure(self, now=None):
+        """Count one unusable websocket. True while the fallback can still wait."""
+        now = now or dt.datetime.now()
+        self.ws_failures += 1
+
+        if self.ws_probing:
+            # The probe failed immediately — straight back to the browser, and
+            # wait longer next time rather than knocking on a dead endpoint.
+            self.ws_backoff_min = min(self.ws_backoff_min * 2, WS_RETRY_MAX_MINUTES)
+        elif self.ws_failures < WS_FAIL_LIMIT:
+            logger.info("websocket unusable (%s/%s) — retrying next cycle before falling back",
+                        self.ws_failures, WS_FAIL_LIMIT)
+            return True
+
+        self.ws_probing = False
+        self.ws_blocked_until = now + dt.timedelta(minutes=self.ws_backoff_min)
+        logger.warning("falling back to the browser transport for %s minutes",
+                       self.ws_backoff_min)
+        return False
+
+    def note_websocket_success(self):
+        """The websocket answered — clear the failure state and drop the browser."""
+        if self.ws_probing or self.ws_failures or self.ws_blocked_until:
+            logger.info("websocket transport is working again")
+            if self.target is not None:
+                # The fallback browser is opened on demand, so letting it go is
+                # free; keeping it would park an idle Chrome for the whole day.
+                try:
+                    self.target.quit()
+                except Exception:
+                    logger.debug("closing the target browser failed", exc_info=True)
+                self.target = None
+        self.ws_failures = 0
+        self.ws_probing = False
+        self.ws_blocked_until = None
+        self.ws_backoff_min = WS_RETRY_MINUTES
 
     def _send_via_websocket(self, body, expected):
         """Send over the Streamlit websocket. Returns None when unavailable."""
