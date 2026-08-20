@@ -54,11 +54,13 @@ def _peers(sector: str, industry: str) -> dict:
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _payload(ticker: str, peer_scope: str) -> dict | None:
+def _payload(ticker: str) -> dict | None:
     """Everything the tab needs for *ticker*, in one cached bundle.
 
-    ``peer_scope`` is 'industry' or 'sector' and goes into the cache key so
-    switching the comparison group recomputes only what depends on it.
+    Both peer distributions are computed, industry and sector, so the panels can
+    show them side by side. The two are cached separately by _peers, and the
+    sector one is shared by every ticker in that sector, so the second lookup is
+    usually already warm.
     """
     probe = fu.load(ticker)
     if probe is None or probe.n_years == 0:
@@ -68,17 +70,32 @@ def _payload(ticker: str, peer_scope: str) -> dict | None:
     if fund is None:
         return None
 
+    metrics = fund.metrics()
     val_hist = fu.valuation_history(ticker, fund, fx=fx)
-    peers = _peers(fund.sector or '', fund.industry if peer_scope == 'industry' else '')
+    peers_sector = _peers(fund.sector or '', '')
+    peers_industry = _peers('', fund.industry or '') if fund.industry else {}
     warn, good = fu.signals(fund, val_hist)
 
+    # Narrow industries (an insurer may have twenty peers) leave a lot of industry
+    # cells empty. Count them so the UI can say why rather than look broken.
+    thin = sum(1 for key, (_g, _u, higher) in fu.METRICS.items()
+               if metrics.get(key) is not None
+               and fu.percentile(metrics[key], peers_industry.get(key), higher) is None
+               and fu.percentile(metrics[key], peers_sector.get(key), higher) is not None)
+
     return {
-        'metrics': fund.metrics(),
+        'metrics': metrics,
         'piotroski': fund.piotroski(),
         'history': fu.history(fund),
         'val_hist': val_hist,
-        'peers': peers,
-        'ranks': {g: fu.group_rank(fund.metrics(), peers, g) for g in fu.RANK_GROUPS},
+        'peers_industry': peers_industry,
+        'peers_sector': peers_sector,
+        'ranks': {g: {'industry': fu.group_rank(metrics, peers_industry, g),
+                      'sector': fu.group_rank(metrics, peers_sector, g)}
+                  for g in fu.RANK_GROUPS},
+        'n_industry': max((len(v) for v in peers_industry.values()), default=0),
+        'n_sector': max((len(v) for v in peers_sector.values()), default=0),
+        'thin_industry': thin,
         'warnings': warn,
         'positives': good,
         'sector': fund.sector,
@@ -113,32 +130,54 @@ def _rank_color(rank) -> str:
 
 
 # ── Blocks ───────────────────────────────────────────────────────────────────
+def _rank_pair(label: str, industry, sector) -> str:
+    """One headline card showing the same rank against both peer groups.
+
+    Seeing 8.1 in the industry next to 4.2 in the sector is the point of the tab —
+    a company can lead a weak industry and still sit mid-field in its sector.
+    """
+    def half(value, caption):
+        shown = '–' if value is None else f'{value:.1f}'
+        return (f"<div style='min-width:2.6rem'>"
+                f"<div style='font-size:1.55rem;font-weight:600;line-height:1.15;"
+                f"color:{_rank_color(value)}'>{shown}</div>"
+                f"<div style='font-size:0.66rem;opacity:0.55'>{caption}</div></div>")
+
+    return (f"<div style='text-align:center'>"
+            f"<div style='font-size:0.8rem;opacity:0.7;margin-bottom:0.15rem'>{label}</div>"
+            f"<div style='display:flex;justify-content:center;gap:0.9rem;align-items:flex-start'>"
+            f"{half(industry, t('fund.scope_industry'))}"
+            f"<div style='opacity:0.25;font-size:1.3rem;line-height:1.15'>|</div>"
+            f"{half(sector, t('fund.scope_sector'))}"
+            f"</div></div>")
+
+
 def _render_header(data: dict, region) -> None:
-    """Headline ranks plus the provenance line (peer group, data age, currency)."""
+    """Headline ranks (industry vs sector) plus the provenance line."""
     cols = region.columns(len(fu.RANK_GROUPS) + 1)
     for col, group in zip(cols, fu.RANK_GROUPS):
-        rank = data['ranks'].get(group)
-        shown = '–' if rank is None else f'{rank:.1f}'
-        col.markdown(
-            f"<div style='text-align:center'>"
-            f"<div style='font-size:0.8rem;opacity:0.7'>{t(f'fund.rank_{group}')}</div>"
-            f"<div style='font-size:1.9rem;font-weight:600;color:{_rank_color(rank)}'>"
-            f"{shown}<span style='font-size:0.9rem;opacity:0.6'> / 10</span></div>"
-            f"</div>", unsafe_allow_html=True)
+        ranks = data['ranks'].get(group) or {}
+        col.markdown(_rank_pair(t(f'fund.rank_{group}'),
+                                ranks.get('industry'), ranks.get('sector')),
+                     unsafe_allow_html=True)
 
     price = data['price']
     cols[-1].markdown(
         f"<div style='text-align:center'>"
-        f"<div style='font-size:0.8rem;opacity:0.7'>{t('fund.price')}</div>"
-        f"<div style='font-size:1.9rem;font-weight:600'>"
-        f"{price:,.2f}<span style='font-size:0.9rem;opacity:0.6'> {data['currency']}</span>"
+        f"<div style='font-size:0.8rem;opacity:0.7;margin-bottom:0.15rem'>{t('fund.price')}</div>"
+        f"<div style='font-size:1.55rem;font-weight:600;line-height:1.15'>"
+        f"{price:,.2f}<span style='font-size:0.85rem;opacity:0.6'> {data['currency']}</span>"
         f"</div></div>" if price else '', unsafe_allow_html=True)
 
-    peer_group = data['industry'] or data['sector'] or '—'
-    n_peers = max((len(v) for v in data['peers'].values()), default=0)
     stamp = str(data['timestamp'] or '')[:10]
-    region.caption(t('fund.provenance', peers=peer_group, n=n_peers, date=stamp,
-                     years=len(data['years']), currency=data['report_currency']))
+    region.caption(t('fund.provenance',
+                     industry=data['industry'] or '—', n_industry=data['n_industry'],
+                     sector=data['sector'] or '—', n_sector=data['n_sector'],
+                     date=stamp, years=len(data['years']),
+                     currency=data['report_currency']))
+    if data['thin_industry']:
+        region.caption(t('fund.industry_thin', n=data['thin_industry'],
+                         industry=data['industry'] or '—', peers=data['n_industry']))
     if data['fx_missing']:
         region.warning(t('fund.fx_missing', quote=data['currency'],
                          report=data['report_currency']))
@@ -159,9 +198,18 @@ def _render_signals(data: dict, region) -> None:
             col.markdown(f"- {t(f'fund.{prefix}_{key}', **params)}")
 
 
+def _median(peer_values, unit: str) -> str:
+    if peer_values is None or not len(peer_values):
+        return ''
+    return _fmt(float(pd.Series(peer_values).median()), unit)
+
+
 def _render_panel(group: str, data: dict, region) -> None:
-    """One metric panel: value, peer median and the direction-adjusted percentile."""
-    metrics, peers = data['metrics'], data['peers']
+    """One metric panel: the value, then median and percentile for both peer groups."""
+    metrics = data['metrics']
+    industry, sector = data['peers_industry'], data['peers_sector']
+    col_pct_ind, col_pct_sec = t('fund.col_pct_industry'), t('fund.col_pct_sector')
+
     rows = []
     for key, (grp, unit, higher) in fu.METRICS.items():
         if grp != group:
@@ -169,21 +217,24 @@ def _render_panel(group: str, data: dict, region) -> None:
         value = metrics.get(key)
         if value is None:
             continue
-        peer_values = peers.get(key)
-        median = float(pd.Series(peer_values).median()) if peer_values is not None and len(peer_values) else None
         rows.append({
             t('fund.col_metric'): t(f'fund.m_{key}'),
             t('fund.col_value'): _fmt(value, unit),
-            t('fund.col_peer_median'): _fmt(median, unit),
-            t('fund.col_percentile'): fu.percentile(value, peer_values, higher),
+            t('fund.col_median_industry'): _median(industry.get(key), unit),
+            col_pct_ind: fu.percentile(value, industry.get(key), higher),
+            t('fund.col_median_sector'): _median(sector.get(key), unit),
+            col_pct_sec: fu.percentile(value, sector.get(key), higher),
         })
     if not rows:
         return
+
+    def bar(label):
+        return st.column_config.ProgressColumn(label, format='%.0f', min_value=0,
+                                               max_value=100, help=t('fund.percentile_help'))
+
     region.dataframe(
         pd.DataFrame(rows), hide_index=True, use_container_width=True,
-        column_config={t('fund.col_percentile'): st.column_config.ProgressColumn(
-            t('fund.col_percentile'), format='%.0f', min_value=0, max_value=100,
-            help=t('fund.percentile_help'))})
+        column_config={col_pct_ind: bar(col_pct_ind), col_pct_sec: bar(col_pct_sec)})
 
 
 def _render_method(region) -> None:
@@ -290,15 +341,9 @@ def _plot(region, fig) -> None:
 # ── Entry point ──────────────────────────────────────────────────────────────
 def render(ticker: str, region=st) -> None:
     """Render the Fundamental tab for *ticker* into *region*."""
-    scope_key = f'_fund_scope_{ticker}'
-    scope = region.radio(
-        t('fund.peer_scope'), options=['industry', 'sector'],
-        format_func=lambda v: t(f'fund.scope_{v}'), horizontal=True,
-        key=scope_key, help=t('fund.peer_scope_help'))
-
     with region.container():
         with st.spinner(t('fund.loading')):
-            data = _payload(ticker, scope)
+            data = _payload(ticker)
 
     if data is None:
         region.info(t('fund.no_data', ticker=ticker))

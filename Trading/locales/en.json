@@ -1965,14 +1965,11 @@
   "fund.group_dividend": "🎁 Dividend & buy back",
   "fund.col_metric": "Metric",
   "fund.col_value": "Value",
-  "fund.col_peer_median": "Peer median",
   "fund.col_percentile": "Percentile",
-  "fund.percentile_help": "Rank within the peer group, direction-adjusted: 100 always means “best in the group” — for valuation metrics that is the cheapest, not the highest. Shown only once there are at least ten comparable values.",
-  "fund.peer_scope": "Peer group",
+  "fund.percentile_help": "Rank within the respective peer group, direction-adjusted: 100 always means “best in the group” — for valuation metrics that is the cheapest, not the highest. Shown only from ten comparable values upwards; an empty cell means the group is too small for it.",
   "fund.scope_industry": "Industry",
   "fund.scope_sector": "Sector",
-  "fund.peer_scope_help": "Industry compares more narrowly, sector more broadly. For small industries the sector gives the more stable distribution.",
-  "fund.provenance": "Peer group: {peers} ({n} companies) · master data as of {date} · {years} fiscal years · reporting currency {currency}",
+  "fund.provenance": "Industry: {industry} ({n_industry} companies) · sector: {sector} ({n_sector} companies) · master data as of {date} · {years} fiscal years · reporting currency {currency}",
   "fund.fx_missing": "The price is quoted in {quote} while the accounts are in {report}, and no exchange rate is available right now. Metrics that mix market value with the balance sheet (Altman Z, EV/EBIT, price/FCF) are left blank rather than computed in mixed units.",
   "fund.loading": "Analysing fundamentals …",
   "fund.no_data": "No annual statements are stored for {ticker}.",
@@ -2131,5 +2128,10 @@
   "fund.f_payout_ratio": "Dividend paid ÷ earnings; above 100 % the company pays out more than it earns",
   "fund.f_avg_yield_5y": "Yahoo's five-year average dividend yield",
   "fund.f_buyback_yield": "−(share count FY0 ÷ share count FY−1 − 1) — positive on buybacks, negative on dilution",
-  "fund.f_shareholder_yield": "Dividend yield + buyback yield"
+  "fund.f_shareholder_yield": "Dividend yield + buyback yield",
+  "fund.col_median_industry": "Industry median",
+  "fund.col_pct_industry": "Industry percentile",
+  "fund.col_median_sector": "Sector median",
+  "fund.col_pct_sector": "Sector percentile",
+  "fund.industry_thin": "{n} metrics have no industry percentile: {industry} holds only {peers} companies, and a percentile needs at least ten comparable values. For those, the sector column is the more reliable read."
 }

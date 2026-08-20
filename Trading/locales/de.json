@@ -1965,14 +1965,11 @@
   "fund.group_dividend": "🎁 Dividende & Rückkäufe",
   "fund.col_metric": "Kennzahl",
   "fund.col_value": "Wert",
-  "fund.col_peer_median": "Median der Gruppe",
   "fund.col_percentile": "Perzentil",
-  "fund.percentile_help": "Rang innerhalb der Vergleichsgruppe, richtungskorrigiert: 100 heißt immer „bester Wert der Gruppe“ — bei Bewertungskennzahlen also der günstigste, nicht der höchste. Wird erst ab zehn vergleichbaren Werten angezeigt.",
-  "fund.peer_scope": "Vergleichsgruppe",
+  "fund.percentile_help": "Rang innerhalb der jeweiligen Vergleichsgruppe, richtungskorrigiert: 100 heißt immer „bester Wert der Gruppe“ — bei Bewertungskennzahlen also der günstigste, nicht der höchste. Wird erst ab zehn vergleichbaren Werten angezeigt; leere Zellen bedeuten, dass die Gruppe dafür zu klein ist.",
   "fund.scope_industry": "Branche",
   "fund.scope_sector": "Sektor",
-  "fund.peer_scope_help": "Die Branche vergleicht enger, der Sektor breiter. Bei kleinen Branchen liefert der Sektor die stabilere Verteilung.",
-  "fund.provenance": "Vergleichsgruppe: {peers} ({n} Werte) · Stammdaten vom {date} · {years} Geschäftsjahre · Bilanzwährung {currency}",
+  "fund.provenance": "Branche: {industry} ({n_industry} Werte) · Sektor: {sector} ({n_sector} Werte) · Stammdaten vom {date} · {years} Geschäftsjahre · Bilanzwährung {currency}",
   "fund.fx_missing": "Der Kurs notiert in {quote}, bilanziert wird in {report} — ein Umrechnungskurs liegt gerade nicht vor. Kennzahlen, die Marktwert und Bilanz mischen (Altman Z, EV/EBIT, Kurs/FCF), bleiben deshalb leer statt in gemischten Einheiten zu rechnen.",
   "fund.loading": "Fundamentaldaten werden ausgewertet …",
   "fund.no_data": "Für {ticker} sind keine Jahresabschlüsse in den Stammdaten hinterlegt.",
@@ -2131,5 +2128,10 @@
   "fund.f_payout_ratio": "Ausgeschüttete Dividende ÷ Gewinn; über 100 % zahlt das Unternehmen mehr aus, als es verdient",
   "fund.f_avg_yield_5y": "Yahoo-Durchschnitt der Dividendenrendite über fünf Jahre",
   "fund.f_buyback_yield": "−(Aktienzahl GJ0 ÷ Aktienzahl GJ−1 − 1) — positiv bei Rückkäufen, negativ bei Verwässerung",
-  "fund.f_shareholder_yield": "Dividendenrendite + Rückkaufrendite"
+  "fund.f_shareholder_yield": "Dividendenrendite + Rückkaufrendite",
+  "fund.col_median_industry": "Median Branche",
+  "fund.col_pct_industry": "Perzentil Branche",
+  "fund.col_median_sector": "Median Sektor",
+  "fund.col_pct_sector": "Perzentil Sektor",
+  "fund.industry_thin": "{n} Kennzahlen haben kein Branchen-Perzentil: {industry} umfasst nur {peers} Werte, und ein Perzentil entsteht erst ab zehn vergleichbaren. Dort ist die Sektor-Spalte die belastbarere Aussage."
 }
