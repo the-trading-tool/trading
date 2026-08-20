@@ -42,6 +42,7 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><th>Tab</th><th>Inhalt</th></tr>
 <tr><td><b>Trend</b></td><td>Interaktives Plotly-Kursdiagramm mit Kauf-/Verkaufssignalen</td></tr>
 <tr><td><b>Key Data</b></td><td>Kennzahlen-Übersicht zum Asset: Signal, Preis/Performance, Bewertung, Bilanz, Risiko, Dividende (Details unten)</td></tr>
+<tr><td><b>Fundamental</b></td><td>Kennzahlen-Panels mit Branchen-Perzentil, Vier-Jahres-Historie und Bewertungsverlauf (nur Aktien, Details unten)</td></tr>
 <tr><td><b>Info</b></td><td>Fundamentaldaten: Sektor, KGV, Marktkapitalisierung, Analysten-Kursziel</td></tr>
 <tr><td><b>Income sheet</b></td><td>Gewinn- und Verlustrechnung (letzte Quartale)</td></tr>
 <tr><td><b>Balance sheet</b></td><td>Bilanz: Aktiva, Passiva, Eigenkapital</td></tr>
@@ -154,6 +155,61 @@ nur für Aktien mit hinterlegtem Sektor.</p>
   intakt?), die <b>Bewertung</b> (nicht zu teuer?), die <b>Qualität/Bilanz</b> (solide?) und das
   <b>Risiko</b> (passt zur eigenen Risikotoleranz?) – und setze immer einen Stop-Loss.
 </div>
+
+<h2>Fundamental &ndash; Einordnung statt Einzelzahl</h2>
+<p>Der Tab <b>&bdquo;Fundamental&ldquo;</b> beantwortet eine andere Frage als &bdquo;Key Data&ldquo;:
+nicht <i>wie hoch</i> eine Kennzahl ist, sondern <b>wie sie im Vergleich steht</b> &ndash; zur Branche
+und zur eigenen Historie. Er erscheint nur bei <b>Aktien</b> mit hinterlegten Jahresabschl&uuml;ssen
+(<code>asset_info.incomeSheet</code>/<code>balanceSheet</code>, rund 5.400 der 5.900 Aktien).</p>
+
+<h3>Vier R&auml;nge im Kopf</h3>
+<p>Finanzkraft, Wachstum, Profitabilit&auml;t und Bewertung werden als <b>0&ndash;10</b> ausgewiesen.
+Der Wert ist das gemittelte Perzentil der Kennzahlen einer Gruppe innerhalb der Vergleichsgruppe &ndash;
+ein echter Querschnitt &uuml;ber die lokal gespeicherten Aktien, keine &uuml;bernommene Fremdbewertung.
+<b>100 bzw. 10 hei&szlig;t immer &bdquo;bester Wert der Gruppe&ldquo;</b>: bei Bewertungskennzahlen der
+g&uuml;nstigste, nicht der h&ouml;chste. Ein Rang entsteht erst ab drei bewertbaren Kennzahlen, ein
+Perzentil erst ab zehn Vergleichswerten.</p>
+
+<h3>Vergleichsgruppe umschalten</h3>
+<p>Oben l&auml;sst sich zwischen <b>Branche</b> (eng) und <b>Sektor</b> (breit) wechseln. Bei kleinen
+Branchen liefert der Sektor die stabilere Verteilung. Die Kopfzeile nennt immer die verwendete Gruppe
+und ihre Gr&ouml;&szlig;e.</p>
+
+<h3>Was bewusst fehlt</h3>
+<ul>
+<li><b>Kein fairer Wert, kein Kursziel.</b> Vier Gesch&auml;ftsjahre reichen f&uuml;r Kennzahlen,
+Trends und Vergleich &ndash; nicht, um einen Unternehmenswert zu verankern. Jedes g&auml;ngige
+Verfahren daf&uuml;r (Graham-Zahl, Median-Multiplikator, DCF) braucht entweder ein Jahrzehnt Historie
+oder frei gew&auml;hlte Annahmen und liefert dann Zahlen, die sich st&auml;rker mit der Annahme
+bewegen als mit dem Unternehmen.</li>
+<li><b>Kein Momentum-Panel.</b> RSI und Kursmomentum stehen bereits im Trend- und Key-Data-Tab &ndash;
+und ohne Kurshistorie der Vergleichsgruppe g&auml;be es daf&uuml;r ohnehin kein Perzentil.</li>
+<li><b>Kein PEG.</b> Yahoo f&uuml;llt das Feld nur bei gut einem Viertel der Aktien.</li>
+</ul>
+
+<h3>Grenzen der Daten</h3>
+<ul>
+<li><b>Vier Gesch&auml;ftsjahre</b> &ndash; daher Drei-Jahres-CAGR als l&auml;ngstes Wachstumsfenster.
+Bei negativer Basis (Verlustjahr) bleibt ein CAGR leer, statt eine Scheinzahl zu liefern.</li>
+<li><b>Banken und Versicherer:</b> Altman Z, Liquidit&auml;tsgrade, Working-Capital-Kennzahlen und
+alle EV-Multiplikatoren bleiben leer &ndash; dort ist &bdquo;Schuld&ldquo; Refinanzierung und der
+Enterprise Value kein sinnvoller Z&auml;hler.</li>
+<li><b>W&auml;hrung:</b> Kurs und Bilanz k&ouml;nnen auseinanderfallen (ADRs, Pence-Notierungen an
+der LSE, in HKD notierte Festlandwerte &ndash; rund 9 % der Aktien). Kennzahlen, die beides mischen,
+werden umgerechnet; fehlt der Kurs, bleiben sie leer, statt in gemischten Einheiten zu rechnen.</li>
+<li><b>Piotroski F-Score:</b> sieben Kriterien kommen aus zwei Bilanzjahren, die beiden
+Cashflow-Kriterien aus dem TTM-Wert der Stammdaten &ndash; eine Cashflow-Rechnung je
+Gesch&auml;ftsjahr wird nicht gespeichert. Beides sind Niveau-Pr&uuml;fungen, keine
+Jahresvergleiche.</li>
+<li><b>Stand der Stammdaten:</b> der Sonntags-Job <code>ASSET_INFO</code> h&auml;lt sie wochenfrisch;
+das Datum steht in der Kopfzeile.</li>
+</ul>
+
+<h3>Bewertung im Zeitverlauf</h3>
+<p>KGV, KUV und KBV werden t&auml;glich aus dem Kurs und der Kennzahl je Aktie des zuletzt
+berichteten Gesch&auml;ftsjahres gebildet &ndash; die Kennzahl springt daher zu jedem
+Bilanzstichtag. Die gestrichelte Linie ist der Median dieser vier Jahre: eine <b>Beschreibung</b>
+des bisherigen Verlaufs, kein Ziel.</p>
 
 <h2>Kursdiagramm bedienen</h2>
 <ul>

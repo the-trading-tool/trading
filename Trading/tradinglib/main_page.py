@@ -1193,6 +1193,12 @@ class render_mainpage(fetch_data.FetchData):
                     except Exception:
                         news_articles = []
 
+                    # Fundamental tab — equities only. ETPs, indices, FX and crypto
+                    # have no statements, and the peer percentiles are computed over
+                    # the equity universe, so there is nothing to compare them to.
+                    fundamentals_enabled = (str(quote_type).upper() == 'EQUITY'
+                                            and not income_df.empty and not balance_df.empty)
+
                     seasonality_enabled = SEASONALITY_AVAILABLE and has_feature(FEATURE_SEASONALITY) and sn is not None
                     # AI analysis tab — only with a Strategy-Engine license. Passes the same
                     # metrics + info + index-status the user sees to the AI (market_overview logic).
@@ -1202,6 +1208,8 @@ class render_mainpage(fetch_data.FetchData):
                     # currency/open/low/high/52-week range/ratios) — right after Trend
                     # so it stays close to the default view.
                     tab_list = [t('main.tab_trend'), t('main.tab_overview')]
+                    if fundamentals_enabled:
+                        tab_list.append(t('main.tab_fundamentals'))
                     if ai_enabled:
                         tab_list.append(t('main.tab_ai'))
                     if seasonality_enabled:
@@ -1220,6 +1228,7 @@ class render_mainpage(fetch_data.FetchData):
                     tab_iter = iter(pp_right.tabs(tab_list))
                     tab_trend = next(tab_iter)
                     tab_overview = next(tab_iter)
+                    tab_fundamentals = next(tab_iter) if fundamentals_enabled else None
                     tab_ai = next(tab_iter) if ai_enabled else None
                     tab_seasonality = next(tab_iter) if seasonality_enabled else None
                     tab_info = next(tab_iter) if has_info else None
@@ -1456,6 +1465,19 @@ class render_mainpage(fetch_data.FetchData):
 ##                                    st.dataframe(self.data)
                                     st.dataframe(self.t_chart.df)
 #                                except Exception:
+                            _spin.empty()
+
+                    if tab_fundamentals is not None:
+                        with tab_fundamentals:
+                            _spin.markdown(_tab_overlay(t('main.tab_fundamentals')),
+                                           unsafe_allow_html=True)
+                            try:
+                                from tradinglib import fundamentals_page as fdp
+                                fdp.render(ticker_selected, region=st)
+                            except Exception as _e:
+                                logger.warning("Fundamental tab failed for %s: %s",
+                                               ticker_selected, _e)
+                                st.info(t('fund.no_data', ticker=ticker_selected))
                             _spin.empty()
 
                     if tab_info is not None:

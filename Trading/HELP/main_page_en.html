@@ -42,6 +42,7 @@ ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><th>Tab</th><th>Content</th></tr>
 <tr><td><b>Trend</b></td><td>Interactive Plotly price chart with buy/sell signals</td></tr>
 <tr><td><b>Key Data</b></td><td>Key-metrics overview of the asset: signal, price/performance, valuation, balance, risk, dividend (details below)</td></tr>
+<tr><td><b>Fundamentals</b></td><td>Metric panels with industry percentile, four-year history and valuation over time (equities only, details below)</td></tr>
 <tr><td><b>Info</b></td><td>Fundamentals: sector, P/E, market cap, analyst price target</td></tr>
 <tr><td><b>Income sheet</b></td><td>Profit and loss statement (recent quarters)</td></tr>
 <tr><td><b>Balance sheet</b></td><td>Balance sheet: assets, liabilities, equity</td></tr>
@@ -154,6 +155,58 @@ equities that have a sector on file.</p>
   intact?), the <b>valuation</b> (not too expensive?), the <b>quality/balance</b> (solid?) and the
   <b>risk</b> (fits your risk tolerance?) – and always set a stop-loss.
 </div>
+
+<h2>Fundamentals &ndash; context rather than a single number</h2>
+<p>The <b>&ldquo;Fundamentals&rdquo;</b> tab answers a different question than &ldquo;Key Data&rdquo;:
+not <i>how high</i> a metric is, but <b>how it compares</b> &ndash; against the industry and against
+its own history. It only appears for <b>equities</b> with stored annual statements
+(<code>asset_info.incomeSheet</code>/<code>balanceSheet</code>, about 5,400 of 5,900 equities).</p>
+
+<h3>Four ranks in the header</h3>
+<p>Financial strength, growth, profitability and valuation are shown as <b>0&ndash;10</b>. The value
+is the mean percentile of that group's metrics within the peer group &ndash; a genuine cross-section
+over the locally stored equities, not a rating taken from elsewhere. <b>100 (or 10) always means
+&ldquo;best in the group&rdquo;</b>: for valuation metrics that is the cheapest, not the highest.
+A rank needs at least three usable metrics, a percentile at least ten comparable values.</p>
+
+<h3>Switching the peer group</h3>
+<p>At the top you can switch between <b>industry</b> (narrow) and <b>sector</b> (broad). For small
+industries the sector gives the more stable distribution. The header always names the group in use
+and its size.</p>
+
+<h3>What is deliberately missing</h3>
+<ul>
+<li><b>No fair value, no price target.</b> Four fiscal years are enough for ratios, trends and
+comparison &ndash; not to anchor a company value. Every common method for that (Graham number,
+median multiple, DCF) needs either a decade of history or freely chosen assumptions, and then
+produces numbers that move more with the assumption than with the company.</li>
+<li><b>No momentum panel.</b> RSI and price momentum are already on the Trend and Key Data tabs
+&ndash; and without the peers' price history there would be no percentile for them anyway.</li>
+<li><b>No PEG.</b> Yahoo fills that field for barely a quarter of the equities.</li>
+</ul>
+
+<h3>Limits of the data</h3>
+<ul>
+<li><b>Four fiscal years</b> &ndash; hence a three-year CAGR as the longest growth window. On a
+negative base (a loss year) the CAGR is left blank rather than producing a bogus figure.</li>
+<li><b>Banks and insurers:</b> Altman Z, the liquidity ratios, working-capital metrics and all EV
+multiples stay blank &ndash; there &ldquo;debt&rdquo; is funding and enterprise value is not a
+sensible numerator.</li>
+<li><b>Currency:</b> price and accounts can diverge (ADRs, pence listings on the LSE, HKD-quoted
+mainland companies &ndash; about 9 % of equities). Metrics mixing both are converted; without a rate
+they stay blank rather than computing in mixed units.</li>
+<li><b>Piotroski F-Score:</b> seven criteria come from two years of statements, the two cash-flow
+criteria from the TTM figure in the master data &ndash; no per-fiscal-year cash flow statement is
+stored. Both are level tests, not year-on-year comparisons.</li>
+<li><b>Master-data age:</b> the Sunday <code>ASSET_INFO</code> job keeps it fresh to within a week;
+the date is shown in the header.</li>
+</ul>
+
+<h3>Valuation over time</h3>
+<p>P/E, P/S and P/B are formed daily from the price and the per-share figure of the most recently
+reported fiscal year &ndash; so the ratio steps at every reporting date. The dashed line is the
+median across these four years: a <b>description</b> of where the valuation has been, not a
+target.</p>
 
 <h2>Operating the price chart</h2>
 <ul>
