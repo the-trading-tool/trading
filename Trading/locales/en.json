@@ -2133,5 +2133,9 @@
   "fund.col_pct_industry": "Industry percentile",
   "fund.col_median_sector": "Sector median",
   "fund.col_pct_sector": "Sector percentile",
-  "fund.industry_thin": "{n} metrics have no industry percentile: {industry} holds only {peers} companies, and a percentile needs at least ten comparable values. For those, the sector column is the more reliable read."
+  "fund.industry_thin": "{n} metrics have no industry percentile: {industry} holds only {peers} companies, and a percentile needs at least ten comparable values. For those, the sector column is the more reliable read.",
+  "fund.h_title_income": "Revenue and earnings",
+  "fund.h_title_margins": "Margins over time",
+  "fund.h_title_balance": "Equity and debt",
+  "fund.h_title_shares": "Shares outstanding (dilution / buybacks)"
 }

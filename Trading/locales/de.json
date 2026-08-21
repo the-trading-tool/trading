@@ -2133,5 +2133,9 @@
   "fund.col_pct_industry": "Perzentil Branche",
   "fund.col_median_sector": "Median Sektor",
   "fund.col_pct_sector": "Perzentil Sektor",
-  "fund.industry_thin": "{n} Kennzahlen haben kein Branchen-Perzentil: {industry} umfasst nur {peers} Werte, und ein Perzentil entsteht erst ab zehn vergleichbaren. Dort ist die Sektor-Spalte die belastbarere Aussage."
+  "fund.industry_thin": "{n} Kennzahlen haben kein Branchen-Perzentil: {industry} umfasst nur {peers} Werte, und ein Perzentil entsteht erst ab zehn vergleichbaren. Dort ist die Sektor-Spalte die belastbarere Aussage.",
+  "fund.h_title_income": "Umsatz und Gewinn",
+  "fund.h_title_margins": "Margen im Zeitverlauf",
+  "fund.h_title_balance": "Eigenkapital und Schulden",
+  "fund.h_title_shares": "Aktien im Umlauf (Verwässerung / Rückkäufe)"
 }

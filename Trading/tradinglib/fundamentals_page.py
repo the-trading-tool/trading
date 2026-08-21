@@ -272,51 +272,98 @@ def _render_piotroski(data: dict, region) -> None:
 
 
 # ── Charts ───────────────────────────────────────────────────────────────────
+def _year_labels(hist: pd.DataFrame) -> list[str]:
+    """Fiscal-year labels for the x axis of the history charts.
+
+    The index holds fiscal-year end dates. Handed to Plotly as ISO strings they
+    become a date axis, which draws half-year ticks ("Jul 2024") between four
+    annual bars and reads as if data were missing in between. Labelling by the
+    year the fiscal year ended in is what a reader expects — unless two ends fall
+    in the same calendar year, where the full date is needed to tell them apart.
+    """
+    years = [str(d.year) for d in hist.index]
+    return years if len(set(years)) == len(years) else [str(d) for d in hist.index]
+
+
+def _finish(fig: go.Figure, title: str, height: int = 320, category_x: bool = False,
+            **layout) -> go.Figure:
+    """Common chart chrome: a left-aligned title, legend below the plot.
+
+    Every chart carries its own title — a reader landing on one of four small
+    panels cannot be expected to infer what it shows from the colours. The legend
+    sits *below* the plot because the Plotly modebar is permanently on
+    (graph_tools.chart_config) and occupies the top-right corner, where a
+    horizontal legend would run straight into it.
+    """
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=10, t=44, b=10),
+        title=dict(text=title, x=0, xanchor='left', font=dict(size=14)),
+        legend=dict(orientation='h', yanchor='top', y=-0.13, x=0),
+        **layout)
+    # The margins above are a floor, not a budget: axis titles and tick labels
+    # ("4B", "EUR") are wider than 10 px and would be clipped at narrow container
+    # widths. automargin lets Plotly claim the room it actually needs.
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    if category_x:
+        fig.update_xaxes(type='category')
+    return fig
+
+
 def _bar_line_chart(hist: pd.DataFrame, currency: str) -> go.Figure:
     """Revenue and net income as bars, net margin as a line on the second axis."""
-    x = [str(d) for d in hist.index]
+    x = _year_labels(hist)
     fig = go.Figure()
     fig.add_bar(x=x, y=hist['revenue'], name=t('fund.h_revenue'), marker_color='#5b9cf6')
     fig.add_bar(x=x, y=hist['net_income'], name=t('fund.h_net_income'), marker_color='#2E7D32')
     fig.add_scatter(x=x, y=hist['net_margin'], name=t('fund.m_net_margin'),
                     yaxis='y2', mode='lines+markers', line=dict(color='#EF6C00', width=2))
-    fig.update_layout(
-        barmode='group', height=300, margin=dict(l=10, r=10, t=30, b=10),
-        yaxis=dict(title=currency), yaxis2=dict(overlaying='y', side='right', title='%'),
-        legend=dict(orientation='h', y=1.15, x=0))
-    return fig
+    return _finish(fig, t('fund.h_title_income'), barmode='group', category_x=True,
+                   yaxis=dict(title=currency),
+                   yaxis2=dict(overlaying='y', side='right', title='%'))
 
 
 def _margin_chart(hist: pd.DataFrame) -> go.Figure:
-    x = [str(d) for d in hist.index]
+    x = _year_labels(hist)
     fig = go.Figure()
     for key, color in (('gross_margin', '#5b9cf6'), ('operating_margin', '#7CB342'),
                        ('net_margin', '#EF6C00')):
         if key in hist and hist[key].notna().any():
             fig.add_scatter(x=x, y=hist[key], name=t(f'fund.m_{key}'),
                             mode='lines+markers', line=dict(color=color, width=2))
-    fig.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10),
-                      yaxis=dict(title='%'), legend=dict(orientation='h', y=1.15, x=0))
-    return fig
+    return _finish(fig, t('fund.h_title_margins'), category_x=True, yaxis=dict(title='%'))
 
 
 def _balance_chart(hist: pd.DataFrame, currency: str) -> go.Figure:
-    x = [str(d) for d in hist.index]
+    x = _year_labels(hist)
     fig = go.Figure()
     fig.add_bar(x=x, y=hist['equity'], name=t('fund.h_equity'), marker_color='#5b9cf6')
     fig.add_bar(x=x, y=hist['total_debt'], name=t('fund.h_debt'), marker_color='#C62828')
-    fig.update_layout(barmode='group', height=300, margin=dict(l=10, r=10, t=30, b=10),
-                      yaxis=dict(title=currency), legend=dict(orientation='h', y=1.15, x=0))
-    return fig
+    return _finish(fig, t('fund.h_title_balance'), barmode='group', category_x=True,
+                   yaxis=dict(title=currency))
 
 
 def _shares_chart(hist: pd.DataFrame) -> go.Figure:
-    """Share count — buybacks and dilution are invisible in per-share figures alone."""
-    x = [str(d) for d in hist.index]
+    """Share count — buybacks and dilution are invisible in per-share figures alone.
+
+    Two things made this chart useless before: single-series figures hide the
+    Plotly legend by default, so it rendered as unlabelled grey bars, and a share
+    count that barely moves gives four bars of identical height. The title fixes
+    the first; printing the value on each bar fixes the second — four bars reading
+    "176M" say "no dilution" at a glance, which a zero-based axis cannot.
+    """
+    x = _year_labels(hist)
     fig = go.Figure()
-    fig.add_bar(x=x, y=hist['shares'], name=t('fund.h_shares'), marker_color='#9E9E9E')
-    fig.update_layout(height=300, margin=dict(l=10, r=10, t=30, b=10),
-                      legend=dict(orientation='h', y=1.15, x=0))
+    fig.add_bar(x=x, y=hist['shares'], name=t('fund.h_shares'), marker_color='#78909C',
+                texttemplate='%{y:.3s}', textposition='outside', cliponaxis=False,
+                hovertemplate='%{x}<br>%{y:,.0f}<extra></extra>')
+    fig = _finish(fig, t('fund.h_title_shares'), showlegend=False, category_x=True)
+    # Headroom so the outside labels are not cut off by the plot frame.
+    fig.update_yaxes(rangemode='tozero')
+    values = pd.to_numeric(hist['shares'], errors='coerce').dropna()
+    if not values.empty:
+        fig.update_yaxes(range=[0, float(values.max()) * 1.18])
     return fig
 
 
@@ -327,10 +374,9 @@ def _band_chart(series: pd.Series, label: str) -> go.Figure:
     fig.add_scatter(x=s.index, y=s, name=label, mode='lines', line=dict(color='#5b9cf6', width=2))
     median = float(s.median())
     fig.add_hline(y=median, line_dash='dash', line_color='#9E9E9E',
-                  annotation_text=f'{t("fund.median")} {median:.1f}', annotation_position='top left')
-    fig.update_layout(height=240, margin=dict(l=10, r=10, t=30, b=10), showlegend=False,
-                      title=dict(text=label, font=dict(size=13)))
-    return fig
+                  annotation_text=f'{t("fund.median")} {median:.1f}',
+                  annotation_position='bottom left')
+    return _finish(fig, label, height=260, showlegend=False)
 
 
 def _plot(region, fig) -> None:
