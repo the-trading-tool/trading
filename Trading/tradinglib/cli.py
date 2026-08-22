@@ -22,6 +22,11 @@ def print_help():
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
           "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
           "                      (use when column was added with DEFAULT 0 and all values are 0),\n"
+          "  /vacuum[:GLOB] - compact databases (SQLite VACUUM, reclaims space left by deletes).\n"
+          "                   Without a value it takes the same DB the run would use (/year:, /all).\n"
+          "                   /vacuum:asset_simulation_* takes every simulation DB, /vacuum:* every DB.\n"
+          "                   Needs exclusive access — stop Streamlit and the scheduler first,\n"
+          "                   and keep free disk space of about the file size,\n"
           "  /log:LEVEL - enable console logging at LEVEL (DEBUG, INFO, ...),\n"
           "  /logfile:PATH - also write logs to PATH")
 
@@ -58,6 +63,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'rescore': False,
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
+        'vacuum': False,          # asset_perf2: VACUUM statt Simulationslauf
+        'vacuum_pattern': None,   # optionaler Glob, sonst die aufgeloeste Sim-DB
         'repair': False,    # get_asset_info: nur Ticker ohne Namen nachziehen
         'apply': False,     # sync_index_members: schreiben statt Trockenlauf
         'nocheck': False,   # sync_index_members: neue Symbole nicht validieren
@@ -137,6 +144,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 # Indicator keys in INDICATOR_BACKFILL_MAP are lowercase →
                 # normalise input so that /backfill:Heikin still matches.
                 result['backfill'] = [s.strip().lower() for s in suf.split(',') if s.strip()]
+            if pref == 'vacuum':
+                result['vacuum'] = True
+                if suf:
+                    result['vacuum_pattern'] = suf
             if pref == 'force':
                 result['force'] = True
             if pref == 'repair':

@@ -44,7 +44,26 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><th>Modus</th><th>Beispiel</th><th>Beschreibung</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fehlende Indikator-Spalten aus vorhandenen OHLCV-Daten nachfüllen – kein Internet nötig</td></tr>
 <tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>OVT-Scores neu berechnen ohne OHLCV-Download – verwendet gespeicherte DB-Spalten</td></tr>
+<tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Datenbanken komprimieren (SQLite <code>VACUUM</code>) – gibt den Platz zurück, den gelöschte Zeilen belegen</td></tr>
 </table>
+
+<h2>Datenbanken komprimieren</h2>
+<p>SQLite gibt gelöschte Seiten nie ans Dateisystem zurück, sondern hält sie als
+Freiliste in der Datei vor. Nach einer großen Löschung – etwa wenn eine Ticker-Gruppe
+aus der Simulation fällt – bleibt die Datei deshalb so groß wie zuvor.
+<code>/vacuum</code> schreibt sie kompakt neu.</p>
+<table>
+<tr><th>Aufruf</th><th>Was komprimiert wird</th></tr>
+<tr><td><code>/vacuum</code></td><td>Dieselbe DB, die der Lauf auch sonst nähme – also mit <code>/year:2025</code> die Jahres-DB, mit <code>/all</code> die Gesamt-DB</td></tr>
+<tr><td><code>/vacuum:asset_simulation_*</code></td><td>Alle Simulations-Datenbanken</td></tr>
+<tr><td><code>/vacuum:*</code></td><td>Jede <code>.db</code> im Datenbank-Verzeichnis</td></tr>
+</table>
+<div class="warn"><b>Braucht exklusiven Zugriff.</b> Läuft parallel die App oder ein
+Scheduler-Job auf derselben Datei, wird sie mit <code>database is locked</code>
+übersprungen und bleibt unverändert – die übrigen Dateien laufen weiter. Vorher
+Streamlit und den Scheduler beenden. Außerdem wird die Datei während des Laufs neu
+geschrieben: es muss noch einmal ihre Größe frei sein, sonst überspringt
+<code>/vacuum</code> sie mit einem Hinweis.</div>
 
 <h2>Bekannte Backfill-Indikatoren</h2>
 <pre>heikin  → ha_close, ha_open, ha_ema_high, ha_ema_low

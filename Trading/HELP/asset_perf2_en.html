@@ -44,7 +44,25 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><th>Mode</th><th>Example</th><th>Description</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fill in missing indicator columns from existing OHLCV data – no internet needed</td></tr>
 <tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>Recompute OVT scores without an OHLCV download – uses stored DB columns</td></tr>
+<tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Compact databases (SQLite <code>VACUUM</code>) – reclaims the space deleted rows still occupy</td></tr>
 </table>
+
+<h2>Compacting databases</h2>
+<p>SQLite never hands deleted pages back to the filesystem; it keeps them on a free
+list inside the file. After a large delete – a ticker group dropping out of the
+simulation, say – the file therefore stays as big as it ever was.
+<code>/vacuum</code> rewrites it compactly.</p>
+<table>
+<tr><th>Call</th><th>What it compacts</th></tr>
+<tr><td><code>/vacuum</code></td><td>The same DB the run would otherwise use – the yearly DB with <code>/year:2025</code>, the combined one with <code>/all</code></td></tr>
+<tr><td><code>/vacuum:asset_simulation_*</code></td><td>Every simulation database</td></tr>
+<tr><td><code>/vacuum:*</code></td><td>Every <code>.db</code> in the database directory</td></tr>
+</table>
+<div class="warn"><b>Needs exclusive access.</b> If the app or a scheduler job is
+working on the same file, it is skipped with <code>database is locked</code> and left
+untouched – the remaining files still run. Stop Streamlit and the scheduler first.
+The file is also rewritten while it runs: its size has to be free once more, otherwise
+<code>/vacuum</code> skips it with a note.</div>
 
 <h2>Known backfill indicators</h2>
 <pre>heikin  → ha_close, ha_open, ha_ema_high, ha_ema_low

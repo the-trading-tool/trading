@@ -1,7 +1,9 @@
 import concurrent.futures
 import pandas as pd
 from datetime import datetime, timedelta
+import glob
 import math
+import shutil
 import time
 import sqlite3
 import json
@@ -486,6 +488,97 @@ def rescore_db(sim_db_path: str, info_db_path: str) -> None:
     finally:
         sim_conn.close()
         info_conn.close()
+
+
+def _fmt_size(num_bytes: float) -> str:
+    """Format a byte count for log output."""
+    for unit in ('B', 'KB', 'MB'):
+        if abs(num_bytes) < 1024:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024
+    return f"{num_bytes:.2f} GB"
+
+
+def _db_size(db_path: str) -> int:
+    """Bytes occupied by a SQLite database including its WAL sidecar files."""
+    total = 0
+    for suffix in ('', '-wal', '-shm'):
+        try:
+            total += os.path.getsize(db_path + suffix)
+        except OSError:
+            pass  # sidecar missing = nothing to count
+    return total
+
+
+def vacuum_db(db_path: str) -> dict:
+    """Rebuild *db_path* with VACUUM and report how much space came back.
+
+    SQLite never hands deleted pages back to the filesystem — it keeps them on
+    an internal free list and reuses them for later inserts. After a large
+    delete (dropping a ticker group, say) the file therefore stays as big as it
+    ever was. VACUUM writes a fresh, compact copy and swaps it in.
+
+    Two constraints the caller has to live with:
+      * It needs exclusive access. Any other open connection — a running
+        Streamlit session, a scheduler job — makes it fail with
+        "database is locked". Nothing is changed in that case.
+      * It needs room for a second copy of the file while it runs.
+
+    Returns a dict with before/after sizes and an 'error' key when skipped.
+    """
+    result = {'path': db_path, 'before': 0, 'after': 0, 'error': None}
+    if not os.path.exists(db_path):
+        result['error'] = 'not found'
+        return result
+
+    before = _db_size(db_path)
+    result['before'] = before
+
+    # VACUUM builds the compacted copy before replacing the original, so the
+    # peak requirement is roughly twice the current size.
+    try:
+        free = shutil.disk_usage(os.path.dirname(os.path.abspath(db_path))).free
+        if free < before * 1.1:
+            result['error'] = (f"not enough free space ({_fmt_size(free)} left, "
+                               f"~{_fmt_size(before)} needed)")
+            return result
+    except OSError:
+        pass  # cannot determine free space — let SQLite decide
+
+    # Deliberately NOT open_db(): that sets temp_store=MEMORY, which would make
+    # VACUUM build the whole copy in RAM. isolation_level=None keeps sqlite3
+    # from wrapping the statement in a transaction (VACUUM cannot run in one).
+    conn = sqlite3.connect(db_path, timeout=10.0, isolation_level=None)
+    was_wal = False
+    try:
+        conn.execute("PRAGMA temp_store = FILE")
+        # Fold the WAL back into the main file first, otherwise its pages stay
+        # behind as a separate sidecar.
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        was_wal = (conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == 'wal')
+        if was_wal:
+            # In WAL mode the main file is only truncated once the LAST
+            # connection closes. With another one open — a Streamlit session,
+            # or this process holding config.db — VACUUM reports success while
+            # the file keeps its old size and the freed pages pile up in the
+            # WAL, so the database briefly looks bigger than before. Switching
+            # to the rollback journal makes that case an honest
+            # "database is locked" instead, and truncates immediately when the
+            # database really is free.
+            conn.execute("PRAGMA journal_mode = DELETE")
+        try:
+            conn.execute("VACUUM")
+        finally:
+            if was_wal:
+                conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError as e:
+        result['error'] = str(e)
+        return result
+    finally:
+        conn.close()
+
+    result['after'] = _db_size(db_path)
+    return result
 
 
 class OvtEmaUpdater:
@@ -1317,8 +1410,6 @@ if __name__ == "__main__":
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
 
-    sys_conf = sysconf.SystemConfig(username="admin")
-    system_currency = sys_conf.get_value("system_currency", "EUR")
     db_table = "asset_simulation"
     if all:
         sim_db_name = f"{db_table}_etp.db" if group == ['ETP'] else f"{db_table}_all.db"
@@ -1327,9 +1418,50 @@ if __name__ == "__main__":
 
     # -----------------------------------------------------------------------
     # Fast modes — no yfinance, early exit
+    #
+    # Note the order: /vacuum runs BEFORE SystemConfig is instantiated. That
+    # call opens config.db and keeps it open, which would keep VACUUM from
+    # truncating exactly that file.
     # -----------------------------------------------------------------------
     rescore_flag   = args.get('rescore', False)
     backfill_inds  = args.get('backfill', None)   # list[str] or None
+    vacuum_flag    = args.get('vacuum', False)
+    vacuum_pattern = args.get('vacuum_pattern', None)   # glob, None = the resolved sim-DB
+
+    if vacuum_flag:
+        db_dir = os.path.dirname(_Tools().get_path(path='database', file_name=sim_db_name))
+        if vacuum_pattern:
+            # basename() keeps the pattern inside the database directory; the
+            # .db suffix lets '/vacuum:*' mean "every database", not every file.
+            pattern = os.path.basename(vacuum_pattern)
+            if not pattern.endswith('.db'):
+                pattern += '.db'
+            targets = sorted(glob.glob(os.path.join(db_dir, pattern)))
+            if not targets:
+                logger.warning("vacuum: no database matches '%s' in %s", pattern, db_dir)
+        else:
+            targets = [os.path.join(db_dir, sim_db_name)]
+
+        total_before = total_after = 0
+        for path in targets:
+            res = vacuum_db(path)
+            name = os.path.basename(path)
+            if res['error']:
+                # Locked / missing / no space — reported per file, the rest still runs.
+                logger.warning("vacuum: %s skipped — %s", name, res['error'])
+                continue
+            saved = res['before'] - res['after']
+            total_before += res['before']
+            total_after += res['after']
+            logger.info("vacuum: %s  %s -> %s  (%s freed, %.1f %%)",
+                        name, _fmt_size(res['before']), _fmt_size(res['after']),
+                        _fmt_size(saved),
+                        (saved / res['before'] * 100) if res['before'] else 0.0)
+        if len(targets) > 1 and total_before:
+            logger.info("vacuum: total %s -> %s (%s freed)",
+                        _fmt_size(total_before), _fmt_size(total_after),
+                        _fmt_size(total_before - total_after))
+        exit(0)
 
     if rescore_flag:
         _t = _Tools()
@@ -1352,6 +1484,9 @@ if __name__ == "__main__":
             backfill_db(sim_db_path, 'database', backfill_inds, force=force_flag)
         exit(0)
     # -----------------------------------------------------------------------
+
+    sys_conf = sysconf.SystemConfig(username="admin")
+    system_currency = sys_conf.get_value("system_currency", "EUR")
 
     info_db = tt.tools.Db_tools(db_path="database", database_name="yf_tickers.db")
     sim_db = tt.tools.Db_tools(db_path="database", database_name=sim_db_name, db_type=":memory:")
