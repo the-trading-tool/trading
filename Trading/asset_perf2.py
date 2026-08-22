@@ -490,6 +490,58 @@ def rescore_db(sim_db_path: str, info_db_path: str) -> None:
         info_conn.close()
 
 
+def collect_missing_dates(sim_db_path: str, tickers: list[str],
+                          start: str, end: str,
+                          table: str = 'asset_simulation') -> dict:
+    """Map each ticker to the days it is missing in the simulation DB.
+
+    A day counts as missing when the local daily OHLC series has it inside
+    [start, end] but the simulation table does not. Dates are compared as
+    'YYYY-MM-DD'.
+
+    Comparing the dates themselves rather than the row counts is what catches
+    interior holes — a day the nightly run skipped sits in the middle of an
+    otherwise complete series, and a count comparison hides it as soon as one
+    extra row exists elsewhere.
+    """
+    missing: dict = {}
+    if not os.path.exists(sim_db_path):
+        logger.warning("fill: %s does not exist — nothing to compare against",
+                       sim_db_path)
+        return missing
+
+    sim_conn = open_db(sim_db_path, readonly=True)
+    try:
+        have: dict = {}
+        for tk, day in sim_conn.execute(
+                f"SELECT ticker, Date FROM {table} WHERE Date BETWEEN ? AND ?",
+                (start, end)):
+            have.setdefault(tk, set()).add(str(day)[:10])
+    finally:
+        sim_conn.close()
+
+    tools = _Tools()
+    for tk in tickers:
+        path = tools.get_path(path='database', file_name=f'yf_{tk}.db')
+        if not os.path.exists(path):
+            continue  # no local price series — nothing could be computed anyway
+        try:
+            conn = open_db(path, readonly=True)
+            try:
+                days = {str(r[0])[:10] for r in conn.execute(
+                    "SELECT Date FROM day_data WHERE Date BETWEEN ? AND ?",
+                    (start, end))}
+            finally:
+                conn.close()
+        except sqlite3.Error as e:
+            logger.debug("fill: %s unreadable (%s)", tk, e)
+            continue
+        gap = days - have.get(tk, set())
+        if gap:
+            missing[tk] = gap
+    return missing
+
+
 def _fmt_size(num_bytes: float) -> str:
     """Format a byte count for log output."""
     for unit in ('B', 'KB', 'MB'):
@@ -1298,8 +1350,15 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         return None
 
 
-def process_symbol(symbol, simulate=True, add_current=False, year='', init=False):
-    """Funktion, die pro Ticker in einem separaten Prozess läuft."""
+def process_symbol(symbol, simulate=True, add_current=False, year='', init=False,
+                   only_dates=None):
+    """Funktion, die pro Ticker in einem separaten Prozess läuft.
+
+    *only_dates* (a set of 'YYYY-MM-DD' strings, used by /fill) restricts the
+    output to exactly those days. Every row is built from `df_r.loc[startdate:date]`,
+    so a row only ever sees data up to its own date — computing a subset therefore
+    yields the same values a full run would write for those days.
+    """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
     ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps'])
@@ -1348,6 +1407,11 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
         if not year == '':
             start_of_year = datetime.strptime(f"{year}-01-01 00:00:00", t_string).date().strftime(t_string)
             end_of_year = datetime.strptime(f"{year}-12-31 00:00:00", t_string).date().strftime(t_string)
+        # /fill: narrow the window to the span of the missing days. Must come
+        # last — it overrides both the init and the /year window.
+        if only_dates:
+            start_of_year = f"{min(only_dates)} 00:00:00"
+            end_of_year = f"{max(only_dates)} 00:00:00"
 
         mask = (df.index >= pd.Timestamp(start_of_year)) & (df.index <= pd.Timestamp(end_of_year))
         df = df.loc[mask]
@@ -1371,6 +1435,8 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
         df_w = DataUtils.ensure_datetime_index(df_w)
 
         for date in df.index:
+            if only_dates is not None and date.strftime('%Y-%m-%d') not in only_dates:
+                continue  # already in the DB — nothing to recompute
             res_df_d = df_r.loc[startdate:date]
             res_df_w = df_w.loc[:date] if df_w is not None else pd.DataFrame()
             res_df_m = df_m.loc[:date] if df_m is not None else pd.DataFrame()
@@ -1549,6 +1615,42 @@ if __name__ == "__main__":
     tickers = pd.read_sql_query(ticker_query, info_db.conn)["Ticker"].unique().tolist()
     tickers = list(set(tickers))
     logger.info("%d tickers found.", len(tickers))
+
+    # -----------------------------------------------------------------------
+    # /fill — compute only what is missing.
+    #
+    # /init recomputes every day since 1 January for every ticker, which is
+    # wasted work once most of the year is already stored. /fill compares the
+    # simulation against the local daily series and hands each worker just the
+    # days it lacks: the stretch before an asset was added, plus any interior
+    # day a nightly run skipped.
+    # -----------------------------------------------------------------------
+    only_dates_map = None
+    if args.get('fill', False):
+        _now = datetime.now()
+        fill_year = year if not year == '' else _now.year
+        win_start = f"{fill_year}-01-01 00:00:00"
+        win_end = (f"{fill_year}-12-31 23:59:59" if not year == ''
+                   else f"{_now.strftime('%Y-%m-%d')} 23:59:59")
+        sim_path = _Tools().get_path(path='database', file_name=sim_db_name)
+        only_dates_map = collect_missing_dates(sim_path, tickers, win_start, win_end)
+        gap_rows = sum(len(v) for v in only_dates_map.values())
+        logger.info("fill: %s .. %s — %d of %d tickers incomplete, %d rows missing",
+                    win_start[:10], win_end[:10], len(only_dates_map),
+                    len(tickers), gap_rows)
+        if args.get('dry', False):
+            for tk in sorted(only_dates_map, key=lambda t: -len(only_dates_map[t]))[:25]:
+                days = sorted(only_dates_map[tk])
+                logger.info("  %-14s %4d missing  (%s .. %s)",
+                            tk, len(days), days[0], days[-1])
+            if len(only_dates_map) > 25:
+                logger.info("  ... and %d more tickers", len(only_dates_map) - 25)
+            exit(0)
+        if not only_dates_map:
+            logger.info("fill: nothing to do")
+            exit(0)
+        tickers = sorted(only_dates_map)
+
     all_results = []
     start = time.time()
 
@@ -1569,7 +1671,9 @@ if __name__ == "__main__":
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         # 3. Positionsargument = add_current: die geparste /add_current-Option
         # durchreichen (vorher hart False → Flag war wirkungslos).
-        futures = {executor.submit(process_symbol, sym, True, add_current, year=year, init=init): sym for sym in tickers}
+        futures = {executor.submit(process_symbol, sym, True, add_current, year=year, init=init,
+                                   only_dates=(only_dates_map.get(sym) if only_dates_map else None)): sym
+                   for sym in tickers}
         for future in concurrent.futures.as_completed(futures):
             symbol = futures[future]
             try:

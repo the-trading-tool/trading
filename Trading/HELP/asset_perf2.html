@@ -44,8 +44,33 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><th>Modus</th><th>Beispiel</th><th>Beschreibung</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fehlende Indikator-Spalten aus vorhandenen OHLCV-Daten nachfüllen – kein Internet nötig</td></tr>
 <tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>OVT-Scores neu berechnen ohne OHLCV-Download – verwendet gespeicherte DB-Spalten</td></tr>
+<tr><td><b>fill</b></td><td><code>python asset_perf2.py /fill</code></td><td>Nur die fehlenden Tage ergänzen statt das ganze Jahr neu zu rechnen</td></tr>
 <tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Datenbanken komprimieren (SQLite <code>VACUUM</code>) – gibt den Platz zurück, den gelöschte Zeilen belegen</td></tr>
 </table>
+
+<h2>Fehlende Tage ergänzen (/fill)</h2>
+<p><code>init</code> rechnet für jeden Ticker jeden Tag seit dem 1. Januar neu – auch
+die, die längst in der Datenbank stehen. <code>/fill</code> vergleicht stattdessen die
+Simulation mit der lokalen Tagesreihe und gibt jedem Ticker genau die Tage, die ihm
+fehlen.</p>
+<p>Verglichen werden die <b>Datumswerte</b>, nicht die Zeilenzahlen. Deshalb findet
+<code>/fill</code> zwei verschiedene Lücken:</p>
+<ul>
+<li><b>Der Anfang</b> – die Strecke zwischen Jahresanfang und dem Tag, an dem ein Asset
+  dazukam.</li>
+<li><b>Löcher mitten drin</b> – ein Tag, an dem der Nachtlauf ausfiel. Ein reiner
+  Zeilenzahl-Vergleich übersieht die, sobald anderswo eine Zeile zuviel steht.</li>
+</ul>
+<p><code>/fill</code> respektiert dieselbe Auswahl wie ein normaler Lauf
+(<code>/index:</code>, <code>/group:</code>, <code>/all</code>, <code>/year:</code>).
+Ohne <code>/year:</code> ist das Fenster der 1. Januar bis heute. Ticker ohne lokale
+Kursreihe werden übersprungen – ohne Kurse ließe sich ohnehin nichts rechnen.</p>
+<div class="info"><b>Erst schauen, dann rechnen:</b> <code>python asset_perf2.py /fill /dry</code>
+listet nur, was fehlt, und schreibt nichts.</div>
+<div class="warn">Der Zeitgewinn kommt vor allem daher, dass vollständige Ticker gar
+nicht erst angefasst werden. Pro Ticker bleiben Datenladen und Indikatoren als feste
+Kosten bestehen (~3 s) – ein Ticker, dem fast das ganze Jahr fehlt, dauert deshalb
+kaum kürzer als im vollen Lauf.</div>
 
 <h2>Datenbanken komprimieren</h2>
 <p>SQLite gibt gelöschte Seiten nie ans Dateisystem zurück, sondern hält sie als

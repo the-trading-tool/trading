@@ -22,6 +22,10 @@ def print_help():
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
           "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
           "                      (use when column was added with DEFAULT 0 and all values are 0),\n"
+          "  /fill - fill only the days missing from the simulation instead of recomputing\n"
+          "          the whole year like init: the stretch before an asset was added, plus\n"
+          "          any day a nightly run skipped. Respects /index:, /group:, /all, /year:,\n"
+          "  /dry  - combined with /fill: only report what is missing, write nothing,\n"
           "  /vacuum[:GLOB] - compact databases (SQLite VACUUM, reclaims space left by deletes).\n"
           "                   Without a value it takes the same DB the run would use (/year:, /all).\n"
           "                   /vacuum:asset_simulation_* takes every simulation DB, /vacuum:* every DB.\n"
@@ -63,6 +67,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'rescore': False,
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
+        'fill': False,            # asset_perf2: nur fehlende Tage ergaenzen statt /init
+        'dry': False,             # nur berichten, nichts schreiben
         'vacuum': False,          # asset_perf2: VACUUM statt Simulationslauf
         'vacuum_pattern': None,   # optionaler Glob, sonst die aufgeloeste Sim-DB
         'repair': False,    # get_asset_info: nur Ticker ohne Namen nachziehen
@@ -144,6 +150,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 # Indicator keys in INDICATOR_BACKFILL_MAP are lowercase →
                 # normalise input so that /backfill:Heikin still matches.
                 result['backfill'] = [s.strip().lower() for s in suf.split(',') if s.strip()]
+            if pref == 'fill':
+                result['fill'] = True
+            if pref == 'dry':
+                result['dry'] = True
             if pref == 'vacuum':
                 result['vacuum'] = True
                 if suf:

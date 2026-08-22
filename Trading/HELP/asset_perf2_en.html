@@ -44,8 +44,31 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><th>Mode</th><th>Example</th><th>Description</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fill in missing indicator columns from existing OHLCV data – no internet needed</td></tr>
 <tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>Recompute OVT scores without an OHLCV download – uses stored DB columns</td></tr>
+<tr><td><b>fill</b></td><td><code>python asset_perf2.py /fill</code></td><td>Fill in only the missing days instead of recomputing the whole year</td></tr>
 <tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Compact databases (SQLite <code>VACUUM</code>) – reclaims the space deleted rows still occupy</td></tr>
 </table>
+
+<h2>Filling in missing days (/fill)</h2>
+<p><code>init</code> recomputes every day since 1 January for every ticker – including
+the ones already stored. <code>/fill</code> instead compares the simulation against the
+local daily series and hands each ticker exactly the days it lacks.</p>
+<p>What gets compared are the <b>dates</b>, not the row counts. That is what lets
+<code>/fill</code> find two different kinds of gap:</p>
+<ul>
+<li><b>The beginning</b> – the stretch between the start of the year and the day an
+  asset was added.</li>
+<li><b>Holes in the middle</b> – a day the nightly run missed. A plain row-count
+  comparison hides those as soon as an extra row exists elsewhere.</li>
+</ul>
+<p><code>/fill</code> honours the same selection as a normal run
+(<code>/index:</code>, <code>/group:</code>, <code>/all</code>, <code>/year:</code>).
+Without <code>/year:</code> the window runs from 1 January to today. Tickers without a
+local price series are skipped – nothing could be computed for them anyway.</p>
+<div class="info"><b>Look before you compute:</b> <code>python asset_perf2.py /fill /dry</code>
+only lists what is missing and writes nothing.</div>
+<div class="warn">The time saved comes mostly from never touching the complete tickers.
+Per ticker, loading the data and running the indicators stays a fixed cost (~3 s), so a
+ticker missing almost the whole year takes barely less than it would in a full run.</div>
 
 <h2>Compacting databases</h2>
 <p>SQLite never hands deleted pages back to the filesystem; it keeps them on a free
