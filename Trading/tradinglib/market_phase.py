@@ -49,9 +49,20 @@ FAST_MA = 50
 # How far back the slow average is compared to call it rising/falling.
 SLOPE_DAYS = 20
 
+# --- beta parameters --------------------------------------------------------
+# Trailing window for the regression, in sessions. 252 ~ one year: long enough
+# to be stable, short enough to describe the asset as it behaves now.
+BETA_WINDOW = 252
+BETA_MIN_OBS = 120
+# Only clearly offensive / defensive values get a verdict; the crowd around 1.0
+# moves with its market and says nothing either way.
+HIGH_BETA = 1.15
+LOW_BETA = 0.85
+
 # verdict vocabulary
 UP, DOWN, TRANSITION = 'up', 'down', 'transition'
 STRONG, WEAK, NEUTRAL = 'strong', 'weak', 'neutral'
+TAILWIND, HEADWIND = 'tailwind', 'headwind'
 NO_DATA = 'no_data'
 
 _EMPTY_TREND = {'verdict': NO_DATA, 'close': None, 'sma_slow': None,
@@ -238,6 +249,128 @@ class MarketPhase:
         return out
 
 
+# ------------------------------------------------------------------------ beta
+_returns_cache: dict = {}
+_returns_lock = threading.Lock()
+
+
+def _returns(ticker, db_path='database'):
+    """Daily returns of *ticker* from its local series, cached.
+
+    Only the return series is kept, not the frame — a beta run touches over a
+    thousand tickers.
+    """
+    key = str(ticker)
+    with _returns_lock:
+        if key in _returns_cache:
+            return _returns_cache[key]
+    try:
+        from tradinglib.fetch_data import FetchData
+        from tradinglib.utils import DataUtils
+        df = FetchData(database_path=db_path).load_price_data(
+            key, period='max', interval='1d')
+        df = DataUtils.ensure_datetime_index(df)
+        close = pd.to_numeric(df['Close'], errors='coerce').dropna().sort_index()
+        close = close[~close.index.duplicated(keep='last')]
+        ser = close.pct_change().dropna() if len(close) > 1 else None
+    except Exception:
+        ser = None
+    with _returns_lock:
+        _returns_cache[key] = ser
+    return ser
+
+
+def clear_returns_cache():
+    with _returns_lock:
+        _returns_cache.clear()
+
+
+def beta(asset, market, date, window=BETA_WINDOW, min_obs=BETA_MIN_OBS,
+         db_path='database'):
+    """Beta of *asset* against *market* over the sessions ending at *date*.
+
+    Measured against the row's **own** index rather than taken from
+    `asset_info.beta`: that field is a single current Yahoo number against an
+    unstated benchmark and covers only ~56 % of the universe. Regressing the
+    local series against the index the position actually belongs to is both
+    causal — nothing after *date* enters — and asks the right question.
+
+    Returns None when either series is missing or the overlap is too short.
+    """
+    if not asset or not market:
+        return None
+    ra, rm = _returns(asset, db_path), _returns(market, db_path)
+    if ra is None or rm is None or ra.empty or rm.empty:
+        return None
+    ts = pd.Timestamp(date)
+    if pd.isna(ts):
+        return None
+    ts = ts.normalize()
+    # Align first, then take the window: asset and index calendars differ (a US
+    # stock against a German index), and cutting each side separately would pair
+    # up days that are not the same day.
+    joined = pd.concat([ra.loc[:ts], rm.loc[:ts]], axis=1,
+                       join='inner', keys=['a', 'm']).dropna()
+    if len(joined) < min_obs:
+        return None
+    joined = joined.tail(window)
+    var = float(joined['m'].var())
+    if not var or pd.isna(var):
+        return None
+    return float(joined['a'].cov(joined['m']) / var)
+
+
+def beta_class(beta_value):
+    """Offensive / market-like / defensive, from the beta level alone.
+
+    This — not `beta_fit` below — is what the buy table shows, because it is the
+    reading the trades support: over 4372 closed trades a beta above HIGH_BETA
+    beat one below LOW_BETA in all six strategies and in seven of nine markets.
+
+    Read it as amplitude, not as odds: the hit rate barely moves (53.3 % against
+    49.8 %), the average does (+2.63 % against +1.35 %). Beta scales whatever the
+    strategy produces, so in the one losing year of the sample (2022) the ramp
+    reversed.
+    """
+    if beta_value is None or (isinstance(beta_value, float) and pd.isna(beta_value)):
+        return NO_DATA
+    if beta_value >= HIGH_BETA:
+        return UP
+    if beta_value <= LOW_BETA:
+        return DOWN
+    return NEUTRAL
+
+
+def beta_fit(beta_value, trend_verdict):
+    """Does the asset's market sensitivity point with or against the phase?
+
+    The textbook reading: a high beta amplifies whatever the market does —
+    welcome in a rising market, unwelcome in a falling one; a low beta shelters
+    in a falling market but lags a rising one.
+
+    **Measured and not confirmed**, which is why the buy table shows
+    `beta_class` instead. Over the same 4372 trades 'headwind' did about as well
+    as 'tailwind' (avg +3.27 % against +3.48 %) and beat it inside three of the
+    four years that carried both — because high beta helped in *both* market
+    phases (down +3.27 %, up +4.15 %, against +1.81 % / +2.13 % for low beta).
+    Conditioning on the phase dilutes the signal that beta itself carries.
+    Kept as the explicit answer to that question; not wired into the UI.
+    """
+    if beta_value is None or (isinstance(beta_value, float) and pd.isna(beta_value)):
+        return NO_DATA
+    if trend_verdict == UP:
+        if beta_value >= HIGH_BETA:
+            return TAILWIND
+        return NEUTRAL          # low beta lags a rising market, it does not fight it
+    if trend_verdict == DOWN:
+        if beta_value >= HIGH_BETA:
+            return HEADWIND
+        if beta_value <= LOW_BETA:
+            return TAILWIND
+        return NEUTRAL
+    return NEUTRAL if trend_verdict == TRANSITION else NO_DATA
+
+
 # ---------------------------------------------------------------- module cache
 _cache: dict = {}
 _lock = threading.Lock()
@@ -273,19 +406,29 @@ def state_for(ticker, date, horizon=DEFAULT_HORIZON, **kw):
 
 _ANNOTATED = ('trend_verdict', 'trend_dist_slow',
               'season_verdict', 'season_prob', 'season_avg', 'season_n')
+_BETA_COLS = ('beta', 'beta_fit')
 
 
 def annotate(df, market_col='stockIndex', date_col='buyDate',
-             horizon=DEFAULT_HORIZON, **kw):
+             horizon=DEFAULT_HORIZON, asset_col=None, **kw):
     """Add the market-context columns of `_ANNOTATED` to a copy of *df*.
 
     One lookup per (market, day) pair — the same combination repeats across
     strategies and a lookup is pure.
+
+    Pass *asset_col* (e.g. 'ticker') to also get 'beta' — the row's sensitivity
+    to its own market, measured over the year before the date — and 'beta_fit',
+    whether that sensitivity points with or against the market's phase. This
+    costs one price series per distinct asset, so it is opt-in.
     """
     out = df.copy()
     for col in _ANNOTATED:
         if col not in out.columns:
             out[col] = NO_DATA if col.endswith('verdict') else np.nan
+    if asset_col:
+        out['beta'] = np.nan
+        out['beta_fit'] = NO_DATA
+        out['beta_class'] = NO_DATA
     if out.empty or market_col not in out.columns or date_col not in out.columns:
         return out
 
@@ -302,4 +445,20 @@ def annotate(df, market_col='stockIndex', date_col='buyDate',
             collected[c].append(np.nan if v is None else v)
     for c in _ANNOTATED:
         out[c] = collected[c]
+
+    if asset_col and asset_col in out.columns:
+        seen_b: dict = {}
+        betas, fits = [], []
+        for asset, market, date, trend in zip(out[asset_col], out[market_col],
+                                              out[date_col], out['trend_verdict']):
+            key = (str(asset), str(market), str(date)[:10])
+            b = seen_b.get(key, ...)
+            if b is ...:
+                b = beta(asset, market, date)
+                seen_b[key] = b
+            betas.append(np.nan if b is None else b)
+            fits.append(beta_fit(b, trend))
+        out['beta'] = betas
+        out['beta_fit'] = fits
+        out['beta_class'] = [beta_class(b) for b in betas]
     return out

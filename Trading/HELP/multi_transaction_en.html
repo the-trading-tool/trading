@@ -90,21 +90,55 @@ against the outcomes.</p>
 <div class="warn"><b>Context, not a quality mark.</b> Measured over 4372 closed trades
 (buy years 2020–2022, 2025–2026) <b>neither</b> column separates winners from losers:
 <ul>
-<li><b>Season:</b> "strong" 54.0 % hit rate / avg +2.57 % against "weak" 53.2 % / +2.55 %.
-Correlation between up-probability and outcome: +0.018.</li>
-<li><b>Trend:</b> pooled, "uptrend" looks better (avg +2.96 % vs +2.69 %), but that is a
+<li><b>Season:</b> "strong" 54.4 % hit rate / avg +2.92 % against "weak" 54.1 % / +2.55 %.
+Correlation between up-probability and outcome: <b>−0.000</b>.</li>
+<li><b>Trend:</b> pooled, "uptrend" looks better (avg +3.00 % vs +2.48 %), but that is a
 <b>composition effect</b>: 2021 produced 852 uptrend trades and zero downtrend ones, 2022
 the reverse. <b>Within</b> every year holding both groups, "downtrend" did better
-(+1.94 pp on average, 3 of 3 years) — consistent with strategies that deliberately buy
-weakness.</li>
+(2020: +5.13 vs +2.46 · 2022: +1.60 vs +0.93 · 2025: +2.81 vs +1.73) — consistent with
+strategies that deliberately buy weakness.</li>
 </ul>
 The columns are therefore meant as context and deliberately not colour-coded. As a
 <i>filter</i>, the index trend criterion was already tested and rejected (−33 % return).</div>
 
-<div class="info"><b>"–" instead of a seasonal figure</b> means too little local history;
-at least four years are needed. Currently affected are <code>^RUT</code> and
-<code>^IBEX</code> (2 years each) — deepen those series with
-<code>python get_asset_data.py /tickers:^RUT,^IBEX 1d:max</code>.</div>
+<h2>The asset's beta</h2>
+<p>Two further columns describe not the market but the <b>asset's sensitivity to its own
+index</b>:</p>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Beta</b></td>
+  <td>Regression of the asset's daily returns against its index's (column "Index") over
+  the 252 sessions <i>before</i> the buy date. 1.0 = moves with its market.</td></tr>
+<tr><td><b>Beta level</b></td>
+  <td><code>↑ offensive</code> from 1.15 · <code>→ market-like</code> in between ·
+  <code>↓ defensive</code> up to 0.85.</td></tr>
+</table>
+<p>Deliberately <b>not</b> taken from <code>asset_info.beta</code>: that Yahoo field is a
+single current number against an unstated benchmark and is filled for only ~56 % of the
+universe. Regressed against the index the position actually belongs to, it is causal and
+available for practically every row.</p>
+
+<div class="info"><b>This is the only one of the three columns with a measurable
+relationship.</b> Over the same 4372 trades:
+<table>
+<tr><th>Beta</th><th>Trades</th><th>Hit rate</th><th>Avg</th><th>Median</th><th>PF</th></tr>
+<tr><td>↑ offensive (≥ 1.15)</td><td>1408</td><td>55.3 %</td><td>+3.71 %</td><td>+0.95</td><td>2.99</td></tr>
+<tr><td>→ market-like</td><td>1323</td><td>55.3 %</td><td>+2.62 %</td><td>+0.70</td><td>2.65</td></tr>
+<tr><td>↓ defensive (≤ 0.85)</td><td>1621</td><td>53.2 %</td><td>+1.99 %</td><td>+0.30</td><td>2.44</td></tr>
+</table>
+Offensive beat defensive in <b>all 6 strategies</b> and in 8 of 9 markets; dropping
+<code>^RUT</code> and the exceptional year 2026 leaves the order intact
+(+2.63 % · +2.28 % · +1.35 %).
+<b>But:</b> the hit rate barely moves (55.3 % vs 53.2 %) — beta <b>scales the outcome, it
+does not improve the odds</b>. In the losing year 2022 the order reversed accordingly.</div>
+
+<div class="warn"><b>Beta times market phase — tested and not confirmed.</b> The textbook
+reading ("high beta suits an uptrend, low beta a downtrend") is implemented in
+<code>market_phase.beta_fit()</code> but is <b>not displayed</b>: "headwind" did about as
+well as "tailwind" (avg +3.27 % vs +3.48 %) and beat it in all three comparable years.
+The reason: high beta helped in <i>both</i> market phases (downtrend +3.27 %, uptrend
++4.15 %, against +1.81 % / +2.13 % for low beta). Conditioning on the phase therefore
+dilutes the very signal beta itself carries.</div>
 
 <div class="info"><b>Valuation of open positions in the summary:</b> "Total value (open at cost)" values still-open positions at the buy price (≈ realized P&L only). In addition, "Unrealized P&L (open positions)" (valuation at the current/last price minus entry) and "Total value incl. unrealized" are shown — the latter matches the <b>"Portfolio value today"</b> metric on the Dashboard (small differences due to price/valuation timing are possible).</div>
 

@@ -91,22 +91,58 @@ Ergebnisse messen.</p>
 abgeschlossenen Trades (Kaufjahre 2020–2022, 2025–2026) trennt <b>keine</b> der beiden
 Spalten Gewinner von Verlierern:
 <ul>
-<li><b>Saison:</b> „stark" 54,0 % Treffer / Ø +2,57 % gegen „schwach" 53,2 % / Ø +2,55 %.
-Korrelation zwischen Aufwärts-Wahrscheinlichkeit und Ergebnis: +0,018.</li>
-<li><b>Trend:</b> gepoolt sieht „Aufwärts" besser aus (Ø +2,96 % gegen +2,69 %), aber das
+<li><b>Saison:</b> „stark" 54,4 % Treffer / Ø +2,92 % gegen „schwach" 54,1 % / Ø +2,55 %.
+Korrelation zwischen Aufwärts-Wahrscheinlichkeit und Ergebnis: <b>−0,000</b>.</li>
+<li><b>Trend:</b> gepoolt sieht „Aufwärts" besser aus (Ø +3,00 % gegen +2,48 %), aber das
 ist ein <b>Mischungseffekt</b>: 2021 lieferte 852 Aufwärts- und null Abwärts-Trades,
 2022 umgekehrt. <b>Innerhalb</b> jedes Jahres mit beiden Gruppen war „Abwärts" besser
-(+1,94 pp im Mittel, 3 von 3 Jahren) — passend dazu, dass die Strategien bewusst
-Schwäche kaufen.</li>
+(2020: +5,13 gegen +2,46 · 2022: +1,60 gegen +0,93 · 2025: +2,81 gegen +1,73) —
+passend dazu, dass die Strategien bewusst Schwäche kaufen.</li>
 </ul>
 Die Spalten sind deshalb als Kontext gedacht und bewusst nicht eingefärbt. Als
 <i>Filter</i> wurde das Index-Trend-Kriterium bereits getestet und verworfen (−33 %
 Rendite).</div>
 
-<div class="info"><b>„–" statt einer Saison-Zahl</b> heißt: zu wenig lokale Historie.
-Nötig sind mindestens vier Jahre. Betroffen sind derzeit <code>^RUT</code> und
-<code>^IBEX</code> (je 2 Jahre) — die Kursreihen lassen sich mit
-<code>python get_asset_data.py /tickers:^RUT,^IBEX 1d:max</code> vertiefen.</div>
+<h2>Beta des Werts</h2>
+<p>Zwei weitere Spalten beschreiben nicht den Markt, sondern die <b>Empfindlichkeit des
+Werts gegenüber seinem eigenen Index</b>:</p>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><b>Beta</b></td>
+  <td>Regression der Tagesrenditen des Werts gegen die seines Index (Spalte „Index"),
+  über die 252 Handelstage <i>vor</i> dem Kauftag. 1,0 = bewegt sich wie der Markt.</td></tr>
+<tr><td><b>Beta-Einstufung</b></td>
+  <td><code>↑ offensiv</code> ab 1,15 · <code>→ marktnah</code> dazwischen ·
+  <code>↓ defensiv</code> bis 0,85.</td></tr>
+</table>
+<p>Bewusst <b>nicht</b> aus <code>asset_info.beta</code>: dieses Yahoo-Feld ist eine
+einzelne aktuelle Zahl gegen eine nicht genannte Referenz und nur für ~56 % der Werte
+gefüllt. Gegen den Index gerechnet, zu dem die Position tatsächlich gehört, ist es
+kausal und für praktisch alle Zeilen verfügbar.</p>
+
+<div class="info"><b>Das ist die einzige der drei Spalten mit messbarem Zusammenhang.</b>
+Über dieselben 4372 Trades:
+<table>
+<tr><th>Beta</th><th>Trades</th><th>Treffer</th><th>Ø</th><th>Median</th><th>PF</th></tr>
+<tr><td>↑ offensiv (≥ 1,15)</td><td>1408</td><td>55,3 %</td><td>+3,71 %</td><td>+0,95</td><td>2,99</td></tr>
+<tr><td>→ marktnah</td><td>1323</td><td>55,3 %</td><td>+2,62 %</td><td>+0,70</td><td>2,65</td></tr>
+<tr><td>↓ defensiv (≤ 0,85)</td><td>1621</td><td>53,2 %</td><td>+1,99 %</td><td>+0,30</td><td>2,44</td></tr>
+</table>
+Offensiv schlug defensiv in <b>allen 6 Strategien</b> und in 8 von 9 Märkten; ohne
+<code>^RUT</code> und ohne das Ausnahmejahr 2026 bleibt die Reihenfolge bestehen
+(+2,63 % · +2,28 % · +1,35 %).
+<b>Aber:</b> Die Trefferquote bewegt sich kaum (55,3 % gegen 53,2 %) — Beta <b>skaliert
+das Ergebnis, es verbessert nicht die Chancen</b>. Im Verlustjahr 2022 drehte sich die
+Reihenfolge entsprechend um.</div>
+
+<div class="warn"><b>Beta mal Marktphase — getestet und nicht bestätigt.</b> Die
+Lehrbuchlesart („hohes Beta passt zum Aufwärtstrend, niedriges zum Abwärtstrend") ist in
+<code>market_phase.beta_fit()</code> implementiert, wird aber <b>nicht angezeigt</b>:
+„Gegenwind" schnitt praktisch so gut ab wie „Rückenwind" (Ø +3,27 % gegen +3,48 %) und
+war in allen drei vergleichbaren Jahren sogar besser. Der Grund: hohes Beta half in
+<i>beiden</i> Marktphasen (Abwärts +3,27 %, Aufwärts +4,15 % gegen +1,81 % / +2,13 % bei
+niedrigem Beta). Die Phase herauszurechnen verwässert also genau das Signal, das Beta
+selbst trägt.</div>
 
 <div class="info"><b>Bewertung offener Positionen in der Zusammenfassung:</b> „Gesamtwert (offene zu Einstand)" bewertet noch offene Positionen zum Kaufkurs (≈ nur realisierter G&V). Zusätzlich werden „Unrealisierter G&V (offene Positionen)" (Bewertung zum aktuellen/letzten Kurs minus Einstand) und „Gesamtwert inkl. unrealisiert" ausgewiesen — Letzterer entspricht der Kennzahl <b>„Portfoliowert heute"</b> auf dem Dashboard (kleine Abweichungen durch Kurs-/Bewertungszeitpunkt möglich).</div>
 

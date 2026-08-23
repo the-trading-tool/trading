@@ -193,3 +193,101 @@ def test_state_for_leerer_markt():
     got = mph.state_for('', '2026-01-02')
     assert got['season_verdict'] == mph.NO_DATA
     assert got['trend_verdict'] == mph.NO_DATA
+
+
+# ------------------------------------------------------------------- beta
+def _two_series(n=400, factor=1.5, noise=0.0, seed=0):
+    """Market and an asset that moves *factor* times as much."""
+    rng = np.random.default_rng(seed)
+    idx = pd.bdate_range('2020-01-01', periods=n)
+    mret = rng.normal(0.0005, 0.01, n)
+    aret = mret * factor + (rng.normal(0, noise, n) if noise else 0.0)
+    mkt = pd.Series(100 * np.cumprod(1 + mret), index=idx)
+    ast = pd.Series(100 * np.cumprod(1 + aret), index=idx)
+    return ast, mkt
+
+
+def _patch_returns(monkeypatch, series_by_ticker):
+    mph.clear_returns_cache()
+    monkeypatch.setattr(mph, '_returns',
+                        lambda tk, db_path='database':
+                        series_by_ticker.get(str(tk)))
+
+
+def test_beta_findet_die_eingebaute_sensitivitaet(monkeypatch):
+    ast, mkt = _two_series(factor=1.5)
+    _patch_returns(monkeypatch, {'A': ast.pct_change().dropna(),
+                                 'M': mkt.pct_change().dropna()})
+    got = mph.beta('A', 'M', ast.index[-1])
+    assert got == pytest.approx(1.5, abs=0.05)
+
+
+def test_beta_defensiv(monkeypatch):
+    ast, mkt = _two_series(factor=0.4)
+    _patch_returns(monkeypatch, {'A': ast.pct_change().dropna(),
+                                 'M': mkt.pct_change().dropna()})
+    assert mph.beta('A', 'M', ast.index[-1]) == pytest.approx(0.4, abs=0.05)
+
+
+def test_beta_ist_kausal(monkeypatch):
+    """Kurse NACH dem Stichtag duerfen das Beta nicht veraendern -- sonst waere
+    jede Messung an alten Trades Rueckschau."""
+    ast, mkt = _two_series(n=800, factor=1.5)
+    cut = ast.index[400]
+    full = {'A': ast.pct_change().dropna(), 'M': mkt.pct_change().dropna()}
+    short = {'A': ast.loc[:cut].pct_change().dropna(),
+             'M': mkt.loc[:cut].pct_change().dropna()}
+    _patch_returns(monkeypatch, full)
+    a = mph.beta('A', 'M', cut)
+    _patch_returns(monkeypatch, short)
+    b = mph.beta('A', 'M', cut)
+    assert a == pytest.approx(b, abs=1e-9)
+
+
+def test_beta_zu_wenig_ueberlappung(monkeypatch):
+    ast, mkt = _two_series(n=60)
+    _patch_returns(monkeypatch, {'A': ast.pct_change().dropna(),
+                                 'M': mkt.pct_change().dropna()})
+    assert mph.beta('A', 'M', ast.index[-1]) is None
+
+
+def test_beta_fehlende_reihe(monkeypatch):
+    _patch_returns(monkeypatch, {})
+    assert mph.beta('A', 'M', '2026-01-02') is None
+    assert mph.beta('', 'M', '2026-01-02') is None
+
+
+def test_beta_klassen():
+    assert mph.beta_class(1.4) == mph.UP
+    assert mph.beta_class(1.15) == mph.UP
+    assert mph.beta_class(1.0) == mph.NEUTRAL
+    assert mph.beta_class(0.85) == mph.DOWN
+    assert mph.beta_class(0.3) == mph.DOWN
+    assert mph.beta_class(None) == mph.NO_DATA
+    assert mph.beta_class(float('nan')) == mph.NO_DATA
+
+
+def test_beta_fit_lehrbuchlesart():
+    """beta_fit bleibt als explizite Antwort auf die Phasen-Frage erhalten --
+    auch wenn die Messung sie nicht stuetzt und die UI sie nicht zeigt."""
+    assert mph.beta_fit(1.4, mph.UP) == mph.TAILWIND
+    assert mph.beta_fit(1.4, mph.DOWN) == mph.HEADWIND
+    assert mph.beta_fit(0.5, mph.DOWN) == mph.TAILWIND
+    assert mph.beta_fit(0.5, mph.UP) == mph.NEUTRAL
+    assert mph.beta_fit(1.4, mph.TRANSITION) == mph.NEUTRAL
+    assert mph.beta_fit(None, mph.UP) == mph.NO_DATA
+    assert mph.beta_fit(1.4, mph.NO_DATA) == mph.NO_DATA
+
+
+def test_annotate_beta_nur_mit_asset_col(monkeypatch):
+    spec = {y: list(np.linspace(100, 130, 60)) for y in range(2020, 2027)}
+    m = _market(monkeypatch, _series(spec), ticker='^TEST')
+    monkeypatch.setattr(mph, 'get_market', lambda ticker, **kw: m)
+    df = pd.DataFrame({'stockIndex': ['^TEST'], 'ticker': ['AAA'],
+                       'buyDate': ['2026-01-02']})
+    ohne = mph.annotate(df)
+    assert 'beta' not in ohne.columns          # opt-in: kostet eine Kursreihe je Wert
+    monkeypatch.setattr(mph, 'beta', lambda *a, **k: 1.4)
+    mit = mph.annotate(df, asset_col='ticker')
+    assert mit['beta'].tolist() == [1.4]
+    assert mit['beta_class'].tolist() == [mph.UP]
