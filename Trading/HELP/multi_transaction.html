@@ -65,7 +65,48 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Monatliche Performance-Heatmap</b> (Monat × Jahr, RdYlGn-Farbskala)</li>
   <li><b>Strategie-Kennzahlen:</b> offene Positionen, Profit-Faktor, Trefferquote, Ø Gewinn/Trade, realisierter Gewinn, längste Gewinn-/Verlustserie, beste/schlechteste Trades (3 Monate &amp; 1 Jahr)</li>
   <li><b>Portfolio-Overlap-Warnung:</b> meldet, falls derselbe Ticker in mehreren Strategien gleichzeitig gehalten wird</li>
+  <li><b>Markt-Kontext</b> je Kaufempfehlung (Spalten „Markt-Trend" und „Markt-Saison") — siehe unten</li>
 </ul>
+
+<h2>Markt-Kontext der Kaufempfehlungen</h2>
+<p>Die Kauf-Tabelle trägt zwei Spalten, die den Zustand des <b>zugehörigen Index</b>
+(Spalte „Index") am Kauftag beschreiben. Beide werden aus der lokalen Tagesreihe
+dieses Index berechnet (<code>tradinglib/market_phase.py</code>).</p>
+<table>
+<tr><th>Spalte</th><th>Bedeutung</th></tr>
+<tr><td><b>Markt-Trend</b></td>
+  <td><code>↑ Aufwärts</code> = Index über seinem 200-Tage-Schnitt und dieser steigt ·
+  <code>↓ Abwärts</code> = darunter und fallend · <code>→ Übergang</code> = gedreht,
+  aber nicht bestätigt (über einem fallenden bzw. unter einem steigenden Schnitt).</td></tr>
+<tr><td><b>Markt-Saison</b></td>
+  <td>Anteil der Vorjahre, in denen dieser Index ab diesem Punkt im Jahr über die
+  nächsten 21 Handelstage gestiegen ist. Pfeil ab 60 % (↑) bzw. bis 40 % (↓).</td></tr>
+</table>
+<p><b>Kausal gerechnet:</b> Es fließen nur Daten bis zum Kauftag ein, in die Saison-Zahl
+nur Jahre <i>vor</i> dem Kaufjahr. Der Wert neben einem alten Trade ist also einer, der
+an jenem Tag bekannt war — sonst ließe sich der Marker nicht ehrlich gegen die
+Ergebnisse messen.</p>
+
+<div class="warn"><b>Einordnung, keine Qualitätsnote.</b> Gemessen an 4372
+abgeschlossenen Trades (Kaufjahre 2020–2022, 2025–2026) trennt <b>keine</b> der beiden
+Spalten Gewinner von Verlierern:
+<ul>
+<li><b>Saison:</b> „stark" 54,0 % Treffer / Ø +2,57 % gegen „schwach" 53,2 % / Ø +2,55 %.
+Korrelation zwischen Aufwärts-Wahrscheinlichkeit und Ergebnis: +0,018.</li>
+<li><b>Trend:</b> gepoolt sieht „Aufwärts" besser aus (Ø +2,96 % gegen +2,69 %), aber das
+ist ein <b>Mischungseffekt</b>: 2021 lieferte 852 Aufwärts- und null Abwärts-Trades,
+2022 umgekehrt. <b>Innerhalb</b> jedes Jahres mit beiden Gruppen war „Abwärts" besser
+(+1,94 pp im Mittel, 3 von 3 Jahren) — passend dazu, dass die Strategien bewusst
+Schwäche kaufen.</li>
+</ul>
+Die Spalten sind deshalb als Kontext gedacht und bewusst nicht eingefärbt. Als
+<i>Filter</i> wurde das Index-Trend-Kriterium bereits getestet und verworfen (−33 %
+Rendite).</div>
+
+<div class="info"><b>„–" statt einer Saison-Zahl</b> heißt: zu wenig lokale Historie.
+Nötig sind mindestens vier Jahre. Betroffen sind derzeit <code>^RUT</code> und
+<code>^IBEX</code> (je 2 Jahre) — die Kursreihen lassen sich mit
+<code>python get_asset_data.py /tickers:^RUT,^IBEX 1d:max</code> vertiefen.</div>
 
 <div class="info"><b>Bewertung offener Positionen in der Zusammenfassung:</b> „Gesamtwert (offene zu Einstand)" bewertet noch offene Positionen zum Kaufkurs (≈ nur realisierter G&V). Zusätzlich werden „Unrealisierter G&V (offene Positionen)" (Bewertung zum aktuellen/letzten Kurs minus Einstand) und „Gesamtwert inkl. unrealisiert" ausgewiesen — Letzterer entspricht der Kennzahl <b>„Portfoliowert heute"</b> auf dem Dashboard (kleine Abweichungen durch Kurs-/Bewertungszeitpunkt möglich).</div>
 

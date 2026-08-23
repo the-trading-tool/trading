@@ -65,7 +65,46 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Monthly performance heatmap</b> (month × year, RdYlGn colour scale)</li>
   <li><b>Strategy metrics:</b> open positions, profit factor, hit rate, avg. profit/trade, realised profit, longest winning/losing streak, best/worst trades (3 months &amp; 1 year)</li>
   <li><b>Portfolio overlap warning:</b> reports if the same ticker is held in several strategies at once</li>
+  <li><b>Market context</b> per buy recommendation (columns "Market trend" and "Market season") — see below</li>
 </ul>
+
+<h2>Market context of the buy recommendations</h2>
+<p>The buy table carries two columns describing the state of the row's <b>own index</b>
+(column "Index") on the buy date. Both are computed from that index's local daily series
+(<code>tradinglib/market_phase.py</code>).</p>
+<table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td><b>Market trend</b></td>
+  <td><code>↑ Uptrend</code> = index above its 200-day average and that average rising ·
+  <code>↓ Downtrend</code> = below and falling · <code>→ Transition</code> = turned but
+  unconfirmed (above a falling average, or below a rising one).</td></tr>
+<tr><td><b>Market season</b></td>
+  <td>Share of earlier years in which this index rose over the next 21 trading days from
+  this point in the year. Arrow from 60 % (↑) and up to 40 % (↓).</td></tr>
+</table>
+<p><b>Computed causally:</b> only data up to the buy date enters, and the seasonal figure
+uses only years <i>before</i> the trade's year. The value beside an old trade is therefore
+one that was knowable that day — otherwise the marker could not be measured honestly
+against the outcomes.</p>
+
+<div class="warn"><b>Context, not a quality mark.</b> Measured over 4372 closed trades
+(buy years 2020–2022, 2025–2026) <b>neither</b> column separates winners from losers:
+<ul>
+<li><b>Season:</b> "strong" 54.0 % hit rate / avg +2.57 % against "weak" 53.2 % / +2.55 %.
+Correlation between up-probability and outcome: +0.018.</li>
+<li><b>Trend:</b> pooled, "uptrend" looks better (avg +2.96 % vs +2.69 %), but that is a
+<b>composition effect</b>: 2021 produced 852 uptrend trades and zero downtrend ones, 2022
+the reverse. <b>Within</b> every year holding both groups, "downtrend" did better
+(+1.94 pp on average, 3 of 3 years) — consistent with strategies that deliberately buy
+weakness.</li>
+</ul>
+The columns are therefore meant as context and deliberately not colour-coded. As a
+<i>filter</i>, the index trend criterion was already tested and rejected (−33 % return).</div>
+
+<div class="info"><b>"–" instead of a seasonal figure</b> means too little local history;
+at least four years are needed. Currently affected are <code>^RUT</code> and
+<code>^IBEX</code> (2 years each) — deepen those series with
+<code>python get_asset_data.py /tickers:^RUT,^IBEX 1d:max</code>.</div>
 
 <div class="info"><b>Valuation of open positions in the summary:</b> "Total value (open at cost)" values still-open positions at the buy price (≈ realized P&L only). In addition, "Unrealized P&L (open positions)" (valuation at the current/last price minus entry) and "Total value incl. unrealized" are shown — the latter matches the <b>"Portfolio value today"</b> metric on the Dashboard (small differences due to price/valuation timing are possible).</div>
 
