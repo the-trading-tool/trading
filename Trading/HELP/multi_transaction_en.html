@@ -68,6 +68,21 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Market context</b> per buy recommendation (columns "Market trend" and "Market season") — see below</li>
 </ul>
 
+<h2>Result cache</h2>
+<p>The computation is expensive, so the finished result is cached for the session —
+otherwise every download and every widget click would recompute everything. A note
+below the table tells you when a stored result is being shown.</p>
+<p>The cache is dropped automatically as soon as an input that feeds the result
+changes: the strategy configuration, year, filter date, system currency, the global
+settings <code>signal_window</code>, <code>stop_loss_pct</code> and
+<code>require_isin</code> — and the <b>simulation database itself</b> (detected by
+size and modification time, i.e. after every <code>asset_perf2.py</code> run).</p>
+<div class="warn"><b>Background:</b> those three global settings and the data state
+used to be missing from the key. Changing <code>signal_window</code>, for instance,
+left the page showing the calculation made under the old value — the figures then
+diverged noticeably from a headless run via <code>asset_perf2.py</code> (in one real
+case 32.9 % against 43.2 % total gain) with nothing pointing at the cause.</div>
+
 <h2>Market context of the buy recommendations</h2>
 <p>The buy table carries two columns describing the state of the row's <b>own index</b>
 (column "Index") on the buy date. Both are computed from that index's local daily series

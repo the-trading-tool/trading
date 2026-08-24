@@ -68,6 +68,22 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Markt-Kontext</b> je Kaufempfehlung (Spalten „Markt-Trend" und „Markt-Saison") — siehe unten</li>
 </ul>
 
+<h2>Ergebnis-Cache</h2>
+<p>Die Berechnung ist teuer, deshalb wird das fertige Ergebnis in der Sitzung
+zwischengespeichert — sonst würde jeder Download und jeder Klick auf ein Widget
+alles neu rechnen. Ein Hinweis unter der Tabelle sagt, wenn ein gespeichertes
+Ergebnis gezeigt wird.</p>
+<p>Der Cache verfällt automatisch, sobald sich eine Eingabe ändert, die ins Ergebnis
+eingeht: die Strategie-Konfiguration, Jahr, Filterdatum, Systemwährung, die globalen
+Einstellungen <code>signal_window</code>, <code>stop_loss_pct</code> und
+<code>require_isin</code> — und die <b>Simulationsdatenbank selbst</b> (erkannt an
+Größe und Änderungszeit, also nach jedem <code>asset_perf2.py</code>-Lauf).</p>
+<div class="warn"><b>Vorgeschichte:</b> Die drei globalen Einstellungen und der
+Datenstand fehlten früher im Schlüssel. Änderte man z. B. <code>signal_window</code>,
+zeigte die Seite weiter die Rechnung unter dem alten Wert — die Zahlen wichen dann
+deutlich von einem Headless-Lauf über <code>asset_perf2.py</code> ab (in einem realen
+Fall 32,9 % gegen 43,2 % Gesamtgewinn), ohne dass etwas auf die Ursache hinwies.</div>
+
 <h2>Markt-Kontext der Kaufempfehlungen</h2>
 <p>Die Kauf-Tabelle trägt zwei Spalten, die den Zustand des <b>zugehörigen Index</b>
 (Spalte „Index") am Kauftag beschreiben. Beide werden aus der lokalen Tagesreihe

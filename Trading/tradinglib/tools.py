@@ -955,6 +955,35 @@ def signal_window(username: str = '', db_path: str = 'database') -> int:
     except Exception:
         return 1
 
+def inputs_fingerprint(settings: dict = None, files=()) -> str:
+    """Stabiler String ueber Einstellungen und Dateistaende — fuer Cache-Schluessel.
+
+    Ein Ergebnis-Cache darf eine Aenderung an seinen Eingaben nicht ueberleben.
+    Praktischer Fall: der Multi-Strategies-Cache war auf (Config, Jahr, Datum,
+    Waehrung) gekeyt, waehrend ``signal_window``/``stop_loss_pct``/``require_isin``
+    und die Simulationsdaten selbst ebenfalls bestimmen, welche Trades entstehen —
+    die Seite zeigte danach eine Rechnung unter alten Eingaben weiter, ohne Hinweis.
+
+    Dateien gehen als ``groesse:mtime`` ein, NICHT als Inhalts-Hash: die
+    Simulations-DB ist mehrere hundert MB, ein Hash (oder ein ``COUNT(*)``) je
+    Rerun kostet mehr als die Neuberechnung, die er sparen soll. Ein Neuschreiben
+    ohne inhaltliche Aenderung verwirft den Cache damit unnoetig — die
+    konservative Richtung, die nie ein veraltetes Ergebnis stehen laesst.
+    """
+    parts = []
+    for key in sorted(settings or {}):
+        parts.append(f'{key}={settings[key]!r}')
+    for path in files:
+        try:
+            st = os.stat(path)
+            parts.append(f'{os.path.basename(path)}={st.st_size}:{int(st.st_mtime)}')
+        except OSError:
+            # Fehlende Datei ist selbst ein Zustand — als solcher in den Schluessel,
+            # damit ein spaeteres Auftauchen den Cache verwirft.
+            parts.append(f'{os.path.basename(path)}=missing')
+    return '|'.join(parts)
+
+
 class BuySellSignalGenerator:
     # OHLCV columns that may appear in either capitalised (live df) or
     # lowercase (simulation db) form.  We add the missing alias so that
