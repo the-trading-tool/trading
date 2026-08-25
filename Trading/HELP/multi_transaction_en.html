@@ -68,6 +68,13 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Market context</b> per buy recommendation (columns "Market trend" and "Market season") — see below</li>
 </ul>
 
+<h2>Per-index detail blocks</h2>
+<p>With "Show transaction details" enabled, every index gets its own <b>collapsed</b>
+block holding the metrics, the trade table and the gain curve. The header names the
+index, the number of trades, the open positions and the gain — on a fresh run it is the
+progress block that flips to <code>✓</code> when the computation finishes, and when a
+stored result is replayed it is an expander with the same label.</p>
+
 <h2>Result cache</h2>
 <p>The computation is expensive, so the finished result is cached for the session —
 otherwise every download and every widget click would recompute everything. A note
