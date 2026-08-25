@@ -223,6 +223,8 @@
   "own_trades.trail_col_dist": "Abst. zu Stop %",
   "own_trades.trail_col_atr": "ATR",
   "own_trades.trail_col_updated": "Aktualisiert",
+  "own_trades.trail_no_fx": "Kein Wechselkurs für {tickers} — diese Positionen wurden übersprungen, statt einen Stop in der falschen Währung anzuzeigen. Systemwährung: {currency}.",
+  "own_trades.trail_col_currency": "Währung",
   "own_trades.trail_no_atr": "Kein ATR verfügbar — 8%-Fallback wird verwendet.",
   "banner.heatmap_per_strategy_header": "Monatliche Performance je Strategie",
   "banner.heatmap_combined_header": "Monatliche Performance gesamt",

@@ -27,6 +27,7 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td><b>Monatliche Heatmap</b></td><td>Farbkodierter Monat × Jahr – Gewinne (grün) und Verluste (rot)</td></tr>
 <tr><td><b>Portfolio-Overlap</b></td><td>Warnung bei Doppelpositionen über mehrere Strategien hinweg</td></tr>
 <tr><td><b>Position Sizing Calculator</b></td><td>Berechnet die erlaubte Stückzahl, damit der maximale Verlust eines Trades dein festgelegtes Risikolimit nicht überschreitet</td></tr>
+<tr><td><b>Trailing-Stop-Verwaltung</b></td><td>Führt je offener Position einen mitziehenden Stop auf ATR-Basis und markiert, wenn er gerissen wurde</td></tr>
 </table>
 
 <h2>Normierte Kursverläufe – offene Positionen</h2>
@@ -86,6 +87,42 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td>Ø Gewinn/Trade</td><td>Realisierter Gewinn ÷ Anzahl abgeschlossener Trades</td></tr>
 <tr><td>Max. Drawdown</td><td>Größter kumulierter Rückgang vom Hoch (Risikokennzahl)</td></tr>
 </table>
+
+<h2>Trailing-Stop-Verwaltung</h2>
+<p>Ein <b>mitziehender</b> Stop: Er wandert mit dem höchsten Kurs nach oben, den die
+Position seit dem Einstieg erreicht hat, und bleibt stehen, wenn der Kurs fällt. Der
+Abstand richtet sich nach der Schwankungsbreite des Titels (ATR), nicht nach einem
+festen Prozentsatz — ein ruhiger Wert bekommt einen engen Stop, ein volatiler einen
+weiten.</p>
+
+<table>
+<tr><th>Schritt</th><th>Rechnung</th></tr>
+<tr><td>High-Water-Mark (HWM)</td><td><code>max(bisheriger HWM, aktueller Kurs)</code> · Startwert = Einstandskurs</td></tr>
+<tr><td>Stop-Level</td><td><code>HWM − Multiplikator × ATR</code> · Multiplikator einstellbar, Standard <b>2,5</b></td></tr>
+<tr><td>Ohne ATR</td><td><code>HWM × 0,92</code> (8 % Abstand) — Ersatzregel, wenn für den Titel kein ATR vorliegt</td></tr>
+<tr><td>Gerissen</td><td><code>aktueller Kurs ≤ Stop-Level</code> → die Zeile wird rot markiert</td></tr>
+</table>
+
+<p>Der ATR stammt aus <code>asset_simulation_*.db</code> (jüngster gespeicherter Wert),
+die Kurse aus der lokalen Tagesreihe. Gespeichert wird je Titel in
+<code>trades.db</code> → <code>own_trades_trails</code>.</p>
+
+<div class="warn"><b>Der HWM wächst nur, wenn du „Trailing Stops aktualisieren" drückst.</b>
+Es gibt keinen automatischen Job dafür. Zwischenhochs, die zwischen zwei Klicks
+entstehen, kennt die Marke nicht — der Stop steht dann zu tief. Wer den Stop ernsthaft
+nutzt, sollte regelmäßig aktualisieren.</div>
+
+<div class="info"><b>Alle Beträge stehen in der Systemwährung.</b> Einstand, Kurs, HWM,
+Stop und ATR werden auf dieselbe Währung gebracht, bevor gerechnet wird — die Spalte
+„Währung" zeigt welche. Nötig ist das, weil die Einstände aus <code>trades.db</code> in
+der Abrechnungswährung gebucht sind (Scalable bucht in EUR), Kurse und ATR aber in der
+Notierungswährung des Listings stehen: bei einem LSE-Titel in <b>Pence</b>, in New York
+in <b>USD</b>. Lässt sich für einen Titel kein Wechselkurs ermitteln, wird er
+<b>übersprungen</b> und gemeldet, statt einen Stop in der falschen Währung anzuzeigen.</div>
+
+<div class="info">Die Verwaltung ist rein <b>informativ</b> — sie markiert einen
+gerissenen Stop, verkauft aber nichts. Für die automatische Variante mit Broker-Anbindung
+(Paper/Live) gibt es das Skript <code>check_stoploss.py</code>, siehe dessen Hilfeseite.</div>
 
 <h2>Zeitraum-Filter</h2>
 <p>Über das Jahres-Dropdown oben rechts lässt sich die Analyse auf ein bestimmtes Kalenderjahr einschränken. Standardmäßig wird das aktuelle Jahr gezeigt.</p>

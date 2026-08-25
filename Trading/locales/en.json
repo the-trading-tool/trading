@@ -223,6 +223,8 @@
   "own_trades.trail_col_dist": "Dist. to Stop %",
   "own_trades.trail_col_atr": "ATR",
   "own_trades.trail_col_updated": "Updated",
+  "own_trades.trail_no_fx": "No exchange rate for {tickers} — these positions were skipped rather than shown with a stop in the wrong currency. System currency: {currency}.",
+  "own_trades.trail_col_currency": "Currency",
   "own_trades.trail_no_atr": "No ATR available — using 8% fallback.",
   "banner.heatmap_per_strategy_header": "Monthly performance per strategy",
   "banner.heatmap_combined_header": "Monthly performance combined",

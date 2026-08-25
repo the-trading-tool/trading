@@ -29,8 +29,13 @@ logger = logging.getLogger(__name__)
 # from tradinglib.portfolio_analysis above)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _get_atr_for_own_trades(ticker: str, db_path: str = 'database') -> float:
-    """Return the most recent ATR for a ticker from the simulation DB."""
+def _get_atr_for_own_trades(ticker: str, db_path: str = 'database') -> tuple:
+    """Most recent ATR for a ticker from the simulation DB, with its currency.
+
+    Returns ``(atr, currency)``. The currency is read from the SAME row, so it
+    always describes the unit the ATR is in — the simulation stores prices in
+    the ticker's listing currency (GBp/pence on the LSE, USD in New York).
+    """
     import os
     from tradinglib.tools import Tools
     candidates = ['asset_simulation_.db'] + [
@@ -45,14 +50,73 @@ def _get_atr_for_own_trades(ticker: str, db_path: str = 'database') -> float:
                 import sqlite3
                 with sqlite3.connect(full) as conn:
                     row = conn.execute(
-                        "SELECT atr FROM asset_simulation WHERE ticker=? ORDER BY date DESC LIMIT 1",
+                        "SELECT atr, currency FROM asset_simulation WHERE ticker=? "
+                        "ORDER BY date DESC LIMIT 1",
                         (ticker,)
                     ).fetchone()
                 if row and row[0]:
-                    return float(row[0])
+                    return float(row[0]), str(row[1] or '')
             except Exception:
                 pass
-    return 0.0
+    return 0.0, ''
+
+
+def _native_currency_from_info(ticker: str, db_path: str = 'database') -> str:
+    """Listing currency from asset_info — fallback when the ticker has no
+    simulation row (a Scalable depot can hold names outside the simulated
+    indices). Without it those rows would silently stay unconverted.
+    """
+    try:
+        import os
+        import sqlite3
+        from tradinglib.tools import Tools
+        full = Tools().get_path(path=db_path, file_name='asset_info.db')
+        if not os.path.exists(full):
+            return ''
+        with sqlite3.connect(f'file:{full}?mode=ro', uri=True) as conn:
+            row = conn.execute(
+                "SELECT currency FROM asset_info WHERE ticker=? LIMIT 1", (ticker,)
+            ).fetchone()
+        return str(row[0]) if row and row[0] else ''
+    except Exception:
+        return ''
+
+
+def _native_to_system_rate(native_currency: str, system_currency: str):
+    """Divisor that turns a native-currency price into the system currency.
+
+    ``price_system = price_native / rate``. Same convention as
+    signal_notifier._build_buy_message; minor units are handled inside
+    ``DataUtils.get_exchange_rate`` (GBp -> GBP * 100).
+
+    Returns 1.0 when no conversion is needed, and **None** when one is needed
+    but the rate cannot be resolved. None is deliberate: falling back to 1.0
+    would silently reproduce the very bug this conversion fixes — a stop level
+    in pence next to an entry in euros. The caller skips such a position and
+    says so instead of showing a wrong number.
+    """
+    native = str(native_currency or '').strip()
+    system = str(system_currency or '').strip()
+    if not system:
+        return 1.0
+    if not native:
+        # Unknown listing currency: assume it already matches — the same
+        # assumption the page made before, and right for the EUR-only case.
+        return 1.0
+    if native == system:
+        return 1.0
+    try:
+        from tradinglib.utils import DataUtils
+        rate = DataUtils.get_exchange_rate(symbol=native, system_currency=system)
+    except Exception:
+        logger.debug('trailing stop: FX lookup failed %s -> %s', native, system,
+                     exc_info=True)
+        return None
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return None
+    return rate if rate > 0 else None
 
 
 def _get_open_positions_for_trails(db_path: str = 'database') -> list[dict]:
@@ -117,9 +181,42 @@ def _ensure_own_trades_trails_table(conn) -> None:
             atr_mult        REAL,
             last_price      REAL,
             breached        INTEGER DEFAULT 0,
-            updated_at      TEXT
+            updated_at      TEXT,
+            currency        TEXT
         )
     """)
+    # Self-healing migration: rows written before the currency conversion carry a
+    # high-water mark in the LISTING currency (AAF.L in pence). Since the mark only
+    # ever rises, such a row would stay broken forever once prices arrive in the
+    # system currency. The column records which unit a row is in so
+    # _read_prev_hwm can discard the ones that no longer apply.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(own_trades_trails)")}
+    if 'currency' not in cols:
+        conn.execute("ALTER TABLE own_trades_trails ADD COLUMN currency TEXT")
+
+
+def _read_prev_hwm(conn, ticker: str, system_currency: str, entry: float) -> float:
+    """Stored high-water mark for *ticker*, or the entry price as the seed.
+
+    A stored mark counts only when it was written in the current system
+    currency. Anything else — including the rows from before the column existed
+    — is dropped rather than carried forward in the wrong unit.
+    """
+    try:
+        row = conn.execute(
+            "SELECT high_water_mark, currency FROM own_trades_trails WHERE ticker=?",
+            (ticker,)
+        ).fetchone()
+    except Exception:
+        return entry
+    if not row or not row[0]:
+        return entry
+    stored_ccy = str(row[1] or '')
+    if stored_ccy != str(system_currency or ''):
+        logger.info('trailing stop %s: dropping high-water mark in %r (system is %r)',
+                    ticker, stored_ccy or 'unknown', system_currency)
+        return entry
+    return float(row[0])
 
 
 class OwnTradesManager:
@@ -684,6 +781,7 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                             prices[tk] = 0.0
 
             now_ts = dt.datetime.now().isoformat()
+            _fx_failed: list = []
             try:
                 from tradinglib.tools import Tools
                 db_file = Tools().get_path(path=db_path, file_name='trades.db')
@@ -693,16 +791,29 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                         ticker  = pos['ticker']
                         entry   = pos['avg_price']
                         current = prices.get(ticker, 0.0)
-                        atr     = _get_atr_for_own_trades(ticker, db_path)
+                        atr, atr_ccy = _get_atr_for_own_trades(ticker, db_path)
 
                         if current <= 0:
                             continue
 
-                        row = conn.execute(
-                            "SELECT high_water_mark FROM own_trades_trails WHERE ticker=?",
-                            (ticker,)
-                        ).fetchone()
-                        prev_hwm = float(row[0]) if row and row[0] else entry
+                        # The entry price comes from trades.db and is booked in the
+                        # SETTLEMENT currency (Scalable books EUR even for an LSE
+                        # listing). The current price and the ATR come from the local
+                        # series and the simulation, both in the LISTING currency.
+                        # Without this conversion the stop compared pence against
+                        # euros: AAF.L showed an entry of 4.11 against a price of
+                        # 333.80 and a gain of +8021 %.
+                        _ccy = atr_ccy or _native_currency_from_info(ticker, db_path)
+                        _rate = _native_to_system_rate(_ccy, system_currency)
+                        if _rate is None:
+                            # No rate -> no honest stop level. Leave the row alone.
+                            _fx_failed.append(f'{ticker} ({_ccy})')
+                            continue
+                        if _rate != 1.0:
+                            current = current / _rate
+                            atr = atr / _rate
+
+                        prev_hwm = _read_prev_hwm(conn, ticker, system_currency, entry)
                         new_hwm  = max(prev_hwm, current)
 
                         if atr > 0:
@@ -714,8 +825,8 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                         conn.execute("""
                             INSERT INTO own_trades_trails
                                 (ticker, entry_price, high_water_mark, trail_stop,
-                                 atr, atr_mult, last_price, breached, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 atr, atr_mult, last_price, breached, updated_at, currency)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ON CONFLICT(ticker) DO UPDATE SET
                                 entry_price     = excluded.entry_price,
                                 high_water_mark = excluded.high_water_mark,
@@ -724,12 +835,18 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                                 atr_mult        = excluded.atr_mult,
                                 last_price      = excluded.last_price,
                                 breached        = excluded.breached,
-                                updated_at      = excluded.updated_at
-                        """, (ticker, entry, new_hwm, trail_stop, atr, atr_mult, current, breached, now_ts))
+                                updated_at      = excluded.updated_at,
+                                currency        = excluded.currency
+                        """, (ticker, entry, new_hwm, trail_stop, atr, atr_mult, current,
+                              breached, now_ts, system_currency))
             except Exception as e:
                 r.error(f'Error updating trails: {e}')
 
-            r.success(_t('own_trades.trail_updated', n=len([p for p in positions if prices.get(p['ticker'], 0) > 0])))
+            _done = len([p for p in positions if prices.get(p['ticker'], 0) > 0]) - len(_fx_failed)
+            r.success(_t('own_trades.trail_updated', n=max(0, _done)))
+            if _fx_failed:
+                r.warning(_t('own_trades.trail_no_fx', tickers=', '.join(_fx_failed),
+                             currency=system_currency))
 
     # ── Display stored trail state ─────────────────────────────────────────────
     try:
@@ -739,7 +856,8 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
             _ensure_own_trades_trails_table(conn)
             trails_df = pd.read_sql_query(
                 'SELECT ticker, entry_price, last_price, high_water_mark, trail_stop, '
-                'atr, atr_mult, breached, updated_at FROM own_trades_trails ORDER BY ticker',
+                'atr, atr_mult, breached, updated_at, currency FROM own_trades_trails '
+                'ORDER BY ticker',
                 conn,
             )
     except Exception:
@@ -778,15 +896,18 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                 return ['background-color: #fff3cd'] * len(row)
             return [''] * len(row)
 
-        disp = trails_df[['ticker', 'entry_price', 'last_price', 'high_water_mark',
-                           'trail_stop', 'gain_pct', 'dist_to_trail', 'atr', 'atr_mult',
-                           'atr_x_mult', 'updated_at']].copy()
+        # All money columns are in the system currency — shown explicitly so the
+        # unit is never in doubt again.
+        disp = trails_df[['ticker', 'currency', 'entry_price', 'last_price',
+                           'high_water_mark', 'trail_stop', 'gain_pct', 'dist_to_trail',
+                           'atr', 'atr_mult', 'atr_x_mult', 'updated_at']].copy()
         r.dataframe(
             disp.style.apply(_trail_style, axis=1),
             hide_index=True,
             use_container_width=True,
             column_config={
                 'ticker':          st.column_config.TextColumn('Ticker'),
+                'currency':        st.column_config.TextColumn(_t('own_trades.trail_col_currency')),
                 'entry_price':     st.column_config.NumberColumn(_t('own_trades.trail_col_entry'),   format='%.4f'),
                 'last_price':      st.column_config.NumberColumn(_t('own_trades.trail_col_current'), format='%.4f'),
                 'high_water_mark': st.column_config.NumberColumn(_t('own_trades.trail_col_hwm'),     format='%.4f'),

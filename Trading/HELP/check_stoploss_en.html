@@ -23,7 +23,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <ul>
   <li><b>HWM</b> – Highest Water Mark (highest price reached since entry)</li>
   <li><b>ATR</b> – Average True Range (a measure of the average daily volatility)</li>
-  <li><b>N</b> – configurable multiplier (default: 2.0)</li>
+  <li><b>N</b> – configurable multiplier (default: 2.5)</li>
 </ul>
 <p>The stop level is adjusted upward daily when the price rises – never downward.</p>
 
@@ -33,7 +33,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <h2>Parameters</h2>
 <table>
 <tr><th>Parameter</th><th>Default</th><th>Meaning</th></tr>
-<tr><td><code>--atr-mult</code></td><td>2.0</td><td>ATR multiplier for the stop-level computation</td></tr>
+<tr><td><code>--atr-mult</code></td><td>2.5</td><td>ATR multiplier for the stop-level computation</td></tr>
 <tr><td><code>--user</code></td><td>admin</td><td>User context</td></tr>
 <tr><td><code>--broker</code></td><td>alpaca</td><td>Broker backend for sell orders</td></tr>
 <tr><td><code>--mode</code></td><td>paper</td><td><code>paper</code> or <code>live</code></td></tr>

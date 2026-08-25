@@ -27,6 +27,7 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td><b>Monthly heatmap</b></td><td>Colour-coded month × year – gains (green) and losses (red)</td></tr>
 <tr><td><b>Portfolio overlap</b></td><td>Warning about duplicate positions across several strategies</td></tr>
 <tr><td><b>Position Sizing Calculator</b></td><td>Computes the allowed number of shares so that a trade's maximum loss does not exceed your defined risk limit</td></tr>
+<tr><td><b>Trailing stop management</b></td><td>Keeps an ATR-based trailing stop per open position and flags when it is breached</td></tr>
 </table>
 
 <h2>Normalised price paths – open positions</h2>
@@ -86,6 +87,40 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td>Avg. profit/trade</td><td>Realised profit ÷ number of completed trades</td></tr>
 <tr><td>Max. drawdown</td><td>Largest cumulative decline from the peak (risk metric)</td></tr>
 </table>
+
+<h2>Trailing stop management</h2>
+<p>A stop that <b>follows the price up</b>: it moves with the highest price the position
+has reached since entry and stays put when the price falls. The distance follows the
+name's own volatility (ATR) rather than a fixed percentage — a quiet stock gets a tight
+stop, a volatile one a wide stop.</p>
+
+<table>
+<tr><th>Step</th><th>Computation</th></tr>
+<tr><td>High-water mark (HWM)</td><td><code>max(stored HWM, current price)</code> · seeded with the entry price</td></tr>
+<tr><td>Stop level</td><td><code>HWM &minus; multiplier &times; ATR</code> · multiplier adjustable, default <b>2.5</b></td></tr>
+<tr><td>Without ATR</td><td><code>HWM &times; 0.92</code> (8 % distance) — fallback when no ATR exists for the name</td></tr>
+<tr><td>Breached</td><td><code>current price &le; stop level</code> → the row is flagged red</td></tr>
+</table>
+
+<p>The ATR comes from <code>asset_simulation_*.db</code> (most recent stored value), the
+prices from the local daily series. State is kept per name in <code>trades.db</code> →
+<code>own_trades_trails</code>.</p>
+
+<div class="warn"><b>The HWM only grows when you press "Update trailing stops".</b> There
+is no scheduled job for it. Highs that occur between two clicks are invisible to the
+mark, leaving the stop too low. If you rely on the stop, update it regularly.</div>
+
+<div class="info"><b>Every amount is in the system currency.</b> Entry, price, HWM, stop
+and ATR are brought onto the same currency before anything is computed — the "Currency"
+column shows which. This is needed because entries in <code>trades.db</code> are booked
+in the settlement currency (Scalable books EUR) while prices and ATR are in the listing
+currency: <b>pence</b> for an LSE name, <b>USD</b> in New York. If no exchange rate can
+be resolved for a name, it is <b>skipped</b> and reported rather than shown with a stop
+in the wrong currency.</div>
+
+<div class="info">The panel is purely <b>informational</b> — it flags a breached stop but
+sells nothing. For the automated variant with broker execution (paper/live) see the
+<code>check_stoploss.py</code> help page.</div>
 
 <h2>Period filter</h2>
 <p>The year dropdown at the top right restricts the analysis to a specific calendar year. By default the current year is shown.</p>
