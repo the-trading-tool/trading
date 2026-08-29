@@ -71,9 +71,10 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <h2>Per-index detail blocks</h2>
 <p>With "Show transaction details" enabled, every index gets its own <b>collapsed</b>
 block holding the metrics, the trade table and the gain curve. The header names the
-index, the number of trades, the open positions and the gain — on a fresh run it is the
-progress block that flips to <code>✓</code> when the computation finishes, and when a
-stored result is replayed it is an expander with the same label.</p>
+index, the number of trades, the open positions and the gain.</p>
+<p>The blocks appear <b>after</b> the computation — the progress display shown while it
+runs is a separate thing and stays what it is. A fresh run and a replayed stored result
+therefore look identical: both go through the same rendering.</p>
 <p>Above each group sits the <b>strategy</b> as a heading. It is needed because the same
 index appears in several strategies — <code>^SPX</code> shows up four times in the usual
 configuration and could not be attributed without it.</p>

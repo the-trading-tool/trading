@@ -955,6 +955,25 @@ def signal_window(username: str = '', db_path: str = 'database') -> int:
     except Exception:
         return 1
 
+def move_column_before(df, column: str, before: str):
+    """Spalte *column* direkt vor *before* einsortieren (neue Spaltenreihenfolge).
+
+    Rein kosmetisch — Werte und Zeilen bleiben unberuehrt. Fehlt eine der beiden
+    Spalten, bleibt der DataFrame unveraendert; Anzeigetabellen entstehen je nach
+    Pfad mit unterschiedlichem Spaltensatz, und eine fehlende Spalte darf die
+    Seite nicht kosten.
+    """
+    try:
+        cols = list(df.columns)
+    except AttributeError:
+        return df
+    if column not in cols or before not in cols or column == before:
+        return df
+    cols.remove(column)
+    cols.insert(cols.index(before), column)
+    return df.loc[:, cols]
+
+
 def inputs_fingerprint(settings: dict = None, files=()) -> str:
     """Stabiler String ueber Einstellungen und Dateistaende — fuer Cache-Schluessel.
 
