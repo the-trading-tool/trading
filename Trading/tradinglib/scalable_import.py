@@ -628,10 +628,71 @@ def _migrate_trades_pk(dbt) -> bool:
     return True
 
 
-def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
-    """Insert parsed Scalable Capital rows into trades.db. Returns inserted count."""
+def _row_fingerprint(ts_str: str, action: str, isin: str, shares, value) -> str:
+    """Build a deterministic key for one trade row.
+
+    Used to recognise rows that are already in trades.db when the broker
+    reference is unavailable — legacy rows imported before ``ext_id`` existed
+    carry no reference at all. Rounding mirrors what is written to the DB so a
+    re-read of the same row produces the same key.
+    """
+    try:
+        sh = f'{float(shares or 0):.6f}'
+    except (TypeError, ValueError):
+        sh = '0.000000'
+    try:
+        va = f'{float(value or 0):.2f}'
+    except (TypeError, ValueError):
+        va = '0.00'
+    return f'{ts_str}|{str(action).lower()}|{str(isin).upper()}|{sh}|{va}'
+
+
+def _load_existing_keys(dbt) -> tuple:
+    """Return (Counter of ext_ids, Counter of fingerprints) already in trades.db.
+
+    Counters rather than sets: a depot can legitimately contain two identical
+    rows (same second, price and size), and only the surplus of a re-import
+    should be dropped. Missing table or columns simply yield empty counters,
+    which makes the very first import a plain insert.
+    """
+    from collections import Counter
+    ext_ids, fingerprints = Counter(), Counter()
+    try:
+        cols = {row[1] for row in dbt.cursor.execute('PRAGMA table_info(trades)').fetchall()}
+    except Exception:
+        return ext_ids, fingerprints
+    if not cols:
+        return ext_ids, fingerprints
+
+    has_ext = 'ext_id' in cols
+    select = 'SELECT timestamp, action, isin, shares, value'
+    select += ', ext_id' if has_ext else ''
+    select += " FROM trades WHERE broker = 'ScalableCapital'"
+    try:
+        rows = dbt.cursor.execute(select).fetchall()
+    except Exception as e:
+        logger.warning(f'Scalable import: reading existing rows failed: {e}')
+        return ext_ids, fingerprints
+
+    for row in rows:
+        ts, action, isin, shares, value = row[0], row[1], row[2], row[3], row[4]
+        fingerprints[_row_fingerprint(str(ts or ''), action or '', isin or '', shares, value)] += 1
+        if has_ext and row[5]:
+            ext_ids[str(row[5])] += 1
+    return ext_ids, fingerprints
+
+
+def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> tuple:
+    """Insert parsed Scalable Capital rows into trades.db.
+
+    Returns ``(inserted, duplicates_skipped)``. Rows already present are skipped
+    instead of appended a second time, so re-importing an overlapping export is
+    safe. Matching prefers the broker reference (``ext_id``) and falls back to a
+    content fingerprint for rows predating that column.
+    """
     dbt = tools.Db_tools(db_path=db_path, database_name='trades.db')
     inserted = 0
+    duplicates = 0
     try:
         # Self-healing: remove old timestamp PK, otherwise rows with
         # identical timestamps (rebalancing) are lost during insert.
@@ -639,6 +700,8 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
             _migrate_trades_pk(dbt)
         except Exception as e:
             logger.warning(f'Scalable import: trades PK migration failed: {e}')
+
+        existing_ext, existing_fp = _load_existing_keys(dbt)
 
         for _, row in df.iterrows():
             ts_val = row.get('timestamp')
@@ -655,8 +718,28 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
             # credit instead of being booked as a second positive income.
             _value   = abs(_raw_amt) if _act in ('buy', 'sell') else _raw_amt
 
+            # ── Duplicate guard ───────────────────────────────────────────
+            # The broker reference is the strongest key; the fingerprint also
+            # catches rows imported before ext_id existed. A matched key is
+            # consumed so genuine repeats (same second, price and size) still
+            # get through once the stored copies are used up.
+            _ext = str(row.get('ref', '') or '').strip()
+            _fp  = _row_fingerprint(ts_str, _act, str(row.get('isin', '')),
+                                    row.get('shares', 0), _value)
+            if _ext and existing_ext.get(_ext, 0) > 0:
+                existing_ext[_ext] -= 1
+                if existing_fp.get(_fp, 0) > 0:
+                    existing_fp[_fp] -= 1   # keep both counters in step
+                duplicates += 1
+                continue
+            if existing_fp.get(_fp, 0) > 0:
+                existing_fp[_fp] -= 1
+                duplicates += 1
+                continue
+
             rd = {
                 'uuid':      uuid.uuid4().hex,
+                'ext_id':    _ext or None,
                 'timestamp': ts_str,
                 'action':    _act,
                 'ticker':    str(row.get('ticker', row.get('isin', ''))),
@@ -696,7 +779,7 @@ def _insert_scalable_rows(df: pd.DataFrame, db_path: str = 'database') -> int:
             dbt.close()
         except Exception:
             pass
-    return inserted
+    return inserted, duplicates
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -809,6 +892,79 @@ def parse_scalable_csv(df_raw: pd.DataFrame) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# MCP source
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_mcp_upload(r):
+    """Read an uploaded MCP JSON dump and map it onto the CSV column layout.
+
+    Returns a CSV-shaped DataFrame, or None while nothing usable is uploaded —
+    from there on the MCP path is identical to the CSV path.
+    """
+    import json as _json
+    from tradinglib.scalable_mcp import (mcp_to_scalable_frame, split_payloads,
+                                         SCALABLE_CSV_COLUMNS)
+
+    r.caption(
+        'Erwartet die JSON-Antwort von `list_portfolio_transactions`. '
+        'Kommen die Antworten von `get_transaction_details` mit dazu (als Liste '
+        'in derselben Datei), werden Ausführungskurs und Steuer exakt übernommen — '
+        'ohne sie werden beide aus dem Bruttobetrag geschätzt.'
+    )
+    include_crypto = r.checkbox(
+        'Krypto-Transaktionen einbeziehen',
+        value=False,
+        key='scalable_mcp_crypto',
+        help='Krypto-Buchungen haben keine ISIN und lassen sich nicht auf einen '
+             'Ticker auflösen.',
+    )
+    uploaded = r.file_uploader(
+        'MCP-JSON hochladen', type=['json'], key='scalable_upload_mcp',
+    )
+    if uploaded is None:
+        return None
+
+    try:
+        data = _json.load(uploaded)
+    except Exception as e:
+        r.error(f'JSON konnte nicht gelesen werden: {e}')
+        return None
+
+    pages, details = split_payloads(data)
+    if not pages:
+        r.error(
+            'In der Datei ist keine Transaktionsliste zu finden. Erwartet wird '
+            'mindestens eine Antwort mit einem "transactions"-Feld.'
+        )
+        return None
+
+    try:
+        df_full = mcp_to_scalable_frame(pages, details, include_crypto=include_crypto)
+    except Exception as e:
+        r.error(f'MCP-Daten konnten nicht umgewandelt werden: {e}')
+        return None
+
+    if df_full.empty:
+        r.warning('Die Datei enthält keine Transaktionen.')
+        return None
+
+    estimated = int(df_full['price_estimated'].sum())
+    r.success(
+        f'{len(df_full)} Transaktionen aus {len(pages)} Seite(n) gelesen'
+        + (f', {len(details)} mit Detaildaten' if details else '')
+        + '.'
+    )
+    if estimated:
+        r.warning(
+            f'{estimated} Kauf/Verkauf ohne Detaildaten: Kurs aus dem Bruttobetrag '
+            'geschätzt. Wo Finanztransaktionssteuer anfällt (ES/FR/IT), liegt der '
+            'Kurs dadurch zu hoch. Für exakte Werte `get_transaction_details` '
+            'zu diesen Transaktionen mitliefern.'
+        )
+    return df_full[SCALABLE_CSV_COLUMNS]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Render function
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -829,33 +985,59 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
     # Manuelle Listing-Korrektur — auch ohne neuen Upload erreichbar
     _render_ticker_correction(r, db_path)
 
-    uploaded = r.file_uploader(
-        'Scalable Capital CSV hochladen',
-        type=['csv'],
-        key='scalable_upload',
-    )
-    if uploaded is None:
-        return
-
-    # ── Parse ─────────────────────────────────────────────────────────────
+    # Order-Korb — unabhängig vom Import erreichbar, deshalb vor dem Upload
     try:
-        df_raw = pd.read_csv(
-            uploaded,
-            sep=';',
-            dtype=str,
-            encoding='utf-8-sig',   # handles UTF-8 BOM from European apps
-            skip_blank_lines=True,
-        ).dropna(how='all')
-    except Exception as e:
-        r.error(f'CSV konnte nicht gelesen werden: {e}')
-        return
+        from tradinglib.scalable_orders import OrderBasket, render_order_basket
+        _open_orders = len(OrderBasket(db_path=db_path).list())
+        with r.expander(f'🧺 Order-Korb ({_open_orders})', expanded=False):
+            render_order_basket(st, db_path=db_path, username=username)
+    except Exception as _e:
+        # Never swallow this silently: a half-rendered panel is indistinguishable
+        # from "the button did nothing", which is exactly how it was reported.
+        logger.exception('Order basket panel failed')
+        r.error(f'Der Order-Korb konnte nicht angezeigt werden: {_e}')
 
-    if not _is_scalable_csv(df_raw):
-        r.error(
-            'Die Datei sieht nicht wie ein Scalable Capital Export aus. '
-            f'Gefundene Spalten: {list(df_raw.columns)}'
+    source = r.radio(
+        'Datenquelle',
+        ['CSV-Export', 'MCP-JSON'],
+        horizontal=True,
+        key='scalable_source',
+        help='MCP-JSON: die Antworten von list_portfolio_transactions '
+             '(und optional get_transaction_details) als JSON-Datei.',
+    )
+
+    if source == 'MCP-JSON':
+        df_raw = _load_mcp_upload(r)
+        if df_raw is None:
+            return
+    else:
+        uploaded = r.file_uploader(
+            'Scalable Capital CSV hochladen',
+            type=['csv'],
+            key='scalable_upload',
         )
-        return
+        if uploaded is None:
+            return
+
+        # ── Parse ─────────────────────────────────────────────────────────
+        try:
+            df_raw = pd.read_csv(
+                uploaded,
+                sep=';',
+                dtype=str,
+                encoding='utf-8-sig',   # handles UTF-8 BOM from European apps
+                skip_blank_lines=True,
+            ).dropna(how='all')
+        except Exception as e:
+            r.error(f'CSV konnte nicht gelesen werden: {e}')
+            return
+
+        if not _is_scalable_csv(df_raw):
+            r.error(
+                'Die Datei sieht nicht wie ein Scalable Capital Export aus. '
+                f'Gefundene Spalten: {list(df_raw.columns)}'
+            )
+            return
 
     parsed = parse_scalable_csv(df_raw)
     trades_df    = parsed['trades']
@@ -1131,8 +1313,12 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
             r.warning('Keine Zeilen zum Importieren.')
             return
 
-        inserted = _insert_scalable_rows(all_rows, db_path=db_path)
-        r.success(f'{inserted} Zeilen erfolgreich in trades.db importiert.')
+        inserted, duplicates = _insert_scalable_rows(all_rows, db_path=db_path)
+        r.success(
+            f'{inserted} Zeilen erfolgreich in trades.db importiert.'
+            + (f' {duplicates} bereits vorhandene Zeile(n) übersprungen.'
+               if duplicates else '')
+        )
 
         # ── On-demand: fetch price and master data for the imported tickers ────
         # Scalable edition only: there is no pre-filled bulk pipeline there,
@@ -1179,10 +1365,9 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
     r.markdown('---')
     with r.expander('⚠️ Trades löschen (z. B. doppelte Importe entfernen)'):
         r.caption(
-            'Jeder Import fügt neue Zeilen hinzu, ohne auf bereits vorhandene Trades zu prüfen. '
-            'Wird dieselbe CSV mehrfach importiert, entstehen dadurch Duplikate in trades.db. '
-            'Hier können betroffene Zeilen wieder entfernt werden. Diese Aktion kann nicht '
-            'widerrufen werden.'
+            'Neue Importe überspringen bereits vorhandene Zeilen automatisch — dieselbe CSV '
+            'mehrfach zu importieren ist also unbedenklich. Duplikate aus früheren Importen '
+            'lassen sich hier entfernen. Diese Aktion kann nicht widerrufen werden.'
         )
         del_c1, del_c2 = r.columns(2)
 
