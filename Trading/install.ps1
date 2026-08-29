@@ -337,6 +337,7 @@ JOBS = [
     ("10:30", "warm_market_stress.py", "",                                    WD+",saturday,sunday", "WARM_MARKET_STRESS",     "",      "",            "", 1),
     ("10:35", "warm_rotation.py",      "",                                    WD+",saturday,sunday", "WARM_ROTATION",          "",      "",            "", 1),
     ("11:15", "check_freshness.py",    "/quiet /notify",                      WD+",saturday,sunday", "DATA_FRESHNESS",         "",      "",            "", 1),
+    ("07:45", "stage_orders.py",      "/buys /stops",                        WD,               "ORDER_STAGING",               "",      "",            "", 0),
     ("5",     "get_asset_data.py",     "1m:2d /group:"+US,                    "minutes",        "YAHOO_M_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
     ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:"+US,            "hours",          "YAHOO_H_DATA_MEMBER_AMERICAS", "",     "15:00-22:00", WD, 1),
     ("5",     "get_asset_data.py",     "1m:2d /group:"+AS,                    "minutes",        "YAHOO_M_DATA_MEMBER_ASIA",    "",      "22:00-08:00", WD, 1),

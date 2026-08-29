@@ -46,8 +46,12 @@ class PushoverNotifier:
         logger.debug("PushoverNotifier: no update needed for %s", ticker)
         return False
 
-    def send_notification(self, ticker: str, price: float, date: str, message: str = "", title: str = "Trade processor"):
+    def send_notification(self, ticker: str, price: float, date: str, message: str = "",
+                          title: str = "Trade processor", url: str = "", url_title: str = ""):
         """Send a Pushover push notification and persist deduplication state on success.
+
+        ``url``/``url_title`` render as a tappable action in the push — used by the
+        order staging job to link straight into the broker's trade dialog.
 
         Returns True when the notification was sent, False when skipped (already sent)
         or when the HTTP request failed.
@@ -67,6 +71,11 @@ class PushoverNotifier:
             "title": f"{hostname}:{title}",
             "message": message,
         }
+        if url:
+            data["url"] = url
+            # Pushover shows the raw URL when no title is given — for a broker
+            # deep link that is a wall of query parameters on a phone screen.
+            data["url_title"] = url_title or "Öffnen"
         response = requests.post(self.url, data=data)
 
         if response.status_code == 200:
