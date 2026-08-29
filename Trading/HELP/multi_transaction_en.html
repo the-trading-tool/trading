@@ -74,6 +74,9 @@ block holding the metrics, the trade table and the gain curve. The header names 
 index, the number of trades, the open positions and the gain — on a fresh run it is the
 progress block that flips to <code>✓</code> when the computation finishes, and when a
 stored result is replayed it is an expander with the same label.</p>
+<p>Above each group sits the <b>strategy</b> as a heading. It is needed because the same
+index appears in several strategies — <code>^SPX</code> shows up four times in the usual
+configuration and could not be attributed without it.</p>
 
 <h2>Why a run takes as long as it does</h2>
 <p>Measured on one ^SPX pass (83,919 rows): <b>12.1 s go into reading from the simulation
