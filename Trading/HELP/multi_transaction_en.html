@@ -79,6 +79,14 @@ therefore look identical: both go through the same rendering.</p>
 index appears in several strategies — <code>^SPX</code> shows up four times in the usual
 configuration and could not be attributed without it.</p>
 
+<h2>The simulation table</h2>
+<p>Sorted by <b>buy date, newest first</b>; the buy date sits before the sell date so a
+row reads in the order the trade happened. Rows without a buy date go last.</p>
+<div class="info">The <b>cumulative gain</b> column is unaffected: it is still summed in
+the chronological order of the <b>sells</b> and only re-sorted afterwards for display.
+It therefore does not run monotonically down the table — which is correct, it follows the
+sell date, not the buy date.</div>
+
 <h2>Why a run takes as long as it does</h2>
 <p>Measured on one ^SPX pass (83,919 rows): <b>12.1 s go into reading from the simulation
 database</b>, 0.23 s into the portfolio simulator and essentially nothing into the signal

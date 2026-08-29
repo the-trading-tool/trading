@@ -79,6 +79,15 @@ Ergebnis sehen dadurch identisch aus: beide gehen durch dieselbe Darstellung.</p
 derselbe Index in mehreren Strategien vorkommt — <code>^SPX</code> erscheint in der
 üblichen Konfiguration viermal und wäre ohne die Überschrift nicht zuzuordnen.</p>
 
+<h2>Die Simulationstabelle</h2>
+<p>Sortiert nach <b>Kaufdatum, neuester zuerst</b>; das Kaufdatum steht vor dem
+Verkaufsdatum, damit sich eine Zeile in der Reihenfolge des Trades liest. Zeilen ohne
+Kaufdatum stehen am Ende.</p>
+<div class="info">Die Spalte <b>Kumulierter Gewinn</b> bleibt davon unberührt: Sie wird
+weiterhin in der chronologischen Reihenfolge der <b>Verkäufe</b> aufsummiert und erst
+danach für die Anzeige umsortiert. In der Tabelle läuft sie deshalb nicht monoton — das
+ist richtig so, sie folgt dem Verkaufs-, nicht dem Kaufdatum.</div>
+
 <h2>Warum ein Lauf so lange dauert</h2>
 <p>Gemessen an einem ^SPX-Durchgang (83.919 Zeilen): <b>12,1 s entfallen auf das Lesen
 aus der Simulationsdatenbank</b>, 0,23 s auf den PortfolioSimulator und praktisch nichts
