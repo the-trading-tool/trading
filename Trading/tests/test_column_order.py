@@ -65,3 +65,19 @@ def test_leerer_dataframe():
 
 def test_kein_dataframe_stuerzt_nicht_ab():
     assert move_column_before(None, 'a', 'b') is None
+
+
+def test_stueckzahl_vor_die_erste_wert_spalte():
+    """Die Tabelle fuehrt den Kaufwert zweimal (nativ und Systemwaehrung).
+    Die Stueckzahl gehoert vor die erste von beiden -- sonst steht sie mitten
+    zwischen zwei Betraegen."""
+    src = pd.DataFrame({
+        'ticker':      ['AAA'],
+        'buyValue':    [-1000.0],
+        'buyValueEUR': [-920.0],
+        'buyVolume':   [12],
+    })
+    first = next(c for c in src.columns if c in ('buyValue', 'buyValueEUR'))
+    got = move_column_before(src, 'buyVolume', first)
+    assert list(got.columns) == ['ticker', 'buyVolume', 'buyValue', 'buyValueEUR']
+    assert got['buyVolume'].tolist() == [12]

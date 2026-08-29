@@ -54,7 +54,10 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Result cache:</b> after computing, the result is cached (keyed on strategy config, year, date, currency). An <b>Excel download or other UI interactions then no longer trigger an expensive recompute</b> – a "Cached result" note is shown. A real recompute only starts via <b>"Compute transactions"</b> or when an input (config/year/date/currency) changes.</div>
 
-<div class="warn"><b>A name is never held twice at the same time.</b> What is compared is
+<div class="warn"><b>Avoid duplicate positions</b> (switch, <b>off by default</b>).
+While it is off, the same name may sit in several strategies at once — that is how the
+app trades out of the box. Switched on, a name is never held twice at the same time.
+What is then compared is
 <b>holding period against holding period</b>: if a position overlaps one an
 earlier-processed strategy/index already holds, that buy is removed and the index is
 recomputed — up to three times, since freed capital can enable a different buy.
@@ -70,7 +73,14 @@ date</i> was checked against the known intervals — which left every position i
 that was bought <i>earlier</i> than the one already recorded, because it lies before
 every known interval. Measured on the 2026 trades, <b>all</b> duplicate holdings had
 exactly that signature (E.ON: Support/RSI from 12 Aug, Value Trend ^2 from 26 Aug, and
-Value Trend ^2 is processed first). The old rule caught 0 of them, the new one 46.</div>
+Value Trend ^2 is processed first). The old rule caught 0 of them, the new one 46.
+<br><br><b>Why the switch is off by default:</b> measured on the closed trades,
+<b>doubly held names performed better</b> than singly held ones — 33.8% losing trades
+against 46.3%. A name two strategies find independently is evidently the stronger
+signal. The switch is therefore a <b>risk decision</b>: it lowers concentration risk (in
+89 of 482 pairs both sides lost at the same time) and costs return in exchange. When it
+is on, the calculation runs <b>twice</b> — a collecting pass for the holding periods,
+then the final run — and takes correspondingly longer.</div>
 
 <div class="info"><b>Data-quality check:</b> After computing, traded tickers with <b>inconsistent OHLC</b> (daily <code>close</code> outside <code>[Low, High]</code>) are flagged as potential data errors — typically an unadjusted split (<code>close</code> ~6× High) or pence/pounds on <code>.L</code> names (~100×). The simulator <b>skips</b> such bars (otherwise phantom trades arise, e.g. −83% from buying at the wrong price + the hard stop firing against the correct low). Hits are stored in <code>data_quality.db</code>; a warning block shows the cause and cleanup commands. <b>Note:</b> re-fetching only helps if the data provider now returns correct values — a genuine upstream error needs a manual override.</div>
 
@@ -97,7 +107,8 @@ configuration and could not be attributed without it.</p>
 
 <h2>The simulation table</h2>
 <p>Sorted by <b>buy date, newest first</b>; the buy date sits before the sell date so a
-row reads in the order the trade happened. Rows without a buy date go last.</p>
+row reads in the order the trade happened, and the <b>quantity sits before the buy
+value</b>. Rows without a buy date go last.</p>
 <div class="info">The <b>cumulative gain</b> column is unaffected: it is still summed in
 the chronological order of the <b>sells</b> and only re-sorted afterwards for display.
 It therefore does not run monotonically down the table — which is correct, it follows the

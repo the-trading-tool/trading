@@ -54,8 +54,11 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Ergebnis-Cache:</b> Nach dem Berechnen wird das Ergebnis zwischengespeichert (gekeyt auf Strategie-Config, Jahr, Datum, Währung). Ein <b>Excel-Download oder andere Bedienschritte lösen dann keine teure Neuberechnung mehr aus</b> – es erscheint der Hinweis „Ergebnis aus Cache". Eine echte Neuberechnung startet nur über <b>„Transaktionen berechnen"</b> oder wenn sich eine Eingabe (Config/Jahr/Datum/Währung) ändert.</div>
 
-<div class="warn"><b>Ein Titel wird nicht gleichzeitig doppelt gehalten.</b> Verglichen
-wird <b>Haltezeitraum gegen Haltezeitraum</b>: Überschneidet sich eine Position mit einer,
+<div class="warn"><b>Doppelte Positionen vermeiden</b> (Schalter, <b>standardmäßig aus</b>).
+Ausgeschaltet darf derselbe Titel gleichzeitig in mehreren Strategien liegen — so
+handelt die App per Voreinstellung. Eingeschaltet wird ein Titel nicht gleichzeitig
+doppelt gehalten. Verglichen
+wird dann <b>Haltezeitraum gegen Haltezeitraum</b>: Überschneidet sich eine Position mit einer,
 die eine früher verarbeitete Strategie/Index bereits hält, wird der betreffende Kauf
 entfernt und der Index neu gerechnet — bis zu dreimal, weil freiwerdendes Kapital einen
 anderen Kauf ermöglichen kann. Sequentielle Wiederkäufe nach einem Verkauf bleiben
@@ -72,7 +75,15 @@ Position unsichtbar, die <i>früher</i> gekauft wurde als die bereits erfasste, 
 liegt vor jedem bekannten Intervall. An den Trades von 2026 gemessen hatten <b>alle</b>
 Doppelhaltungen genau diese Signatur (E.ON: Support/RSI ab 12.08., Value Trend ^2 ab
 26.08., und Value Trend ^2 wird zuerst verarbeitet). Die alte Regel fing davon 0, die
-neue 46.</div>
+neue 46.
+<br><br><b>Warum der Schalter standardmäßig aus ist:</b> An den geschlossenen Trades
+gemessen liefen <b>doppelt gehaltene Titel besser</b> als einfach gehaltene — 33,8 %
+Verlust-Trades gegen 46,3 %. Ein Titel, den zwei Strategien unabhängig voneinander
+finden, ist offenbar das stärkere Signal. Der Schalter ist deshalb eine
+<b>Risiko-Entscheidung</b>: Er senkt das Klumpenrisiko (in 89 von 482 Paaren verloren
+beide Seiten gleichzeitig) und kostet dafür Rendite. Eingeschaltet läuft die Berechnung
+<b>zweimal</b> — ein Sammel-Durchgang für die Haltezeiträume, danach der finale Lauf —
+und dauert entsprechend länger.</div>
 
 <div class="info"><b>Datenqualitäts-Prüfung:</b> Nach der Berechnung werden gehandelte Ticker mit <b>inkonsistentem OHLC</b> (Tages-<code>close</code> außerhalb <code>[Low, High]</code>) als potenzielle Datenfehler ausgewiesen — typisch bei unbereinigten Splits (<code>close</code> ~6× High) oder Pence/Pfund bei <code>.L</code>-Werten (~100×). Solche Bars <b>überspringt der Simulator</b> (sonst entstünden Phantom-Trades, z. B. −83 % durch Kauf zum falschen Kurs + Hard-Stop gegen das korrekte Low). Die Treffer landen in <code>data_quality.db</code>; ein Warnblock zeigt Ursache und Bereinigungs-Befehle. <b>Hinweis:</b> Ein Neu-Einlesen hilft nur, wenn der Datenprovider inzwischen korrekt liefert — ein echter Quell-Fehler braucht einen manuellen Override.</div>
 
@@ -99,8 +110,8 @@ derselbe Index in mehreren Strategien vorkommt — <code>^SPX</code> erscheint i
 
 <h2>Die Simulationstabelle</h2>
 <p>Sortiert nach <b>Kaufdatum, neuester zuerst</b>; das Kaufdatum steht vor dem
-Verkaufsdatum, damit sich eine Zeile in der Reihenfolge des Trades liest. Zeilen ohne
-Kaufdatum stehen am Ende.</p>
+Verkaufsdatum und die <b>Stückzahl vor dem Kaufwert</b>, damit sich eine Zeile in der
+Reihenfolge des Trades liest. Zeilen ohne Kaufdatum stehen am Ende.</p>
 <div class="info">Die Spalte <b>Kumulierter Gewinn</b> bleibt davon unberührt: Sie wird
 weiterhin in der chronologischen Reihenfolge der <b>Verkäufe</b> aufsummiert und erst
 danach für die Anzeige umsortiert. In der Tabelle läuft sie deshalb nicht monoton — das

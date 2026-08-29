@@ -801,6 +801,8 @@
   "mt.nothing_to_show": "Nichts anzuzeigen.",
   "mt.sorry": "Fehler, bitte erneut versuchen! {error}",
   "mt.filter_date": "Kauf/Verkauf-Berechnung ab Datum:",
+  "mt.dedup": "Doppelte Positionen vermeiden",
+  "mt.dedup_help": "Aus (Standard): Findet mehr als eine Strategie denselben Titel, halten ihn auch mehrere gleichzeitig. Ein: Nur die Strategie, die zuerst gekauft hat, behaelt ihn; spaetere Kaufsignale desselben Titels entfallen, solange er gehalten wird. Das senkt das Klumpenrisiko, kostet gemessen aber Rendite — doppelt gehaltene Titel liefen bisher besser. Der Schalter aendert das Ergebnis, die Berechnung laeuft eingeschaltet zweimal und dauert entsprechend laenger.",
   "mt.show_details": "Transaktionsdetails Trend & Daten anzeigen",
   "mt.data_as_of": "Daten vom:",
   "mt.calc_btn": "Transaktionen berechnen",
