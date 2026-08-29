@@ -75,6 +75,21 @@ nennt Index, Trade-Anzahl, offene Positionen und Gewinn — beim frischen Lauf i
 Fortschrittsblock, der nach der Berechnung auf <code>✓</code> umspringt, beim Anzeigen
 eines gespeicherten Ergebnisses ein gleich beschrifteter Aufklapper.</p>
 
+<h2>Warum ein Lauf so lange dauert</h2>
+<p>Gemessen an einem ^SPX-Durchgang (83.919 Zeilen): <b>12,1 s entfallen auf das Lesen
+aus der Simulationsdatenbank</b>, 0,23 s auf den PortfolioSimulator und praktisch nichts
+auf die Signalmasken. Nicht das Durchrechnen der Zeitreihen ist teuer, sondern das
+Beschaffen der Daten.</p>
+<p>Deshalb wird jeder Index innerhalb eines Laufs nur noch <b>einmal</b> gelesen. Vorher
+holte ihn jede Strategie erneut — bei der üblichen Konfiguration sind das 29 Durchgänge
+über nur 9 verschiedene Indizes, also 20 überflüssige Lesevorgänge (69 %). Der Cache lebt
+ausschließlich innerhalb eines Laufs und kann deshalb nie einen veralteten Datenstand
+zeigen.</p>
+<div class="info">Jeder Verbraucher erhält eine <b>Kopie</b>. Das ist notwendig, weil die
+Schleife ihren Datensatz umsortiert, <code>buySell</code> überschreibt und die Preise in
+die Systemwährung umrechnet — ohne Kopie würde die zweite Strategie bereits umgerechnete
+Preise ein zweites Mal umrechnen.</div>
+
 <h2>Ergebnis-Cache</h2>
 <p>Die Berechnung ist teuer, deshalb wird das fertige Ergebnis in der Sitzung
 zwischengespeichert — sonst würde jeder Download und jeder Klick auf ein Widget
