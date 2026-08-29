@@ -656,8 +656,14 @@ einschränken (Auslöser: Scalable Capital handelt nicht jeden ^RUT-Small-Cap).
   Fehltreffer wie IESC→tonies SE).
 
 **ISIN-Quelle / -Lücke:** ISINs liegen in `yf_tickers.db.stocks.ISIN`
-(`backfill_isin.py`), aber nur ~43 % gefüllt — gerade junge Small-Caps (PLUG,
-OKLO, RGTI…) fehlten, weil `yf.Ticker().isin` für sie nichts liefert.
+(`backfill_isin.py`). Ursprünglich nur ~43 % gefüllt — gerade junge Small-Caps
+(PLUG, OKLO, RGTI…) fehlten, weil `yf.Ticker().isin` für sie nichts liefert.
+**Stand 2026-08-28 nach den Backfill-Läufen: 6237/8858 = 70,4 %**
+(gemessen gegen `C:\Users\kurtl\Development\database\yf_tickers.db`, gültig =
+`ISIN NOT NULL AND TRIM(ISIN) NOT IN ('','None','nan')`; ohne Indizes/FX 70,7 %).
+⚠️ **Mitglieder echter `^`-Indizes liegen mit 1977/3526 = 56,1 % deutlich darunter** —
+also ausgerechnet die Menge, auf der Screener und Signale laufen. Wer `require_isin`
+oder den Broker-Filter scharf stellt, verliert dort weiterhin rund 44 % der Kandidaten.
 - `backfill_isin.py fetch_isin()` hat jetzt **Provider-Fallback** nach yfinance.
   (2026-07-15: nicht mehr FMP-fest — läuft über `get_isin_resolver()`, also FMP
   *oder* EODHD, je nach aktivem Provider/hinterlegtem Key. Param hieß `use_fmp`,
@@ -690,9 +696,10 @@ Selektion auf Werte **mit gültiger ISIN** beschränkt — als Näherung für
   Regex `[A-Z]{2}[A-Z0-9]{9}[0-9]`; NULL→'None'/'nan', Indizes (`^…`), FX (`=X`)
   fallen korrekt raus.
 - **Wichtig:** erst nach vollem `python backfill_isin.py` (jetzt mit FMP-Fallback)
-  aktivieren — sonst filtert er ~57 % bloß-noch-nicht-aufgelöste Werte (inkl.
-  handelbarer Large-Caps) mit raus. „Keine ISIN" = derzeit eher „nicht aufgelöst"
-  als „nicht handelbar".
+  aktivieren. Vor den Backfill-Läufen filterte er ~57 % bloß-noch-nicht-aufgelöste
+  Werte (inkl. handelbarer Large-Caps) mit raus; Stand 2026-08-28 sind es
+  **~30 % gesamt, aber ~44 % innerhalb der `^`-Index-Mitglieder** (Zahlen oben).
+  „Keine ISIN" heißt also weiterhin eher „nicht aufgelöst" als „nicht handelbar".
 
 **Noch offen:** Der proxy-basierte Scalable/IBKR-Filter (`broker_tradability.py`)
 ist als Funktion/CLI nutzbar, aber noch **nicht** in den Live-Signal-Loop
@@ -1073,3 +1080,73 @@ Kein Default geaendert — die Messung ist ^SPX-only mit einem Einstiegsmodus.
 **Chart:** Der Monatschart zeigt die tatsaechlich gehaltenen Abschnitte als dicke gruene
 Auflage auf der Kurve (`fps.lg_held`), dazu Signale und Bestaetigungspunkte. Damit ist im
 Bild sichtbar, welcher Teil eines Legs im Depot lag und welcher nicht.
+
+---
+
+## Neu in dieser Session (2026-08-28) — Scalable MCP, Transaktions-Import, Order-Korb
+
+Scalable Capital bietet seit v1.0.0 zwei Zugaenge (Seite `de.scalable.capital/agentic-investing`):
+eine **CLI** (Rust, Apache-2.0, nur macOS/Linux — **kein Windows-Binary**, damit fuer
+diesen Stack unbrauchbar) und einen **Remote-MCP-Server** `https://mcp.scalable.capital/mcp`
+(OAuth 2.1 + PKCE, Dynamic Client Registration, Scope `offline_access`). Freischaltung im
+Konto unter **Profil > Sicherheit**, dann als Connector verbinden. Der MCP-Weg ist der
+einzige, der unter Windows laeuft.
+
+### Drei Fallen der MCP-Transaktionsdaten (verifiziert am Live-Depot)
+
+1. **`amount` ist brutto inkl. Transaktionssteuer.** `amount/quantity` ueberschaetzt den
+   Einstandskurs, sobald Finanztransaktionssteuer anfaellt (ES/FR/IT). Beleg Solaria:
+   `averagePrice` 17,02, `marketValuation` 1191,40, `taxAmount` 2,38 (span. FTT),
+   `totalAmount` 1193,78 → Division ergaebe 17,054. Ausfuehrungskurs und Steuer gibt es
+   **nur** ueber `get_transaction_details` → N+1 bleibt unvermeidbar.
+2. **Zahlen muessen deutsch formatiert eingespeist werden.** `parse_scalable_csv` nutzt
+   `_parse_de_number`, das Punkte streicht — aus "17.02" wuerde 1702. Immer ueber
+   `_format_de_number`.
+3. **Zeitstempel:** `lastEventAt` ist UTC, `history[FILLED].timestamp` lokale Zeit
+   (= was die CSV schreibt). Naiv `lastEventAt` nehmen verschiebt neue Trades um 2 h
+   gegen die Altbestaende.
+
+**Serverseitiger Bug:** `transactionTypes: ["fee"]` bzw. `["distribution"]` liefern
+reproduzierbar `upstream_unavailable`; `["buy"]`/`["sell"]` funktionieren. Workaround:
+ungefiltert laden, clientseitig filtern. Gebuehren fallen ohnehin nicht pro Trade an,
+sondern als monatliche Cash-Buchung ("Entgelt PRIME+ Broker").
+
+### Neue Module
+
+| Datei | Zweck |
+|---|---|
+| `tradinglib/scalable_mcp.py` | mappt MCP-JSON auf das CSV-Spaltenlayout → `parse_scalable_csv()` bleibt unveraendert. `split_payloads`, `mcp_to_scalable_frame`, `transaction_ids_needing_details`. Spalte `price_estimated` markiert Zeilen ohne Detaildaten |
+| `tradinglib/scalable_orders.py` | Order-Korb: `OrderDraft`, `OrderBasket` (eigene `scalable_orders.db`), `validate`, `to_preview_payload`, Builder fuer Agent-Signale und Positionsverkaeufe, `isin_map_from_trades`, `render_order_basket` |
+
+### Dedup im CSV-Import (behebt einen alten Datenfehler)
+
+`_insert_scalable_rows` warf die vom Parser durchgereichte `ref`-Spalte weg → jeder
+erneute Import derselben CSV erzeugte Duplikate. Jetzt: neue Spalte **`ext_id`**
+(Broker-Referenz bzw. MCP-Transaktions-ID) plus **Fingerprint-Fallback**
+(`timestamp|action|isin|shares|value`) fuer Altzeilen ohne `ext_id`. Abgeglichen wird
+mit **Countern, nicht mit Sets** — ein Depot darf zwei identische Zeilen enthalten,
+nur der Ueberschuss eines Re-Imports faellt weg. Rueckgabe ist `(inserted, duplicates)`.
+
+### Order-Korb — Grenzen, die der Broker setzt
+
+`preview_*_order` liefert einen signierten `submission`-Block, den `submit_*_order` nur
+nach **ausdruecklicher Einzelbestaetigung** akzeptiert. Der Korb bereitet deshalb nur vor;
+abgesendet wird bei Scalable. Die Validierung bildet die Schema-Grenzen ab:
+ISIN Pflicht, **nur ganze Stuecke**, Verkaeufe ausschliesslich stueckbasiert (kein Betrag),
+Ordertypen market/limit/stop (**kein Trailing Stop, keine OTO-/Bracket-Legs**),
+Handelsplaetze gettex/Xetra/EIX. Es gibt **kein** `list_orders` — offene Orders ueber
+`list_portfolio_transactions` mit `statuses` holen (Statusfilter funktioniert, Typfilter nicht).
+
+**Verdrahtet an drei Stellen:** Trading-Seite ▸ Tab Signale (Kaufsignale, gesized via
+`_apply_sizing`, Limit aus `agent_limit_buffer_pct`), Own Transactions ▸ Tab Risiko
+(gerissene Trailing Stops als Verkaeufe), Asset Viewer ▸ Order-Dialog (manuell, neben
+der Alpaca-Warteschlange). Der Korb selbst sitzt als Panel im Scalable-Tab.
+
+**Wichtig fuer die Verkaufsseite:** die Trailing-Stop-Tabelle fuehrt keine ISIN. Der
+Resolver ueber `yf_tickers.db` reicht dort nicht (Index-Mitglieder nur 56 % gefuellt) —
+deshalb `isin_map_from_trades()`: `trades.db` traegt fuer alles real Gehaltene die ISIN
+aus dem Scalable-Import.
+
+**Fuer den autonomen Agenten bleibt Alpaca zustaendig** — Scalable kennt weder
+OTO-Stop-Legs noch Trailing Stops noch eine Marktzeiten-Abfrage (`agent_rth_only` haette
+dort keine Datenquelle), und der Bestaetigungsschritt ist bewusst nicht automatisierbar.
