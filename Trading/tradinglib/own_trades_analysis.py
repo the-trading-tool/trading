@@ -885,6 +885,39 @@ def render_risk_management(region=st, db_path: str = 'database', system_currency
                              ticker=brow['ticker'],
                              current=brow['last_price'],
                              stop=brow['trail_stop']))
+
+            # ── Scalable: stage the exits as prepared sell orders ──────────
+            # Share counts come from trades.db, not from the trails table, and
+            # the basket floors them to whole shares — Scalable sells no fractions.
+            if r.button(_t('own_trades.trail_basket_btn', n=len(breached_rows)),
+                        key='rm_trail_basket'):
+                from tradinglib.scalable_orders import (OrderBasket, isin_map_from_trades,
+                                                        drafts_from_position_sells)
+                _held = {str(p['ticker']).upper(): p
+                         for p in _get_open_positions_for_trails(db_path)}
+                # trades.db knows the ISIN of everything actually held; the
+                # ticker database is only partially filled.
+                _isins = isin_map_from_trades(db_path)
+                _rows = []
+                for _, brow in breached_rows.iterrows():
+                    _tk = str(brow['ticker']).upper()
+                    _rows.append({
+                        'ticker': _tk,
+                        'isin':   _isins.get(_tk, ''),
+                        'shares': float(_held.get(_tk, {}).get('shares', 0) or 0),
+                        'price':  float(brow.get('last_price', 0) or 0),
+                        'reason': _t('own_trades.trail_basket_reason',
+                                     stop=brow.get('trail_stop', 0)),
+                    })
+                _drafts, _skipped = drafts_from_position_sells(_rows, allow_network=True)
+                _added, _rejected = OrderBasket(db_path=db_path).add_many(_drafts)
+                if _added:
+                    r.success(_t('own_trades.trail_basket_added', n=_added))
+                _problems = ([f'{tk}: {why}' for tk, why in _skipped]
+                             + [f'{d.ticker}: {"; ".join(p)}' for d, p in _rejected])
+                if _problems:
+                    r.warning(_t('own_trades.trail_basket_skipped',
+                                 items=', '.join(_problems)))
         elif not trails_df.empty:
             r.success(_t('own_trades.trail_all_ok', n=len(trails_df)))
 

@@ -2159,5 +2159,18 @@
   "fund.h_title_income": "Revenue and earnings",
   "fund.h_title_margins": "Margins over time",
   "fund.h_title_balance": "Equity and debt",
-  "fund.h_title_shares": "Shares outstanding (dilution / buybacks)"
+  "fund.h_title_shares": "Shares outstanding (dilution / buybacks)",
+  "main.order_scalable_btn": "Add to Scalable order basket",
+  "main.order_scalable_hint": "Scalable orders are released individually at the bank — the basket only prepares them.",
+  "main.order_scalable_no_isin": "No ISIN on file for {ticker} — Scalable addresses instruments by ISIN only.",
+  "main.order_scalable_ok": "{side}: {qty} × {ticker} added to the order basket.",
+  "main.order_scalable_err": "Not added: {problems}",
+  "tp.signals_basket_hint": "Scalable orders are released individually at the bank — the basket only prepares them.",
+  "tp.signals_basket_btn": "Add {n} buy signal(s) to the Scalable order basket",
+  "tp.signals_basket_added": "{n} buy order(s) in the basket — release them at Scalable.",
+  "tp.signals_basket_skipped": "Not added: {items}",
+  "own_trades.trail_basket_btn": "Add {n} sell(s) to the Scalable order basket",
+  "own_trades.trail_basket_added": "{n} sell order(s) in the basket — release them at Scalable.",
+  "own_trades.trail_basket_skipped": "Not added: {items}",
+  "own_trades.trail_basket_reason": "Trailing stop {stop} breached"
 }

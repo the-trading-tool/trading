@@ -894,6 +894,27 @@ class render_mainpage(fetch_data.FetchData):
         # non-tradeable order keep the original ticker so it stays recognisable.
         broker_symbol = resolved or ticker
 
+        # ── Scalable: prepare instead of queue ────────────────────────────
+        # Scalable releases every order individually at the bank, so there is
+        # nothing to send from here — the basket only fills in the fields.
+        _isin = self._get_isin(ticker)
+        st.caption(t('main.order_scalable_hint'))
+        if not _isin:
+            st.caption(t('main.order_scalable_no_isin', ticker=ticker))
+        if st.button(t('main.order_scalable_btn'), use_container_width=True,
+                     disabled=not _isin, key=f'scalable_basket_{ticker}_{side}'):
+            from tradinglib.scalable_orders import OrderBasket, OrderDraft
+            ok, problems = OrderBasket(db_path='database').add(OrderDraft(
+                side=side, isin=_isin, ticker=ticker,
+                name=self.get_ticker_value(ticker, 'longName') or ticker,
+                shares=float(int(qty)), order_type='market', source='manual',
+            ))
+            if ok:
+                st.success(t('main.order_scalable_ok', side=side_label,
+                             qty=int(qty), ticker=ticker))
+            else:
+                st.error(t('main.order_scalable_err', problems='; '.join(problems)))
+
         if st.button(t('main.order_queue_btn'), type='primary',
                      use_container_width=True, disabled=not allow_queue):
             OrderLog(db_path='database').save_queued(

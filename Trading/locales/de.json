@@ -2159,5 +2159,18 @@
   "fund.h_title_income": "Umsatz und Gewinn",
   "fund.h_title_margins": "Margen im Zeitverlauf",
   "fund.h_title_balance": "Eigenkapital und Schulden",
-  "fund.h_title_shares": "Aktien im Umlauf (Verwässerung / Rückkäufe)"
+  "fund.h_title_shares": "Aktien im Umlauf (Verwässerung / Rückkäufe)",
+  "main.order_scalable_btn": "In den Scalable-Order-Korb",
+  "main.order_scalable_hint": "Scalable-Orders werden einzeln bei der Bank freigegeben — der Korb bereitet sie nur vor.",
+  "main.order_scalable_no_isin": "Für {ticker} ist keine ISIN hinterlegt — ohne ISIN kann Scalable den Titel nicht ansprechen.",
+  "main.order_scalable_ok": "{side}: {qty} × {ticker} liegt im Order-Korb.",
+  "main.order_scalable_err": "Nicht übernommen: {problems}",
+  "tp.signals_basket_hint": "Scalable-Orders werden einzeln bei der Bank freigegeben — der Korb bereitet sie nur vor.",
+  "tp.signals_basket_btn": "{n} Kaufsignal(e) in den Scalable-Order-Korb",
+  "tp.signals_basket_added": "{n} Kauforder(s) im Order-Korb — Freigabe bei Scalable.",
+  "tp.signals_basket_skipped": "Nicht übernommen: {items}",
+  "own_trades.trail_basket_btn": "{n} Verkauf/Verkäufe in den Scalable-Order-Korb",
+  "own_trades.trail_basket_added": "{n} Verkaufsorder(s) im Order-Korb — Freigabe bei Scalable.",
+  "own_trades.trail_basket_skipped": "Nicht übernommen: {items}",
+  "own_trades.trail_basket_reason": "Trailing Stop {stop} gerissen"
 }
