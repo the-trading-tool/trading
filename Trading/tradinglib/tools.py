@@ -955,6 +955,66 @@ def signal_window(username: str = '', db_path: str = 'database') -> int:
     except Exception:
         return 1
 
+def holding_intervals(history, end_date: str) -> dict:
+    """Halte-Intervalle je Ticker aus einer Portfolio-History ableiten.
+
+    ``history`` ist die Liste aus ``PortfolioSimulator.history`` (Eintraege mit
+    ``ticker``/``timestamp``/``action``). Ein Ticker ist dort immer hoechstens
+    einmal gleichzeitig gehalten, Buy/Sell lassen sich also chronologisch paaren.
+    Eine am Ende noch offene Position laeuft bis *end_date*.
+
+    Rueckgabe: ``{ticker: [(start, ende), ...]}`` mit Datum als 'YYYY-MM-DD'.
+    """
+    events: dict = {}
+    for h in history or []:
+        try:
+            events.setdefault(h['ticker'], []).append(
+                (str(h['timestamp'])[:10], h['action']))
+        except (KeyError, TypeError):
+            continue
+    out: dict = {}
+    for ticker, evs in events.items():
+        evs.sort()
+        open_at = None
+        for day, action in evs:
+            if action == 'buy' and open_at is None:
+                open_at = day
+            elif action == 'sell' and open_at is not None:
+                out.setdefault(ticker, []).append((open_at, day))
+                open_at = None
+        if open_at is not None:
+            out.setdefault(ticker, []).append((open_at, end_date))
+    return out
+
+
+def overlapping_buy_days(candidate: dict, held: dict) -> dict:
+    """Kauftage aus *candidate*, deren Haltezeitraum ein *held*-Intervall schneidet.
+
+    Der Kern des Cross-Strategie-Dedups. Entscheidend ist der Vergleich von
+    INTERVALL gegen INTERVALL, nicht von Kaufdatum gegen Intervall: zwei
+    Zeitraeume ueberlappen, wenn ``start_a <= ende_b`` UND ``start_b <= ende_a``.
+
+    Die alte Regel prüfte nur, ob das Kaufdatum in ein bekanntes Intervall
+    faellt. Damit blieb jede Position unsichtbar, die FRUEHER gekauft wurde als
+    die bereits erfasste — gemessen betraf das 56 von 56 Doppelhaltungen.
+    Dafuer muss der Kandidat allerdings schon simuliert sein; sein Ausstieg ist
+    zum Signalzeitpunkt noch nicht bekannt.
+
+    Rueckgabe: ``{ticker: {kauftage}}`` — genau die Buy-Signale, die zu nullen sind.
+    """
+    hits: dict = {}
+    for ticker, intervals in (candidate or {}).items():
+        known = (held or {}).get(ticker)
+        if not known:
+            continue
+        for start, end in intervals:
+            for k_start, k_end in known:
+                if start <= k_end and k_start <= end:
+                    hits.setdefault(ticker, set()).add(start)
+                    break
+    return hits
+
+
 def move_column_before(df, column: str, before: str):
     """Spalte *column* direkt vor *before* einsortieren (neue Spaltenreihenfolge).
 

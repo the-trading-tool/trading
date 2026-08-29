@@ -54,7 +54,20 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Ergebnis-Cache:</b> Nach dem Berechnen wird das Ergebnis zwischengespeichert (gekeyt auf Strategie-Config, Jahr, Datum, Währung). Ein <b>Excel-Download oder andere Bedienschritte lösen dann keine teure Neuberechnung mehr aus</b> – es erscheint der Hinweis „Ergebnis aus Cache". Eine echte Neuberechnung startet nur über <b>„Transaktionen berechnen"</b> oder wenn sich eine Eingabe (Config/Jahr/Datum/Währung) ändert.</div>
 
-<div class="warn">Ein Titel wird <b>nicht gleichzeitig doppelt</b> gehalten: Hält eine früher verarbeitete Strategie/Index einen Ticker bereits, werden Kaufsignale für denselben Ticker in einer späteren Strategie/Index <b>an den überlappenden Tagen</b> ignoriert (zeitscharf, verhindert Doppelpositionen über Strategien UND Indizes hinweg). Sequentielle Wiederkäufe nach einem Verkauf bleiben erlaubt; die Reihenfolge in der Config entscheidet, wer den Titel bekommt.</div>
+<div class="warn"><b>Ein Titel wird nicht gleichzeitig doppelt gehalten.</b> Verglichen
+wird <b>Haltezeitraum gegen Haltezeitraum</b>: Überschneidet sich eine Position mit einer,
+die eine früher verarbeitete Strategie/Index bereits hält, wird der betreffende Kauf
+entfernt und der Index neu gerechnet — bis zu dreimal, weil freiwerdendes Kapital einen
+anderen Kauf ermöglichen kann. Sequentielle Wiederkäufe nach einem Verkauf bleiben
+erlaubt; wer den Titel behält, entscheidet die Reihenfolge in der Konfiguration.
+<br><br><b>Warum das nach der Simulation läuft:</b> Zum Signalzeitpunkt ist der eigene
+Ausstieg noch unbekannt, ein Zeitraum-Vergleich also unmöglich. Früher wurde deshalb nur
+geprüft, ob das <i>Kaufdatum</i> in ein bekanntes Intervall fällt — damit blieb jede
+Position unsichtbar, die <i>früher</i> gekauft wurde als die bereits erfasste, denn die
+liegt vor jedem bekannten Intervall. An den Trades von 2026 gemessen hatten <b>alle</b>
+Doppelhaltungen genau diese Signatur (E.ON: Support/RSI ab 12.08., Value Trend ^2 ab
+26.08., und Value Trend ^2 wird zuerst verarbeitet). Die alte Regel fing davon 0, die
+neue 46.</div>
 
 <div class="info"><b>Datenqualitäts-Prüfung:</b> Nach der Berechnung werden gehandelte Ticker mit <b>inkonsistentem OHLC</b> (Tages-<code>close</code> außerhalb <code>[Low, High]</code>) als potenzielle Datenfehler ausgewiesen — typisch bei unbereinigten Splits (<code>close</code> ~6× High) oder Pence/Pfund bei <code>.L</code>-Werten (~100×). Solche Bars <b>überspringt der Simulator</b> (sonst entstünden Phantom-Trades, z. B. −83 % durch Kauf zum falschen Kurs + Hard-Stop gegen das korrekte Low). Die Treffer landen in <code>data_quality.db</code>; ein Warnblock zeigt Ursache und Bereinigungs-Befehle. <b>Hinweis:</b> Ein Neu-Einlesen hilft nur, wenn der Datenprovider inzwischen korrekt liefert — ein echter Quell-Fehler braucht einen manuellen Override.</div>
 

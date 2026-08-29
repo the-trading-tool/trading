@@ -54,7 +54,19 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Result cache:</b> after computing, the result is cached (keyed on strategy config, year, date, currency). An <b>Excel download or other UI interactions then no longer trigger an expensive recompute</b> – a "Cached result" note is shown. A real recompute only starts via <b>"Compute transactions"</b> or when an input (config/year/date/currency) changes.</div>
 
-<div class="warn">A name is <b>never held twice at the same time</b>: if an earlier-processed strategy/index already holds a ticker, buy signals for the same ticker in a later strategy/index are ignored <b>on the overlapping days</b> (time-aware, prevents duplicate positions across strategies AND indices). Sequential re-buys after a sell remain allowed; the order in the config decides who gets the name.</div>
+<div class="warn"><b>A name is never held twice at the same time.</b> What is compared is
+<b>holding period against holding period</b>: if a position overlaps one an
+earlier-processed strategy/index already holds, that buy is removed and the index is
+recomputed — up to three times, since freed capital can enable a different buy.
+Sequential re-buys after a sell remain allowed; the order in the configuration decides
+who keeps the name.
+<br><br><b>Why this runs after the simulation:</b> at signal time the position's own exit
+is not yet known, so a period comparison is impossible. Previously only the <i>buy
+date</i> was checked against the known intervals — which left every position invisible
+that was bought <i>earlier</i> than the one already recorded, because it lies before
+every known interval. Measured on the 2026 trades, <b>all</b> duplicate holdings had
+exactly that signature (E.ON: Support/RSI from 12 Aug, Value Trend ^2 from 26 Aug, and
+Value Trend ^2 is processed first). The old rule caught 0 of them, the new one 46.</div>
 
 <div class="info"><b>Data-quality check:</b> After computing, traded tickers with <b>inconsistent OHLC</b> (daily <code>close</code> outside <code>[Low, High]</code>) are flagged as potential data errors — typically an unadjusted split (<code>close</code> ~6× High) or pence/pounds on <code>.L</code> names (~100×). The simulator <b>skips</b> such bars (otherwise phantom trades arise, e.g. −83% from buying at the wrong price + the hard stop firing against the correct low). Hits are stored in <code>data_quality.db</code>; a warning block shows the cause and cleanup commands. <b>Note:</b> re-fetching only helps if the data provider now returns correct values — a genuine upstream error needs a manual override.</div>
 
