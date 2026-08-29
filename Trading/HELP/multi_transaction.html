@@ -59,7 +59,12 @@ wird <b>Haltezeitraum gegen Haltezeitraum</b>: Überschneidet sich eine Position
 die eine früher verarbeitete Strategie/Index bereits hält, wird der betreffende Kauf
 entfernt und der Index neu gerechnet — bis zu dreimal, weil freiwerdendes Kapital einen
 anderen Kauf ermöglichen kann. Sequentielle Wiederkäufe nach einem Verkauf bleiben
-erlaubt; wer den Titel behält, entscheidet die Reihenfolge in der Konfiguration.
+erlaubt; wer den Titel behält, entscheidet das <b>frühere Kaufdatum</b> — die Reihenfolge
+in der Konfiguration ist nur noch Gleichstand-Kriterium, wenn zwei am selben Tag kaufen.
+Damit verhält sich der Backtest wie das Live-Konto, wo der Agent die zuerst gekaufte
+Position hält und das zweite Signal überspringt. Ein Nachkauf oder Teilverkauf entfällt:
+Die erste Position bleibt in ihrer Größe, die zweite Strategie steigt nicht ein und hält
+Cash.
 <br><br><b>Warum das nach der Simulation läuft:</b> Zum Signalzeitpunkt ist der eigene
 Ausstieg noch unbekannt, ein Zeitraum-Vergleich also unmöglich. Früher wurde deshalb nur
 geprüft, ob das <i>Kaufdatum</i> in ein bekanntes Intervall fällt — damit blieb jede

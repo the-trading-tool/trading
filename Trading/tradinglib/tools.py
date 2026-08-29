@@ -1015,6 +1015,42 @@ def overlapping_buy_days(candidate: dict, held: dict) -> dict:
     return hits
 
 
+def resolve_holding_conflicts(intervals_by_owner: dict, priority=None) -> dict:
+    """Doppelhaltungen aufloesen — wer ZUERST gekauft hat, behaelt den Titel.
+
+    ``intervals_by_owner``: ``{owner: {ticker: [(start, ende), ...]}}``, owner ist
+    z. B. das Paar (Strategie, Index). ``priority`` ist eine Liste der owner in
+    Konfigurationsreihenfolge und dient nur als Gleichstand-Kriterium, wenn zwei
+    am selben Tag kaufen.
+
+    Die Chronologie zu nehmen statt der Verarbeitungsreihenfolge spiegelt das
+    Live-Verhalten: dort haelt der Agent die zuerst gekaufte Position und
+    ueberspringt das zweite Signal (``_covered_tickers_for_buy``). Ein Nachkauf
+    oder Teilverkauf entfaellt damit — die zweite Strategie steigt schlicht nicht
+    ein und haelt Cash.
+
+    Rueckgabe: ``{owner: {ticker: {blockierte_kauftage}}}``.
+    """
+    rank = {o: i for i, o in enumerate(priority or [])}
+    per_ticker: dict = {}
+    for owner, by_ticker in (intervals_by_owner or {}).items():
+        for ticker, ivs in (by_ticker or {}).items():
+            for start, end in ivs:
+                per_ticker.setdefault(ticker, []).append((start, end, owner))
+
+    blocked: dict = {}
+    for ticker, entries in per_ticker.items():
+        # Frueheres Kaufdatum gewinnt; bei Gleichstand die Config-Reihenfolge.
+        entries.sort(key=lambda e: (e[0], rank.get(e[2], len(rank))))
+        kept: list = []
+        for start, end, owner in entries:
+            if any(start <= k_end and k_start <= end for k_start, k_end in kept):
+                blocked.setdefault(owner, {}).setdefault(ticker, set()).add(start)
+            else:
+                kept.append((start, end))
+    return blocked
+
+
 def move_column_before(df, column: str, before: str):
     """Spalte *column* direkt vor *before* einsortieren (neue Spaltenreihenfolge).
 

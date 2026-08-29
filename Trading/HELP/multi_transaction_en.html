@@ -58,8 +58,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <b>holding period against holding period</b>: if a position overlaps one an
 earlier-processed strategy/index already holds, that buy is removed and the index is
 recomputed — up to three times, since freed capital can enable a different buy.
-Sequential re-buys after a sell remain allowed; the order in the configuration decides
-who keeps the name.
+Sequential re-buys after a sell remain allowed; who keeps the name is decided by the
+<b>earlier buy date</b> — the configuration order is only the tie-break when two buy on
+the same day. The backtest therefore behaves like the live account, where the agent keeps
+the position bought first and skips the second signal. No top-up or partial sale is
+needed: the first position keeps its size and the second strategy simply stays out,
+holding cash.
 <br><br><b>Why this runs after the simulation:</b> at signal time the position's own exit
 is not yet known, so a period comparison is impossible. Previously only the <i>buy
 date</i> was checked against the known intervals — which left every position invisible
