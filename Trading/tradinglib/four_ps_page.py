@@ -110,7 +110,7 @@ def _normalize_scan(df):
     for col in ('phase', 'base_weeks', 'to_breakout', 'best_trend', 'trend_gain',
                 'rs', 'dist_high', 'price', 'stop', 'target', 'days_since_signal',
                 'ret_52w', 'sector_median', 'vs_sector', 'sector_rank', 'sector_peers',
-                'gap_factor'):
+                'gap_factor', 'setup'):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     for col in ('ticker', 'name', 'signal', 'sector', 'gap_cause'):
@@ -236,8 +236,11 @@ class FourPsPage:
             t('fps.col_ticker'): df['ticker'],
             t('fps.col_name'): df['name'].str.slice(0, 28),
             t('fps.col_phase'): [f"{int(p)} · {_phase_label(p)}" for p in df['phase']],
+            # Ein Scan-Ergebnis von vor der Score-Einfuehrung hat die Spalte nicht —
+            # dann bleibt sie leer, statt beim Rendern zu scheitern.
             t('fps.col_setup'): pd.Series(
-                [int(v) if pd.notna(v) else 0 for v in df.get('setup', 0)], dtype='Int64'),
+                [int(v) if pd.notna(v) else 0 for v in df['setup']]
+                if 'setup' in df.columns else [pd.NA] * len(df), dtype='Int64'),
             t('fps.col_base_weeks'): df['base_weeks'],
             # Blank once the breakout has happened — a hard 0 there reads like
             # "right at the trigger", which is not what it means.
@@ -246,7 +249,8 @@ class FourPsPage:
             t('fps.col_best_trend'): df['best_trend'].round(0),
             t('fps.col_trend_gain'): df['trend_gain'].round(0),
             t('fps.col_rs'): df['rs'].round(1),
-            t('fps.col_sector'): [str(x)[:22] for x in df.get('sector', '')],
+            t('fps.col_sector'): ([str(x)[:22] for x in df['sector']]
+                                  if 'sector' in df.columns else [''] * len(df)),
             t('fps.col_vs_sector'): _sector_col(df, 'vs_sector'),
             t('fps.col_sector_rank'): _sector_col(df, 'sector_rank'),
             t('fps.col_dist_high'): df['dist_high'].round(1),
