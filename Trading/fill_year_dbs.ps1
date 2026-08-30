@@ -93,7 +93,10 @@ except sqlite3.Error:
     Set-Content -Path $tmp -Value $py -Encoding UTF8
     try {
         $out = & $Python $tmp $dbFile 2>$null
-        $parts = ($out | Select-Object -Last 1).Trim() -split '\s+'
+        $last = ($out | Select-Object -Last 1)
+        if (-not $last) { return [pscustomobject]@{ Rows = 0; Tickers = 0 } }
+        $parts = "$last".Trim() -split '\s+'
+        if ($parts.Count -lt 2) { return [pscustomobject]@{ Rows = 0; Tickers = 0 } }
         return [pscustomobject]@{ Rows = [int]$parts[0]; Tickers = [int]$parts[1] }
     } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
 }
@@ -102,7 +105,11 @@ function Invoke-Step([string]$label, [string[]]$argList, [string]$logFile) {
     Write-Host "  $label" -ForegroundColor Cyan
     Write-Host "    $Python asset_perf2.py $($argList -join ' ')" -ForegroundColor DarkGray
     $t0 = Get-Date
-    & $Python $Script @argList *>&1 | Tee-Object -FilePath $logFile -Append | Out-Null
+    # Tee statt Out-Null: bei einem Lauf ueber Stunden will man den Fortschritt
+    # von asset_perf2 sehen, nicht nur am Ende ein Ergebnis. Out-Host am Ende ist
+    # Pflicht — ohne das landen die Logzeilen im Ausgabestrom der Funktion und
+    # vermischen sich mit dem Rueckgabeobjekt.
+    & $Python $Script @argList *>&1 | Tee-Object -FilePath $logFile -Append | Out-Host
     $code = $LASTEXITCODE
     $mins = ((Get-Date) - $t0).TotalMinutes
     if ($code -ne 0) {
