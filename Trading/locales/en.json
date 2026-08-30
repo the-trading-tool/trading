@@ -2177,5 +2177,16 @@
   "own_trades.trail_basket_btn": "Add {n} sell(s) to the Scalable order basket",
   "own_trades.trail_basket_added": "{n} sell order(s) in the basket — release them at Scalable.",
   "own_trades.trail_basket_skipped": "Not added: {items}",
-  "own_trades.trail_basket_reason": "Trailing stop {stop} breached"
+  "own_trades.trail_basket_reason": "Trailing stop {stop} breached",
+  "fps.col_setup": "Setup",
+  "fps.filter_setup": "min. setup score",
+  "fps.filter_setup_help": "Keeps only candidates meeting at least this many quality criteria. Measured across 3,561 breakouts since 2015: score 0 → 38 % hit rate and PF 1.86, score 3 → 49 % and 3.37, score 4 → 52 % and 3.86. Only 15 % of breakouts reach score 3 or more — exactly the short list you want to see.",
+  "fps.setup_base_weeks": "short base",
+  "fps.setup_base_depth": "tight base",
+  "fps.setup_slope": "SMA slope",
+  "fps.setup_ext": "lead over SMA",
+  "fps.setup_rs": "relative strength",
+  "fps.setup_note": "**Setup score {score}/5** —",
+  "fps.setup_header": "Finding candidates fast: the setup score",
+  "fps.setup_md": "Not every breakout is worth the same. Five features known **before** the breakout separate winners from losers across 3,561 breakouts since 2015. The **setup score** simply counts how many of them are met:\n\n| Feature | Condition | Why |\n|---|---|---|\n| Short base | ≤ 12 weeks | 8–12 weeks: 48 % hit rate, PF 3.38 — 30–60 weeks only 38 %, PF 1.72 |\n| Tight base | range ≤ 20 % | 10–15 % range: PF 3.26 vs 2.27 at 20–26 % |\n| Rising trend | weekly SMA +5 % over 8 weeks | 47 % hit rate and PF 3.37 instead of 40 % / 2.19 |\n| Lead | trigger ≥ 20 % above the SMA | 20–40 %: 49 % hit rate, PF 3.30 — just above the SMA only 36 % |\n| Relative strength | RS 52w ≥ 20 pp | from +50 pp: avg +14.0 % per trade, PF 3.16 |\n\n**Result, monotonic and stable across all sub-periods:**\n\n| Score | Breakouts | Win | Avg | PF |\n|---|---|---|---|---|\n| 0 | 1,611 | 38.1 % | +3.7 % | 1.86 |\n| 1 | 944 | 40.0 % | +5.4 % | 2.14 |\n| 2 | 458 | 42.6 % | +8.8 % | 2.86 |\n| **3** | 309 | **48.9 %** | **+11.0 %** | **3.37** |\n| **4** | 205 | **51.7 %** | **+17.1 %** | **3.86** |\n\n**How to find candidates in a minute:** filter phase to *2 · base*, set *min. setup score* to 3 and “max. distance to breakout” to about 3 % — what remains are the names close to their trigger **and** carrying the favourable features. The table is already sorted by phase, score and relative strength.\n\nWhat did **not** help: **volume** (higher volume was slightly worse) and the **size of the past trend** — a name with 4,000 % history does not break out better than one with 200 %."
 }

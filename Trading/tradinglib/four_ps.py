@@ -38,6 +38,8 @@ Columns produced by :func:`compute` (daily index):
   fps_target       target level derived from ``target_pct``, else 0
   fps_rs           52-week relative strength vs the benchmark, in percentage points
   fps_dist_high    distance to the all-time high, in % (<= 0)
+  fps_setup        0..5 — how many of the five quality criteria the candidate
+                   meets (see SETUP_RULES); higher = historically better odds
 
 CLI::
 
@@ -64,6 +66,20 @@ PHASE_NAMES = {
     2: "Base",
     3: "Breakout",
     4: "Trend",
+}
+
+# Setup-Score: fuenf Merkmale, die VOR dem Ausbruch bekannt sind und in der
+# Messung ueber 3561 Ausbrueche (656 Ticker, seit 2015) Gewinner von Verlierern
+# trennen. Der Score ist die Anzahl erfuellter Bedingungen (0..5) und steigt
+# monoton mit der Trefferquote: Score 0 -> 38 % Treffer / PF 1,86,
+# Score 3 -> 49 % / 3,37, Score 4 -> 52 % / 3,86. In allen drei Teilperioden
+# besser als der Rest. Nur 15 % der Ausbrueche erreichen Score >= 3.
+SETUP_RULES = {
+    'base_weeks_max':  12,    # kurze Basen schlagen lange deutlich (PF 3,38 vs 1,72)
+    'base_depth_max':  20.0,  # enge Basis
+    'slope_min':       5.0,   # Wochen-SMA steigt ueber slope_weeks um >= 5 %
+    'ext_min':         20.0,  # Ausloeser liegt >= 20 % ueber dem Wochen-SMA
+    'rs_min':          20.0,  # relative Staerke gegen den Index
 }
 
 # Every tunable of the method in one place. The indicator, the page and the CLI
@@ -655,6 +671,26 @@ def compute(daily: pd.DataFrame, benchmark_close: pd.Series | None = None,
     out['fps_target'] = target_col
     out['fps_rs'] = rs.fillna(0.0)
     out['fps_dist_high'] = (close / close.cummax() - 1.0) * 100.0
+
+    # ── Setup-Score (0..5) ───────────────────────────────────────────────────
+    # Alle fuenf Zutaten stammen aus abgeschlossenen Wochen bzw. dem heutigen
+    # Close — der Score ist damit genauso kausal wie die Phasen selbst.
+    slope_pct = _to_daily(sma_w / sma_w.shift(int(p['slope_weeks'])) - 1.0,
+                          daily.index, 'W-FRI') * 100.0
+    depth = pd.Series(np.where(base_low > 0, (base_high / base_low - 1.0) * 100.0, np.inf),
+                      index=daily.index)
+    # Ausloeser = Basis-Hoch, solange eine Basis existiert; sonst der Kurs selbst
+    trigger = pd.Series(np.where(base_high > 0, base_high, close), index=daily.index)
+    ext = pd.Series(np.where(trend_sma > 0, (trigger / trend_sma - 1.0) * 100.0, np.nan),
+                    index=daily.index)
+    setup = (
+        ((base_len > 0) & (base_len <= SETUP_RULES['base_weeks_max'])).astype(int)
+        + (depth <= SETUP_RULES['base_depth_max']).astype(int)
+        + (slope_pct >= SETUP_RULES['slope_min']).fillna(False).astype(int)
+        + (ext >= SETUP_RULES['ext_min']).fillna(False).astype(int)
+        + (out['fps_rs'] >= SETUP_RULES['rs_min']).astype(int)
+    )
+    out['fps_setup'] = setup.astype(float)
     return out
 
 
@@ -670,6 +706,40 @@ def benchmark_series(benchmark: str, db_path: str | None = None) -> pd.Series:
         df = load_daily(benchmark, db_path)
         _bm_cache[key] = df['Close'] if not df.empty else pd.Series(dtype=float)
     return _bm_cache[key]
+
+
+def _setup_parts(daily: pd.DataFrame, frame: pd.DataFrame, p: dict) -> dict:
+    """Welche der fuenf Setup-Kriterien erfuellt sind (fuer die Detailansicht).
+
+    Rechnet die zwei Groessen nach, die nicht als Spalte gefuehrt werden
+    (SMA-Steigung, Abstand des Ausloesers ueber dem SMA) — nur fuer einen Ticker,
+    deshalb unkritisch.
+    """
+    last = frame.iloc[-1]
+    weekly = _bars(daily, 'W-FRI')
+    sma = weekly['Close'].rolling(int(p['trend_sma_weeks']),
+                                  min_periods=int(p['trend_sma_weeks'])).mean()
+    slope = np.nan
+    if len(sma) > int(p['slope_weeks']) and sma.iloc[-2:-1].notna().all():
+        prev = sma.shift(int(p['slope_weeks'])).iloc[-2]
+        if prev and not pd.isna(prev):
+            slope = (sma.iloc[-2] / prev - 1.0) * 100.0
+    sma_now = float(sma.iloc[-2]) if len(sma) > 1 and not pd.isna(sma.iloc[-2]) else 0.0
+    price = float(daily['Close'].iloc[-1])
+    base_high = float(last['fps_base_high'])
+    base_low = float(last['fps_base_low'])
+    trigger = base_high if base_high > 0 else price
+    weeks = float(last['fps_base_weeks'])
+    depth = (base_high / base_low - 1.0) * 100.0 if base_low > 0 else float('inf')
+    ext = (trigger / sma_now - 1.0) * 100.0 if sma_now > 0 else float('nan')
+    return {
+        'base_weeks': (bool(0 < weeks <= SETUP_RULES['base_weeks_max']), weeks),
+        'base_depth': (bool(depth <= SETUP_RULES['base_depth_max']), depth),
+        'slope':      (bool(slope >= SETUP_RULES['slope_min']), slope),
+        'ext':        (bool(ext >= SETUP_RULES['ext_min']), ext),
+        'rs':         (bool(float(last['fps_rs']) >= SETUP_RULES['rs_min']),
+                       float(last['fps_rs'])),
+    }
 
 
 def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None = None,
@@ -740,6 +810,8 @@ def analyze(ticker: str, db_path: str | None = None, daily: pd.DataFrame | None 
         'target': float(last['fps_target']),
         'rs': float(last['fps_rs']),
         'dist_high': float(last['fps_dist_high']),
+        'setup': int(last.get('fps_setup', 0) or 0),
+        'setup_parts': _setup_parts(daily, fps, p),
         # Raw window return — the sector comparison is built from these
         'ret_52w': window_return(daily, 52),
         # Level shift in the local price series (unadjusted split & co). Every
@@ -827,7 +899,8 @@ def scan(tickers: list[str], db_path: str | None = None, workers: int = 1,
     df['sector_rank'] = [c['rank'] for c in ctx]
     df['sector_peers'] = [c['peers'] for c in ctx]
 
-    return df.sort_values(['phase', 'rs'], ascending=[False, False]).reset_index(drop=True)
+    return df.sort_values(['phase', 'setup', 'rs'],
+                          ascending=[False, False, False]).reset_index(drop=True)
 
 
 # ── Index regime (the "trampoline" context from the method) ───────────────────

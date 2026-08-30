@@ -145,3 +145,17 @@ def test_no_look_ahead_in_entry_modes(mode):
     common = trunc.index[-250:]
     pd.testing.assert_frame_equal(full.loc[common].fillna(0.0),
                                   trunc.loc[common].fillna(0.0))
+
+
+def test_setup_score_is_bounded_and_causal():
+    """0..5, aus bekannten Groessen, und ohne Blick nach vorn."""
+    daily = _path()
+    frame = fps.compute(daily)
+    assert 'fps_setup' in frame.columns
+    assert frame['fps_setup'].between(0, 5).all()
+
+    cut = daily.index[-400]
+    trunc = fps.compute(daily[daily.index <= cut])
+    common = trunc.index[-250:]
+    pd.testing.assert_series_equal(frame.loc[common, 'fps_setup'],
+                                   trunc.loc[common, 'fps_setup'])

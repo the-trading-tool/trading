@@ -65,6 +65,41 @@ Daten nach D – die Signale sind damit im Backtest verwendbar und keine Rücksc
       Multi-Strategien.</li>
 </ul>
 
+<h2>Kandidaten schnell finden: der Setup-Score</h2>
+<p>Nicht jeder Ausbruch ist gleich viel wert. Fünf Merkmale, die <b>vor</b> dem Ausbruch
+bekannt sind, trennen über 3.561 Ausbrüche seit 2015 Gewinner von Verlierern. Der
+<b>Setup-Score</b> zählt, wie viele davon erfüllt sind (Spalte <code>fps_setup</code>,
+Regeln in <code>four_ps.SETUP_RULES</code>):</p>
+<table>
+<tr><th>Merkmal</th><th>Bedingung</th><th>Belegt durch</th></tr>
+<tr><td>Kurze Basis</td><td>≤ 12 Wochen</td><td>8–12 W: 48 % Treffer, PF 3,38 — 30–60 W nur 38 %, PF 1,72</td></tr>
+<tr><td>Enge Basis</td><td>Spanne ≤ 20 %</td><td>10–15 %: PF 3,26 gegen 2,27 bei 20–26 %</td></tr>
+<tr><td>Steigender Trend</td><td>Wochen-SMA +5 % in 8 Wochen</td><td>47 % Treffer, PF 3,37 statt 40 % / 2,19</td></tr>
+<tr><td>Vorsprung</td><td>Auslöser ≥ 20 % über dem SMA</td><td>20–40 %: 49 % Treffer, PF 3,30 — knapp über dem SMA nur 36 %</td></tr>
+<tr><td>Relative Stärke</td><td>RS 52W ≥ 20 pp</td><td>ab +50 pp: Ø +14,0 % je Trade, PF 3,16</td></tr>
+</table>
+<table>
+<tr><th>Score</th><th>Ausbrüche</th><th>Treffer</th><th>Ø</th><th>PF</th></tr>
+<tr><td>0</td><td>1.611</td><td>38,1 %</td><td>+3,7 %</td><td>1,86</td></tr>
+<tr><td>1</td><td>944</td><td>40,0 %</td><td>+5,4 %</td><td>2,14</td></tr>
+<tr><td>2</td><td>458</td><td>42,6 %</td><td>+8,8 %</td><td>2,86</td></tr>
+<tr><td><b>3</b></td><td>309</td><td><b>48,9 %</b></td><td><b>+11,0 %</b></td><td><b>3,37</b></td></tr>
+<tr><td><b>4</b></td><td>205</td><td><b>51,7 %</b></td><td><b>+17,1 %</b></td><td><b>3,86</b></td></tr>
+</table>
+<div class="info"><b>Der schnelle Weg zu einer kurzen Liste:</b> Phase auf <i>2 · Basis</i>
+filtern, <i>min. Setup-Score</i> auf 3 stellen, <i>max. Abstand zum Ausbruch</i> auf etwa
+3–5 %. Die Tabelle ist bereits nach Phase, Score und relativer Stärke sortiert — oben
+stehen die Werte, die kurz vor dem Auslöser stehen <b>und</b> die günstigen Merkmale
+mitbringen. Beispiel S&amp;P 500 am 30.08.2026: von 457 Werten blieben sechs übrig
+(INCY Score 5, FTNT 4, BMY/GOOGL/MGM/CMI 3).</div>
+<p>Der Score ist auch eine Spalte in der Simulations-DB, also in Buy/Sell-Formeln nutzbar:
+<code>(fps_buy &gt; 0) &amp; (fps_setup &gt;= 3)</code>. In der Detailansicht steht unter den
+Kennzahlen, welche der fünf Bedingungen erfüllt sind und mit welchem Wert.</p>
+<p><b>Nicht aussagekräftig</b> waren dagegen das <b>Volumen</b> am Ausbruch (höheres
+Volumen war eher schlechter: PF 1,91 bei über 1,3× gegen 2,46 bei unterdurchschnittlichem)
+und die <b>Größe des Vergangenheitstrends</b> — ein Wert mit 4.000 % Historie bricht nicht
+besser aus als einer mit 200 %. Beide sind deshalb bewusst nicht im Score.</p>
+
 <h2>Spalten im Screener</h2>
 <table>
 <tr><th>Spalte</th><th>Bedeutung</th></tr>

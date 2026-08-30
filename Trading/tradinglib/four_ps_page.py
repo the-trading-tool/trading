@@ -236,6 +236,8 @@ class FourPsPage:
             t('fps.col_ticker'): df['ticker'],
             t('fps.col_name'): df['name'].str.slice(0, 28),
             t('fps.col_phase'): [f"{int(p)} · {_phase_label(p)}" for p in df['phase']],
+            t('fps.col_setup'): pd.Series(
+                [int(v) if pd.notna(v) else 0 for v in df.get('setup', 0)], dtype='Int64'),
             t('fps.col_base_weeks'): df['base_weeks'],
             # Blank once the breakout has happened — a hard 0 there reads like
             # "right at the trigger", which is not what it means.
@@ -497,7 +499,10 @@ class FourPsPage:
                                  key='_fps_filter_rs')
         max_to_break = c4.number_input(t('fps.filter_to_break'), 0.0, 100.0, 100.0, 1.0,
                                        key='_fps_filter_break')
-        only_above = st.checkbox(t('fps.filter_sector'), value=False,
+        c5, c6 = st.columns([0.3, 0.7])
+        min_setup = c5.number_input(t('fps.filter_setup'), 0, 5, 0, 1,
+                                    key='_fps_filter_setup', help=t('fps.filter_setup_help'))
+        only_above = c6.checkbox(t('fps.filter_sector'), value=False,
                                  key='_fps_filter_sector',
                                  help=t('fps.filter_sector_help'))
 
@@ -522,6 +527,8 @@ class FourPsPage:
         # rerun drops the user's row selection.
         flt = df[df['phase'].isin(phases) & (df['rs'] >= min_rs)]
         flt = flt[(flt['phase'] >= 3) | (flt['to_breakout'] <= max_to_break)]
+        if min_setup and 'setup' in flt.columns:
+            flt = flt[flt['setup'] >= min_setup]
         if only_above and 'vs_sector' in flt.columns:
             flt = flt[(flt['vs_sector'] > 0) & (flt.get('sector_peers', 0) >= _MIN_PEERS)]
         st.caption(t('fps.result_count', shown=len(flt), total=len(df)))
@@ -613,6 +620,16 @@ class FourPsPage:
             m[5].metric(t('fps.m_vs_sector'), '—')
             st.caption(t('fps.sector_no_peers'))
 
+        parts = res.get('setup_parts') or {}
+        if parts:
+            marks = []
+            for key, unit in (('base_weeks', ' W'), ('base_depth', ' %'), ('slope', ' %'),
+                              ('ext', ' %'), ('rs', ' pp')):
+                ok, val = parts.get(key, (False, float('nan')))
+                shown = '—' if pd.isna(val) or val in (float('inf'), float('-inf')) else f"{val:.1f}{unit}"
+                marks.append(f"{'✅' if ok else '❌'} {t('fps.setup_' + key)} {shown}")
+            st.caption(t('fps.setup_note', score=res.get('setup', 0)) + '  ·  ' + '  ·  '.join(marks))
+
         # Trade plan
         if phase >= 3 and res['stop'] > 0:
             entry, stop, target = res['price'], res['stop'], res['target']
@@ -645,6 +662,8 @@ class FourPsPage:
 
     def _tab_method(self, params: dict):
         st.markdown(t('fps.method_md'))
+        st.markdown(f"##### {t('fps.setup_header')}")
+        st.markdown(t('fps.setup_md'))
         st.markdown(f"##### {t('fps.columns_header')}")
         st.markdown(t('fps.columns_md'))
         st.markdown(f"##### {t('fps.entries_header')}")

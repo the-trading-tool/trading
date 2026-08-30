@@ -2177,5 +2177,16 @@
   "own_trades.trail_basket_btn": "{n} Verkauf/Verkäufe in den Scalable-Order-Korb",
   "own_trades.trail_basket_added": "{n} Verkaufsorder(s) im Order-Korb — Freigabe bei Scalable.",
   "own_trades.trail_basket_skipped": "Nicht übernommen: {items}",
-  "own_trades.trail_basket_reason": "Trailing Stop {stop} gerissen"
+  "own_trades.trail_basket_reason": "Trailing Stop {stop} gerissen",
+  "fps.col_setup": "Setup",
+  "fps.filter_setup": "min. Setup-Score",
+  "fps.filter_setup_help": "Filtert auf Kandidaten mit mindestens so vielen erfuellten Qualitaetsmerkmalen. Gemessen an 3.561 Ausbruechen seit 2015: Score 0 → 38 % Treffer und PF 1,86, Score 3 → 49 % und 3,37, Score 4 → 52 % und 3,86. Nur 15 % der Ausbrueche erreichen Score 3 oder mehr — genau die kurze Liste, die man sehen will.",
+  "fps.setup_base_weeks": "kurze Basis",
+  "fps.setup_base_depth": "enge Basis",
+  "fps.setup_slope": "SMA-Steigung",
+  "fps.setup_ext": "Abstand ueber SMA",
+  "fps.setup_rs": "relative Staerke",
+  "fps.setup_note": "**Setup-Score {score}/5** —",
+  "fps.setup_header": "Kandidaten schnell finden: der Setup-Score",
+  "fps.setup_md": "Nicht jeder Ausbruch ist gleich viel wert. Fuenf Merkmale, die **vor** dem Ausbruch bekannt sind, trennen in der Messung ueber 3.561 Ausbrueche seit 2015 Gewinner von Verlierern. Der **Setup-Score** zaehlt einfach, wie viele davon erfuellt sind:\n\n| Merkmal | Bedingung | Warum |\n|---|---|---|\n| Kurze Basis | ≤ 12 Wochen | 8–12 Wochen: 48 % Treffer, PF 3,38 — 30–60 Wochen nur 38 %, PF 1,72 |\n| Enge Basis | Spanne ≤ 20 % | 10–15 % Spanne: PF 3,26 gegen 2,27 bei 20–26 % |\n| Steigender Trend | Wochen-SMA +5 % in 8 Wochen | 47 % Treffer und PF 3,37 statt 40 % / 2,19 |\n| Vorsprung | Ausloeser ≥ 20 % ueber dem SMA | 20–40 %: 49 % Treffer, PF 3,30 — knapp ueber dem SMA nur 36 % |\n| Relative Staerke | RS 52W ≥ 20 pp | ab +50 pp: Ø +14,0 % je Trade, PF 3,16 |\n\n**Ergebnis, monoton und in allen Teilperioden stabil:**\n\n| Score | Ausbrueche | Treffer | Ø | PF |\n|---|---|---|---|---|\n| 0 | 1.611 | 38,1 % | +3,7 % | 1,86 |\n| 1 | 944 | 40,0 % | +5,4 % | 2,14 |\n| 2 | 458 | 42,6 % | +8,8 % | 2,86 |\n| **3** | 309 | **48,9 %** | **+11,0 %** | **3,37** |\n| **4** | 205 | **51,7 %** | **+17,1 %** | **3,86** |\n\n**So findet man die Kandidaten in einer Minute:** Phase auf *2 · Basis* filtern, *min. Setup-Score* auf 3 stellen, „max. Abstand zum Ausbruch\" auf etwa 3 % — uebrig bleiben die Werte, die kurz vor dem Ausloeser stehen **und** die guenstigen Merkmale mitbringen. Die Tabelle ist bereits nach Phase, Score und relativer Staerke sortiert.\n\nNicht aussagekraeftig waren uebrigens **Volumen** (hoeheres Volumen war eher schlechter) und die **Groesse des Vergangenheitstrends** — ein Wert mit 4.000 % Historie bricht nicht besser aus als einer mit 200 %."
 }

@@ -51,7 +51,8 @@ INDICATOR_BACKFILL_MAP: dict = {
     # yields the same values as a full init run.
     'fps':     ['fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
                 'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
-                'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high'],
+                'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high',
+                'fps_setup'],
     'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
@@ -979,7 +980,8 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         # they are stored as 0 to keep the sim-DB plain REALs.
         for _fps_col in ('fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
                          'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
-                         'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high'):
+                         'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high',
+                         'fps_setup'):
             _fps_val = DataUtils.safe_last(df, _fps_col, default=0)
             pdict[_fps_col] = 0.0 if _fps_val is None or pd.isna(_fps_val) else float(_fps_val)
 

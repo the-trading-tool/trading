@@ -65,6 +65,40 @@ signals are usable in a backtest and are not hindsight.</div>
       Strategies.</li>
 </ul>
 
+<h2>Finding candidates fast: the setup score</h2>
+<p>Not every breakout is worth the same. Five features known <b>before</b> the breakout
+separate winners from losers across 3,561 breakouts since 2015. The <b>setup score</b>
+counts how many are met (column <code>fps_setup</code>, rules in
+<code>four_ps.SETUP_RULES</code>):</p>
+<table>
+<tr><th>Feature</th><th>Condition</th><th>Evidence</th></tr>
+<tr><td>Short base</td><td>≤ 12 weeks</td><td>8–12 w: 48 % hit rate, PF 3.38 — 30–60 w only 38 %, PF 1.72</td></tr>
+<tr><td>Tight base</td><td>range ≤ 20 %</td><td>10–15 %: PF 3.26 vs 2.27 at 20–26 %</td></tr>
+<tr><td>Rising trend</td><td>weekly SMA +5 % over 8 weeks</td><td>47 % hit rate, PF 3.37 instead of 40 % / 2.19</td></tr>
+<tr><td>Lead</td><td>trigger ≥ 20 % above the SMA</td><td>20–40 %: 49 % hit rate, PF 3.30 — just above the SMA only 36 %</td></tr>
+<tr><td>Relative strength</td><td>RS 52w ≥ 20 pp</td><td>from +50 pp: avg +14.0 % per trade, PF 3.16</td></tr>
+</table>
+<table>
+<tr><th>Score</th><th>Breakouts</th><th>Win</th><th>Avg</th><th>PF</th></tr>
+<tr><td>0</td><td>1,611</td><td>38.1 %</td><td>+3.7 %</td><td>1.86</td></tr>
+<tr><td>1</td><td>944</td><td>40.0 %</td><td>+5.4 %</td><td>2.14</td></tr>
+<tr><td>2</td><td>458</td><td>42.6 %</td><td>+8.8 %</td><td>2.86</td></tr>
+<tr><td><b>3</b></td><td>309</td><td><b>48.9 %</b></td><td><b>+11.0 %</b></td><td><b>3.37</b></td></tr>
+<tr><td><b>4</b></td><td>205</td><td><b>51.7 %</b></td><td><b>+17.1 %</b></td><td><b>3.86</b></td></tr>
+</table>
+<div class="info"><b>The fast route to a short list:</b> filter phase to <i>2 · base</i>, set
+<i>min. setup score</i> to 3 and <i>max. distance to breakout</i> to roughly 3–5 %. The table
+is already sorted by phase, score and relative strength — the top rows are the names close
+to their trigger <b>and</b> carrying the favourable features. Example S&amp;P 500 on
+2026-08-30: six names remained out of 457 (INCY score 5, FTNT 4, BMY/GOOGL/MGM/CMI 3).</div>
+<p>The score is also a column in the simulation DB, so it works in buy/sell formulas:
+<code>(fps_buy &gt; 0) &amp; (fps_setup &gt;= 3)</code>. The detail view lists which of the five
+conditions are met and with what value.</p>
+<p><b>What did not help:</b> <b>volume</b> at the breakout (higher volume was slightly worse:
+PF 1.91 above 1.3× vs 2.46 below average) and the <b>size of the past trend</b> — a name with
+4,000 % history does not break out better than one with 200 %. Both are deliberately not in
+the score.</p>
+
 <h2>Screener columns</h2>
 <table>
 <tr><th>Column</th><th>Meaning</th></tr>

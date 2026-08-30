@@ -1166,3 +1166,36 @@ sichtbar.
   typisierten Spalte liefern, nie als `None` in einer Liste.
 - `Basis (W) = 0` bei Phase-3-Zeilen ist dagegen korrekt, wenn ein basisloser
   `entry_mode` (record_high/new_high/both) laeuft — dort gibt es keine Basis.
+
+### 4PS: Setup-Score - die kurze Liste statt langer Suche (2026-08-30)
+
+Frage: "Wie findet man ohne lange Suche die Kandidaten mit der hoechsten
+Ausbruchs-Wahrscheinlichkeit?" Dafuer wurden fuer **3.561 Ausbrueche seit 2015** die
+zum Einstiegszeitpunkt bekannten Merkmale erfasst (Scratch `fps_features.py`,
+Pickle `fps_features.pkl`) und gegen das Trade-Ergebnis gebucketet.
+
+**Trennschaerfe der Einzelmerkmale:**
+
+| Merkmal | gut | schlecht |
+|---|---|---|
+| Basislaenge | 8-12 W: 48 % / PF 3,38 | 30-60 W: 38 % / 1,72 |
+| Basisbreite | 10-15 %: PF 3,26 | 20-26 %: 2,27 |
+| SMA-Steigung 8 W | >= 5 %: 47 % / 3,37 | 0-5 %: 40 % / 2,19 |
+| Abstand ueber SMA40 | 20-40 %: 49 % / 3,30 | 0-10 %: 36 % / 2,05 |
+| RS 52W | > 50 pp: 14,0 % / 3,16 | < 0: 4,9 % / 2,13 |
+| **Volumen** | **kein Signal** (hoeher = eher schlechter) | |
+| **best_trend** | **kein Signal** (leicht invers) | |
+
+**Score = Anzahl erfuellter Bedingungen (0..5)**, monoton und in allen Teilperioden
+stabil: 0 -> 38,1 % / PF 1,86 - 2 -> 42,6 % / 2,86 - 3 -> 48,9 % / 3,37 -
+4 -> 51,7 % / 3,86. Score >= 3 schlaegt den Rest in 2015-19 (3,11 vs 2,45),
+2020-22 (3,61 vs **1,56**) und 2023-26 (3,72 vs 2,20). Nur **15 %** der Ausbrueche
+erreichen Score >= 3.
+
+- Umgesetzt als Spalte `fps_setup` (Engine, Screener-Spalte + Filter "min. Setup-Score",
+  Sortierung Phase -> Setup -> RS, Detail-Aufschluesselung der fuenf Kriterien,
+  `INDICATOR_BACKFILL_MAP['fps']` + pdict -> in Buy/Sell-Formeln nutzbar).
+- **Arbeitsweise:** Phase = 2, min. Setup-Score = 3, max. Abstand zum Ausbruch ~3-5 %.
+  Beispiel ^SPX 2026-08-30: 6 Kandidaten von 457 (INCY 5, FTNT 4, BMY/GOOGL/MGM/CMI 3).
+- Schwellen bewusst als Konstante `SETUP_RULES`, nicht als Parameter - sie stammen aus
+  einer Messung, nicht aus Geschmack; wer sie aendert, sollte neu messen.
