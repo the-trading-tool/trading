@@ -1150,3 +1150,19 @@ aus dem Scalable-Import.
 **Fuer den autonomen Agenten bleibt Alpaca zustaendig** — Scalable kennt weder
 OTO-Stop-Legs noch Trailing Stops noch eine Marktzeiten-Abfrage (`agent_rth_only` haette
 dort keine Datenquelle), und der Bestaetigungsschritt ist bewusst nicht automatisierbar.
+
+### 4PS-UI: leere Zellen zeigten den Text „None" (2026-08-30)
+
+Beim Filter „nur Phase 3" stand in `bis Ausbruch %` ueberall **None** statt einer leeren
+Zelle. Der Wert ist ab Phase 3 absichtlich leer (der Ausbruch ist passiert) — der Fehler
+lag in der Darstellung: die Spalte wurde als Python-Liste gebaut, und sobald **alle**
+Eintraege `None` sind, entsteht eine object-Spalte; `st.dataframe` schreibt darin `None`
+als Text. Mit gemischten Werten fiel es nicht auf, deshalb erst mit dem Phasenfilter
+sichtbar.
+
+- Fix: Helper `_blank_col()` liefert eine **float64-Series mit NaN** → leere Zelle.
+  Genutzt von `bis Ausbruch %` und (gleiche latente Falle) den Sektor-Spalten.
+- Merksatz: ausgeblendete Zahlenzellen in `st.dataframe` immer als `np.nan` in einer
+  typisierten Spalte liefern, nie als `None` in einer Liste.
+- `Basis (W) = 0` bei Phase-3-Zeilen ist dagegen korrekt, wenn ein basisloser
+  `entry_mode` (record_high/new_high/both) laeuft — dort gibt es keine Basis.

@@ -124,13 +124,23 @@ def _normalize_scan(df):
 _MIN_PEERS = 5
 
 
-def _sector_col(df: pd.DataFrame, col: str) -> list:
+def _blank_col(values, keep) -> pd.Series:
+    """Zahlenspalte, in der ausgeblendete Zeilen leer bleiben.
+
+    Wichtig ist der float-dtype: eine Liste aus lauter ``None`` ergibt eine
+    object-Spalte, und die zeigt st.dataframe als Text "None" an statt als leere
+    Zelle (sichtbar, sobald ein Filter nur solche Zeilen uebrig laesst).
+    """
+    return pd.Series([round(float(v), 1) if ok and pd.notna(v) else np.nan
+                      for v, ok in zip(values, keep)], dtype='float64')
+
+
+def _sector_col(df: pd.DataFrame, col: str) -> pd.Series:
     """Sector figure per row, blanked out where the peer group is too small."""
     if col not in df.columns:
-        return [None] * len(df)
+        return pd.Series([np.nan] * len(df), dtype='float64')
     peers = df['sector_peers'] if 'sector_peers' in df.columns else pd.Series(0, index=df.index)
-    return [round(float(v), 1) if pd.notna(v) and int(p or 0) >= _MIN_PEERS else None
-            for v, p in zip(df[col], peers)]
+    return _blank_col(df[col], [int(p or 0) >= _MIN_PEERS for p in peers])
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -229,8 +239,8 @@ class FourPsPage:
             t('fps.col_base_weeks'): df['base_weeks'],
             # Blank once the breakout has happened — a hard 0 there reads like
             # "right at the trigger", which is not what it means.
-            t('fps.col_to_breakout'): [round(float(v), 1) if p <= 2 else None
-                                       for v, p in zip(df['to_breakout'], df['phase'])],
+            t('fps.col_to_breakout'): _blank_col(df['to_breakout'],
+                                                 [p <= 2 for p in df['phase']]),
             t('fps.col_best_trend'): df['best_trend'].round(0),
             t('fps.col_trend_gain'): df['trend_gain'].round(0),
             t('fps.col_rs'): df['rs'].round(1),
