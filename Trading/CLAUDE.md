@@ -1199,3 +1199,37 @@ erreichen Score >= 3.
   Beispiel ^SPX 2026-08-30: 6 Kandidaten von 457 (INCY 5, FTNT 4, BMY/GOOGL/MGM/CMI 3).
 - Schwellen bewusst als Konstante `SETUP_RULES`, nicht als Parameter - sie stammen aus
   einer Messung, nicht aus Geschmack; wer sie aendert, sollte neu messen.
+
+### 4PS: Schluss-Validierung und gesetzte Defaults fuer kurt (2026-08-30)
+
+Offene Frage war die Kombination aus Einstiegsart und Ausstiegslaenge. Gemessen ueber
+alle vier Universen (656 Ticker, Signale seit 2015, Stop 12 %, Reihen mit Level-Shift
+ausgeschlossen), aufgeteilt nach Teilperioden, Regionen und zusaetzlich gefiltert auf
+Setup-Score >= 3:
+
+| Variante | gesamt PF | 2015-19 | 2020-22 | 2023-26 | US | EU | Setup>=3 |
+|---|---|---|---|---|---|---|---|
+| both / SMA40 | 2,50 | 2,49 | 2,18 | 2,83 | 2,48 | 2,62 | 3,67 (+27,6 % p.a.) |
+| **both / SMA60** | **3,01** | 2,86 | 2,91 | **3,30** | 2,92 | **3,56** | **3,66** (+24,6 %) |
+| new_high / SMA40 | 2,47 | 2,49 | 2,46 | 2,45 | 2,50 | 2,34 | 3,92 (+34,5 % p.a., n 321) |
+| new_high / SMA60 | 3,07 | **3,02** | **3,27** | 2,99 | **3,10** | 2,99 | 3,14 (+23,0 %) |
+
+- **SMA60 schlaegt SMA40 bei beiden Einstiegsarten** und in praktisch jeder Teilmenge
+  (both: 6 von 6; new_high: 5 von 6). Das ist der belastbare Teil.
+- **both vs. new_high liegt im Rauschen** (3,01 vs 3,07 gesamt, je drei gewonnene
+  Teilmengen). Ausschlag gab die Arbeitsweise: `both` feuert auch auf klassische
+  Basis-Ausbrueche, damit bleibt die Screener-Spalte "bis Ausbruch %" auf das Basis-Hoch
+  bezogen — genau die Liste "steht kurz vor dem Ausbruch". Mit Setup-Filter war `both`
+  ausserdem vorn (PF 3,66 vs 3,14), wenn auch bei kleiner Stichprobe (377 bzw. 295).
+- Die setup-gefilterten Zeilen sind mit 295-446 Trades **klein** — Reihenfolge dort nicht
+  ueberinterpretieren; der Score selbst ist ueber 3.561 Ausbrueche belegt.
+
+**Gesetzt in `config.db` fuer kurt** (`kurt:fps_params`, `kurt:fps_universes`):
+`entry_mode='both'`, `trend_sma_weeks=60`, `stop_pct=12`, `near_high_pct=15`,
+`record_weeks=520`, `require_uptrend=True`, `trail_pct=0`, `take_profit` bleibt aus,
+Universum `^GDAXI,^MDAXI,^SDAXI,^SPX,^IBEX,^RUT` (vorher gar nicht gespeichert -> nach
+Neustart waeren es wieder die vier Default-Indizes gewesen).
+
+**Ausgelieferter Engine-Default bleibt `breakout` / SMA40** — die Methode des Artikels.
+Wer die gemessene Kombination global will, setzt `four_ps.DEFAULTS['entry_mode']='both'`
+und `trend_sma_weeks=60`; die Zahlen dafuer stehen oben.
