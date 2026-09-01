@@ -806,6 +806,8 @@
   "mt.prog_loading": "Lade Daten für {id} …",
   "mt.prog_calculating": "Berechne {id} …",
   "mt.prog_indices": "{phase}{done} / {total} Indizes — noch {left} verbleibend",
+  "mt.show_charts": "Kurscharts zu Käufen und Verkäufen anzeigen",
+  "mt.show_charts_help": "An (Standard): Unter den Buy- und Sell-Tabellen erscheint ein Kurschart je Titel, sobald eine Zeile ausgewählt ist. Aus: nur die Tabellen. Jeder Chart lädt Kurse und rechnet die Overlays neu — bei einer Liste mit vielen Kandidaten dauert der Seitenaufbau entsprechend. Die Einstellung ändert nur die Anzeige, keine Zahl und keine Berechnung.",
   "mt.dedup": "Doppelte Positionen vermeiden",
   "mt.dedup_help": "Aus (Standard): Findet mehr als eine Strategie denselben Titel, halten ihn auch mehrere gleichzeitig. Ein: Nur die Strategie, die zuerst gekauft hat, behaelt ihn; spaetere Kaufsignale desselben Titels entfallen, solange er gehalten wird. Das senkt das Klumpenrisiko, kostet gemessen aber Rendite — doppelt gehaltene Titel liefen bisher besser. Der Schalter aendert das Ergebnis, die Berechnung laeuft eingeschaltet zweimal und dauert entsprechend laenger.",
   "mt.show_details": "Transaktionsdetails Trend & Daten anzeigen",

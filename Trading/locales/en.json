@@ -806,6 +806,8 @@
   "mt.prog_loading": "Loading data for {id} …",
   "mt.prog_calculating": "Calculating {id} …",
   "mt.prog_indices": "{phase}{done} / {total} indices — {left} to go",
+  "mt.show_charts": "Show price charts for buys and sells",
+  "mt.show_charts_help": "On (default): a price chart per name appears below the buy and sell tables once a row is selected. Off: tables only. Every chart loads prices and recomputes the overlays, so a long candidate list makes the page slow to build. This only changes the display - no figure and no calculation.",
   "mt.dedup": "Avoid duplicate positions",
   "mt.dedup_help": "Off (default): when more than one strategy picks the same asset, several may hold it at the same time. On: only the strategy that bought first keeps it; later buy signals for the same asset are dropped while it is held. That lowers concentration risk but has measurably cost return — doubly held assets have performed better so far. The switch changes the result, and when it is on the calculation runs twice and takes correspondingly longer.",
   "mt.show_details": "Show transaction detailed trend & data",

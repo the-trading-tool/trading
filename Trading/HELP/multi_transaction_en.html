@@ -50,6 +50,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Compute transactions:</b> starts the simulation for all strategies × indices – may take a while depending on the data volume (progress bar)</li>
   <li><b>Reset:</b> discards the computed results again</li>
   <li><b>Show transaction detail trend &amp; data:</b> shows a detail view per index with metrics, a trade table and a price chart</li>
+  <li><b>Show price charts for buys and sells</b> (default: on): a price chart per name appears below the buy and sell tables once a row is selected. Every chart loads prices and recomputes the overlays, so a long candidate list makes the page slow to build. Turning it off only changes the display &mdash; no figure and no calculation.</li>
 </ul>
 
 <div class="info"><b>Result cache:</b> after computing, the result is cached (keyed on strategy config, year, date, currency). An <b>Excel download or other UI interactions then no longer trigger an expensive recompute</b> – a "Cached result" note is shown. A real recompute only starts via <b>"Compute transactions"</b> or when an input (config/year/date/currency) changes.</div>
