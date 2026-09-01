@@ -159,13 +159,20 @@ class Performance(tt.TickerTools):
         )
     
     def find_files_with_pattern(self, directory, pattern):
-        """Return a list of the captured groups from filenames in directory that match pattern."""
+        """Return a list of the captured groups from filenames in directory that match pattern.
+
+        fullmatch, not match: re.match only anchors at the start. The simulation
+        DBs run in WAL mode, so asset_simulation_2025.db-wal and .db-shm sit next
+        to them and satisfy `asset_simulation_(\\d+)\\.db` just as well — the
+        trailing suffix is simply ignored. Year pickers built on this listed
+        every year three times.
+        """
         extracted_parts = []
-    
+
         # Scan the directory
         for filename in os.listdir(self.get_path(directory)):
             # Check whether the file matches the pattern
-            match = re.match(pattern, filename)
+            match = re.fullmatch(pattern, filename)
             if match:
                 # Extract the dynamic part
                 dynamic_part = match.group(1)
