@@ -33,6 +33,10 @@ def _sim(cap='none', factor_max=2.0, cash=100_000, slots=5):
     p.bought_assets = set()
     p.sizing_cap = cap
     p.sizing_factor_max = factor_max
+    # buy_asset liest beides; ganze Stuecke ist der Regelfall (siehe
+    # test_fractional_shares.py fuer den Bruchstueck-Pfad).
+    p.fractional = False
+    p.fractional_decimals = PortfolioSimulator.DEFAULT_FRACTIONAL_DECIMALS
     # der COMMODITIES-Fall: ruhiger Anleihe-Future gegen bewegte Gruppe
     p._avg_vola = 9.949
     p._vola_by_ticker = {'ZN=F': 1.4, 'NG=F': 18.9, 'MID': 9.949}

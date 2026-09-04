@@ -806,6 +806,8 @@
   "mt.prog_loading": "Lade Daten für {id} …",
   "mt.prog_calculating": "Berechne {id} …",
   "mt.prog_indices": "{phase}{done} / {total} Indizes — noch {left} verbleibend",
+  "sf.fractional": "Bruchstücke erlauben",
+  "sf.fractional_help": "Aus (Standard): es werden nur ganze Einheiten gekauft. Ein Wert, dessen Kurs über dem Slot-Budget liegt, ist damit grundsätzlich unkaufbar — die Stückzahl rundet auf 0, und schon die Kaufprüfung verlangt Geld für eine ganze Einheit. Genau das trifft Bitcoin in jedem üblichen Index-Budget. An: Bruchstücke mit 8 Nachkommastellen (Krypto-Standard), und es genügt, dass überhaupt Geld da ist. In Multi Strategies je Index über das Feld 'fractional' im JSON überschreibbar.",
   "sf.sizing_cap": "Begrenzung der Positionsgröße",
   "sf.sizing_cap_none": "keine (ausgeliefertes Verhalten)",
   "sf.sizing_cap_cash": "auf freies Kapital",

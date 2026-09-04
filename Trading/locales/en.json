@@ -806,6 +806,8 @@
   "mt.prog_loading": "Loading data for {id} …",
   "mt.prog_calculating": "Calculating {id} …",
   "mt.prog_indices": "{phase}{done} / {total} indices — {left} to go",
+  "sf.fractional": "Allow fractional units",
+  "sf.fractional_help": "Off (default): only whole units are bought. An asset priced above the slot budget is therefore unbuyable - the quantity rounds to 0, and the buy check already demands cash for one whole unit. That is exactly Bitcoin's situation in any normal index budget. On: fractions with 8 decimals (the crypto convention), and it is enough that any cash is present. In Multi Strategies this can be overridden per index via the 'fractional' field in the JSON.",
   "sf.sizing_cap": "Position size cap",
   "sf.sizing_cap_none": "none (shipped behaviour)",
   "sf.sizing_cap_cash": "to available cash",
