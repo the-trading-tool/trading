@@ -226,6 +226,34 @@ def test_ui_aufrufstellen_uebergeben_username():
                          + ', '.join(missing))
 
 
+def test_multi_transaction_reicht_die_per_index_felder_durch():
+    """multi_transactions darf 'sizing_cap'/'sizing_factor_max' je Index setzen.
+
+    Ohne die Durchreichung am Aufruf laege das Feld zwar im JSON, waere aber
+    wirkungslos — dieselbe stille Fehlerklasse wie beim fehlenden username.
+    """
+    import ast as _ast
+    import os as _os
+
+    path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                         'tradinglib', 'premium', 'multi_transaction.py')
+    src = open(path, encoding='utf-8').read()
+    tree = _ast.parse(src)
+    calls = []
+    for node in _ast.walk(tree):
+        if isinstance(node, _ast.Call):
+            fn = node.func
+            name = (fn.attr if isinstance(fn, _ast.Attribute) else getattr(fn, 'id', ''))
+            if name == 'PortfolioSimulator':
+                calls.append({k.arg for k in node.keywords})
+    assert calls, 'kein PortfolioSimulator-Aufruf gefunden'
+    for kw in calls:
+        assert 'sizing_cap' in kw and 'sizing_factor_max' in kw, (
+            'Aufruf reicht die per-Index-Felder nicht durch: ' + str(sorted(kw)))
+    # und gelesen werden sie auch
+    assert "get('sizing_cap'" in src and "'sizing_factor_max'" in src
+
+
 def test_unsinniger_faktor_faellt_auf_die_vorgabe():
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000,
                            sizing_cap='factor', sizing_factor_max='keine Zahl')
