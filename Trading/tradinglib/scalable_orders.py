@@ -19,7 +19,10 @@ plus a plain checklist for typing them into the Scalable app by hand.
 Validation mirrors the broker's constraints, so a draft that passes here is one
 the broker will accept:
   * ISIN required and well-formed — Scalable addresses instruments by ISIN only
-  * whole shares; sell quantity is share-based (no fractions in v1)
+  * share quantities are whole units. Fractions are possible for BUYS only, and
+    only as an AMOUNT order ("buy for 15,400 EUR" instead of "buy 0.22 BTC") —
+    that is the broker's own way of expressing them. Sells are share-based with
+    no amount alternative, so a fractional rest stays in the portfolio.
   * order types market, limit and stop; no trailing stop, no OTO/bracket legs
   * venues gettex, Xetra and EIX
 """
@@ -121,7 +124,16 @@ def validate(draft: OrderDraft) -> list:
             problems.append('Kauf ohne Stückzahl und ohne Betrag')
 
     if draft.shares and float(draft.shares) != int(draft.shares):
-        problems.append(f'Nur ganze Stücke möglich (nicht {draft.shares})')
+        # Bruchteile sind erlaubt — aber nur als Betrags-Order, denn die
+        # Stückzahl-Variante des Brokers nimmt ausschliesslich ganze Einheiten.
+        # Beim Verkauf gibt es diesen Ausweg nicht: dort kennt Scalable nur
+        # Stückzahlen, ein Bruchteil-Rest bleibt liegen.
+        if draft.side == 'buy':
+            problems.append(
+                f'Bruchteil {draft.shares} nur als Betrag beauftragbar — '
+                'amount setzen statt shares')
+        else:
+            problems.append(f'Nur ganze Stücke verkäuflich (nicht {draft.shares})')
 
     return problems
 
@@ -135,6 +147,13 @@ def to_preview_payload(draft: OrderDraft) -> dict:
     if draft.side == 'buy' and draft.amount and not draft.shares:
         quantity = {'mode': 'amount', 'amount': _dec(draft.amount)}
     else:
+        # int() ohne Pruefung machte aus 0,22 Stueck stillschweigend eine
+        # 0-Stueck-Order. Lieber laut scheitern: validate() faengt den Fall
+        # vorher ab, hier bleibt die Rueckversicherung.
+        if float(draft.shares) != int(draft.shares):
+            raise ValueError(
+                f'Bruchteil {draft.shares} kann nicht als Stueckzahl beauftragt '
+                'werden — fuer Kaeufe amount setzen, Verkaeufe gehen nur ganz')
         quantity = {'mode': 'shares', 'shares': int(draft.shares)}
 
     if draft.order_type == 'limit':
@@ -424,15 +443,28 @@ def drafts_from_agent_signals(signals, buffer_pct: float = 0.0, venue: str = '',
         if not isin:
             skipped.append((ticker, 'keine ISIN gefunden'))
             continue
-        if qty < 1:
-            skipped.append((ticker, 'Stückzahl unter 1'))
+        if qty <= 0:
+            skipped.append((ticker, 'keine Stückzahl'))
             continue
         price = float(sig.get('price', 0) or 0)
+        # Bruchteile: Scalable nimmt sie nur als BETRAGS-Order entgegen, nicht
+        # als Bruchteil einer Stückzahl. Ein Kaufsignal über 0,22 BTC wird also
+        # zu "kaufe für 15.400 EUR". Vorher fiel so ein Signal komplett weg
+        # (qty < 1 -> übersprungen), und int(qty) hätte 0,22 zu 0 gemacht.
+        _shares, _amount = float(int(qty)), 0.0
+        if qty != int(qty) or qty < 1:
+            if price <= 0:
+                skipped.append((ticker, 'Bruchteil ohne Kurs — Betrag nicht berechenbar'))
+                continue
+            _shares, _amount = 0.0, round(qty * price, 2)
+            if _amount <= 0:
+                skipped.append((ticker, 'Bruchteil ergibt keinen Betrag'))
+                continue
         limit = _limit_from_buffer(price, 'buy', buffer_pct)
         drafts.append(OrderDraft(
             side='buy', isin=isin, ticker=ticker,
             name=str(sig.get('longname', '') or sig.get('name', '') or ''),
-            shares=float(int(qty)),
+            shares=_shares, amount=_amount,
             order_type='limit' if limit else 'market',
             limit_price=limit, venue=venue,
             currency=str(sig.get('currency', 'EUR') or 'EUR'),
