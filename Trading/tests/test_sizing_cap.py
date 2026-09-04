@@ -191,6 +191,41 @@ def test_ohne_config_bleibt_es_bei_none():
     assert p.sizing_factor_max == PortfolioSimulator.DEFAULT_FACTOR_MAX
 
 
+def test_ui_aufrufstellen_uebergeben_username():
+    """Die Einstellung liegt pro Benutzer in config.db ("kurt:sizing_cap").
+
+    Baut eine Aufrufstelle den Simulator ohne `username`, liest er im leeren
+    Namensraum ":sizing_cap" und faellt still auf 'none' zurueck — die Auswahl
+    in der Oberflaeche bliebe wirkungslos, ohne dass irgendwo ein Fehler
+    erscheint. Genau so ist es beim ersten Bauen passiert.
+
+    trading_bridge ist bewusst NICHT dabei: das ist der Live-Agent, dessen
+    Positionsgroessen sich nicht als Nebenwirkung einer Backtest-Einstellung
+    aendern sollen.
+    """
+    import ast as _ast
+    import os as _os
+
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    missing = []
+    for rel in ('tradinglib/premium/asset_simulator.py',
+                'tradinglib/premium/multi_transaction.py'):
+        path = _os.path.join(root, *rel.split('/'))
+        tree = _ast.parse(open(path, encoding='utf-8').read())
+        for node in _ast.walk(tree):
+            if not isinstance(node, _ast.Call):
+                continue
+            fn = node.func
+            name = (fn.attr if isinstance(fn, _ast.Attribute)
+                    else getattr(fn, 'id', ''))
+            if name != 'PortfolioSimulator':
+                continue
+            if not any(k.arg == 'username' for k in node.keywords):
+                missing.append(f'{rel}:{node.lineno}')
+    assert not missing, ('PortfolioSimulator ohne username aufgerufen: '
+                         + ', '.join(missing))
+
+
 def test_unsinniger_faktor_faellt_auf_die_vorgabe():
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000,
                            sizing_cap='factor', sizing_factor_max='keine Zahl')
