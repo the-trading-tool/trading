@@ -307,9 +307,6 @@ def render_strategy_analysis(df: pd.DataFrame, region=None, system_currency: str
         )
 
         with region.expander(header, expanded=True):
-            if 'value trend' in strategy.lower():
-                st.warning(t('banner.hint_global_tensions'))
-
             st.metric(t('banner.kpi_open_pos'), open_pos)
             st.markdown("")
 

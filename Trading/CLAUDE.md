@@ -438,7 +438,10 @@ GitHub-Repo: https://github.com/the-trading-tool/trading
 - Offene Positionen, Profit-Faktor, Trefferquote, Ø Gewinn/Trade, Realisierter Gewinn
 - Längste Gewinn-/Verlustserie
 - Beste/Schlechteste Trades als 2-Spalten-DataFrame (3M + 1J)
-- Automatischer `⚠️ Geopolitik-Hinweis` bei Strategien die "value trend" im Namen enthalten
+- Der frühere automatische `⚠️ Geopolitik-Hinweis` für Strategien mit "value trend" im
+  Namen wurde 2026-09-05 entfernt (Locale-Key `banner.hint_global_tensions` gelöscht) —
+  die Strategie lieferte über alle Jahre die besten Ergebnisse, der pauschale Warnhinweis
+  passte nicht dazu. Der allgemeine Disclaimer-Expander bleibt.
 
 **Strategien sind 2019–heute getestet, auch 2020 positiv:**
 - Support/Resistance Strategy: PF 16.77, Win-Rate 75% (84 Trades)

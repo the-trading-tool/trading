@@ -288,7 +288,6 @@
   "banner.kpi_worst_trades": "Schlechteste Trades",
   "banner.kpi_period": "Zeitraum",
   "banner.kpi_trades_unit": "Trades",
-  "banner.hint_global_tensions": "⚠️ **Hinweis zu aktuellen globalen Spannungen:** Aufgrund erhöhter geopolitischer Unsicherheit sollten Signale der **Value Trend Strategie** ausschließlich als **Hinweise** und ausdrücklich **nicht** als direkte Handelsempfehlung verstanden werden. Bitte bilden Sie sich vor jeder Entscheidung Ihre eigene Meinung.",
   "banner.spinner_analysis": "Strategie-Performance wird berechnet…",
   "banner.overlap_header": "⚠️ Portfolio-Überschneidung erkannt",
   "banner.overlap_caption": "{n} Titel wird von mehreren Strategien gleichzeitig gehalten — unkontrolliertes Doppelgewicht möglich!",
