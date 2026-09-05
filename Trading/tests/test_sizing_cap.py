@@ -21,26 +21,15 @@ import pytest
 from tradinglib.premium.asset_simulator import PortfolioSimulator
 
 
-def _sim(cap='none', factor_max=2.0, cash=100_000, slots=5):
-    """Simulator ohne simulate(): nur die Sizing-Konstanten setzen."""
-    p = object.__new__(PortfolioSimulator)
-    p.initial_cash = cash
-    p.cash = cash
-    p.max_assets = slots
-    p.fee_pct = 0.0
-    p.portfolio = {}
-    p.history = []
-    p.bought_assets = set()
-    p.sizing_cap = cap
-    p.sizing_factor_max = factor_max
-    # buy_asset liest beides; ganze Stuecke ist der Regelfall (siehe
-    # test_fractional_shares.py fuer den Bruchstueck-Pfad).
-    p.fractional = False
-    p.fractional_decimals = PortfolioSimulator.DEFAULT_FRACTIONAL_DECIMALS
-    # der COMMODITIES-Fall: ruhiger Anleihe-Future gegen bewegte Gruppe
-    p._avg_vola = 9.949
-    p._vola_by_ticker = {'ZN=F': 1.4, 'NG=F': 18.9, 'MID': 9.949}
-    return p
+def _sim(cap='none', factor_max=2.0, cash=100_000, slots=5, *, make):
+    """Simulator ohne simulate(): nur die Sizing-Konstanten setzen.
+
+    Die Attributliste steht in tests/conftest.py — dort einmal pflegen, wenn
+    buy_asset ein neues Feld liest.
+    """
+    return make(cash=cash, slots=slots, sizing_cap=cap, sizing_factor_max=factor_max,
+                avg_vola=9.949,
+                volas={'ZN=F': 1.4, 'NG=F': 18.9, 'MID': 9.949})
 
 
 def _position_value(p, ticker, price=100.0):
@@ -52,78 +41,78 @@ def _position_value(p, ticker, price=100.0):
 
 # ------------------------------------------------------------------- 'none'
 
-def test_none_ist_das_bisherige_verhalten():
+def test_none_ist_das_bisherige_verhalten(bare_simulator):
     """Der gemeldete Fall: eine Position groesser als das ganze Kapital."""
-    p = _sim('none')
+    p = _sim('none', make=bare_simulator)
     assert _position_value(p, 'ZN=F') == pytest.approx(142_130, rel=1e-3)
     assert p.cash < 0                      # genau das war der Befund
 
 
-def test_none_bleibt_die_vorgabe():
+def test_none_bleibt_die_vorgabe(bare_simulator):
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000)
     assert p.sizing_cap == 'none'
 
 
 # ------------------------------------------------------------------- 'cash'
 
-def test_cash_deckelt_auf_das_freie_kapital():
-    p = _sim('cash')
+def test_cash_deckelt_auf_das_freie_kapital(bare_simulator):
+    p = _sim('cash', make=bare_simulator)
     val = _position_value(p, 'ZN=F')
     assert val == pytest.approx(100_000, rel=1e-6)
     assert p.cash >= 0
 
 
-def test_cash_haelt_die_kasse_ueber_mehrere_kaeufe_positiv():
-    p = _sim('cash')
+def test_cash_haelt_die_kasse_ueber_mehrere_kaeufe_positiv(bare_simulator):
+    p = _sim('cash', make=bare_simulator)
     for tk in ('ZN=F', 'NG=F', 'MID'):
         p.buy_asset(tk, 100.0, '2026-01-05 00:00:00')
         assert p.cash >= 0, f'nach {tk} negativ'
 
 
-def test_cash_rechnet_die_gebuehr_mit():
+def test_cash_rechnet_die_gebuehr_mit(bare_simulator):
     """Ohne die Gebuehr im Deckel reisst genau sie die Kasse ins Minus."""
-    p = _sim('cash')
+    p = _sim('cash', make=bare_simulator)
     p.fee_pct = 1.0
     p.buy_asset('ZN=F', 100.0, '2026-01-05 00:00:00')
     assert p.cash >= 0
 
 
-def test_cash_laesst_kleine_positionen_unangetastet():
+def test_cash_laesst_kleine_positionen_unangetastet(bare_simulator):
     """NG=F liegt unter der Gleichgewichtung — der Deckel darf nicht greifen."""
-    a = _position_value(_sim('none'), 'NG=F')
-    b = _position_value(_sim('cash'), 'NG=F')
+    a = _position_value(_sim('none', make=bare_simulator), 'NG=F')
+    b = _position_value(_sim('cash', make=bare_simulator), 'NG=F')
     assert a == pytest.approx(b)
 
 
 # ----------------------------------------------------------------- 'factor'
 
-def test_factor_klammert_die_konzentration():
-    p = _sim('factor', factor_max=2.0)
+def test_factor_klammert_die_konzentration(bare_simulator):
+    p = _sim('factor', factor_max=2.0, make=bare_simulator)
     # 2.0 * 100000 / 5 = 40000 statt 142133
     assert _position_value(p, 'ZN=F') == pytest.approx(40_000, rel=1e-3)
 
 
-def test_factor_laesst_werte_innerhalb_der_klammer_unberuehrt():
+def test_factor_laesst_werte_innerhalb_der_klammer_unberuehrt(bare_simulator):
     """NG=F hat Faktor 0,53 und liegt damit ueber der Untergrenze 1/2 — die
     Klammer darf hier nichts tun."""
-    a = _position_value(_sim('none'), 'NG=F')
-    b = _position_value(_sim('factor', factor_max=2.0), 'NG=F')
+    a = _position_value(_sim('none', make=bare_simulator), 'NG=F')
+    b = _position_value(_sim('factor', factor_max=2.0, make=bare_simulator), 'NG=F')
     assert b == pytest.approx(a)
 
 
-def test_factor_hebt_sehr_kleine_positionen_an():
+def test_factor_hebt_sehr_kleine_positionen_an(bare_simulator):
     """Enger geklammert (f=1,5 -> Untergrenze 0,667) greift sie auch nach unten."""
-    a = _position_value(_sim('none'), 'NG=F')
-    b = _position_value(_sim('factor', factor_max=1.5), 'NG=F')
+    a = _position_value(_sim('none', make=bare_simulator), 'NG=F')
+    b = _position_value(_sim('factor', factor_max=1.5, make=bare_simulator), 'NG=F')
     assert b > a
     # 13.300 statt 13.333: es werden ganze Stuecke gekauft (133 x 100 EUR)
     assert b == pytest.approx((1 / 1.5) * 100_000 / 5, rel=5e-3)
 
 
-def test_factor_garantiert_keine_positive_kasse():
+def test_factor_garantiert_keine_positive_kasse(bare_simulator):
     """Ehrlich dokumentiert: f=2 und 5 Slots erlauben rechnerisch 200 % Einsatz.
     Fuenf ruhige Werte reichen, um die Kasse trotz Klammer ins Minus zu ziehen."""
-    p = _sim('factor', factor_max=2.0)
+    p = _sim('factor', factor_max=2.0, make=bare_simulator)
     p._vola_by_ticker = {f'T{i}': 1.4 for i in range(5)}
     for i in range(5):
         p.buy_asset(f'T{i}', 100.0, '2026-01-05 00:00:00')
@@ -135,21 +124,21 @@ def test_factor_garantiert_keine_positive_kasse():
     assert p.cash == pytest.approx(-20_000, rel=1e-3)
 
 
-def test_faktor_eins_ist_gleichgewichtung():
-    p = _sim('factor', factor_max=1.0)
+def test_faktor_eins_ist_gleichgewichtung(bare_simulator):
+    p = _sim('factor', factor_max=1.0, make=bare_simulator)
     assert _position_value(p, 'ZN=F') == pytest.approx(20_000, rel=1e-3)
-    assert _position_value(_sim('factor', factor_max=1.0), 'NG=F') == pytest.approx(20_000, rel=1e-3)
+    assert _position_value(_sim('factor', factor_max=1.0, make=bare_simulator), 'NG=F') == pytest.approx(20_000, rel=1e-3)
 
 
 # -------------------------------------------------------------- Robustheit
 
-def test_unbekannter_modus_faellt_auf_none_zurueck():
+def test_unbekannter_modus_faellt_auf_none_zurueck(bare_simulator):
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000,
                            sizing_cap='quatsch')
     assert p.sizing_cap == 'none'
 
 
-def test_faktor_unter_eins_wird_angehoben():
+def test_faktor_unter_eins_wird_angehoben(bare_simulator):
     """Sonst waere die Untergrenze 1/f groesser als die Obergrenze f."""
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000,
                            sizing_cap='factor', sizing_factor_max=0.5)
@@ -171,31 +160,31 @@ def _resolve(cfg_values, cap=None, factor=None):
     return p
 
 
-def test_modus_kommt_aus_der_config():
+def test_modus_kommt_aus_der_config(bare_simulator):
     """Der Weg, auf dem Multi Strategies dieselbe Einstellung bekommt."""
     p = _resolve({'sizing_cap': 'cash'})
     assert p.sizing_cap == 'cash'
 
 
-def test_faktor_kommt_aus_der_config():
+def test_faktor_kommt_aus_der_config(bare_simulator):
     p = _resolve({'sizing_cap': 'factor', 'sizing_factor_max': 3.0})
     assert p.sizing_cap == 'factor'
     assert p.sizing_factor_max == 3.0
 
 
-def test_ausdruecklicher_wert_schlaegt_die_config():
+def test_ausdruecklicher_wert_schlaegt_die_config(bare_simulator):
     """Braucht ein Vergleichslauf, der zwei Modi gegeneinander stellt."""
     p = _resolve({'sizing_cap': 'cash'}, cap='none')
     assert p.sizing_cap == 'none'
 
 
-def test_ohne_config_bleibt_es_bei_none():
+def test_ohne_config_bleibt_es_bei_none(bare_simulator):
     p = _resolve({})
     assert p.sizing_cap == 'none'
     assert p.sizing_factor_max == PortfolioSimulator.DEFAULT_FACTOR_MAX
 
 
-def test_ui_aufrufstellen_uebergeben_username():
+def test_ui_aufrufstellen_uebergeben_username(bare_simulator):
     """Die Einstellung liegt pro Benutzer in config.db ("kurt:sizing_cap").
 
     Baut eine Aufrufstelle den Simulator ohne `username`, liest er im leeren
@@ -230,7 +219,7 @@ def test_ui_aufrufstellen_uebergeben_username():
                          + ', '.join(missing))
 
 
-def test_multi_transaction_reicht_die_per_index_felder_durch():
+def test_multi_transaction_reicht_die_per_index_felder_durch(bare_simulator):
     """multi_transactions darf 'sizing_cap'/'sizing_factor_max' je Index setzen.
 
     Ohne die Durchreichung am Aufruf laege das Feld zwar im JSON, waere aber
@@ -258,7 +247,7 @@ def test_multi_transaction_reicht_die_per_index_felder_durch():
     assert "get('sizing_cap'" in src and "'sizing_factor_max'" in src
 
 
-def test_unsinniger_faktor_faellt_auf_die_vorgabe():
+def test_unsinniger_faktor_faellt_auf_die_vorgabe(bare_simulator):
     p = PortfolioSimulator(data=pd.DataFrame({'vola': [1.0]}), initial_cash=1000,
                            sizing_cap='factor', sizing_factor_max='keine Zahl')
     assert p.sizing_factor_max == PortfolioSimulator.DEFAULT_FACTOR_MAX
