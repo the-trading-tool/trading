@@ -2,12 +2,17 @@ import re
 import sqlite3
 from tradinglib import tools
 from tradinglib.tools import open_db
+from tradinglib.utils import display_name_sql
 
-field_list = """
+# longName kommt ueber display_name_sql (longName -> shortName -> ticker):
+# Yahoo laesst longName bei vielen ETFs und Futures weg, ein roher Select zeigte
+# in den Tabellen dann 'None' oder eine leere Zelle. shortName bleibt zusaetzlich
+# in der Liste, damit Aufrufer, die ihn eigens brauchen, ihn weiterhin bekommen.
+field_list = f"""
             ai.ticker,
             ai.sector,
             ai.shortName,
-            ai.longName,
+            {display_name_sql('ai')},
             ai.exchange,
             ai.industry,
             ai.longBusinessSummary,
