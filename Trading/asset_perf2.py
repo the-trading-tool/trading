@@ -371,7 +371,13 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
     vw        = np.zeros(n)   # value weight denominator
 
     def _up(condition, weight, points, is_value, ov_t, ov_v, tw_acc, vw_acc):
-        """Vectorised equivalent of Sum.up()."""
+        """Vectorised equivalent of Sum.up().
+
+        Mirrors Sum.up() faithfully, INCLUDING the numerator/denominator
+        asymmetry of overallTrend. Read the Sum docstring before touching this —
+        the two must stay in lockstep, otherwise a rescore silently rewrites
+        history with different semantics than the main run produced.
+        """
         vw_acc += weight
         if not is_value:
             tw_acc += weight
@@ -382,6 +388,15 @@ def score_df(sim_df: pd.DataFrame, info_df: pd.DataFrame) -> pd.DataFrame:
 
     # ---- Technical (isValue=False) ----
     # get_mo_trend + wk_trend + d_trend  (3,3,False)
+    #
+    # NOTE (2026-09-05): the sum is passed as the CONDITION, so the criterion is
+    # true for any non-zero value. mo_trend and d_trend are in {0, 0.5, 1} and
+    # wk_trend is in {0.5, 1} — the sum is therefore never 0, and these 3 points
+    # (the largest single weight in the whole score) are awarded on EVERY row,
+    # falling trend included. It acts as a constant offset that dilutes every
+    # other criterion. A discriminating form would be `combined_trend >= 2.0`.
+    # Left as-is on purpose: changing it moves both scores in every
+    # asset_simulation_*.db. See the Sum docstring.
     combined_trend = mo_trend + wk_trend + d_trend
     ov_trend, ov_val, tw, vw = _up(combined_trend, 3, 3, False, ov_trend, ov_val, tw, vw)
 #    ov_trend, ov_val, tw, vw = _up(ewo_angle > 0, 0.5, 0.5, False, ov_trend, ov_val, tw, vw)
@@ -716,6 +731,39 @@ def calc_atr_percent(df, period=14):
     return round(DataUtils.safe_last(atr, default=0), 2)
 
 class Sum:
+    """Accumulator behind overallTrend / overallValueTrend.
+
+    DO NOT "FIX" THE ASYMMETRY IN up() WITHOUT READING THIS (2026-09-05).
+
+    Numerator and denominator of `overall_trend` come from DISJOINT sets:
+
+        overallTrend      = sum(VALUE points)     / sum(TECHNICAL weights)
+        overallValueTrend = sum(all points)       / sum(all weights)
+
+    Going by the names and the `isValue` flag, the intent was almost certainly
+    `overallTrend` = technical only. The line `if isValue:` below would then have
+    to read `if not isValue:`. That single missing `not` is the whole difference.
+
+    It is left as-is ON PURPOSE, because live strategies depend on the current
+    behaviour. Measured over 19,037 signals (2020-2026): under today's semantics
+    a fundamentally STRONG stock gets a high overallTrend and therefore has to
+    clear a higher bar in `overallValueTrend >= 1.1*overallTrend`. The buy
+    condition of the "Value Trend ^2" strategy is built on exactly that — it
+    discards large, expensive, high-margin names (Mag7 at 65 % vs a 32 % base
+    rate), which is the valuation discipline the owner wants. Correcting the
+    asymmetry INVERTS that selection silently: no error, no warning, just a
+    different strategy under the same name.
+
+    Pinned by tests/test_overall_score_semantics.py. If that test fails, the
+    semantics changed — decide deliberately, then migrate every consumer
+    (asset_simulation_*.db columns, buy/sell formulas, indicator/ovt.py,
+    multi_transaction, dashboard) instead of adjusting the expectation.
+
+    Two further quirks, deliberately NOT changed here (same reason):
+      * the combined_trend criterion in score_df() fires on every row (see there)
+      * several criteria carry points with weight 0, so the ratio is not a
+        percentage and needs the clip() at the end
+    """
 
     total_value_weight = 0
     total_weight = 0
@@ -726,14 +774,16 @@ class Sum:
 
         if points == None:
             points = weight
-            
+
         self.total_value_weight += weight
         if not isValue:
             self.total_weight += weight
-        
+
         res = eval
         if res:
             self.overall_value_trend += points
+            # Intentional: VALUE points feed overall_trend, technical ones do not.
+            # See the class docstring before changing this to `if not isValue:`.
             if isValue:
                 self.overall_trend += points
 
