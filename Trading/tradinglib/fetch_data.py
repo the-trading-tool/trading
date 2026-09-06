@@ -171,6 +171,73 @@ class FetchData(tt.TickerTools):
         conn.close()
         return df
     
+    # Kalendertage je period-Einheit. Bewusst KALENDARISCH und nicht in
+    # Handelstagen — der Sinn ist ja gerade, die Handelstags-Annahme des
+    # OHLCQueryPlanner gegenzupruefen.
+    _PERIOD_CALENDAR_DAYS = {'y': 365, 'mo': 30, 'wk': 7, 'd': 1}
+
+    # Ab welchem Anteil des angeforderten Zeitraums eine Luecke als
+    # "abgeschnitten" gilt. Feiertage und Handelspausen schieben den aeltesten
+    # Tag immer etwas nach hinten; das ist normal und darf keine zweite Abfrage
+    # ausloesen. 10 % trennt sauber: bei 8 Jahren fehlten einer Aktie ~50 Tage
+    # (1,7 %), einem Krypto-Wert dagegen 2,5 Jahre (31 %).
+    _TRUNCATION_TOLERANCE = 0.1
+
+    @classmethod
+    def _period_span_days(cls, period):
+        """Angeforderter Zeitraum in Kalendertagen, oder None.
+
+        None bei 'max', leer oder unbekannter Einheit — dort laesst sich kein
+        Sollzeitraum ableiten, also wird auch nicht geprueft.
+        """
+        m = re.fullmatch(r'\s*(\d+)\s*(y|mo|wk|d)\s*', str(period or ''))
+        if not m:
+            return None
+        return int(m.group(1)) * cls._PERIOD_CALENDAR_DAYS[m.group(2)]
+
+    def _extend_if_truncated(self, conn, loader, df, symbol, price_tbl, period, limit):
+        """Zweiter Anlauf, wenn die Zeilengrenze den Zeitraum verfehlt hat.
+
+        `OHLCQueryPlanner` rechnet ein Jahr pauschal als 252 Handelstage. Werte,
+        die auch am Wochenende handeln — Krypto —, haben aber 365 Zeilen pro
+        Jahr: dieselbe Zeilenzahl reicht dort nur gut 5,5 statt 8 Jahre zurueck.
+        Ein `/year:2020`-Lauf bekam fuer BTC-EUR deshalb nur Daten ab 2021-03
+        und meldete "no data" (asset_perf2.py), waehrend GC=F sauber durchlief.
+
+        Nachgeladen wird nur, wenn BEIDES zutrifft:
+          * die Zeilenzahl klebt exakt am LIMIT -> es wurde abgeschnitten
+            (ist die Datei kuerzer, gibt es schlicht nichts mehr zu holen), und
+          * der aelteste gelieferte Tag verfehlt den Sollzeitraum deutlich.
+        Im Regelfall faellt daher keine zweite Abfrage an.
+
+        Nur fuer Tagesdaten: bei Intraday-Tabellen haengt die Zeilenzahl an den
+        Handelsstunden, das ist eine andere Rechnung und ein anderer Fix.
+        """
+        span = self._period_span_days(period)
+        if price_tbl != 'day_data' or not span or not limit:
+            return df
+        if self.get_num_rows(df) < limit:
+            return df                      # nicht abgeschnitten
+        try:
+            oldest = pd.Timestamp(str(df['Date'].iloc[0])[:10]).date()
+        except Exception:
+            return df
+        need = (datetime.now() - timedelta(days=span)).date()
+        gap = (oldest - need).days
+        if gap <= span * self._TRUNCATION_TOLERANCE:
+            return df
+        wider = int(limit * 366 / 252) + 1
+        self.logger.info(
+            'load_price_data: %s deckt %s nicht ab (aeltester Tag %s bei LIMIT %s, '
+            '%d Tage zu spaet) -> Nachladen mit LIMIT %s',
+            symbol, need, oldest, limit, gap, wider)
+        try:
+            wider_df = loader(conn, price_tbl, limit=wider)
+        except Exception as e:
+            self.logger.warning('Nachladen fuer %s fehlgeschlagen: %s', symbol, e)
+            return df
+        return wider_df if self.get_num_rows(wider_df) > self.get_num_rows(df) else df
+
     def load_price_data(self, symbol, period, interval, aggregate=False):
         """Load OHLCV price data from the local yf_<symbol>.db file.
 
@@ -210,6 +277,9 @@ class FetchData(tt.TickerTools):
         if price_tbl and os.path.exists(price_db):
             conn = open_db(price_db, readonly=True)
             df = load_data_into_dataframe(conn, price_tbl, limit=limit)
+            df = self._extend_if_truncated(
+                conn, load_data_into_dataframe, df,
+                symbol=symbol, price_tbl=price_tbl, period=period, limit=limit)
             conn.close()
 
             if self.get_num_rows(df) > 0:
