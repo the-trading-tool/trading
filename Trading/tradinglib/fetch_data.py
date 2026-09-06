@@ -195,6 +195,37 @@ class FetchData(tt.TickerTools):
             return None
         return int(m.group(1)) * cls._PERIOD_CALENDAR_DAYS[m.group(2)]
 
+    @classmethod
+    def _rows_for_period(cls, df, period, max_periods):
+        """Zeilenzahl fuer den Schnitt in fetch_data — nie unter dem Zeitraum.
+
+        Gegenstueck zu :meth:`_extend_if_truncated` auf der anderen Engstelle:
+        dort begrenzt das SQL-LIMIT, hier der Schnitt ``df[-max_periods:]``.
+        Beide leiten die Zeilenzahl aus Handelstagen ab und greifen bei Werten,
+        die auch am Wochenende handeln, zu kurz.
+
+        Zurueckgegeben wird das Maximum aus *max_periods* und der Zahl der
+        Zeilen, die kalendarisch in den angeforderten Zeitraum fallen. Damit
+        kann der Wert nur wachsen — fuer Aktien aendert sich nichts, und ein
+        zu klein geratener Schnitt kann keine Jahre mehr abschneiden.
+        """
+        span = cls._period_span_days(period)
+        if not span or df is None or len(df) <= max_periods:
+            return max_periods
+        try:
+            # Echtes Datums-Parsen statt Zeichenvergleich: ein nicht-datumsartiger
+            # Index ist sonst lexikographisch immer 'groesser' als der Stichtag
+            # ('k' > '2') und der Deckel waere still wirkungslos.
+            idx = pd.to_datetime(pd.Index(df.index).astype(str).str.slice(0, 10),
+                                 errors='coerce')
+            if idx.isna().all():
+                return max_periods
+            cutoff = pd.Timestamp((datetime.now() - timedelta(days=span)).date())
+            need = int((idx >= cutoff).sum())
+        except Exception:
+            return max_periods
+        return max(max_periods, need)
+
     def _extend_if_truncated(self, conn, loader, df, symbol, price_tbl, period, limit):
         """Zweiter Anlauf, wenn die Zeilengrenze den Zeitraum verfehlt hat.
 
@@ -502,6 +533,12 @@ class FetchData(tt.TickerTools):
                 rows_before = None
 
         if max_periods:
+            # calc_max_periods rechnet 'd:y' als 256 Handelstage — dieselbe
+            # Annahme wie im OHLCQueryPlanner und derselbe Fehler bei Werten mit
+            # Wochenendhandel: '8y' ergibt 2048 Zeilen, bei Krypto also nur 5,6
+            # statt 8 Jahre. Der Schnitt darf den angeforderten Zeitraum nicht
+            # unterschreiten; nach oben bleibt alles wie gehabt.
+            max_periods = self._rows_for_period(df, period, max_periods)
             try:
                 df = df[-max_periods:]
             finally:

@@ -128,6 +128,63 @@ def test_max_wird_uebersprungen():
     assert loader.calls == []
 
 
+# ------------------------------- zweite Engstelle: der Schnitt in fetch_data
+
+def _indexed(oldest_days_ago, rows):
+    """Wie _frame, aber mit Datums-Index — so kommt der df beim Schnitt an."""
+    f = _frame(oldest_days_ago, rows)
+    return f.set_index('Date')
+
+
+def test_schnitt_wird_auf_den_zeitraum_angehoben():
+    """calc_max_periods gibt fuer '8y' 2048 (8 x 256 Handelstage). Bei 365
+    Zeilen/Jahr deckt das nur 5,6 Jahre — der Schnitt muss wachsen."""
+    df = _indexed(8 * 365, 8 * 365)
+    got = FetchData._rows_for_period(df, '8y', 2048)
+    assert got > 2048
+    assert got >= 8 * 365 - 5           # praktisch der ganze Zeitraum
+
+
+def test_schnitt_bleibt_bei_aktien_unveraendert():
+    """2016 Zeilen ueber 8 Jahre liegen unter dem Deckel — nichts zu tun."""
+    df = _indexed(8 * 365, 2016)
+    assert FetchData._rows_for_period(df, '8y', 2048) == 2048
+
+
+def test_schnitt_wird_nie_kleiner():
+    """Der Wert darf nur wachsen: ein kleinerer Rueckgabewert wuerde Zeilen
+    abschneiden, die es vorher gab."""
+    df = _indexed(400, 400)
+    assert FetchData._rows_for_period(df, '8y', 2048) == 2048
+
+
+@pytest.mark.parametrize('period', ['max', '', None])
+def test_schnitt_ohne_ableitbaren_zeitraum(period):
+    df = _indexed(3000, 3000)
+    assert FetchData._rows_for_period(df, period, 2048) == 2048
+
+
+def test_schnitt_vertraegt_kaputten_index():
+    df = pd.DataFrame({'Close': [1.0] * 3000},
+                      index=['kein datum'] * 3000)
+    assert FetchData._rows_for_period(df, '8y', 2048) == 2048
+
+
+def test_beide_engstellen_zusammen():
+    """Der Fehler trat erst durch die Kombination auf: das SQL-LIMIT lieferte
+    zu wenig Zeilen, und der Schnitt kuerzte das Ergebnis ein zweites Mal.
+    Nach beiden Korrekturen muss der volle Zeitraum uebrig bleiben."""
+    ft = _bare()
+    kurz = _frame(int(5.5 * 365), 2016)
+    loader = _Loader(wide_days=8 * 365, wide_rows=8 * 365)
+    weit = ft._extend_if_truncated(None, loader, kurz, symbol='BTC-EUR',
+                                   price_tbl='day_data', period='8y', limit=2016)
+    assert len(weit) == 8 * 365
+    geschnitten = weit.set_index('Date')
+    rows = FetchData._rows_for_period(geschnitten, '8y', 2048)
+    assert len(geschnitten[-rows:]) > 2048
+
+
 # -------------------------------------------------------------- Robustheit
 
 def test_fehler_beim_nachladen_behaelt_das_erste_ergebnis():
