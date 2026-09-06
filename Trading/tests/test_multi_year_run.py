@@ -197,3 +197,39 @@ def test_grosse_kryptogewinne_bleiben_unveraendert():
         'sellDate': ['2025-10-06 00:00:00', '2026-08-21 00:00:00']})
     p._flag_implausible_gains()
     assert list(p.trades_df['gain']) == [99956.0, 84561.0]
+
+
+# ------------------------------------------- Anzeige der Stueckzahl (Bruchstuecke)
+
+def test_ganze_stueckzahlen_ohne_nachkommastellen():
+    s = pd.Series([5.0, 1621.0, 7.0, 3726.0])
+    assert MTP._volume_format(s) == '%.0f'
+
+
+def test_bruchstuecke_werden_sichtbar():
+    """Fest auf '%.0f' zeigte 0,11005 BTC als '0' und 0,88086 als '1' an —
+    Kaufwert und Gewinn stimmten, nur die Stueckzahl war unnachvollziehbar
+    (0 Stueck zu 52.682 fuer 5.797 EUR)."""
+    fmt = MTP._volume_format(pd.Series([0.110049, 0.880863]))
+    assert fmt != '%.0f'
+    assert float(fmt % 0.110049) > 0
+
+
+def test_kleinste_position_bleibt_ablesbar():
+    fmt = MTP._volume_format(pd.Series([0.00004]))
+    assert float(fmt % 0.00004) > 0
+
+
+def test_gemischte_spalte_richtet_sich_nach_dem_bruchstueck():
+    """Aktien und Krypto stehen in derselben Spalte."""
+    fmt = MTP._volume_format(pd.Series([11584.0, 0.110049]))
+    assert float(fmt % 0.110049) > 0
+
+
+@pytest.mark.parametrize('werte', [[], [0.0, 0.0], [None]])
+def test_ohne_bruchstuecke_bleibt_es_bei_ganzen_zahlen(werte):
+    assert MTP._volume_format(pd.Series(werte, dtype=float)) == '%.0f'
+
+
+def test_fehlende_spalte_bricht_nicht_ab():
+    assert MTP._volume_format(None, None) == '%.0f'
