@@ -151,39 +151,49 @@ def test_index_auswahl_speichert_die_abwahl_nicht_die_auswahl():
     assert '_chosen_idx' in src and 'if i not in _chosen_idx' in src
 
 
-# ------------------------------------------ Plausibilitaets-Deckel des Gewinns
+# --------------------------------------- Auffaellige Ergebnisse: nur melden
 
-def test_echte_mehrjahresgewinner_bleiben_erhalten():
-    """Frueher stand hier ein fester Deckel von +-10.000 (Systemwaehrung), der
-    den Gewinn auf 0 setzte. Bei Mehrjahres-Laeufen traf er die groessten
-    ECHTEN Gewinner: eine METALS-Position 2020-2026 mit +235 % wurde still auf
-    0 gesetzt, wodurch die Mark-to-Market-Kurve am Verkaufstag einbrach."""
-    df = pd.DataFrame({'ticker': ['GC=F', 'SI=F'],
-                       'gainPct': [235.9, 128.9],
-                       'gain': [23586.0, 11708.0]})
-    bad = df['gainPct'].abs() > MTP.GAIN_SANITY_PCT
-    assert not bad.any()
-
-
-def test_split_artefakte_werden_weiterhin_genullt():
-    """Der Schutz muss bleiben — gemessene Split-/Pence-Fehler liegen ueber
-    2.000 %, also weit jenseits jedes Handelsergebnisses."""
-    df = pd.DataFrame({'ticker': ['KAPUTT', 'MINI'],
-                       'gainPct': [2215.0, -1800.0],
-                       'gain': [99999.0, -50000.0]})
-    bad = df['gainPct'].abs() > MTP.GAIN_SANITY_PCT
-    assert bad.all()
-
-
-def test_schwelle_ist_prozentual_nicht_absolut():
-    """Ein Euro-Betrag waechst mit Positionsgroesse und Haltedauer und taugt
-    deshalb nicht als Datenfehler-Kriterium."""
-    assert MTP.GAIN_SANITY_PCT >= 1000
-
-
-def test_alter_euro_deckel_ist_weg():
+def test_es_wird_kein_gewinn_mehr_verrechnet():
+    """Drei Kriterien wurden hier nacheinander versucht und alle drei waren
+    falsch: ein fester Euro-Deckel (traf METALS +235 %), eine Prozentschwelle
+    (traf BTC +1.519 % und ETH +1.691 %) und der Stufensprung-Detektor (schlaegt
+    bei Krypto schon bei einem normalen -42 %-Tag an). Ob ein Ergebnis echt ist,
+    steht nicht im Ergebnis — deshalb wird nichts mehr genullt."""
     import inspect
     from tradinglib.premium import multi_transaction as m
     src = inspect.getsource(m)
     assert "gain'] > 10000" not in src
     assert "gain'] < -10000" not in src
+    assert "_zero_artefact_gains" not in src
+    quelle = inspect.getsource(m.MultiTransactionProcessor._flag_implausible_gains)
+    assert "'gain'] = 0" not in quelle and "at[idx, 'gain']" not in quelle
+
+
+def test_schwelle_ist_nur_eine_meldeschwelle():
+    assert MTP.GAIN_NOTABLE_PCT > 0
+    import inspect
+    from tradinglib.premium import multi_transaction as m
+    quelle = inspect.getsource(m.MultiTransactionProcessor._flag_implausible_gains)
+    assert 'st.info' in quelle          # Hinweis, keine Warnung, keine Korrektur
+
+
+def test_meldung_bleibt_ohne_kandidaten_aus():
+    p = object.__new__(MTP)
+    p.trades_df = pd.DataFrame({'ticker': ['A'], 'gainPct': [12.0], 'gain': [100.0]})
+    p.disable_streamlit = True
+    p._flag_implausible_gains()
+    assert p.trades_df['gain'].iloc[0] == 100.0
+
+
+def test_grosse_kryptogewinne_bleiben_unveraendert():
+    p = object.__new__(MTP)
+    p.db_path = 'database'
+    p.disable_streamlit = True
+    p.trades_df = pd.DataFrame({
+        'ticker': ['BTC-EUR', 'ETH-EUR'],
+        'gainPct': [1519.0, 1691.0],
+        'gain': [99956.0, 84561.0],
+        'buyDate': ['2020-01-03 00:00:00'] * 2,
+        'sellDate': ['2025-10-06 00:00:00', '2026-08-21 00:00:00']})
+    p._flag_implausible_gains()
+    assert list(p.trades_df['gain']) == [99956.0, 84561.0]
