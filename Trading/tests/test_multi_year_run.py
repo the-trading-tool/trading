@@ -149,3 +149,41 @@ def test_index_auswahl_speichert_die_abwahl_nicht_die_auswahl():
     assert "set_value(\n                        'multi_hidden_indices'," in src \
         or "'multi_hidden_indices'" in src
     assert '_chosen_idx' in src and 'if i not in _chosen_idx' in src
+
+
+# ------------------------------------------ Plausibilitaets-Deckel des Gewinns
+
+def test_echte_mehrjahresgewinner_bleiben_erhalten():
+    """Frueher stand hier ein fester Deckel von +-10.000 (Systemwaehrung), der
+    den Gewinn auf 0 setzte. Bei Mehrjahres-Laeufen traf er die groessten
+    ECHTEN Gewinner: eine METALS-Position 2020-2026 mit +235 % wurde still auf
+    0 gesetzt, wodurch die Mark-to-Market-Kurve am Verkaufstag einbrach."""
+    df = pd.DataFrame({'ticker': ['GC=F', 'SI=F'],
+                       'gainPct': [235.9, 128.9],
+                       'gain': [23586.0, 11708.0]})
+    bad = df['gainPct'].abs() > MTP.GAIN_SANITY_PCT
+    assert not bad.any()
+
+
+def test_split_artefakte_werden_weiterhin_genullt():
+    """Der Schutz muss bleiben — gemessene Split-/Pence-Fehler liegen ueber
+    2.000 %, also weit jenseits jedes Handelsergebnisses."""
+    df = pd.DataFrame({'ticker': ['KAPUTT', 'MINI'],
+                       'gainPct': [2215.0, -1800.0],
+                       'gain': [99999.0, -50000.0]})
+    bad = df['gainPct'].abs() > MTP.GAIN_SANITY_PCT
+    assert bad.all()
+
+
+def test_schwelle_ist_prozentual_nicht_absolut():
+    """Ein Euro-Betrag waechst mit Positionsgroesse und Haltedauer und taugt
+    deshalb nicht als Datenfehler-Kriterium."""
+    assert MTP.GAIN_SANITY_PCT >= 1000
+
+
+def test_alter_euro_deckel_ist_weg():
+    import inspect
+    from tradinglib.premium import multi_transaction as m
+    src = inspect.getsource(m)
+    assert "gain'] > 10000" not in src
+    assert "gain'] < -10000" not in src
