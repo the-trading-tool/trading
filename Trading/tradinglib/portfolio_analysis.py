@@ -360,10 +360,17 @@ def _live_signal_for_ticker(ticker: str, buy_query: str, sell_query: str,
     else:
         action = 'hold'
 
+    def _iso(ts):
+        return ts.strftime('%Y-%m-%d') if ts is not None and pd.notna(ts) else None
+
     return {
         'action': action,
         'last_type': last_type,
-        'last_date': last_dt.strftime('%Y-%m-%d') if last_dt is not None and pd.notna(last_dt) else None,
+        'last_date': _iso(last_dt),
+        # Both sides separately: "when did this strategy last say buy / sell"
+        # is a different question from "what was the most recent event".
+        'last_buy': _iso(last_buy),
+        'last_sell': _iso(last_sell),
     }
 
 

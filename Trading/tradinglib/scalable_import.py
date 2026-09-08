@@ -997,6 +997,15 @@ def render_scalable_import(region=st, db_path: str = 'database', system_currency
         logger.exception('Order basket panel failed')
         r.error(f'Der Order-Korb konnte nicht angezeigt werden: {_e}')
 
+    # Bestände gegen die Strategie-Formeln — rechnet erst auf Knopfdruck.
+    try:
+        from tradinglib.scalable_signals import render_holdings_signals
+        with r.expander('📐 Strategie-Signale der Bestände', expanded=False):
+            render_holdings_signals(st, db_path=db_path, username=username)
+    except Exception as _e:
+        logger.exception('Holdings signal panel failed')
+        r.error(f'Die Strategie-Signale konnten nicht angezeigt werden: {_e}')
+
     source = r.radio(
         'Datenquelle',
         ['CSV-Export', 'MCP-JSON'],
