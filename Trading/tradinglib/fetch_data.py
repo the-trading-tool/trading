@@ -586,6 +586,13 @@ class FetchData(tt.TickerTools):
                     df = indicator.trend(df)
                 except Exception:
                     pass
+                # dTrend/wkTrend/moTrend exist in asset_simulation but had no live
+                # counterpart, so buy/sell formulas referencing them failed with
+                # "name 'dTrend' is not defined" and silently produced no markers.
+                try:
+                    df = indicator.trend_pct_columns(df)
+                except Exception as _e:
+                    self.logger.warning("trend_pct_columns failed: %s", _e)
             try:
                 df = indicator.log_return(df)
             except Exception:

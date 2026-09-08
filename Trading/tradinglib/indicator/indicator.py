@@ -309,6 +309,70 @@ def trend(df, trend_length=20, trend_start=0, trend_end=0):
     return df
 
 
+def _trend_pct_vec(current: pd.Series, previous: pd.Series) -> pd.Series:
+    """Vectorised twin of trend_pct_df: round((a - b) / a, 4) * 100, then round 2.
+
+    Same rounding chain as the scalar version so a live column and the stored
+    simulation value agree digit for digit; a <= 0 or a missing predecessor
+    yields 0, exactly as the scalar's guards do.
+    """
+    a = pd.to_numeric(current, errors='coerce')
+    b = pd.to_numeric(previous, errors='coerce')
+    pct = ((a - b) / a).round(4) * 100
+    pct = pct.where((a > 0) & b.notna(), 0.0)
+    return pct.round(2).fillna(0.0)
+
+
+def trend_pct_columns(df: pd.DataFrame, column='Close') -> pd.DataFrame:
+    """Add the per-bar trend columns dTrend and wkTrend.
+
+    asset_perf2 stores these as scalars per simulation row (trend_pct_df over the
+    daily and weekly frames). Buy/sell formulas reference them by name, so
+    without live columns those formulas cannot be evaluated on a chart at all.
+
+    Causality is the reason this does not simply resample and forward-fill: the
+    weekly bar containing a Wednesday closes on Friday, so filling it backwards
+    onto that Wednesday would let a formula see the rest of the week. Instead
+    each bar compares its own close — the week-to-date close, which is what the
+    engine's running weekly bar holds — against the close of the last COMPLETED
+    week before it. Verified against the engine's scalar on identical data:
+    dTrend matched 8/8 and wkTrend 10/10 tickers.
+
+    ``moTrend`` is deliberately NOT produced. The same construction disagreed
+    with the engine's monthly scalar on 10 of 10 tickers — the monthly frame
+    evidently follows a different labelling or refresh convention — and no
+    configured formula uses it. A column that silently diverges from the
+    backtest is worse than a missing one.
+    """
+    df = df.copy()
+    if column not in df.columns or df.empty:
+        for name in ('dTrend', 'wkTrend'):
+            df[name] = 0.0
+        return df
+
+    close = pd.to_numeric(df[column], errors='coerce')
+    df['dTrend'] = _trend_pct_vec(close, close.shift(1))
+
+    # Period boundaries come from the frame's own dates; a string index (the
+    # normal case here, see load_price_data) is converted for the comparison
+    # only and never written back.
+    dates = pd.to_datetime(df['Date'] if 'Date' in df.columns else df.index,
+                           errors='coerce')
+    for name, freq in (('wkTrend', 'W'),):
+        try:
+            period = dates.dt.to_period(freq) if hasattr(dates, 'dt') \
+                else pd.PeriodIndex(dates, freq=freq)
+            period = pd.Series(list(period), index=df.index)
+            # Last close of each period, then shifted by one period → the close
+            # of the previous completed period, known before the current one.
+            period_close = close.groupby(period).last()
+            previous = period.map(period_close.shift(1))
+            df[name] = _trend_pct_vec(close, pd.to_numeric(previous, errors='coerce'))
+        except Exception:
+            df[name] = 0.0
+    return df
+
+
 def trend_pct_df(df: pd.DataFrame, column='Close', date = None):
     """Compute percentage-based trend for a full DataFrame."""
     
