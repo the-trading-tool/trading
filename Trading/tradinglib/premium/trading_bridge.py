@@ -5,7 +5,8 @@ import pandas as pd
 from datetime import datetime
 from typing import Optional
 
-from tradinglib.tools import Tools, ExpressionEvaluator
+from tradinglib import tools
+from tradinglib.tools import Tools
 from tradinglib.premium.broker_base import TradingBroker
 from tradinglib.premium.broker_alpaca import AlpacaBroker
 from tradinglib.premium.broker_ibkr import IBKRBroker
@@ -974,41 +975,47 @@ class SignalEvaluator(Tools):
                 combined_df = combined_df.sort_values('Date', ascending=True)
 
             # ── Evaluate buy / sell conditions (vectorised) ──────────────
+            # Auswertung ueber die GETEILTE Schicht (tools.compute_signal_mask) —
+            # dieselbe, an der Multi Strategies, Strategy Finder, All Assets und
+            # der Chart haengen. Frueher stand hier ein eigener Pfad aus
+            # ExpressionEvaluator + rohem eval(). Der konnte drei Dinge nicht,
+            # die der Backtest kann, und lief deshalb auseinander:
+            #
+            #  1. MEHRZEILIGE Bedingungen. "(A)\n(B)" liest Python als Aufruf
+            #     "(A)(B)" -> TypeError: 'Series' object is not callable. Genau
+            #     daran scheiterten alle sieben Support/RSI-Eintraege, deren
+            #     Kaufformel aus vier Zeilen besteht.
+            #  2. signal_window. Steht je Index im JSON (Support/RSI: 2) und
+            #     erlaubt, dass die Zeilen auf VERSCHIEDENEN Balken erfuellt
+            #     werden. Wurde hier gar nicht gelesen -> andere Signale als im
+            #     Backtest, auch wenn die Formel einzeilig ist.
+            #  3. Auswertung je Ticker. eval() lief ueber den ganzen
+            #     combined_df; rolling/shift/col[-1] haetten damit ueber
+            #     Ticker-Grenzen hinweg gerechnet.
             buy_raw  = strategy_config.get('buy', '')
             sell_raw = strategy_config.get('sell', '')
-            evaluator = ExpressionEvaluator(combined_df, dataframe_name='combined_df')
-
-            buy_err = sell_err = ''
             try:
-                buy_expr = evaluator.validate_and_transform(buy_raw)
-            except Exception as exc:
-                buy_expr = ''
-                buy_err  = str(exc)
-
-            try:
-                sell_expr = evaluator.validate_and_transform(sell_raw)
-            except Exception as exc:
-                sell_expr = ''
-                sell_err  = str(exc)
+                _sw = int(strategy_config.get('signal_window')
+                          or tools.signal_window(self.username))
+            except Exception:
+                _sw = 1
 
             combined_df = combined_df.copy()
-            combined_df['buySell'] = 0
+            buy_err = sell_err = ''
+            try:
+                buy_mask = tools.compute_signal_mask(combined_df, buy_raw, window=_sw)
+            except Exception as exc:
+                buy_mask = pd.Series(False, index=combined_df.index)
+                buy_err = f"buy eval: {exc}"
+            try:
+                sell_mask = tools.compute_signal_mask(combined_df, sell_raw, window=_sw)
+            except Exception as exc:
+                sell_mask = pd.Series(False, index=combined_df.index)
+                sell_err = f"sell eval: {exc}"
 
-            if buy_expr:
-                try:
-                    combined_df['buySell'] = np.where(
-                        eval(buy_expr), 1, combined_df['buySell']  # noqa: S307
-                    )
-                except Exception as exc:
-                    buy_err = f"buy eval: {exc}"
-
-            if sell_expr:
-                try:
-                    combined_df['buySell'] = np.where(
-                        eval(sell_expr), -1, combined_df['buySell']  # noqa: S307
-                    )
-                except Exception as exc:
-                    sell_err = f"sell eval: {exc}"
+            # Reihenfolge wie in multi_transaction.py: Sell sticht Buy.
+            combined_df['buySell'] = np.where(sell_mask.values, -1,
+                                              np.where(buy_mask.values, 1, 0))
 
             # ── Run PortfolioSimulator (identical to multi_transaction.py) ─
             portfolio_sim = ass.PortfolioSimulator(
