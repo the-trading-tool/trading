@@ -390,6 +390,61 @@ def render_data_quality_warning(tickers, db_path: str = 'database',
     return True
 
 
+# Ab wie vielen Handelstagen Rueckstand gegenueber den Index-Kollegen ein Ticker
+# als "stehengeblieben" gilt. Bewusst gegen die KOLLEGEN und nicht gegen heute:
+# ein ausgefallener Abruflauf oder ein Feiertag wuerde sonst den halben Bestand
+# als tot melden. Zehn Tage lassen Betriebsstoerungen durch und fangen ein
+# Delisting trotzdem binnen zwei Wochen.
+STALE_LAG_DAYS = 10
+
+
+def scan_stale_tickers(tickers, db_path: str = 'database',
+                       lag_days: int = STALE_LAG_DAYS) -> pd.DataFrame:
+    """Ticker, deren Kursreihe stehengeblieben ist — Delisting-Verdacht.
+
+    Vergleicht den letzten lokalen Tagesbalken jedes Tickers mit dem MEDIAN der
+    letzten Balken aller uebergebenen Ticker. Wer mehr als *lag_days* Kalendertage
+    dahinter liegt, ist verdaechtig.
+
+    Bewusst nur ein VERDACHT, kein Urteil: ein Handelsstopp, ein Datenausfall bei
+    der Quelle und ein echtes Delisting sehen hier gleich aus. Die Entscheidung
+    faellt ueber ``asset_status.set_status`` — von Hand oder nach einer
+    Yahoo-Gegenprobe. Automatisch stillzulegen waere gefaehrlich: ein einzelner
+    fehlgeschlagener Abruflauf koennte sonst lebende Titel aus dem Bestand nehmen.
+
+    Rueckgabe: DataFrame ``ticker, last_date, lag_days, rows`` (leer = alles frisch),
+    absteigend nach Rueckstand.
+    """
+    from tradinglib import four_ps as fps          # lazy: reiner OHLC-Leser
+    letzte = {}
+    zeilen = {}
+    for tk in tickers or []:
+        try:
+            daily = fps.load_daily(tk, db_path)
+        except Exception:
+            continue
+        if daily is None or getattr(daily, 'empty', True):
+            continue
+        try:
+            letzte[tk] = pd.Timestamp(daily.index[-1]).normalize()
+            zeilen[tk] = len(daily)
+        except Exception:
+            continue
+    if not letzte:
+        return pd.DataFrame(columns=['ticker', 'last_date', 'lag_days', 'rows'])
+    referenz = pd.Series(list(letzte.values())).median()
+    rows = []
+    for tk, d in letzte.items():
+        lag = int((referenz - d).days)
+        if lag > lag_days:
+            rows.append({'ticker': tk, 'last_date': d.strftime('%Y-%m-%d'),
+                         'lag_days': lag, 'rows': zeilen[tk]})
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=['ticker', 'last_date', 'lag_days', 'rows'])
+    return df.sort_values('lag_days', ascending=False).reset_index(drop=True)
+
+
 def scan_position_anomalies(trades_df, budgets: dict, factor: float = 2.0) -> pd.DataFrame:
     """Trades, deren |buyValueEUR| das Index-Budget stark übersteigt.
 

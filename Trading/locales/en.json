@@ -829,6 +829,7 @@
   "mt.indices": "Indices",
   "mt.indices_help": "Limits the run to the selected indices - across strategies: a deselected index is dropped from every strategy. What is stored is the deselection, so an index newly added to the JSON runs immediately. Strategies left without any index are dropped entirely.",
   "mt.gain_notable": "ℹ️ {n} trade(s) with a result above 500 % - taken as they are. Large multi-year gains are normal for crypto; a note about a level shift in the price series points to an unadjusted split instead. Affected: {tickers}. Check via the data quality analysis (tradinglib.data_quality).",
+  "mt.closed_delisted": "ℹ️ {n} position(s) were closed at the last available price because the asset is retired (delisting/rename). They are marked as delisted in the \"reason\" column. Affected: {tickers}.",
   "mt.data_as_of_help": "One year = as before. Several years = ONE continuous run: the yearly slices are chained per index, capital carries over and positions may be held across the year boundary. This is NOT the same as several separate years and is not comparable to them. Valuation is at the end of the most recent selected year. Multi-year runs write to trades{from}-{to}.db and leave the production file untouched.",
   "mt.show_details": "Show transaction detailed trend & data",
   "mt.data_as_of": "Use data as of:",

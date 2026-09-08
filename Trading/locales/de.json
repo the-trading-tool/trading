@@ -829,6 +829,7 @@
   "mt.indices": "Indizes",
   "mt.indices_help": "Schränkt den Lauf auf die gewählten Indizes ein — strategieübergreifend: ein abgewählter Index entfällt in allen Strategien. Gespeichert wird die Abwahl, damit ein neu im JSON eingetragener Index sofort mitläuft. Strategien, von denen kein Index übrig bleibt, entfallen ganz.",
   "mt.gain_notable": "ℹ️ {n} Trade(s) mit einem Ergebnis über 500 % — unverändert übernommen. Große Mehrjahres-Gewinne sind bei Krypto normal; ein Hinweis auf einen Stufensprung in der Kursreihe deutet dagegen auf einen nicht angepassten Split hin. Betroffen: {tickers}. Prüfung über die Datenqualitäts-Analyse (tradinglib.data_quality).",
+  "mt.closed_delisted": "ℹ️ {n} Position(en) wurden am letzten verfügbaren Kurs geschlossen, weil der Titel stillgelegt ist (Delisting/Umbenennung). In der Spalte „Grund\" stehen sie als delisted. Betroffen: {tickers}.",
   "mt.data_as_of_help": "Ein Jahr = wie bisher. Mehrere Jahre = EIN durchgehender Lauf: die Jahresscheiben werden je Index aneinandergehängt, das Kapital läuft durch und Positionen dürfen über den Jahreswechsel gehalten werden. Das ist NICHT dasselbe wie mehrere Einzeljahre und nicht mit ihnen vergleichbar. Bewertet wird zum Ende des jüngsten gewählten Jahres. Mehrjahres-Läufe schreiben in trades{von}-{bis}.db und lassen die Produktionsdatei unberührt.",
   "mt.show_details": "Transaktionsdetails Trend & Daten anzeigen",
   "mt.data_as_of": "Daten vom:",
