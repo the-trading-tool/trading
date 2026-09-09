@@ -242,6 +242,10 @@ PY   = sys.executable                                    # = .venv-Python
 DB   = os.path.join(ROOT, "database", "scheduler.db")
 # Linux: Standby (nur diese Zeile unterscheidet sich von der Windows-Variante)
 STANDBY = "systemctl suspend"
+# Aufhol-Laeufe sind PowerShell-Skripte. Unter Linux braucht das pwsh (PowerShell
+# Core); fehlt es, scheitert nur der manuelle Knopf mit klarer Meldung - die Jobs
+# werden ohnehin nie automatisch eingeplant (frequency 'manual', enabled 0).
+PWSH = "pwsh"
 
 os.makedirs(os.path.dirname(DB), exist_ok=True)
 conn = sqlite3.connect(DB)
@@ -285,6 +289,8 @@ JOBS = [
     ("10:00", "get_asset_data.py",     "1d:1mo /index_member",                WD,               "YAHOO_D_DATA_INDEX_MEMBER_2", "",      "",            "", 1),
     ("19:15", "get_asset_data.py",     "60m:2y 1d:2y /all",                   "saturday",       "YAHOO_ALL",                   "",      "",            "", 1),
     ("11:05", "get_asset_data.py",     "60m:2mo 1d:2mo 1m:7d /inverse",       WD,               "YAHOO_ALL_INVERSE_",          "19:45", "",            "", 1),
+    ("",      "catchup.ps1",           "-Scope daily",                        "manual",         "CATCHUP_DAILY",               "",      "",            "", 0),
+    ("",      "catchup.ps1",           "-Scope heavy",                        "manual",         "CATCHUP_HEAVY",               "",      "",            "", 0),
     ("22:30", None,                    "",                                    WD+",saturday",   "STANDBY",                     "22:45", "",            "", 0),
     ("22:00", "asset_perf2.py",        "true /add_current /silent",           WD,               "ASSET_PERFORMANCE_2",         "",      "",            "", 1),
     ("22:35", "recalc_correlation.py", "",                                    WD+",saturday",   "CORRELATION_INDEX",           "",      "",            "", 1),
@@ -306,7 +312,11 @@ JOBS = [
 ]
 
 def build(script, extra):
-    cmd = '"%s" "%s"' % (PY, os.path.join(ROOT, script))
+    # .ps1 laeuft ueber die PowerShell, alles andere ueber den venv-Python.
+    if script.endswith(".ps1"):
+        cmd = '%s -NoProfile -ExecutionPolicy Bypass -File "%s"' % (PWSH, os.path.join(ROOT, script))
+    else:
+        cmd = '"%s" "%s"' % (PY, os.path.join(ROOT, script))
     return cmd + (" " + extra if extra else "")
 
 for (t, script, extra, freq, name, end, rng, days, en) in JOBS:
