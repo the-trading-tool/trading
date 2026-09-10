@@ -54,6 +54,7 @@ nicht den ganzen Bestand auf einmal.
 
     python repair_h60_local_copies.py                       # Trockenlauf, alle
     python repair_h60_local_copies.py /tickers:^GDAXI,SAP.DE
+    python repair_h60_local_copies.py /index_member          # nur Index-Mitglieder
     python repair_h60_local_copies.py /apply                # schreiben
 """
 import glob
@@ -133,6 +134,25 @@ def find_copies(rows, zone):
     return treffer
 
 
+def _index_members():
+    """Ticker aller ECHTEN Boersenindizes (^-Praefix) aus yf_tickers.db.
+
+    Dieselbe Konvention wie in get_asset_data.py: Gruppen ohne ^ sind
+    Kategorien (CRYPTO, METALS, ETP ...), keine Indizes.
+    """
+    path = Tools().get_path(path='database', file_name='yf_tickers.db')
+    try:
+        with open_db(path, readonly=True) as conn:
+            return sorted({r[0] for r in conn.execute(
+                "SELECT s.Ticker FROM stock_indices si "
+                "JOIN stocks s ON s.id = si.stock_id "
+                "JOIN indices i ON i.id = si.index_id "
+                "WHERE i.name LIKE '^%'")})
+    except Exception as e:
+        logger.error('Mitgliederliste nicht lesbar: %s', e)
+        return []
+
+
 def _undo_conn(db_dir):
     path = os.path.join(db_dir, UNDO_DB)
     conn = sqlite3.connect(path)
@@ -147,6 +167,9 @@ def main():
     logging_config.configure_logging(to_console=args.get('log_to_console', True))
     apply = bool(args.get('apply'))
     nur = [t.strip() for t in str(args.get('tickers') or '').split(',') if t.strip()]
+    if args.get('index_member') and not nur:
+        nur = _index_members()
+        logger.info('/index_member: %d Mitglieder der ^-Indizes', len(nur))
 
     db_dir = os.path.dirname(Tools().get_path(path='database', file_name='asset_info.db'))
     tzmap = _tz_map()

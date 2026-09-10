@@ -482,6 +482,38 @@ class DataUtils():
                     working = working.rename(columns={_alias: 'Date'})
                     break
 
+        # --- Speicherkonvention durchsetzen: tz-naiv in UTC -------------------
+        #
+        # Hier wird der Zeitstempel gleich per strftime gerendert, und strftime
+        # schreibt die WANDUHRZEIT. Ist der Rahmen noch tz-behaftet, landet
+        # damit Boersen-Ortszeit in der Datenbank, und die Anzeige rechnet die
+        # Zeitzone ein zweites Mal drauf.
+        #
+        # Genau so sind rund 11 Millionen doppelte Stundenbalken entstanden: in
+        # market_data.download machte ein `import pandas as pd` INNERHALB der
+        # Funktion `pd` fuer die ganze Funktion lokal, der fruehere Zugriff lief
+        # in einen UnboundLocalError, und ein `except Exception` verschluckte
+        # ihn -- die Normalisierung lief nie. Sichtbar wurde es erst, als
+        # yfinance anfing, Ortszeit statt UTC zu liefern. Behoben in d410453.
+        #
+        # Die Konvention wird deshalb an der SPEICHERGRENZE erzwungen, nicht nur
+        # beim Aufrufer: hier kommt jeder Schreibpfad vorbei. Umgerechnet statt
+        # abgelehnt, weil ein verworfener Abruf still Luecken hinterliesse --
+        # aber mit Warnung, damit die eigentliche Ursache auffaellt.
+        try:
+            _d = pd.to_datetime(working['Date'], errors='coerce')
+            _tz = getattr(getattr(_d, 'dt', None), 'tz', None)
+            if _tz is not None:
+                logger.warning(
+                    "save_ohlc_to_sql(%s): Zeitstempel kamen tz-behaftet (%s) an "
+                    "und wurden nach UTC umgerechnet. Der Aufrufer haette das tun "
+                    "muessen -- ohne diese Umrechnung waere Ortszeit gespeichert "
+                    "worden (siehe market_data.download).", table_name, _tz)
+                working['Date'] = _d.dt.tz_convert('UTC').dt.tz_localize(None)
+        except Exception:
+            logger.debug("save_ohlc_to_sql(%s): tz-Pruefung nicht moeglich",
+                         table_name, exc_info=True)
+
         # normalize column names
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             if col not in working.columns:
