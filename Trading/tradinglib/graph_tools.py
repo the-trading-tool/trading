@@ -48,13 +48,14 @@ class GraphTools:
 
         return df
 
-    def get_range_breaks(self, df, exchange=''):
+    def get_range_breaks(self, df, exchange='', extended_hours=False):
         """Return Plotly rangebreaks for the given DataFrame and exchange code (delegates to NewV3)."""
-        breaks = self.get_range_breaks_NewV3(df, exchange=exchange)
+        breaks = self.get_range_breaks_NewV3(df, exchange=exchange,
+                                             extended_hours=extended_hours)
         return breaks
     
 
-    def get_range_breaks_NewV3(self, df, exchange=''):
+    def get_range_breaks_NewV3(self, df, exchange='', extended_hours=False):
         """Compute Plotly rangebreaks by deriving trading hours directly from the data.
 
         Automatically detects 24/7 assets (crypto) and skips overnight breaks for them.
@@ -96,6 +97,38 @@ class GraphTools:
             weekday_df = df[dow < 5].copy()
             if weekday_df.empty:
                 return []
+
+            # Ausserboersliche Balken ausblenden (Vorgabe), indem das
+            # Stunden-Histogramm auf Balken MIT Volumen beschraenkt wird. Der
+            # Nachtbruch unten wird dadurch von allein zum Komplement der
+            # regulaeren Sitzung -- kein zweiter Rangebreak noetig.
+            #
+            # Datengetrieben statt ueber einen Boersenkalender, weil die Quelle
+            # beides sauber trennt: bei AAPL tragen die 8.634 Balken der
+            # regulaeren Sitzung Volumen und stehen auf :30, die 8.200
+            # ausserboerslichen stehen auf :00 und haben Volumen 0. Ohne diese
+            # Beschraenkung zeigt der Chart 16 Stunden je Tag statt 6,5.
+            #
+            # Zwei Faelle bleiben absichtlich unberuehrt: Reihen GANZ ohne
+            # Volumen (Indizes wie ^GDAXI) und Reihen, in denen jeder Balken
+            # Volumen traegt (europaeische Einzelwerte). Dort gibt es nichts zu
+            # trennen, und ein Filter wuerde den Rahmen leeren.
+            # Der volumenlose Teil muss ein mehrstuendiger BLOCK sein. Sonst
+            # traefe der Filter die Eroeffnungsauktion: bei europaeischen
+            # Einzelwerten hat genau der erste Balken kein Volumen (SAP.DE,
+            # VOW.DE, AZN.L -- je EINE Stunde, 4-10 % der Zeilen), und ohne
+            # diese Bedingung verschwaende die Eroeffnungsstunde aus dem Chart.
+            # Die echte Zweit-Serie ist unverkennbar groesser: AAPL 55 % ueber
+            # neun Stunden, MSFT 55 % ueber dreizehn.
+            if not extended_hours and 'Volume' in weekday_df.columns:
+                _vol = pd.to_numeric(weekday_df['Volume'], errors='coerce').fillna(0)
+                _leer = weekday_df[_vol <= 0]
+                _anteil = len(_leer) / max(len(weekday_df), 1)
+                _stunden = _leer['Date'].dt.hour.nunique() if len(_leer) else 0
+                if (_vol > 0).any() and _stunden >= 2 and _anteil >= 0.20:
+                    weekday_df = weekday_df[_vol > 0]
+                    if weekday_df.empty:
+                        return []
 
             dec_hour = (
                 weekday_df['Date'].dt.hour + weekday_df['Date'].dt.minute / 60.0

@@ -323,6 +323,7 @@ class SystemConfig(tools.Db_tools):
         idx_trailing_stop_enabled = self.get_idx_selected(b_select, 'trailing_stop_enabled', 1)
         idx_show_regime = self.get_idx_selected(b_select, 'show_regime', 1)
         idx_mark_nontrading = self.get_idx_selected(b_select, 'mark_nontrading_times', 0)
+        idx_extended_hours = self.get_idx_selected(b_select, 'chart_extended_hours', 1)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
         idx_start_page = self.get_idx_selected(start_pages, 'start_page', 0)
         self.region.write(i18n.t("cfg.user", username=self.username))
@@ -406,6 +407,7 @@ class SystemConfig(tools.Db_tools):
             self.set_value('pine_export', st.selectbox(i18n.t("cfg.pine_export"), b_select, idx_pine_export))
             self.set_value('show_regime', st.selectbox(i18n.t("cfg.show_regime"), b_select, idx_show_regime))
             self.set_value('mark_nontrading_times', st.selectbox(i18n.t("cfg.mark_nontrading_times"), b_select, idx_mark_nontrading, help=i18n.t("cfg.mark_nontrading_times_help")))
+            self.set_value('chart_extended_hours', st.selectbox(i18n.t("cfg.chart_extended_hours"), b_select, idx_extended_hours, help=i18n.t("cfg.chart_extended_hours_help")))
             # Anfangs-Zoom des Charts: sichtbares Fenster = trend_length x Faktor
             # Kerzen. War fest 4; kleinerer Wert zoomt staerker hinein.
             try:

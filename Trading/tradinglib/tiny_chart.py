@@ -770,7 +770,13 @@ class tiny_chart(gt.GraphTools):
         if self.range_breaks and not "mo" in self.interval:
             if self.exchange == "":
                 self.exchange = tt.TickerTools().get_ticker_value(self.ticker,"exchange")
-            rangebreaks = self.get_range_breaks(self.df, self.exchange)
+            # Ausserboersliche Balken (Vor-/Nachboerse) standardmaessig aus:
+            # bei US-Werten zeigt der Chart sonst 16 Stunden je Tag statt 6,5,
+            # und die duenne Nachboerse enthaelt Fehldrucke (AAPL 10.07.:
+            # High 331,78 bei einem Kurs um 315).
+            _ext = bool(self.sys_conf.get_value("chart_extended_hours", False))
+            rangebreaks = self.get_range_breaks(self.df, self.exchange,
+                                                extended_hours=_ext)
             self.fig.update_xaxes(
                         rangebreaks = rangebreaks,
             )

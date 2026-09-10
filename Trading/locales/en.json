@@ -125,6 +125,8 @@
   "cfg.show_regime": "Show regime / market-stress banner:",
   "cfg.mark_nontrading_times": "Mark non-trading times in bands:",
   "cfg.mark_nontrading_times_help": "Yes: filled bands (Bollinger, Heikin EMA, G-FRAMA, DEMA, Ichimoku) break over weekends/bank holidays – the gaps mark non-trading times. No: continuous fill (smoother); for assets that trade on otherwise-closed days (e.g. futures) the fill can be imprecise at transitions.",
+  "cfg.chart_extended_hours": "Extended hours in the chart",
+  "cfg.chart_extended_hours_help": "Off (default): the chart shows the regular session only. It is detected via volume - for US assets the source delivers two series, the regular one with volume and the pre/after-market one without. Without this limit the chart shows 16 hours per day for AAPL instead of 6.5, and the thin after-hours session contains bad prints. On: every available bar is shown. No effect on series without volume (indices) or where every bar carries volume.",
   "cfg.buy_query": "Buy query:",
   "cfg.sell_query": "Sell query:",
   "cfg.data_provider_header": "Data provider",

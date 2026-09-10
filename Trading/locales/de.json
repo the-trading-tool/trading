@@ -125,6 +125,8 @@
   "cfg.show_regime": "Regime-/Market-Stress-Banner anzeigen:",
   "cfg.mark_nontrading_times": "Handelsfreie Zeiten in Bändern markieren:",
   "cfg.mark_nontrading_times_help": "Ja: gefüllte Bänder (Bollinger, Heikin-EMA, G-FRAMA, DEMA, Ichimoku) werden an Wochenenden/Bankfeiertagen unterbrochen – die Lücken markieren handelsfreie Zeiten. Nein: durchgehende Füllung (glatter); bei Werten mit Handel an sonst geschlossenen Tagen (z. B. Futures) kann die Füllung an Übergängen ungenau werden.",
+  "cfg.chart_extended_hours": "Außerbörsliche Zeiten im Chart",
+  "cfg.chart_extended_hours_help": "Aus (Vorgabe): der Chart zeigt nur die reguläre Sitzung. Erkannt wird sie am Volumen — bei US-Werten liefert die Quelle zwei Serien, die reguläre mit Volumen und die vor-/nachbörsliche ohne. Ohne diese Begrenzung zeigt der Chart bei AAPL 16 Stunden je Tag statt 6,5, und die dünne Nachbörse enthält Fehldrucke. An: alle vorhandenen Balken werden gezeigt. Ohne Wirkung bei Reihen ohne Volumen (Indizes) und bei solchen, in denen jeder Balken Volumen trägt.",
   "cfg.buy_query": "Kauf-Bedingung:",
   "cfg.sell_query": "Verkauf-Bedingung:",
   "cfg.data_provider_header": "Datenprovider",
