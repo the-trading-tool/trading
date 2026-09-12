@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from tradinglib import candidates as cand
+from tradinglib import risk_profile as rp
 from tradinglib import system_config as sysconf
 from tradinglib.i18n import t
 
@@ -38,6 +39,17 @@ def _rank_label(col: str) -> str:
     key = f'cand.rank_{col}'
     txt = t(key)
     return col if txt == key else txt
+
+
+def _profile_label(name: str) -> str:
+    """Auswahlbeschriftung: leer = aus, 'user' = das eigene, sonst das Preset."""
+    if not name:
+        return t('cand.risk_profile_off')
+    if name == 'user':
+        return t('cand.risk_profile_own')
+    key = f'risk.name_{name}'
+    label = t(key)
+    return name if label == key else label
 
 
 def _viewer_url(ticker: str) -> str:
@@ -168,6 +180,18 @@ class CandidatesPage:
                                            value=bool(opt['require_isin']),
                                            help=t('cand.require_isin_help'))
 
+                c1, c2 = st.columns([0.55, 0.45])
+                profile_options = [''] + ['user'] + list(rp.available())
+                risk_profile = c1.selectbox(
+                    t('cand.risk_profile'), profile_options,
+                    index=(profile_options.index(opt['risk_profile'])
+                           if opt.get('risk_profile') in profile_options else 0),
+                    format_func=_profile_label, help=t('cand.risk_profile_help'))
+                min_trend_score = c2.slider(
+                    t('cand.min_trend_score'), 0, 100,
+                    int(opt.get('min_trend_score') or 0), step=5,
+                    help=t('cand.min_trend_score_help'))
+
                 c1, c2 = st.columns(2)
                 with_signal = c1.checkbox(t('cand.with_signal'),
                                           value=bool(opt['with_signal']),
@@ -193,6 +217,8 @@ class CandidatesPage:
             'use_rotation': use_rotation, 'min_sector_rsc': float(min_sector_rsc),
             'use_rsc': use_rsc, 'min_rsc': float(min_rsc),
             'require_isin': require_isin,
+            'risk_profile': risk_profile,
+            'min_trend_score': int(min_trend_score),
             'rank_col': rank_col, 'pool_n': int(pool_n),
             'max_per_sector': int(max_per_sector), 'top_n': int(top_n),
             'with_signal': with_signal, 'only_add': only_add,

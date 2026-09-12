@@ -49,6 +49,14 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
 <tr><td><b>ISIN vorhanden</b></td>
   <td>Optional, grobe Näherung für orderbar.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Risikoprofil</b></td>
+  <td>Schneidet auf die Titel zu, die zum gewählten Profil passen (ATR im Verhältnis
+  zum Kurs). Steht bewusst <i>vor</i> dem Trendfilter — siehe unten.</td>
+  <td><code>atr</code>/<code>close</code>, sonst <code>logVola</code></td></tr>
+<tr><td><b>Trendwert</b></td>
+  <td>Nähe zum eigenen Rekordhoch, 0–100. Für Short gespiegelt. 0 heißt „noch nicht
+  berechnet“ und fällt raus, nicht durch.</td>
+  <td><code>trendScore</code></td></tr>
 <tr><td><b>Wochentrend</b></td>
   <td>4PS-Phase 3/4 (Einstieg und Halten über einem <i>steigenden</i> 40-Wochen-Schnitt)
   oder <code>sma50</code> gegen <code>sma200</code>. Strukturell, damit ein Rücksetzer
@@ -76,6 +84,15 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
   Buy-/Sell-Formeln.</td>
   <td>OHLC + Formeln</td></tr>
 </table>
+
+<div class="info"><b>Warum das Risikoprofil vor dem Trendfilter steht.</b> Gemessen über
+2020–2026: eine Trendauswahl über das ganze Universum bringt keinen verlässlichen
+Renditevorteil. Beschränkt man zuerst auf das ruhige Ende, verdoppelt sich der Vorteil
+derselben Auswahl und die Trefferquote steigt. Andersherum bleibt davon nichts. Die
+Profile selbst stehen auf der Seite <i>Risikoprofil</i>; „mein Profil“ übernimmt, was dort
+eingestellt ist. Der Trendwert ist dabei ein Qualitätsfilter — er verbessert Trefferquote
+und Drawdown, nicht die Durchschnittsrendite.</div>
+
 
 <h2>Warum zwei verschiedene Filter?</h2>
 <p>Der <b>Vorfilter</b> ist bewusst <b>nicht</b> Ihre Buy-Formel. Zwei Gründe:</p>

@@ -319,12 +319,18 @@ def _mask_for(frame: pd.DataFrame, profile: dict) -> pd.Series:
     atr_cut = profile.get('max_atr_pct')
     vola_cut = profile.get('max_log_vola')
 
+    def num(column):
+        # Legacy rows can carry numbers as TEXT (bulk_upsert affinity), and a
+        # string comparison here would silently select the wrong half.
+        return pd.to_numeric(frame[column], errors='coerce')
+
     if atr_cut is not None and _has(frame, 'atr_pct'):
-        keep &= frame['atr_pct'] <= atr_cut
+        keep &= num('atr_pct') <= atr_cut
     elif atr_cut is not None and _has(frame, 'atr', 'close'):
-        keep &= (frame['atr'] / frame['close']) <= atr_cut
+        close = num('close')
+        keep &= (num('atr') / close.where(close > 0)) <= atr_cut
     elif vola_cut is not None and _has(frame, 'logVola'):
-        keep &= frame['logVola'] <= vola_cut
+        keep &= num('logVola') <= vola_cut
     elif atr_cut is not None or vola_cut is not None:
         logger.warning("risk_profile: frame carries neither atr/close nor logVola — "
                        "profile %s selects everything", profile.get('name', '?'))

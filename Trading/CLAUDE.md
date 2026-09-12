@@ -1492,3 +1492,37 @@ Ein Test nagelt fest, dass keine preisabgeleitete Spalte in `TRACKED_FIELDS` rut
 haengen an seinem heutigen Verhalten (siehe `Sum`-Docstring), und die neue Profil-Kette
 nutzt ohnehin keine Fundamentaldaten. Die Frage „traegt die Bewertungsachse etwas bei?"
 ist damit nicht beantwortet, sondern **beantwortbar gemacht** — in etwa einem Jahr.
+
+---
+
+## Kandidaten-Trichter kennt jetzt das Risikoprofil (2026-09-12)
+
+Zwei neue Schritte in `candidates.find()`, beide optional und beide mit eigener
+Trichter-Zeile:
+
+| Schritt | Einstellung | Wirkung |
+|---|---|---|
+| **Risikoprofil** | `risk_profile` — `''` aus, `'user'` = das auf der Profilseite eingestellte, sonst ein Preset-Name | schneidet auf `atr/close <= Schnitt` (Fallback `logVola`) |
+| **Trendwert** | `min_trend_score` 0–100, 0 = aus | `trendScore >= x`, bei Short gespiegelt zu `<= 100-x` |
+
+**Die Reihenfolge ist der Punkt und steht so auch in der HELP-Seite:** Risikoprofil
+**vor** dem Trendfilter. Gemessen 2020-2026 bringt eine Trendauswahl ueber das ganze
+Universum keinen verlaesslichen Renditevorteil; auf das ruhige Ende beschraenkt
+verdoppelt sich der Vorteil derselben Auswahl. Andersherum bleibt nichts davon.
+
+Fallen, die in den Tests festgenagelt sind:
+
+- **`trendScore == 0` heisst „nicht berechnet"**, nicht „am Boden" — solche Zeilen
+  fallen raus und rutschen nicht durch. Ohne diese Pruefung waeren bei Short alle
+  noch nicht gefuellten Titel plaetzlich Top-Kandidaten.
+- **Fehlt die Spalte ganz** (alte Sim-DB), wird der Schritt uebersprungen und als
+  „Spalte fehlt" vermerkt — nicht still gefiltert.
+- **TEXT-Affinitaet**: `_mask_for` in `risk_profile.py` zieht `atr`/`close`/`logVola`
+  jetzt durch `pd.to_numeric`; ein String-Vergleich haette die falsche Haelfte gewaehlt.
+
+`RANK_COLUMNS` kennt zusaetzlich `trendScore` und `riskScore` als Sortierkriterium.
+
+**Datenstand beachten:** `candidates._latest_rows` liest `asset_simulation_all.db`
+**zuerst**. Solange dort der `/backfill:prof`-Lauf nicht durch ist, greift der
+Trendwert-Schritt auf unbefuellte Zeilen und die Liste wird leer — der Risikoprofil-
+Schritt funktioniert dagegen ueber den `atr`/`close`-Fallback sofort.

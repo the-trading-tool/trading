@@ -96,6 +96,15 @@ DEFAULTS = {
     'use_rsc': False,          # Relativstaerke ggue. dem eigenen Sektor pruefen
     'min_rsc': 0.0,            # Outperformance ggue. dem eigenen Sektor-ETF
     'require_isin': False,
+    # Risikoprofil aus tradinglib/risk_profile.py. '' = aus, 'user' = das auf der
+    # Profilseite eingestellte, sonst der Name eines Presets. Der Schritt sitzt
+    # bewusst VOR dem Trendfilter: gemessen verdoppelte sich der Vorteil einer
+    # Trendauswahl, sobald zuerst auf das ruhige Ende des Universums geschnitten
+    # wurde -- andersherum bleibt davon nichts.
+    'risk_profile': '',
+    # Mindest-Trendwert (Naehe zum eigenen Rekordhoch, 0..100). 0 = aus. Bei
+    # 'short' gespiegelt: dort zaehlt der Abstand zum Hoch, nicht die Naehe.
+    'min_trend_score': 0,
     'rank_col': 'overallValueTrend',
     'pool_n': 60,              # so viele gehen in die Relativstaerke-Messung
     'max_per_sector': 3,       # 0 = ohne Begrenzung
@@ -107,7 +116,7 @@ DEFAULTS = {
 # Spalten, nach denen vorsortiert werden darf. Whitelist, weil der Wert direkt
 # in die ORDER-BY-Stelle geht.
 RANK_COLUMNS = ('overallValueTrend', 'overallTrend', 'sharpe', 'sortino',
-                'ewo', 'relvol_ratio', 'fps_rs')
+                'ewo', 'relvol_ratio', 'fps_rs', 'trendScore', 'riskScore')
 
 _ISIN_RE = r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$'
 
@@ -522,7 +531,50 @@ def find(username: str, db_path: str = 'database', **kw):
         df = df[df['isin'].astype(str).str.match(_ISIN_RE, na=False)]
         step('isin', 'ISIN vorhanden', before, len(df))
 
-    # 3b — Wochentrend. Strukturell, nicht als Momentum.
+    # 3b — Risikoprofil. Erst zuschneiden, dann nach Trend suchen: der Vorteil
+    # einer Trendauswahl verdoppelte sich in der Messung (2020-2026), sobald das
+    # Universum vorher auf das ruhige Ende beschraenkt war.
+    prof_key = str(opt.get('risk_profile') or '')
+    if prof_key and not df.empty:
+        try:
+            from tradinglib import risk_profile as rp
+            profile = (rp.resolve(username) if prof_key == 'user'
+                       else rp.resolve(name=prof_key))
+            before = len(df)
+            df = df[rp.apply(df, profile)]
+            cut = profile.get('max_atr_pct')
+            name = profile['name']
+            note = (f"{name}: ATR ≤ {cut * 100:.1f} % vom Kurs" if cut is not None
+                    else f"{name}: kein Risikoschnitt")
+            step('risk_profile', 'Risikoprofil', before, len(df), note,
+                 'note_risk_profile', profile=name,
+                 atr=(round(cut * 100, 1) if cut is not None else 0))
+        except Exception:
+            logger.warning("candidates: Risikoprofil uebersprungen", exc_info=True)
+
+    # 3c — Trendwert. Naehe zum eigenen Rekordhoch, gespiegelt fuer Short.
+    min_trend = float(opt.get('min_trend_score') or 0)
+    if min_trend > 0 and not df.empty:
+        before = len(df)
+        if 'trendScore' in df.columns:
+            score = pd.to_numeric(df['trendScore'], errors='coerce')
+            # 0 heisst "nicht berechnet", nicht "am Boden" -- solche Zeilen
+            # duerfen weder durchrutschen noch die Liste leerraeumen.
+            known = score.notna() & (score > 0)
+            mask = ((score >= min_trend) if direction == 'long'
+                    else (score <= 100 - min_trend))
+            df = df[known & mask]
+            step('trend_score', 'Trendwert', before, len(df),
+                 f"trendScore {'≥' if direction == 'long' else '≤'} "
+                 f"{min_trend if direction == 'long' else 100 - min_trend:.0f}",
+                 'note_trend_score', v=int(min_trend if direction == 'long'
+                                           else 100 - min_trend),
+                 op='≥' if direction == 'long' else '≤')
+        else:
+            step('trend_score', 'Trendwert', before, len(df),
+                 'Spalte fehlt — übersprungen', 'note_cols_missing')
+
+    # 3d — Wochentrend. Strukturell, nicht als Momentum.
     #
     # 4PS-Phase 3/4 heisst: eingestiegen und gehalten ueber einem STEIGENDEN
     # 40-Wochen-Durchschnitt -- die Phase ueberlebt einen Ruecksetzer, ein

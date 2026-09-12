@@ -48,6 +48,14 @@ per name, and the live signal path computes one name at a time.</p>
 <tr><td><b>ISIN present</b></td>
   <td>Optional, a rough proxy for orderable.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Risk profile</b></td>
+  <td>Cuts down to the names that fit the selected profile (ATR relative to price).
+  Deliberately placed <i>before</i> the trend filter — see below.</td>
+  <td><code>atr</code>/<code>close</code>, else <code>logVola</code></td></tr>
+<tr><td><b>Trend score</b></td>
+  <td>Closeness to the name's own record high, 0-100. Mirrored for short. A 0 means
+  "not computed yet" and is dropped rather than passed.</td>
+  <td><code>trendScore</code></td></tr>
 <tr><td><b>Weekly trend</b></td>
   <td>4PS phase 3/4 (entered and held above a <i>rising</i> 40-week average) or
   <code>sma50</code> vs <code>sma200</code>. Structural, so a pullback does not break
@@ -75,6 +83,15 @@ per name, and the live signal path computes one name at a time.</p>
   formulas.</td>
   <td>OHLC + formulas</td></tr>
 </table>
+
+<div class="info"><b>Why the risk profile comes before the trend filter.</b> Measured over
+2020-2026: a trend selection across the whole universe yields no reliable advantage in
+return. Restrict it to the calm end first and the advantage of the same selection doubles
+while the hit rate rises. The other way round nothing of it remains. The profiles
+themselves live on the <i>Risk profile</i> page; "my profile" picks up whatever is set
+there. The trend score is a quality filter — it improves hit rate and drawdown, not the
+average return.</div>
+
 
 <h2>Why two different filters?</h2>
 <p>The <b>prefilter</b> is deliberately <b>not</b> your buy formula. Two reasons:</p>
