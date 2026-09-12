@@ -34,7 +34,7 @@ Usage::
     profile = rp.resolve(username)                 # preset + the user's changes
     mask    = rp.apply(combined_df, profile)       # boolean selection
     expr    = rp.filter_expression(profile)        # for buy/sell formulas
-    frame   = rp.score_frame(combined_df)          # riskScore / riskBucket
+    frame   = rp.score_frame(combined_df)          # riskScore / riskBucket / trendScore
 
 CLI::
 
@@ -76,6 +76,21 @@ DRAWDOWN_QUANTILE = 0.10
 ATR_BREAKPOINTS = [0.005, 0.0151, 0.0216, 0.0291, 0.0417, 0.0759, 0.20]
 LOG_VOLA_BREAKPOINTS = [0.02, 0.0755, 0.1102, 0.1494, 0.2129, 0.3797, 0.90]
 BREAKPOINT_SCORES = [100.0, 95.0, 75.0, 50.0, 25.0, 5.0, 0.0]
+
+# Trend strength: distance to the asset's own record high, mapped onto 0..100.
+# The inner points are the measured quantiles (p5/p25/p50/p75/p95) of the
+# universe, the ends are anchors — 0 = a full round trip from the high, 100 = at
+# the high. The record high is the running maximum of the *full* local daily
+# close history, the same definition ``fps_dist_high`` uses.
+#
+# Why this one measure and not a richer blend: over 2020-2026 nothing about
+# trend ranking predicted *return* reliably (12M momentum IC -0.001, distance to
+# the high +0.003 at t 0.8), but distance to the high is the only candidate
+# whose hit rate *and* drawdown improve monotonically across all five quintiles
+# (hit 50.7 -> 52.1 %, drawdown -9.7 -> -6.0 %). Blends with momentum or the SMA
+# slope scored better in single years and lost that monotonicity.
+TREND_BREAKPOINTS = [-1.0, -0.9076, -0.6362, -0.3876, -0.1811, -0.0361, 0.0]
+TREND_SCORES = [0.0, 5.0, 25.0, 50.0, 75.0, 95.0, 100.0]
 
 PROFILES = {
     'conservative': {
@@ -369,6 +384,31 @@ def risk_score(values, measure: str = 'atr') -> np.ndarray:
     return np.where(np.isnan(raw), np.nan, scored)
 
 
+def trend_score(distance_to_high) -> np.ndarray:
+    """Map the distance to the record high (<= 0) onto 0..100, 100 = at the high.
+
+    Calibrated in absolute terms like the risk score, for the same reason: a
+    percentile rank would change with the universe of the day and could not be
+    reproduced in the live chart. Note what that means for a fixed threshold —
+    ``trendScore >= 75`` selects fewer names in a weak market and more in a
+    strong one, where a quintile cut would always return a fifth of the list.
+
+    What the number is good for, and what it is not: it does **not** predict
+    return. Over 2020-2026 the quintile with the *largest* distance to the high
+    had by far the highest mean forward return (1.93 % vs 0.85 % per 21 days) —
+    at the worst drawdown and the worst hit rate, and flattered by the fact that
+    the universe only contains the beaten-down names that survived to today.
+    What it does predict is consistency: hit rate rises and drawdown shrinks
+    monotonically across all five quintiles. Treat it as a quality filter, not
+    as an alpha source.
+    """
+    raw = np.asarray(pd.to_numeric(pd.Series(distance_to_high), errors='coerce'),
+                     dtype=float)
+    scored = np.interp(raw, TREND_BREAKPOINTS, TREND_SCORES,
+                       left=TREND_SCORES[0], right=TREND_SCORES[-1])
+    return np.where(np.isnan(raw), np.nan, scored)
+
+
 def risk_bucket(frame: pd.DataFrame) -> pd.Series:
     """1..4 — the calmest profile whose cut a row still passes."""
     bucket = pd.Series(np.nan, index=frame.index)
@@ -401,6 +441,13 @@ def score_frame(frame: pd.DataFrame) -> pd.DataFrame:
         logger.warning("risk_profile: frame carries neither atr/close nor logVola")
         out['riskScore'] = np.nan
     out['riskBucket'] = risk_bucket(out)
+
+    if 'dist_ath' in out.columns:
+        out['trendScore'] = trend_score(out['dist_ath'])
+    elif _has(out, 'close', 'ath'):
+        ath = pd.to_numeric(out['ath'], errors='coerce')
+        close = pd.to_numeric(out['close'], errors='coerce')
+        out['trendScore'] = trend_score(close / ath.where(ath > 0) - 1.0)
     return out
 
 

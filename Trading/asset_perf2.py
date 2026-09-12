@@ -54,6 +54,11 @@ INDICATOR_BACKFILL_MAP: dict = {
                 'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high',
                 'fps_setup'],
     'scr':     ['scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell'],
+    # Calibrated profile scores (tradinglib/risk_profile.py). The indicator
+    # reloads the full local daily history itself — ATR and the record high are
+    # both path-dependent — so /backfill:prof yields the same values a full init
+    # run writes, and the live chart shows the same numbers again.
+    'prof':    ['riskScore', 'riskBucket', 'trendScore'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
     'ohlc':    ['Open', 'High', 'Low'],
@@ -1028,6 +1033,12 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
 
         # 4PS columns — the signal columns are NaN except on a signal day, so
         # they are stored as 0 to keep the sim-DB plain REALs.
+        # Profile scores — same shape as the fps block below: NaN becomes 0.0 so a
+        # missing indicator never writes NULL into a numeric column.
+        for _prof_col in ('riskScore', 'riskBucket', 'trendScore'):
+            _prof_val = DataUtils.safe_last(df, _prof_col, default=0)
+            pdict[_prof_col] = 0.0 if _prof_val is None or pd.isna(_prof_val) else float(_prof_val)
+
         for _fps_col in ('fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
                          'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
                          'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high',
@@ -1413,7 +1424,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling

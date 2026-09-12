@@ -1352,11 +1352,72 @@ sie beschreiben, was der Schnitt geliefert hat, und waeren nach einer Handaender
 schlicht falsch. Editierbar: `max_atr_pct`, `max_log_vola`, `stop_loss_pct`,
 `target_position_vol`. Wer einen Schnitt aendert, muss neu kalibrieren.
 
+### Schritt 3 erledigt — Profil-Spalten in `asset_simulation`
+
+Neuer Indikator `tradinglib/indicator/prof.py` (Klasse `Prof`, Oszillator) liefert
+`riskScore` / `riskBucket` / `trendScore` **live und gespeichert unter denselben Namen** —
+damit laufen sie in Buy/Sell-Formeln des Strategy Finders und der Multi Strategies
+genauso wie im Chart.
+
+Verdrahtung wie bei `fps`: `INDICATOR_BACKFILL_MAP['prof']`, `'prof'` in der
+Indikatorliste von `process_symbol`, pdict-Schleife in `fill_pdict`.
+Bestandsdaten: `python asset_perf2.py /backfill:prof /force` (PowerShell wegen
+MSYS-`/flag`-Mangling). **`/force` ist Pflicht** — `_ensure_sim_columns` legt neue
+Spalten mit `DEFAULT 0` an, der „schon gefuellt"-Test prueft auf `IS NOT NULL` und
+wuerde sonst alles ueberspringen.
+
+**Warum der Indikator die volle Tageshistorie selbst nachlaedt:** ATR und Rekordhoch
+sind pfadabhaengig. Ein auf 2024 gezoomter Chart wuerde sonst einen Wert „am Hoch"
+zeigen, der in Wahrheit 40 % darunter steht. Gleiche Loesung wie `fps` — und genau
+das macht Live- und Backtest-Wert identisch (per Test abgesichert).
+
+**Rekordhoch = laufendes Maximum der vollen taeglichen Close-Historie**, also die
+Definition von `fps_dist_high` — bewusst **nicht** die gespeicherte `ath`-Spalte: die
+entsteht aus einem 10-Jahres-Monatsfenster, das am *Laufzeitpunkt* verankert ist
+(BAS.DE: gespeichert 62,94 gegen tatsaechliche ~94 — je nach Laufdatum ein anderer Wert
+fuer denselben Balken). Die volle Historie schneidet in der Messung ausserdem besser ab.
+
+### trendScore: das gemessene Ergebnis ist bewusst bescheiden
+
+Ueber 2020-2026 (5,02 Mio. Zeilen) sagt **kein** Trend-Ranking die Rendite verlaesslich
+vorher: 12M-Momentum IC -0,001, 6M-Momentum -0,001, Abstand zum Hoch +0,003 (t 0,8).
+Der fruehere Befund „6M-Momentum-Top-Quintil +0,49 im Profil" war ein Fenstereffekt —
+per Jahr aufgeschluesselt steht er 2021/2022 im Minus, und +0,37 gesamt stammten fast
+vollstaendig aus 2020 (+5,02).
+
+Was **haelt**, ist die Konsistenz-Achse. Abstand zum Rekordhoch, Quintile 1→5:
+
+| | Q1 (weit weg) | Q2 | Q3 | Q4 | Q5 (am Hoch) |
+|---|---|---|---|---|---|
+| Rendite 21 T | 1,93 % | 1,06 % | 0,93 % | 0,94 % | 0,85 % |
+| Trefferquote | 50,7 % | 50,9 % | 51,7 % | 52,1 % | **52,1 %** |
+| Drawdown | -9,70 % | -7,79 % | -7,12 % | -6,39 % | **-5,97 %** |
+
+Trefferquote und Drawdown steigen bzw. fallen **monoton ueber alle fuenf Quintile** —
+als einzige der geprueften Varianten (Blends mit Momentum oder SMA-Steigung waren in
+einzelnen Jahren besser und verloren die Monotonie). Die hoechste Durchschnittsrendite
+liegt dagegen bei den am weitesten gefallenen Titeln — Mean Reversion, zusaetzlich
+geschmeichelt davon, dass im Universum nur die Ueberlebenden stehen.
+
+`trendScore` ist deshalb im Code und in der Doku als **Qualitaetsfilter** ausgewiesen,
+nicht als Alpha-Quelle. Wer das aendern will, muss es neu messen — `score_eval` kann es.
+
+**0 heisst „nicht berechnet", nicht „Stufe 0":** neue Spalten entstehen per
+`ALTER TABLE ... DEFAULT 0`, und auch `fill_pdict` schreibt bei fehlendem Wert 0.
+`riskBucket <= 2` wuerde damit alle noch nicht gefuellten Zeilen mitnehmen — in Formeln
+deshalb `(riskBucket >= 1) & (riskBucket <= 2)` schreiben.
+
+Die Spalten landen ohne weitere Verdrahtung in Strategy Finder und Multi Strategies:
+`make_query(q=3)` baut seine Feldliste per `PRAGMA table_info(asset_simulation)`, neue
+Spalten sind also automatisch im `combined_df` und damit im `ExpressionEvaluator`.
+
+**Achtung bei festen Schwellen:** absolute Kalibrierung heisst, dass `trendScore >= 75`
+in einem schwachen Markt weniger Titel liefert als in einem starken (ein Quintilschnitt
+liefert immer ein Fuenftel). Das ist gewollt, aber es muss bei Positionszahlen
+eingeplant werden.
+
 ### Naechste Schritte (verabredete Reihenfolge)
 
-3. `riskScore`/`riskBucket`/`trendScore` als Spalten in `asset_simulation` schreiben →
-   sofort in Strategy-Finder- und Multi-Strategies-Formeln nutzbar (beide werten ueber
-   `ExpressionEvaluator` auf `combined_df` aus genau dieser Tabelle aus).
 4. Streamlit-Seite "Risikoprofil" mit Presets, Reglern und Live-Vorschau (+ HELP-Seite).
 5. Erst danach entscheiden, ob der Fundamentalteil eine `asset_info_history` bekommt
    (point-in-time) oder ganz entfaellt.
