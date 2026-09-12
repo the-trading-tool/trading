@@ -65,10 +65,9 @@ BASE_COLUMNS = ('close',)
 # Trading days per year, for annualising volatility.
 TRADING_DAYS = 252
 
-# Provisional risk bands, read off the measured distribution of the universe
-# (2023-2025). They live here so the harness is usable on its own; once
-# ``risk_profile.py`` exists it owns the calibration and this dict becomes a
-# fallback for standalone measurement runs.
+# Fallback risk bands. ``risk_profile`` owns the real calibration and is asked
+# first (lazily, to avoid an import cycle — it measures with this module); these
+# values only apply when a profile name is unknown to it.
 #   fwd_vol — annualised realised volatility over the holding window
 #   fwd_mdd — worst close relative to the entry price within the window
 # Bands are (floor, ceiling) and open-ended on the harmless side: a position
@@ -526,12 +525,23 @@ def evaluate(panel: Panel, columns=(), gates=None, profiles=None,
         report['gates'].append(gate(panel, expression, name=name))
 
     for name, expression in (profiles or {}).items():
-        band = DEFAULT_BANDS.get(name, DEFAULT_BANDS['balanced'])
+        band = _band_for(name)
         entry = gate(panel, expression, name=name)
         entry['conformity'] = conformity(panel, expression, band, name=name)
         report['profiles'].append(entry)
 
     return report
+
+
+def _band_for(name: str) -> dict:
+    """The band a profile promises — from risk_profile, else the local fallback."""
+    try:
+        from tradinglib import risk_profile
+        if name in risk_profile.PROFILES:
+            return risk_profile.bands(name)
+    except Exception:
+        logger.debug("risk_profile unavailable, using the local bands", exc_info=True)
+    return DEFAULT_BANDS.get(name, DEFAULT_BANDS['balanced'])
 
 
 def _pct(value, digits=2):
@@ -585,7 +595,7 @@ def format_report(report: dict) -> str:
             lines.append(f"{q:3d} {int(row['n']):9,d} {row['fwd_ret'] * 100:9.2f} "
                          f"{row['hit'] * 100:7.1f} {row['fwd_vol']:8.2f} {row['fwd_mdd'] * 100:9.2f}")
 
-    if report.get('gates'):
+    if report.get('gates') or report.get('profiles'):
         lines.append("")
         lines.append("-- gates vs universe " + "-" * 56)
         lines.append(f"{'gate':26s} {'cover%':>7s} {'fwd%':>7s} {'edge':>7s} "

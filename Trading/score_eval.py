@@ -49,20 +49,26 @@ DEFAULT_GATES = {
     'markov regime > 0':   'markov_regime > 0',
 }
 
-# Provisional risk profiles as absolute logVola cuts, read off the measured
-# distribution of the universe. Absolute rather than cross-sectional on purpose:
-# a percentile rank depends on whichever tickers happen to be in the panel that
-# day and cannot be reproduced in the live chart path.
-DEFAULT_PROFILES = {
-    'conservative': 'logVola <= 0.110',
-    'balanced':     'logVola <= 0.170',
-    'dynamic':      'logVola <= 0.214',
-    'offensive':    'logVola > 0',
-}
+
+def default_profiles() -> dict:
+    """The configured risk profiles as expressions, straight from risk_profile.
+
+    Absolute cuts rather than cross-sectional ranks on purpose: a percentile
+    rank depends on whichever tickers are in the panel that day and cannot be
+    reproduced in the live chart path.
+    """
+    try:
+        from tradinglib import risk_profile as rp
+        return {name: rp.filter_expression(name) for name in rp.available()}
+    except Exception:
+        logger.warning("risk_profile unavailable — profiles skipped", exc_info=True)
+        return {}
+
 
 # Everything the default gates and profiles reference, so the panel carries it.
 GATE_COLUMNS = ['sma20', 'sma50', 'sma200', 'adx', 'momentum', 'rsi_ema',
-                'trendDirection', 'fps_phase', 'markov_regime', 'ath', 'logVola']
+                'trendDirection', 'fps_phase', 'markov_regime', 'ath', 'logVola',
+                'atr']
 
 
 def _arg_value(arg: str) -> str:
@@ -95,7 +101,7 @@ def main(argv=None) -> int:
 
     years, horizon, columns = None, 21, list(DEFAULT_COLUMNS)
     gates = dict(DEFAULT_GATES)
-    profiles = dict(DEFAULT_PROFILES)
+    profiles = default_profiles()
     neutralise = DEFAULT_NEUTRALISE
     bucket_count, json_path, tickers = 5, '', None
     min_cross_section = 200

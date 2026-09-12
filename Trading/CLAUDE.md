@@ -1300,10 +1300,60 @@ das `ovt.py` heute mit dem Stored/Live-Merge umschifft).
 - Jede Kennzahl wird **zusaetzlich je Jahr** ausgewiesen — gepoolte Bucket-Vergleiche
   haben hier schon Vorzeichenwechsel produziert (Simpson-Paradox, `market_phase`).
 
+### Schritt 2 erledigt — `tradinglib/risk_profile.py`
+
+Vier Presets (conservative/balanced/dynamic/offensive) als **absolute Schnitte**, nicht
+als Perzentilraenge — ein Rang haengt am Universum des Tages und laesst sich im
+Live-Chart nicht reproduzieren.
+
+**Risikomass ist ATR als Anteil am Kurs**, nicht `logVola`: sagt die Vorwaerts-Vola
+etwas besser vorher (Spearman 0,71 vs 0,68) und ist die eine Zahl, die man sich
+vorstellen kann ("bewegt sich ~2 % am Tag"). `logVola` bleibt Fallback fuer Frames ohne
+ATR, geschnitten bei **derselben Abdeckung** (1,8 % der Zeilen haben kein ATR).
+
+| Profil | ATR-Schnitt | logVola | Abdeckung | typ. Vola | Vola-Band (p85) | max. DD (p10) | Stop |
+|---|---|---|---|---|---|---|---|
+| conservative | <= 2,2 % | 0,1123 | 21,5 % | 0,213 | 0,315 | -10,2 % | 11 % |
+| balanced | <= 3,0 % | 0,1543 | 46,3 % | 0,249 | 0,371 | -11,7 % | 12 % |
+| dynamic | <= 4,2 % | 0,2147 | 70,6 % | 0,285 | 0,441 | -13,3 % | 13 % |
+| offensive | kein | kein | 100 % | 0,339 | 0,623 | -16,9 % | 17 % |
+
+**Das Band ist gemessen, nicht behauptet** — und es steht dabei, auf welchem Quantil.
+"Konservativ" heisst nicht "nie mehr als 25 % Vola", sondern "die Haelfte der Zeit unter
+21 %, in 85 % der Faelle unter 31,5 %". Kalibriert ueber 2020-2026 (5,02 Mio. Zeilen,
+Krise eingeschlossen); eine Kalibrierung nur auf dem Bullenmarkt 2023-2025 haette die
+Baender zu eng gesetzt.
+
+**Out-of-sample geprueft** (Kalibrierung 2020-2023, Messung 2024-2026): Vola-Band in
+82,6-85,7 % der Faelle eingehalten (Ziel 85), Drawdown-Boden in 89,9-93,5 % (Ziel 90),
+Abdeckung stabil. Die Zusage haelt ausserhalb ihres Kalibrierfensters — das ist der
+Unterschied zu einem selbsterfuellenden In-Sample-Band.
+
+**Kosten der Ruhe, ebenfalls gemessen:** der Vorteil gegen das Universum ist bei allen
+Profilen negativ (conservative -0,98 pp je 21 Tage), am staerksten **2020** (-5,54 pp) —
+nach dem Corona-Crash liefen ruhige Titel der Erholung hinterher. Ein Profil wird
+deshalb an der Konformitaet gemessen, nicht am Renditevorsprung.
+
+**API:** `settings/save_settings(username)` (per Nutzer, Muster `candidates.py`),
+`resolve(username|name, calibration=)`, `apply(df, profile)` -> Maske,
+`filter_expression(profile)` -> `(atr / close <= 0.03)` fuer Buy/Sell-Formeln,
+`bands(profile)` -> Zusage im Format von `score_eval.conformity`,
+`score_frame(df)` -> `riskScore` (0..100, stueckweise linear ueber eingefrorene
+Stuetzstellen) + `riskBucket` (1..4). Kalibrierung global unter `_app:risk_profile_calibration`,
+Nutzer-Einstellung unter `<user>:risk_profile`.
+
+**CLI:** `python -m tradinglib.risk_profile` zeigt die Tabelle,
+`--calibrate` misst neu (read-only), `--calibrate --save` schreibt sie app-weit.
+`score_eval.py` zieht seine Profil-Ausdruecke und Baender jetzt aus diesem Modul
+(lazy importiert, sonst Zirkel).
+
+**Nicht editierbar per Nutzer** sind die gemessenen Felder (`coverage`, `vol_band`, …) —
+sie beschreiben, was der Schnitt geliefert hat, und waeren nach einer Handaenderung
+schlicht falsch. Editierbar: `max_atr_pct`, `max_log_vola`, `stop_loss_pct`,
+`target_position_vol`. Wer einen Schnitt aendert, muss neu kalibrieren.
+
 ### Naechste Schritte (verabredete Reihenfolge)
 
-2. `tradinglib/risk_profile.py` — Presets + Baender + Config-Anbindung je Nutzer
-   (Muster: `candidates.py` mit `DEFAULTS`/`settings()`/`save_settings()`), noch ohne UI.
 3. `riskScore`/`riskBucket`/`trendScore` als Spalten in `asset_simulation` schreiben →
    sofort in Strategy-Finder- und Multi-Strategies-Formeln nutzbar (beide werten ueber
    `ExpressionEvaluator` auf `combined_df` aus genau dieser Tabelle aus).
