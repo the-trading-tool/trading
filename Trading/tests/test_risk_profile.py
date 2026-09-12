@@ -194,3 +194,54 @@ def test_page_module_imports_and_its_locale_keys_exist():
             catalogue = json.load(fh)
         missing = sorted(key for key in used if key not in catalogue)
         assert not missing, f'{language}: {missing}'
+
+
+# ── Position sizing ─────────────────────────────────────────────────────────
+
+def test_the_vola_column_is_converted_to_an_annualised_fraction():
+    """The stored column is a 21-bar percentage; the profiles speak annualised."""
+    # 10.5 is the median of the universe and corresponds to roughly 36 % a year
+    assert rp.annualised_vol([10.5]).iloc[0] == pytest.approx(0.364, abs=0.005)
+    assert rp.annualised_vol([0.0]).iloc[0] == 0.0
+
+
+def test_an_asset_at_the_target_gets_exactly_one_slot():
+    profile = rp.resolve(name='balanced')
+    # the column value whose annualised equivalent is the target
+    at_target = profile['target_position_vol'] * 100 / np.sqrt(252 / 21)
+    assert rp.position_weight([at_target], profile).iloc[0] == pytest.approx(1.0, abs=0.01)
+
+
+def test_calmer_assets_get_more_and_wilder_ones_less():
+    profile = rp.resolve(name='balanced')
+    weights = rp.position_weight([5.0, 10.5, 25.0], profile)
+    assert weights.iloc[0] > 1.0 > weights.iloc[1] > weights.iloc[2]
+
+
+def test_the_weight_is_clamped_in_both_directions():
+    profile = rp.resolve(name='balanced')
+    weights = rp.position_weight([0.01, 500.0], profile, max_factor=2.0)
+    assert weights.iloc[0] == pytest.approx(2.0)
+    assert weights.iloc[1] == pytest.approx(0.5)
+
+
+def test_an_unusable_volatility_falls_back_to_a_plain_slot():
+    """Zero or missing volatility must not produce an infinite position."""
+    profile = rp.resolve(name='balanced')
+    weights = rp.position_weight([0.0, np.nan, None], profile)
+    assert list(weights) == [1.0, 1.0, 1.0]
+
+
+def test_sizing_is_off_until_it_is_switched_on():
+    assert rp.sizing_enabled('kurt') is False
+    assert rp.sizing_profile('kurt') is None
+    rp.save_settings('kurt', {'profile': 'dynamic', 'custom': {}, 'sizing': True})
+    assert rp.sizing_enabled('kurt') is True
+    assert rp.sizing_profile('kurt')['name'] == 'dynamic'
+
+
+def test_the_sizing_flag_survives_a_round_trip():
+    rp.save_settings('kurt', {'profile': 'balanced', 'custom': {}, 'sizing': True})
+    assert rp.settings('kurt')['sizing'] is True
+    rp.save_settings('kurt', {'profile': 'balanced', 'custom': {}, 'sizing': False})
+    assert rp.settings('kurt')['sizing'] is False

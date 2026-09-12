@@ -107,6 +107,30 @@ liefert <code>trendScore &gt;= 75</code> im schwachen Markt weniger Titel als im
 ist gewollt — nur so zeigt der Chart dieselbe Zahl wie der Backtest —, muss aber bei der
 Zahl der Positionen eingeplant werden.</div>
 
+<h2>Positionsgröße</h2>
+
+<p>Optional — in der Feinjustierung einzuschalten. Statt das Budget über die Tagesauswahl
+zu verteilen, trägt dann jede Position die <b>Ziel-Volatilität</b> des Profils:</p>
+
+<p><code>Budget = Einsatz / Anzahl Positionen × (Ziel-Vola ÷ Vola des Titels)</code>,
+geklammert auf höchstens das Doppelte und mindestens die Hälfte eines gleichen Anteils.</p>
+
+<p>Ein Titel, dessen Schwankung genau der Zielgröße entspricht, bekommt exakt einen Anteil;
+ein ruhigerer mehr, ein unruhigerer weniger. Der entscheidende Unterschied zur bisherigen
+Verteilung: die relative Gewichtung gibt <b>immer</b> das ganze Budget aus, egal was an dem
+Tag zur Auswahl steht — ein Tag mit lauter unruhigen Titeln baut damit still ein unruhiges
+Depot auf. Die absolute Regel kauft an so einem Tag weniger.</p>
+
+<div class="warn"><b>Der Kapitaleinsatz liegt dadurch meist unter 100 %.</b> Auf dem heutigen
+Universum sind es im Mittel rund 85 %. Das ist kein Fehler, sondern die Zusage: es wird nur
+so viel Risiko genommen, wie das Profil verspricht. Wer den vollen Einsatz will, lässt den
+Schalter aus.</div>
+
+<p>Dieselbe Formel greift an drei Stellen — Strategy Finder und Multi Strategies über
+<code>sizing_cap = profile</code>, der Signale-Tab und der Agent über das Profil des
+angemeldeten Nutzers. Die drei sind in Tests aneinander gebunden, weil sie in der
+Vergangenheit auseinandergelaufen sind.</p>
+
 <h2>Wartung</h2>
 
 <ul>

@@ -24,7 +24,8 @@ def bare_simulator():
 
     def _make(cash=100_000, slots=5, fee_pct=0.0, sizing_cap='none',
               sizing_factor_max=2.0, fractional=False, fractional_decimals=8,
-              min_hold_days=0, cooldown_days=0, avg_vola=10.0, volas=None):
+              min_hold_days=0, cooldown_days=0, avg_vola=10.0, volas=None,
+              sizing_profile=None):
         p = object.__new__(PortfolioSimulator)
         p.initial_cash = cash
         p.cash = cash
@@ -42,6 +43,9 @@ def bare_simulator():
         p._last_sell = {}
         p._avg_vola = avg_vola
         p._vola_by_ticker = dict(volas or {})
+        # nur fuer sizing_cap='profile' gelesen, muss aber immer gesetzt sein
+        p._sizing_profile = sizing_profile
+        p.username = ''
         return p
 
     return _make

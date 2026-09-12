@@ -1526,3 +1526,49 @@ Fallen, die in den Tests festgenagelt sind:
 **zuerst**. Solange dort der `/backfill:prof`-Lauf nicht durch ist, greift der
 Trendwert-Schritt auf unbefuellte Zeilen und die Liste wird leer — der Risikoprofil-
 Schritt funktioniert dagegen ueber den `atr`/`close`-Fallback sofort.
+
+---
+
+## Positionsgroesse nach Risikoprofil (2026-09-12)
+
+Bisher war die Groesse **relativ**: inverse Vola, normiert auf die Tagesauswahl (live)
+bzw. auf die Ø-Vola des Index (Backtest). Beide geben **immer** das ganze Budget aus,
+egal was an dem Tag zur Auswahl steht. Neu und optional ist eine **absolute** Regel:
+
+    Budget_i = Einsatz / num_assets × (Ziel-Vola / Vola_i),  geklammert auf [1/f, f]
+
+Ein Titel mit der Ziel-Vola bekommt genau einen Anteil, ein ruhigerer mehr, ein
+unruhigerer weniger. An einem Tag mit lauter unruhigen Titeln wird **weniger** gekauft,
+statt still ein unruhiges Depot aufzubauen.
+
+**Einheiten-Falle, der eigentliche Knackpunkt:** die gespeicherte Spalte `vola` ist eine
+21-Bar-Standardabweichung in **Prozent** (Median ~10,5), die Profile sprechen in
+**annualisierten Bruchteilen** (0,21–0,34). Umrechnung in `risk_profile.annualised_vol`:
+`vola/100 × sqrt(252/21)` — Faktor 3,46. Ohne sie waere jedes Gewicht am unteren Anschlag
+gelandet. Per Test festgenagelt (10,5 → 0,364).
+
+**Drei Pfade, eine Formel** (`risk_profile.position_weight`), weil genau diese drei in der
+Vergangenheit auseinandergelaufen sind:
+
+| Pfad | Schalter |
+|---|---|
+| Strategy Finder / Multi Strategies | `sizing_cap = 'profile'` (Sidebar) |
+| Signale-Tab | Profil des Nutzers, wenn `sizing` an |
+| Trading-Agent | dito, ueber `risk_profile.sizing_profile(username)` |
+
+`tests/test_profile_sizing.py` vergleicht Agent und Signale-Tab **direkt miteinander** und
+beide gegen den Backtest-Pfad.
+
+**Was das kostet, und das steht auch in der UI:** der Kapitaleinsatz liegt im Mittel bei
+rund **85 %** statt 100 % (gemessen auf dem heutigen Universum, alle vier Profile:
+Median-Gewicht 0,81–0,87). Das ist die Zusage, kein Fehler — wer voll investiert sein
+will, laesst den Schalter aus. Vorgabe ist **aus**, damit bestehende Ergebnisse
+vergleichbar bleiben.
+
+Weitere Details: Klammer `MAX_WEIGHT_FACTOR = 2.0` (im Backtest `sizing_factor_max`);
+`vola = 0` oder fehlend faellt auf den glatten Anteil zurueck statt auf unendlich;
+`sizing_cap='profile'` wird zusaetzlich auf das freie Kapital gedeckelt. Der
+Signale-Cache-Key enthaelt jetzt das Profil — sonst zeigte der Tab nach einem
+Profilwechsel weiter die alten Stueckzahlen. Und `tests/conftest.py` setzt
+`_sizing_profile`/`username` mit; die Liste dort muss bei jedem neuen Attribut wachsen,
+das `buy_asset` liest.

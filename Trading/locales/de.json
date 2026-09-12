@@ -818,7 +818,7 @@
   "sf.sizing_cap_cash": "auf freies Kapital",
   "sf.sizing_cap_factor": "auf Vola-Faktor",
   "sf.sizing_cap_normalized": "wie im Live-Handel (normiert)",
-  "sf.sizing_cap_help": "Die Positionsgröße ist Einsatz × (Ø-Vola / Asset-Vola) / Slots. Der Faktor ist nach oben offen, und geprüft wird nur, ob das Geld für EINE Aktie reicht — daher kann der Kassenbestand negativ werden (gemessen: ZN=F mit Vola 1,4 gegen Ø 9,95 ergibt 142.133 € bei 100.000 Einsatz und 5 Slots). „keine\" lässt das so und hält alte Ergebnisse vergleichbar. „auf freies Kapital\" deckelt jeden Kauf auf das vorhandene Geld inkl. Gebühr und garantiert einen Kassenbestand ≥ 0; dafür bekommt, wer zuerst kauft, mehr. „auf Vola-Faktor\" klammert den Faktor auf [1/f, f] und begrenzt damit die Konzentration einzelner Positionen — garantiert aber KEINE positive Kasse, weil f × Slots über 100 % liegen kann. Die Einstellung gilt auch für Multi Strategies und verändert sämtliche Backtest-Ergebnisse. „wie im Live-Handel (normiert)\" rechnet stattdessen die Formel des Agenten: die inverse Volatilität wird über die AUSGEWÄHLTEN Signale eines Tages normiert (Gewichte summieren sich auf Einsatz × k/Slots), zusätzlich gedeckelt auf das freie Kapital. Nur dieser Modus dimensioniert so, wie Paper/Live tatsächlich handelt — gemessen weicht die Vorgabe je Eintrag um 0,57× bis 2,00× davon ab und setzt in 7 von 31 Fällen mehr als den Einsatz ein.",
+  "sf.sizing_cap_help": "Die Positionsgröße ist Einsatz × (Ø-Vola / Asset-Vola) / Slots. Der Faktor ist nach oben offen, und geprüft wird nur, ob das Geld für EINE Aktie reicht — daher kann der Kassenbestand negativ werden (gemessen: ZN=F mit Vola 1,4 gegen Ø 9,95 ergibt 142.133 € bei 100.000 Einsatz und 5 Slots). „keine\" lässt das so und hält alte Ergebnisse vergleichbar. „auf freies Kapital\" deckelt jeden Kauf auf das vorhandene Geld inkl. Gebühr und garantiert einen Kassenbestand ≥ 0; dafür bekommt, wer zuerst kauft, mehr. „auf Vola-Faktor\" klammert den Faktor auf [1/f, f] und begrenzt damit die Konzentration einzelner Positionen — garantiert aber KEINE positive Kasse, weil f × Slots über 100 % liegen kann. Die Einstellung gilt auch für Multi Strategies und verändert sämtliche Backtest-Ergebnisse. „wie im Live-Handel (normiert)\" rechnet stattdessen die Formel des Agenten: die inverse Volatilität wird über die AUSGEWÄHLTEN Signale eines Tages normiert (Gewichte summieren sich auf Einsatz × k/Slots), zusätzlich gedeckelt auf das freie Kapital. Nur dieser Modus dimensioniert so, wie Paper/Live tatsächlich handelt — gemessen weicht die Vorgabe je Eintrag um 0,57× bis 2,00× davon ab und setzt in 7 von 31 Fällen mehr als den Einsatz ein.\n\n„nach Risikoprofil“ dimensioniert absolut statt relativ: jede Position trägt die Ziel-Volatilität des auf der Seite Risikoprofil eingestellten Profils (Gewicht = Ziel-Vola ÷ Asset-Vola, geklammert auf das Doppelte bzw. die Hälfte eines gleichen Anteils). Anders als die übrigen Modi gibt dieser nicht zwangsläufig das ganze Budget aus — in unruhigen Märkten weniger. Derselbe Modus wirkt im Signale-Tab und im Agenten.",
   "sf.sizing_factor_max": "max. Vola-Faktor (f)",
   "sf.sizing_factor_max_help": "Obergrenze des Faktors Ø-Vola/Asset-Vola; die Untergrenze ist ihr Kehrwert 1/f. f = 2 heißt: keine Position größer als zwei und keine kleiner als ein halber Slot. f = 1 ist reine Gleichgewichtung. Werte unter 1 werden auf 1 angehoben, sonst läge die Untergrenze über der Obergrenze.",
   "mt.strategies": "Strategien im Lauf",
@@ -2287,5 +2287,17 @@
   "cand.note_risk_profile": "{profile}: ATR ≤ {atr} % vom Kurs",
   "cand.note_trend_score": "trendScore {op} {v}",
   "cand.rank_trendScore": "Trendwert (Nähe zum Hoch)",
-  "cand.rank_riskScore": "Ruhe (ATR-Score)"
+  "cand.rank_riskScore": "Ruhe (ATR-Score)",
+  "risk.sizing": "Positionsgröße nach Profil bestimmen",
+  "risk.sizing_help": "Statt das Budget über die Tagesauswahl zu verteilen, trägt jede Position die Ziel-Volatilität des Profils: Gewicht = Ziel-Vola ÷ Vola des Titels, begrenzt auf das Doppelte bzw. die Hälfte eines gleichen Anteils. Wirkt in Strategy Finder (sizing_cap „profile“), im Signale-Tab und im Agenten.",
+  "risk.sizing_header": "Positionsgröße",
+  "risk.sizing_off": "Aus — es gilt die bisherige Verteilung über die inverse Volatilität der Tagesauswahl. Einschalten in der Feinjustierung.",
+  "risk.weight_median": "Typisches Gewicht",
+  "risk.weight_median_help": "Vielfaches eines gleichen Anteils (Einsatz ÷ Anzahl Positionen). 1,00× heißt: genau ein Slot.",
+  "risk.capital_used": "Kapitaleinsatz",
+  "risk.capital_used_help": "Anteil des Budgets, der bei der heutigen Auswahl tatsächlich investiert würde. Unter 100 % ist kein Fehler, sondern die Zusage: in unruhigen Märkten wird weniger eingesetzt.",
+  "risk.weight_clamped": "An der Grenze",
+  "risk.weight_clamped_help": "Anteil der Titel, bei denen die Klammer greift (höchstens {f}× und mindestens 1/{f}× eines gleichen Anteils).",
+  "risk.sizing_note": "Anders als die relative Verteilung gibt diese Regel nicht zwangsläufig das ganze Budget aus — ein Tag mit lauter unruhigen Titeln kauft weniger, statt still ein unruhiges Depot aufzubauen.",
+  "sf.sizing_cap_profile": "nach Risikoprofil (absolut)"
 }

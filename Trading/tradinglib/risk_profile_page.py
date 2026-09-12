@@ -52,6 +52,7 @@ class RiskProfilePage:
 
         self._promise(profile)
         self._preview(profile)
+        self._sizing(profile, self._snapshot())
         self._expression(profile)
         self._method()
 
@@ -95,24 +96,33 @@ class RiskProfilePage:
                                      preset['target_position_vol'])),
                     step=0.01, format='%.2f', help=t('risk.target_vol_help'))
 
+                sizing = st.checkbox(
+                    t('risk.sizing'), value=bool(stored.get('sizing')),
+                    help=t('risk.sizing_help'))
+
                 c1, c2 = st.columns([0.25, 0.75])
                 save = c1.form_submit_button(t('risk.save'), type='primary')
                 reset = c2.form_submit_button(t('risk.reset'))
 
         if reset:
-            rp.save_settings(self.username, {'profile': chosen, 'custom': {}})
+            rp.save_settings(self.username, {'profile': chosen, 'custom': {},
+                                             'sizing': False})
             st.success(t('risk.reset_done'))
-            custom = {}
+            custom, sizing = {}, False
         elif save:
             custom = {'stop_loss_pct': stop, 'target_position_vol': target_vol}
             if not unlimited:
                 custom['max_atr_pct'] = round(max_atr / 100.0, 5)
-            rp.save_settings(self.username, {'profile': chosen, 'custom': custom})
+            rp.save_settings(self.username, {'profile': chosen, 'custom': custom,
+                                             'sizing': bool(sizing)})
             st.success(t('risk.saved', profile=t(f'risk.name_{chosen}')))
+        else:
+            sizing = bool(stored.get('sizing')) if stored['profile'] == chosen else False
 
         profile = rp.resolve(name=chosen)
         profile.update(custom)
         profile['customised'] = bool(custom)
+        profile['sizing'] = bool(sizing)
         return profile
 
     # ── The promise ──────────────────────────────────────────────────────────
@@ -199,6 +209,32 @@ class RiskProfilePage:
                     display_text=t('risk.col_link_text')),
             })
         st.caption(t('risk.shortlist_note', n=_SHORTLIST))
+
+    def _sizing(self, profile: dict, frame: pd.DataFrame):
+        """What the sizing rule would actually deploy, on today's selection."""
+        st.subheader(t('risk.sizing_header'))
+        if not profile.get('sizing'):
+            st.caption(t('risk.sizing_off'))
+            return
+        if frame.empty or 'vola' not in frame.columns:
+            st.info(t('risk.no_data'))
+            return
+        selected = frame[rp.apply(frame, profile) &
+                         frame['vola'].notna() & (frame['vola'] > 0)]
+        if selected.empty:
+            st.info(t('risk.nothing_fits'))
+            return
+
+        weights = rp.position_weight(selected['vola'], profile)
+        c1, c2, c3 = st.columns(3)
+        c1.metric(t('risk.weight_median'), f"{weights.median():.2f}×",
+                  help=t('risk.weight_median_help'))
+        c2.metric(t('risk.capital_used'), f"{weights.mean() * 100:.0f} %",
+                  help=t('risk.capital_used_help'))
+        c3.metric(t('risk.weight_clamped'),
+                  f"{100 * ((weights <= 1 / rp.MAX_WEIGHT_FACTOR) | (weights >= rp.MAX_WEIGHT_FACTOR)).mean():.0f} %",
+                  help=t('risk.weight_clamped_help', f=rp.MAX_WEIGHT_FACTOR))
+        st.caption(t('risk.sizing_note'))
 
     # ── Take-away ────────────────────────────────────────────────────────────
     def _expression(self, profile: dict):

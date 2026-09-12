@@ -161,7 +161,20 @@ EDITABLE_FIELDS = ('max_atr_pct', 'max_log_vola', 'stop_loss_pct',
 DEFAULTS = {
     'profile': DEFAULT_PROFILE,
     'custom': {},          # {field: value} overrides on top of the preset
+    'sizing': False,       # size positions by the profile's target volatility
 }
+
+# The stored ``vola`` column is the standard deviation of daily returns in
+# PERCENT over this many bars (asset_perf2: ``daily_returns.std() * sqrt(21)``).
+# Everything the profiles state is an annualised fraction, so the two have to be
+# converted into each other explicitly — a factor of ~3.46 that is easy to lose.
+VOLA_COLUMN_PERIOD = 21
+TRADING_DAYS = 252
+
+# How far a single position may deviate from its equal slot. Without a clamp a
+# very calm asset would take several slots at once: at a target of 0.25 and an
+# asset volatility of 0.05 the raw multiplier is 5.
+MAX_WEIGHT_FACTOR = 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +201,7 @@ def settings(username: str) -> dict:
         custom = stored.get('custom')
         if isinstance(custom, dict):
             out['custom'] = {k: v for k, v in custom.items() if k in EDITABLE_FIELDS}
+        out['sizing'] = bool(stored.get('sizing', False))
     return out
 
 
@@ -198,6 +212,7 @@ def save_settings(username: str, values: dict) -> None:
         'profile': name if name in PROFILES else DEFAULT_PROFILE,
         'custom': {k: v for k, v in (values.get('custom') or {}).items()
                    if k in EDITABLE_FIELDS},
+        'sizing': bool(values.get('sizing', False)),
     }
     try:
         _config(username).set_value(CONFIG_KEY, payload)
@@ -232,6 +247,72 @@ def resolve(username: str = '', name: str = '', calibration: dict = None) -> dic
 def available() -> list:
     """Profile names in presentation order."""
     return [n for n, _ in sorted(PROFILES.items(), key=lambda kv: kv[1]['order'])]
+
+
+def sizing_enabled(username: str) -> bool:
+    """Whether this user wants positions sized by the profile's target volatility."""
+    try:
+        return bool(settings(username).get('sizing'))
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Position sizing
+# ---------------------------------------------------------------------------
+
+def sizing_profile(username: str):
+    """The profile to size with, or None when the user has not switched it on.
+
+    One lookup for every caller, so the backtest, the agent and the signals tab
+    cannot drift apart — they have before.
+    """
+    try:
+        stored = settings(username)
+        if not stored.get('sizing'):
+            return None
+        return resolve(username)
+    except Exception:
+        logger.debug("risk_profile: sizing lookup failed", exc_info=True)
+        return None
+
+
+def annualised_vol(vola_column):
+    """Turn the stored ``vola`` column into an annualised fraction.
+
+    The column is a 21-bar standard deviation of daily returns in percent; the
+    profiles speak in annualised fractions. Without this conversion a target of
+    0.25 would be compared against a number around 10 and every position would
+    collapse to the minimum size.
+    """
+    values = pd.to_numeric(pd.Series(vola_column), errors='coerce')
+    return values / 100.0 * np.sqrt(TRADING_DAYS / VOLA_COLUMN_PERIOD)
+
+
+def position_weight(vola_column, profile, max_factor: float = MAX_WEIGHT_FACTOR):
+    """Multiplier on an equal slot so each position carries the target volatility.
+
+    ``budget_i = invest / num_assets * position_weight(vola_i, profile)``
+
+    An asset whose volatility equals the profile's target gets exactly its slot,
+    a calmer one more, a livelier one less — and unlike a weighting normalised
+    over the day's selection, the number means the same thing on every day. That
+    is the point: the relative scheme always spends the full budget, whatever is
+    on offer, so a day of nothing but wild names silently buys a wild portfolio.
+
+    Clamped to ``[1/max_factor, max_factor]``, and an unusable volatility falls
+    back to the plain slot rather than to infinity.
+    """
+    if isinstance(profile, str):
+        profile = resolve(name=profile)
+    target = float(profile.get('target_position_vol') or 0)
+    annual = annualised_vol(vola_column)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        weight = target / annual.where(annual > 0)
+    weight = weight.replace([np.inf, -np.inf], np.nan).fillna(1.0)
+    if target <= 0:
+        return pd.Series(1.0, index=weight.index)
+    return weight.clip(lower=1.0 / max_factor, upper=max_factor)
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +465,7 @@ def bands(profile) -> dict:
 SNAPSHOT_LOOKBACK_DAYS = 10
 
 SNAPSHOT_COLUMNS = ('close', 'currency', 'riskScore', 'riskBucket', 'trendScore',
-                    'atr', 'logVola', 'sharpe', 'fps_phase')
+                    'atr', 'logVola', 'vola', 'sharpe', 'fps_phase')
 
 
 def universe_snapshot(db_path: str = 'database',

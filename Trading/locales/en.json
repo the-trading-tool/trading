@@ -818,7 +818,7 @@
   "sf.sizing_cap_cash": "to available cash",
   "sf.sizing_cap_factor": "to volatility factor",
   "sf.sizing_cap_normalized": "as in live trading (normalised)",
-  "sf.sizing_cap_help": "Position size is capital x (avg vola / asset vola) / slots. The factor is unbounded upwards, and the only check is whether cash covers ONE share - so the cash balance can go negative (measured: ZN=F at vola 1.4 against an average of 9.95 gives 142,133 EUR on 100,000 capital with 5 slots). \"none\" leaves that as it is and keeps older results comparable. \"to available cash\" caps every buy at the cash on hand including the fee and guarantees a balance >= 0; the price is that whoever buys first gets more. \"to volatility factor\" clamps the factor to [1/f, f], limiting single-position concentration - but it does NOT guarantee a positive balance, since f x slots can exceed 100%. The setting also applies to Multi Strategies and changes every backtest result. \"as in live trading (normalised)\" instead uses the agent's formula: inverse volatility normalised across the SELECTED signals of a day (weights sum to invest x k/slots), additionally capped to available cash. Only this mode sizes the way Paper/Live actually trades - measured, the default deviates from it by 0.57x to 2.00x per entry and deploys more than invest in 7 of 31 cases.",
+  "sf.sizing_cap_help": "Position size is capital x (avg vola / asset vola) / slots. The factor is unbounded upwards, and the only check is whether cash covers ONE share - so the cash balance can go negative (measured: ZN=F at vola 1.4 against an average of 9.95 gives 142,133 EUR on 100,000 capital with 5 slots). \"none\" leaves that as it is and keeps older results comparable. \"to available cash\" caps every buy at the cash on hand including the fee and guarantees a balance >= 0; the price is that whoever buys first gets more. \"to volatility factor\" clamps the factor to [1/f, f], limiting single-position concentration - but it does NOT guarantee a positive balance, since f x slots can exceed 100%. The setting also applies to Multi Strategies and changes every backtest result. \"as in live trading (normalised)\" instead uses the agent's formula: inverse volatility normalised across the SELECTED signals of a day (weights sum to invest x k/slots), additionally capped to available cash. Only this mode sizes the way Paper/Live actually trades - measured, the default deviates from it by 0.57x to 2.00x per entry and deploys more than invest in 7 of 31 cases.\n\n\"by risk profile\" sizes absolutely rather than relatively: every position carries the target volatility of the profile set on the Risk profile page (weight = target vol / asset vol, clamped to twice and half an equal slot). Unlike the other modes it does not necessarily spend the whole budget - less in turbulent markets. The same rule applies in the signals tab and in the agent.",
   "sf.sizing_factor_max": "max. volatility factor (f)",
   "sf.sizing_factor_max_help": "Upper bound of the avg-vola/asset-vola factor; the lower bound is its reciprocal 1/f. f = 2 means no position larger than two slots and none smaller than half a slot. f = 1 is plain equal weighting. Values below 1 are raised to 1, otherwise the lower bound would exceed the upper one.",
   "mt.strategies": "Strategies in the run",
@@ -2287,5 +2287,17 @@
   "cand.note_risk_profile": "{profile}: ATR <= {atr} % of price",
   "cand.note_trend_score": "trendScore {op} {v}",
   "cand.rank_trendScore": "Trend score (closeness to the high)",
-  "cand.rank_riskScore": "Calm (ATR score)"
+  "cand.rank_riskScore": "Calm (ATR score)",
+  "risk.sizing": "Size positions by the profile",
+  "risk.sizing_help": "Instead of spreading the budget over the day's selection, every position carries the profile's target volatility: weight = target vol / the name's vol, clamped to twice and half an equal slot. Applies in Strategy Finder (sizing_cap \"profile\"), the signals tab and the agent.",
+  "risk.sizing_header": "Position size",
+  "risk.sizing_off": "Off — the existing spread over the inverse volatility of the day's selection applies. Switch it on under fine tuning.",
+  "risk.weight_median": "Typical weight",
+  "risk.weight_median_help": "Multiple of an equal slot (capital / number of positions). 1.00x means exactly one slot.",
+  "risk.capital_used": "Capital deployed",
+  "risk.capital_used_help": "Share of the budget that would actually be invested in today's selection. Below 100 % is not a fault but the promise: in turbulent markets less goes in.",
+  "risk.weight_clamped": "At the clamp",
+  "risk.weight_clamped_help": "Share of names where the clamp binds (at most {f}x and at least 1/{f}x of an equal slot).",
+  "risk.sizing_note": "Unlike the relative spread, this rule does not necessarily spend the whole budget — a day of nothing but restless names buys less, rather than quietly building a restless portfolio.",
+  "sf.sizing_cap_profile": "by risk profile (absolute)"
 }

@@ -105,6 +105,29 @@ absolute, <code>trendScore &gt;= 75</code> returns fewer names in a weak market 
 strong one. That is intended — it is what makes the chart show the same number as the
 backtest — but it has to be planned for in the number of positions.</div>
 
+<h2>Position size</h2>
+
+<p>Optional — switch it on under fine tuning. Instead of spreading the budget over the day's
+selection, every position then carries the profile's <b>target volatility</b>:</p>
+
+<p><code>budget = capital / number of positions x (target vol / the name's vol)</code>,
+clamped to at most twice and at least half an equal slot.</p>
+
+<p>A name whose swing matches the target gets exactly one slot, a calmer one more, a
+livelier one less. The decisive difference to the existing spread: relative weighting
+<b>always</b> spends the whole budget, whatever happens to be on offer that day — so a day
+of nothing but restless names quietly builds a restless portfolio. The absolute rule buys
+less on such a day.</p>
+
+<div class="warn"><b>Capital deployed is therefore usually below 100 %.</b> On today's
+universe it averages around 85 %. That is not a fault but the promise: only as much risk is
+taken as the profile states. If you want the full capital invested, leave the switch
+off.</div>
+
+<p>The same formula applies in three places — Strategy Finder and Multi Strategies via
+<code>sizing_cap = profile</code>, the signals tab and the agent via the logged-in user's
+profile. The three are tied together by tests, because they have drifted apart before.</p>
+
 <h2>Maintenance</h2>
 
 <ul>
