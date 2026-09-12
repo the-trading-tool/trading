@@ -464,8 +464,19 @@ def rescore_db(sim_db_path: str, info_db_path: str) -> None:
     """Re-compute overallTrend/overallValueTrend for every row in *sim_db_path*.
 
     Uses stored indicator columns + asset_info fundamentals. No yfinance needed.
+
+    CAUTION — this rewrites history with TODAY's fundamentals. ``asset_info``
+    holds one row per ticker and no history, so a rescore stamps the company as
+    it looks now onto every past row. Rows written by the original run carried
+    the figures of their own day; after a rescore they no longer do, and any
+    measurement over the rewritten years is hindsight rather than signal.
+    ``tradinglib/fundamentals_history.py`` is building the point-in-time series
+    that would make this safe; until it spans a market cycle, prefer /backfill
+    (which only recomputes price-derived indicators) over /rescore.
     """
     table = 'asset_simulation'
+    logger.warning("rescore: rewriting history with TODAY's fundamentals — "
+                   "asset_info has no point-in-time data (see the docstring)")
     sim_conn = open_db(sim_db_path)
     info_conn = open_db(info_db_path, readonly=True)
     try:

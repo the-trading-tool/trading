@@ -250,6 +250,14 @@ if __name__ == '__main__':
 
     conn.commit()
 
+    # Append a dated snapshot of the figures that changed. asset_info itself only
+    # ever holds today's values, which makes every fundamental unmeasurable
+    # against history; this is what turns it into a series over time. Failures
+    # are swallowed inside record() — the master data is already committed.
+    if len(batch) > 0:
+        from tradinglib import fundamentals_history
+        fundamentals_history.record(conn, batch)
+
     # FTS-Suchtabelle neu aufbauen, damit neue Ticker sofort volltextsuchbar sind
     # (ersetzt den manuellen Admin-Klick "Update index"). Fehler hier dürfen den
     # bereits committeten Upsert nicht gefährden.

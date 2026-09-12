@@ -1441,7 +1441,54 @@ Drawdown-Boden, jeweils mit Quantil), dass die Zusage out-of-sample geprueft ist
 Methoden-Expander auch, dass Ruhe Rendite kostet. Der Trendwert steht als Qualitaetsfilter
 da, nicht als Alpha-Quelle.
 
-### Naechste Schritte
+### Schritt 5 erledigt — die Bewertungsachse ist Rueckschau, nicht Signal
 
-5. Erst danach entscheiden, ob der Fundamentalteil eine `asset_info_history` bekommt
-   (point-in-time) oder ganz entfaellt.
+**Erst gemessen, dann entschieden.** Die auffaellige Spalte `pctTargetHighPrice`
+(IC 0,181) war weder Alpha noch Ueberlebensverzerrung — der Effekt ist bei den
+**groessten und liquidesten** Werten am staerksten (IC 0,151 gegen 0,121 im
+illiquidesten Drittel), also genau umgekehrt zu dem, was Delisting-Verzerrung
+erzeugen wuerde.
+
+Entscheidend ist das Horizont-Profil:
+
+| Horizont | 5 T | 21 T | 63 T | 126 T | 252 T |
+|---|---|---|---|---|---|
+| gespeicherte Spalte | 0,072 | 0,151 | 0,253 | 0,340 | **0,453** |
+| bewusst gebautes Look-ahead | 0,074 | 0,156 | 0,260 | 0,349 | 0,463 |
+
+Ein echtes Signal **zerfaellt** mit dem Horizont. Dieses wird besser, je weiter man
+schaut — die Signatur einer Zahl, die an einem spaeteren Preisniveau verankert ist.
+Die Rangkorrelation zur absichtlich gebauten Look-ahead-Variante (heutiges Kursziel
+geteilt durch den historischen Close) betraegt **0,976**: fuer die Rangfolge sind es
+dieselbe Spalte.
+
+**Das betrifft jede Fundamentalzahl aus dem Snapshot**, nicht nur das Kursziel:
+`operatingMargins` IC 0,039, `returnOnAssets` 0,044, `revenueGrowth` 0,039 — heutige
+Margen und Wachstumsraten beschreiben Firmen, die im gemessenen Zeitraum bereits gut
+gelaufen sind. Rueckschau, kein Signal.
+
+### Konsequenz: `asset_info_history` statt Reparaturversuch
+
+`tradinglib/fundamentals_history.py` haengt bei jedem `get_asset_info.py`-Lauf einen
+**datierten Schnappschuss** an, wenn sich eine der 26 verfolgten Kennzahlen geaendert
+hat (Append-on-Change, relative Toleranz 1e-4 gegen Yahoo-Rundungsrauschen). Der
+Sonntags-Job 09:00 laeuft bereits — die Reihe waechst ab jetzt von selbst.
+
+**Nur preisunabhaengige Groessen** werden gespeichert: `forwardEps` und `bookValue`
+statt KGV und KBV. Ein Verhaeltnis mit heutigem Preis im Nenner wuerde genau das
+Artefakt zurueckholen; die Kennzahl entsteht beim Lesen gegen den historischen Close.
+Ein Test nagelt fest, dass keine preisabgeleitete Spalte in `TRACKED_FIELDS` rutscht.
+
+- Startpunkt gesetzt: `python -m tradinglib.fundamentals_history /seed` → 9.091 Zeilen
+  zum 2026-09-12. Zweiter Lauf schreibt 0 (idempotent).
+- Lesen: `asof_frame(tickers, datum)` liefert die letzte Zeile **am oder vor** dem
+  Datum — und eine **leere** Tabelle fuer Daten vor Beginn der Reihe. Das ist die
+  ehrliche Antwort, nicht die neueste Zeile.
+- `rescore_db()` hat jetzt Docstring-Warnung **und** Log-Warnung: der Lauf ueberschreibt
+  die Historie mit den heutigen Fundamentaldaten. Bis die Reihe einen Marktzyklus
+  abdeckt, ist `/backfill` (nur preisabgeleitete Indikatoren) dem `/rescore` vorzuziehen.
+
+**Bewusst NICHT gemacht:** `overallValueTrend` bleibt unveraendert — Live-Strategien
+haengen an seinem heutigen Verhalten (siehe `Sum`-Docstring), und die neue Profil-Kette
+nutzt ohnehin keine Fundamentaldaten. Die Frage „traegt die Bewertungsachse etwas bei?"
+ist damit nicht beantwortet, sondern **beantwortbar gemacht** — in etwa einem Jahr.
