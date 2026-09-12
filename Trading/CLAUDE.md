@@ -1236,3 +1236,77 @@ Neustart waeren es wieder die vier Default-Indizes gewesen).
 **Ausgelieferter Engine-Default bleibt `breakout` / SMA40** — die Methode des Artikels.
 Wer die gemessene Kombination global will, setzt `four_ps.DEFAULTS['entry_mode']='both'`
 und `trend_sma_weeks=60`; die Zahlen dafuer stehen oben.
+
+---
+
+## Neu in dieser Session (2026-09-12) — Messgeruest fuer Scores, Gates und Risikoprofile
+
+Ausgangspunkt: Der Auswahl-Score aus `asset_perf2.py`/`indicator/ovt.py` sollte
+"Chartdaten gegen inneren Wert und Dynamik" stellen — nachpruefbar war das nicht.
+Schritt 1 des Umbaus ist deshalb **kein neuer Score, sondern das Messgeraet**.
+
+| Datei | Rolle |
+|---|---|
+| `tradinglib/score_eval.py` | Rechenkern: Panel-Aufbau (read-only), IC, Quantilstabellen, Gate-Statistik, Profil-Konformitaet, Turnover |
+| `score_eval.py` (Wurzel) | CLI mit Default-Batterie (`/years:`, `/horizon:`, `/columns:`, `/gate:`, `/json:`, `--no-gates`, `--no-profiles`) |
+| `tests/test_score_eval.py` | 13 Tests auf synthetischen Panels (perfektes Signal -> IC 1, Turnover 0/1, Vorwaertsziele schauen nicht rueckwaerts) |
+
+**Alle DB-Zugriffe `mode=ro`** — im Gegensatz zum Chart-Pfad, wo ein Yahoo-Fallback
+in `yf_*.db` zurueckschreibt. Ein Messlauf kann Produktionsdaten nicht veraendern.
+
+### Messergebnisse 2023-2025 (2,34 Mio. Zeilen, 759 Tage, 3619 Ticker, Horizont 21 T)
+
+- `overallValueTrend` IC **0,065**, `overallTrend` IC **0,099**. Nach Neutralisierung
+  gegen `pctTargetHighPrice` nur noch 0,042 bzw. 0,062 — **rund ein Drittel der
+  Trennschaerfe haengt an einer einzigen Spalte**.
+- Diese Spalte allein hat IC **0,181** (t 53, Trefferquote 97 %, Quintilspreizung
+  6,85 % je 21 Tage). Das ist kein Alpha: `asset_info` hat genau **eine Zeile je
+  Ticker** mit `timestamp` = letzter Abruf, keine Historie. Jeder `rescore_db()`-Lauf
+  schreibt die heutigen Fundamentaldaten in die gesamte Vergangenheit.
+- **Rendite ist kaum vorhersagbar, Risiko sehr gut:** Score -> Rendite IC 0,065,
+  `logVola` -> realisierte Vola IC **0,703**, Vola -> Drawdown **-0,331**.
+- **Trend-Gates liefern Sicherheit, keine Rendite.** Gegen die Universums-Baseline
+  (1,28 % / 21 T): `close>sma200 & sma50>sma200` -0,17, voller MA-Stapel -0,36,
+  `trendDirection>=2` -0,18, 4PS-Phase 3/4 -0,26, < 5 % unter ATH -0,11; einzig
+  `markov_regime>0` +0,15. Vorwaerts-Vola faellt dabei von 0,39 auf 0,31-0,36.
+- **Aber: die Reihenfolge entscheidet.** Auf den drei niedrigsten Vola-Quintilen
+  (Baseline 0,99 %) steigt der Vorteil des 6M-Momentum-Top-Quintils von +0,25 auf
+  **+0,49** bei Trefferquote 54,7 %. Erst Risikoprofil (Universum), dann Trend
+  (Ranking) — nicht umgekehrt.
+
+### Vorlaeufige Risikobaender (aus der gemessenen Verteilung)
+
+`DEFAULT_BANDS` in `score_eval.py`; Konformitaet gemessen ueber `logVola`-Schnitte:
+
+| Profil | logVola | Anteil | Vorwaerts-Vola (Band) | eingehalten |
+|---|---|---|---|---|
+| conservative | <= 0,110 | 24,4 % | [0; 0,25] | 68,9 % |
+| balanced | <= 0,170 | 59,1 % | [0; 0,39] | 84,5 % |
+| dynamic | <= 0,214 | 74,0 % | [0; 0,49] | 89,6 % |
+
+Die Drawdown-Zusage halten alle drei zu ~99,7 %. Baender sind **(Boden, Decke)** und
+auf der harmlosen Seite offen — eine Position, die nie unter den Einstand faellt,
+haelt jede Drawdown-Grenze ein.
+
+**Absolut kalibriert, nicht als Perzentilrang** — ein Rang haengt vom Universum des
+Tages ab und laesst sich im Live-Chart nicht reproduzieren (genau das Zweipfad-Problem,
+das `ovt.py` heute mit dem Stored/Live-Merge umschifft).
+
+### Bekannte Grenzen, die in jedem Bericht stehen
+
+- Universum = heutiger Indexstand ohne Historie -> Ueberlebensverzerrung, begünstigt
+  alles Mean-Reversion-artige (`stock_indices` hat keinen Zeitstempel).
+- Renditen sind brutto: keine Gebuehren, kein Slippage, kein Spread.
+- Jede Kennzahl wird **zusaetzlich je Jahr** ausgewiesen — gepoolte Bucket-Vergleiche
+  haben hier schon Vorzeichenwechsel produziert (Simpson-Paradox, `market_phase`).
+
+### Naechste Schritte (verabredete Reihenfolge)
+
+2. `tradinglib/risk_profile.py` — Presets + Baender + Config-Anbindung je Nutzer
+   (Muster: `candidates.py` mit `DEFAULTS`/`settings()`/`save_settings()`), noch ohne UI.
+3. `riskScore`/`riskBucket`/`trendScore` als Spalten in `asset_simulation` schreiben →
+   sofort in Strategy-Finder- und Multi-Strategies-Formeln nutzbar (beide werten ueber
+   `ExpressionEvaluator` auf `combined_df` aus genau dieser Tabelle aus).
+4. Streamlit-Seite "Risikoprofil" mit Presets, Reglern und Live-Vorschau (+ HELP-Seite).
+5. Erst danach entscheiden, ob der Fundamentalteil eine `asset_info_history` bekommt
+   (point-in-time) oder ganz entfaellt.
