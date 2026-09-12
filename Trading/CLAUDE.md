@@ -1416,8 +1416,32 @@ in einem schwachen Markt weniger Titel liefert als in einem starken (ein Quintil
 liefert immer ein Fuenftel). Das ist gewollt, aber es muss bei Positionszahlen
 eingeplant werden.
 
-### Naechste Schritte (verabredete Reihenfolge)
+### Schritt 4 erledigt — Seite "Risikoprofil"
 
-4. Streamlit-Seite "Risikoprofil" mit Presets, Reglern und Live-Vorschau (+ HELP-Seite).
+`tradinglib/risk_profile_page.py` (Route `?risk_profile=true`, Gruppe Assets neben
+Kandidaten). Aufbau: Preset-Auswahl → Zusage des Profils (vier Metriken) → was vom
+Universum uebrig bleibt (Anzahl, Verteilung je Risikostufe, Kurzliste nach Trendwert) →
+fertiger Ausdruck zum Kopieren → Methoden-Expander.
+
+- **Kein `on_change`**, Speichern nur per Knopf im `st.form` — das Re-Fire bei Widget-GC
+  hat schon einmal halbfertige Auswahlen in die Config geschrieben (Overlay-Defaults).
+- **Vorschau** ueber `risk_profile.universe_snapshot()`: letzte Zeile je Ticker aus einem
+  10-Tage-Fenster, nicht `WHERE Date = MAX(Date)` — der juengste Tag ist regelmaessig nur
+  halb geschrieben.
+- Verdrahtet in `system_config` (Sidebar-Default, Gruppe, Label-Key, Startseiten,
+  HELP-Registrierung), `asset_analyzer` (`_START_PAGE_ROUTES`, Nav, Route) und
+  `app_edition._ROUTE_PARAMS`.
+- 62 Locale-Keys je Sprache (`risk.*`, `nav/page/error.risk_profile`),
+  HELP-Seiten `risk_profile_page[_en].html`.
+- Ein Test prueft, dass jeder in der Seite benutzte Locale-Key in **beiden** Sprachen
+  existiert — ein Tippfehler faellt damit im Testlauf auf, nicht erst in der UI.
+
+**Die Seite verspricht bewusst keine Rendite.** Sie zeigt die Zusage (Vola-Band,
+Drawdown-Boden, jeweils mit Quantil), dass die Zusage out-of-sample geprueft ist, und im
+Methoden-Expander auch, dass Ruhe Rendite kostet. Der Trendwert steht als Qualitaetsfilter
+da, nicht als Alpha-Quelle.
+
+### Naechste Schritte
+
 5. Erst danach entscheiden, ob der Fundamentalteil eine `asset_info_history` bekommt
    (point-in-time) oder ganz entfaellt.

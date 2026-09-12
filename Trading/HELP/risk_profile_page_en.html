@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Risk profile – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Risk profile <small style="font-size:.6em;color:#888">risk_profile_page.py · risk_profile.py · indicator/prof.py</small></h1>
+
+<p>The page answers one question: <b>how much movement are you willing to sit through?</b> The
+answer cuts the universe down, and only inside that cut does the ranking by trend happen.
+That order is not taste, it is measured — see below.</p>
+
+<h2>Why the profile sits on the risk axis</h2>
+
+<p>Over 2020-2026 (5.02m rows of <code>asset_simulation</code>) <b>return</b> is barely
+predictable: the backtest's composite score reaches a rank correlation of 0.065. <b>Risk</b>
+on the other hand is highly predictable: 0.70 for future volatility, -0.33 for drawdown.</p>
+
+<div class="info">Hence the design: a profile makes a promise about volatility and drawdown —
+one that can be kept and checked. A promise about return could not be kept, so the page does
+not make one.</div>
+
+<h2>The four profiles</h2>
+
+<table>
+<tr><th>Profile</th><th>Cut (ATR as % of price)</th><th>Share of universe</th><th>Typical swing</th><th>Band (p85)</th><th>Drawdown floor (p10)</th></tr>
+<tr><td>Conservative</td><td>&le; 2.2 %</td><td>21.5 %</td><td>0.21</td><td>0.32</td><td>-10.2 %</td></tr>
+<tr><td>Balanced</td><td>&le; 3.0 %</td><td>46.3 %</td><td>0.25</td><td>0.37</td><td>-11.7 %</td></tr>
+<tr><td>Dynamic</td><td>&le; 4.2 %</td><td>70.6 %</td><td>0.28</td><td>0.44</td><td>-13.3 %</td></tr>
+<tr><td>Offensive</td><td>no cut</td><td>100 %</td><td>0.34</td><td>0.62</td><td>-16.9 %</td></tr>
+</table>
+
+<p>The cut runs on the <b>average daily move</b> (ATR relative to price). It predicts future
+volatility marginally better than <code>logVola</code> (0.71 vs 0.68) and it is the one number
+a person can picture: "this thing moves about 2 % on an average day". Where ATR is missing,
+<code>logVola</code> stands in, cut at the same coverage.</p>
+
+<h3>The band is measured, not asserted</h3>
+
+<p>"Conservative" does <b>not</b> mean "never more than 25 % volatility". It means: half the
+time below 21 %, and 85 % of the time below 32 %. Every number carries its quantile, because a
+band without one is not a promise but a wish.</p>
+
+<p>Calibration ran over 2020-2026 including the covid crash — calibrating on calm years alone
+would have set the bands too tight. Cross-check: calibrated on 2020-2023, measured on
+2024-2026. The volatility bands held in 83-86 % of cases (target 85), the drawdown floor in
+90-94 % (target 90). The promise therefore survives outside its calibration window.</p>
+
+<h3>Calm costs return</h3>
+
+<div class="warn">Every profile <b>trails</b> the universe: the conservative one by 0.98
+percentage points per 21 days, most clearly in 2020 at 5.5 points — after the crash, quiet
+names lagged the recovery. A profile is judged on whether it keeps its promise, not on whether
+it beats the market.</div>
+
+<h2>The trend score</h2>
+
+<p><code>trendScore</code> measures how close a name is to its <b>own record high</b> (0 = a
+full round trip down, 100 = at the high). Nine trend components and ten combinations were
+tested — momentum over 1, 6 and 12 months, distance to the moving averages, the slope of the
+200-day average, and blends of those.</p>
+
+<p><b>None of them predicts return reliably.</b> The highest average return in fact came from
+the names furthest below their high (1.93 % vs 0.85 % per 21 days) — mean reversion, flattered
+by a universe that only contains the survivors.</p>
+
+<p>What holds up is <b>consistency</b>. Across the five quintiles of distance to the high:</p>
+
+<table>
+<tr><th></th><th>far below</th><th></th><th></th><th></th><th>at the high</th></tr>
+<tr><td>Return, 21 days</td><td>1.93 %</td><td>1.06 %</td><td>0.93 %</td><td>0.94 %</td><td>0.85 %</td></tr>
+<tr><td>Hit rate</td><td>50.7 %</td><td>50.9 %</td><td>51.7 %</td><td>52.1 %</td><td>52.1 %</td></tr>
+<tr><td>Drawdown</td><td>-9.70 %</td><td>-7.79 %</td><td>-7.12 %</td><td>-6.39 %</td><td>-5.97 %</td></tr>
+</table>
+
+<p>Hit rate and drawdown both improve <b>monotonically across all five quintiles</b> — the only
+tested variant that does. The trend score is therefore a quality filter, not a source of
+return.</p>
+
+<h2>In Strategy Finder and Multi Strategies</h2>
+
+<p>The columns <code>riskScore</code>, <code>riskBucket</code> and <code>trendScore</code> exist
+live in the chart <b>and</b> in <code>asset_simulation</code> under the same names. The
+expression at the bottom of the page copies straight into a buy formula:</p>
+
+<p><code>(atr / close &lt;= 0.03) &amp; (trendScore &gt;= 75)</code></p>
+
+<div class="warn"><b>0 means "not computed yet", not "step 0".</b> New columns are created with
+a default of 0. <code>riskBucket &lt;= 2</code> would pull in every unfilled row — write
+<code>(riskBucket &gt;= 1) &amp; (riskBucket &lt;= 2)</code> instead.</div>
+
+<div class="warn"><b>Fixed thresholds depend on the market.</b> Because the calibration is
+absolute, <code>trendScore &gt;= 75</code> returns fewer names in a weak market than in a
+strong one. That is intended — it is what makes the chart show the same number as the
+backtest — but it has to be planned for in the number of positions.</div>
+
+<h2>Maintenance</h2>
+
+<ul>
+<li>Fill the columns for existing data:
+<code>python asset_perf2.py /backfill:prof /force</code> (add <code>/year:2024</code> for an
+older year). The <code>/force</code> is mandatory.</li>
+<li>Re-measure the bands: <code>python -m tradinglib.risk_profile --calibrate</code>, add
+<code>--save</code> to store them app-wide.</li>
+<li>Test a building block against the universe: <code>python score_eval.py</code>.</li>
+</ul>
+
+<p>Moving a profile's cut by hand makes the displayed band inaccurate — re-calibrate
+afterwards. The measured fields themselves are deliberately not editable.</p>
+
+</body>
+</html>

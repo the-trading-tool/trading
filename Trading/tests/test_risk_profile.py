@@ -170,3 +170,27 @@ def test_format_profiles_renders_every_profile():
     for name in rp.available():
         assert name in text
     assert 'atr / close' in text
+
+
+def test_page_module_imports_and_its_locale_keys_exist():
+    """A typo in a translation key should fail here, not in the rendered page."""
+    import json
+    import os
+    import re
+
+    from tradinglib import risk_profile_page            # noqa: F401  (import is the test)
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    source = open(os.path.join(root, 'tradinglib', 'risk_profile_page.py'),
+                  encoding='utf-8').read()
+    # plain t('key') calls — the f-string ones are checked against the presets below
+    used = set(re.findall(r"(?<![A-Za-z_.])t\(\s*'([^']+)'", source))
+    for name in rp.available():
+        used |= {f'risk.name_{name}', f'risk.desc_{name}'}
+    used |= {'nav.risk_profile', 'page.risk_profile', 'error.load_risk_profile'}
+
+    for language in ('de', 'en'):
+        with open(os.path.join(root, 'locales', f'{language}.json'), encoding='utf-8') as fh:
+            catalogue = json.load(fh)
+        missing = sorted(key for key in used if key not in catalogue)
+        assert not missing, f'{language}: {missing}'

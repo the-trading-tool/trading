@@ -94,6 +94,7 @@ _START_PAGE_ROUTES = {
     'asset_search':    {'asset_search': 'true'},
     'four_ps':         {'four_ps': 'true'},
     'candidates':      {'candidates': 'true'},
+    'risk_profile':    {'risk_profile': 'true'},
 }
 
 # Server-side mobile detection via the request User-Agent. Not 100 % (recent
@@ -778,7 +779,7 @@ class TradingApp:
                         _nav(t('nav.market_overview'), market_overview='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'candidates', 'four_ps', 'summary', 'performance', 'compound')):
+            if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'candidates', 'risk_profile', 'four_ps', 'summary', 'performance', 'compound')):
                 with st.sidebar.expander(t('nav.group_assets'), expanded=True):
                     if _sb_items.get('asset'):
                         _nav(t('nav.asset_viewer'), asset='true')
@@ -786,6 +787,8 @@ class TradingApp:
                         _nav(t('nav.asset_search'), asset_search='true')
                     if _sb_items.get('candidates'):
                         _nav(t('nav.candidates'), candidates='true')
+                    if _sb_items.get('risk_profile'):
+                        _nav(t('nav.risk_profile'), risk_profile='true')
                     if _sb_items.get('four_ps'):
                         _nav(t('nav.four_ps'), four_ps='true')
                     if _sb_items.get('summary'):
@@ -1111,6 +1114,14 @@ class TradingApp:
                             FourPsPage(username=self.username).render()
                         except Exception as e:
                             st.error(t('error.load_four_ps', error=e))
+                elif parms.get('risk_profile'):
+                    self.set_page_config(t('page.risk_profile'))
+                    with st.spinner(t('page.risk_profile') + " …"):
+                        try:
+                            from tradinglib.risk_profile_page import RiskProfilePage
+                            RiskProfilePage(username=self.username).render()
+                        except Exception as e:
+                            st.error(t('error.load_risk_profile', error=e))
                 elif parms.get('candidates'):
                     self.set_page_config(t('page.candidates'))
                     with st.spinner(t('page.candidates') + " …"):

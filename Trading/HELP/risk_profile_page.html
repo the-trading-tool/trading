@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Risikoprofil – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+h3{color:#174ea6;font-size:.97em;margin:11px 0 3px}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Risikoprofil <small style="font-size:.6em;color:#888">risk_profile_page.py · risk_profile.py · indicator/prof.py</small></h1>
+
+<p>Die Seite beantwortet eine Frage: <b>wie viel Bewegung willst du aushalten?</b> Die Antwort
+schneidet das Universum zu, und erst innerhalb dieses Ausschnitts wird nach Trend sortiert.
+Diese Reihenfolge ist nicht Geschmack, sondern gemessen — siehe unten.</p>
+
+<h2>Warum das Profil auf der Risikoachse steht</h2>
+
+<p>Über 2020–2026 (5,02 Mio. Zeilen aus <code>asset_simulation</code>) lässt sich die
+<b>Rendite</b> kaum vorhersagen: der zusammengesetzte Punktwert des Backtests erreicht eine
+Rangkorrelation von 0,065. Das <b>Risiko</b> dagegen sehr gut: 0,70 für die künftige
+Schwankung, −0,33 für den Drawdown.</p>
+
+<div class="info">Daraus folgt der Aufbau: ein Profil gibt eine Zusage über Schwankung und
+Drawdown — die kann man einhalten und nachprüfen. Eine Zusage über Rendite könnte man nicht
+einhalten, also gibt die Seite auch keine.</div>
+
+<h2>Die vier Profile</h2>
+
+<table>
+<tr><th>Profil</th><th>Schnitt (ATR in % vom Kurs)</th><th>Anteil Universum</th><th>Typische Schwankung</th><th>Band (p85)</th><th>Drawdown-Boden (p10)</th></tr>
+<tr><td>Konservativ</td><td>≤ 2,2 %</td><td>21,5 %</td><td>0,21</td><td>0,32</td><td>−10,2 %</td></tr>
+<tr><td>Ausgewogen</td><td>≤ 3,0 %</td><td>46,3 %</td><td>0,25</td><td>0,37</td><td>−11,7 %</td></tr>
+<tr><td>Dynamisch</td><td>≤ 4,2 %</td><td>70,6 %</td><td>0,28</td><td>0,44</td><td>−13,3 %</td></tr>
+<tr><td>Offensiv</td><td>kein Schnitt</td><td>100 %</td><td>0,34</td><td>0,62</td><td>−16,9 %</td></tr>
+</table>
+
+<p>Geschnitten wird über die <b>durchschnittliche Tagesbewegung</b> (ATR im Verhältnis zum
+Kurs). Sie sagt die künftige Schwankung minimal besser vorher als <code>logVola</code>
+(0,71 gegen 0,68) und ist die eine Zahl, die man sich vorstellen kann: „bewegt sich rund
+2 % am Tag“. Fehlt ATR, greift ersatzweise <code>logVola</code>, geschnitten bei derselben
+Abdeckung.</p>
+
+<h3>Das Band ist gemessen, nicht behauptet</h3>
+
+<p>„Konservativ“ heißt <b>nicht</b> „nie mehr als 25 % Schwankung“. Es heißt: die Hälfte der
+Zeit unter 21 %, in 85 % der Fälle unter 32 %. Jede Zahl steht mit ihrem Quantil da, weil
+ein Band ohne Quantil kein Versprechen ist, sondern ein Wunsch.</p>
+
+<p>Kalibriert wurde über 2020–2026 einschließlich Corona-Crash — eine Kalibrierung nur auf
+ruhigen Jahren hätte die Bänder zu eng gesetzt. Gegenprobe: Kalibrierung auf 2020–2023,
+Messung auf 2024–2026. Die Vola-Bänder hielten in 83–86 % der Fälle (Ziel 85), der
+Drawdown-Boden in 90–94 % (Ziel 90). Die Zusage hält also auch außerhalb ihres
+Kalibrierfensters.</p>
+
+<h3>Ruhe kostet Rendite</h3>
+
+<div class="warn">Jedes Profil liegt gegen das Universum <b>hinten</b>: konservativ um
+0,98 Prozentpunkte je 21 Tage, am deutlichsten 2020 mit 5,5 Punkten — nach dem Crash liefen
+ruhige Titel der Erholung hinterher. Ein Profil wird daran gemessen, ob es seine Zusage
+hält, nicht daran, ob es den Markt schlägt.</div>
+
+<h2>Der Trendwert</h2>
+
+<p><code>trendScore</code> misst, wie nah ein Titel an seinem <b>eigenen Rekordhoch</b> steht
+(0 = voller Rundlauf nach unten, 100 = am Hoch). Geprüft wurden neun Trendbausteine und zehn
+Kombinationen — Momentum über 1, 6 und 12 Monate, Abstand zu den gleitenden Durchschnitten,
+Steigung des 200-Tage-Schnitts, Kombinationen daraus.</p>
+
+<p><b>Keiner sagt die Rendite verlässlich vorher.</b> Die höchste Durchschnittsrendite hatten
+sogar die am weitesten gefallenen Titel (1,93 % gegen 0,85 % je 21 Tage) — Rückkehr zum
+Mittelwert, zusätzlich geschmeichelt davon, dass im Universum nur die Überlebenden stehen.</p>
+
+<p>Was hält, ist die <b>Konsistenz</b>. Über die fünf Fünftel des Abstands zum Hoch:</p>
+
+<table>
+<tr><th></th><th>weit weg</th><th></th><th></th><th></th><th>am Hoch</th></tr>
+<tr><td>Rendite 21 Tage</td><td>1,93 %</td><td>1,06 %</td><td>0,93 %</td><td>0,94 %</td><td>0,85 %</td></tr>
+<tr><td>Trefferquote</td><td>50,7 %</td><td>50,9 %</td><td>51,7 %</td><td>52,1 %</td><td>52,1 %</td></tr>
+<tr><td>Drawdown</td><td>−9,70 %</td><td>−7,79 %</td><td>−7,12 %</td><td>−6,39 %</td><td>−5,97 %</td></tr>
+</table>
+
+<p>Trefferquote und Drawdown werden <b>monoton über alle fünf Fünftel</b> besser — als einzige
+der geprüften Varianten. Der Trendwert ist deshalb ein Qualitätsfilter, keine Renditequelle.</p>
+
+<h2>In Strategy Finder und Multi Strategies</h2>
+
+<p>Die Spalten <code>riskScore</code>, <code>riskBucket</code> und <code>trendScore</code>
+stehen live im Chart <b>und</b> in <code>asset_simulation</code> unter denselben Namen. Der
+Ausdruck unten auf der Seite lässt sich direkt in eine Buy-Formel kopieren:</p>
+
+<p><code>(atr / close &lt;= 0.03) &amp; (trendScore &gt;= 75)</code></p>
+
+<div class="warn"><b>0 heißt „noch nicht berechnet“, nicht „Stufe 0“.</b> Neue Spalten
+entstehen mit Vorgabewert 0. <code>riskBucket &lt;= 2</code> würde alle noch ungefüllten
+Zeilen mitnehmen — schreib <code>(riskBucket &gt;= 1) &amp; (riskBucket &lt;= 2)</code>.</div>
+
+<div class="warn"><b>Feste Schwellen sind marktabhängig.</b> Weil absolut kalibriert wird,
+liefert <code>trendScore &gt;= 75</code> im schwachen Markt weniger Titel als im starken. Das
+ist gewollt — nur so zeigt der Chart dieselbe Zahl wie der Backtest —, muss aber bei der
+Zahl der Positionen eingeplant werden.</div>
+
+<h2>Wartung</h2>
+
+<ul>
+<li>Spalten für Bestandsdaten füllen:
+<code>python asset_perf2.py /backfill:prof /force</code> (mit <code>/year:2024</code> für ein
+älteres Jahr). Das <code>/force</code> ist Pflicht.</li>
+<li>Bänder neu messen: <code>python -m tradinglib.risk_profile --calibrate</code>, mit
+<code>--save</code> app-weit speichern.</li>
+<li>Bausteine gegen das Universum prüfen: <code>python score_eval.py</code>.</li>
+</ul>
+
+<p>Wer den Schnitt eines Profils von Hand verschiebt, macht das angezeigte Band ungenau —
+danach neu kalibrieren. Die gemessenen Felder selbst sind absichtlich nicht editierbar.</p>
+
+</body>
+</html>

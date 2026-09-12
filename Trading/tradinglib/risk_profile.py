@@ -367,6 +367,87 @@ def bands(profile) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Snapshot of the stored universe
+# ---------------------------------------------------------------------------
+
+# Window the snapshot looks back over. Long enough for a bank holiday weekend —
+# and taking each ticker's own last row inside it is what makes the snapshot
+# safe: the newest date in a simulation DB is regularly half-written, so
+# anchoring on MAX(Date) alone would silently reduce the universe to whichever
+# handful of tickers happened to be processed first.
+SNAPSHOT_LOOKBACK_DAYS = 10
+
+SNAPSHOT_COLUMNS = ('close', 'currency', 'riskScore', 'riskBucket', 'trendScore',
+                    'atr', 'logVola', 'sharpe', 'fps_phase')
+
+
+def universe_snapshot(db_path: str = 'database',
+                      db_name: str = 'asset_simulation_.db',
+                      with_names: bool = True) -> pd.DataFrame:
+    """Latest stored row per ticker, with the profile columns (read-only).
+
+    Returns an empty frame when the simulation DB is missing or the profile
+    columns have not been backfilled yet.
+    """
+    import os
+    from tradinglib.tools import Tools, open_db
+
+    path = Tools().get_path(path=db_path, file_name=db_name)
+    if not path or not os.path.exists(path):
+        logger.warning("risk_profile: %s not found", db_name)
+        return pd.DataFrame()
+
+    conn = open_db(path, readonly=True)
+    try:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(asset_simulation)")}
+        use = [c for c in SNAPSHOT_COLUMNS if c in have]
+        newest = conn.execute("SELECT MAX(Date) FROM asset_simulation").fetchone()[0]
+        if not newest:
+            return pd.DataFrame()
+        cutoff = (pd.to_datetime(newest) -
+                  pd.Timedelta(days=SNAPSHOT_LOOKBACK_DAYS)).strftime('%Y-%m-%d 00:00:00')
+        frame = pd.read_sql_query(
+            f"SELECT ticker, Date, {', '.join(use)} FROM asset_simulation "
+            f"WHERE Date >= ?", conn, params=(cutoff,))
+    except Exception:
+        logger.warning("risk_profile: snapshot query failed", exc_info=True)
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+    if frame.empty:
+        return frame
+    for column in use:
+        if column != 'currency':
+            frame[column] = pd.to_numeric(frame[column], errors='coerce')
+    frame = frame.sort_values('Date').groupby('ticker', as_index=False).last()
+
+    if with_names:
+        frame = frame.merge(_names(db_path, frame['ticker'].tolist()),
+                            on='ticker', how='left')
+    return frame
+
+
+def _names(db_path: str, tickers: list) -> pd.DataFrame:
+    """Display name and sector per ticker, empty frame when unavailable."""
+    import os
+    from tradinglib.tools import Tools, open_db
+
+    path = Tools().get_path(path=db_path, file_name='asset_info.db')
+    if not path or not os.path.exists(path) or not tickers:
+        return pd.DataFrame(columns=['ticker', 'longName', 'sector'])
+    conn = open_db(path, readonly=True)
+    try:
+        return pd.read_sql_query(
+            "SELECT ticker, longName, sector FROM asset_info", conn)
+    except Exception:
+        logger.debug("risk_profile: asset_info unavailable", exc_info=True)
+        return pd.DataFrame(columns=['ticker', 'longName', 'sector'])
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
 
