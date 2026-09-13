@@ -55,6 +55,7 @@ nicht den ganzen Bestand auf einmal.
     python repair_h60_local_copies.py                       # Trockenlauf, alle
     python repair_h60_local_copies.py /tickers:^GDAXI,SAP.DE
     python repair_h60_local_copies.py /index_member          # nur Index-Mitglieder
+    python repair_h60_local_copies.py /inverse               # nur Titel ohne Gruppe
     python repair_h60_local_copies.py /apply                # schreiben
 """
 import glob
@@ -153,6 +154,26 @@ def _index_members():
         return []
 
 
+def _ungrouped():
+    """Ticker ohne JEDE Gruppenzugehoerigkeit -- dieselbe Definition wie
+    /inverse in get_asset_data.py.
+
+    "Keine Gruppe" ist kein Gruppenname, deshalb laesst sich das nicht ueber
+    /group abbilden. Es sind die Einzeltitel, die weder in einem ^-Index noch in
+    einer Kategorie (CRYPTO, METALS, ETP ...) stehen.
+    """
+    path = Tools().get_path(path='database', file_name='yf_tickers.db')
+    try:
+        with open_db(path, readonly=True) as conn:
+            return sorted({r[0] for r in conn.execute(
+                "SELECT s.Ticker FROM stocks s "
+                "LEFT JOIN stock_indices si ON si.stock_id = s.id "
+                "WHERE si.stock_id IS NULL AND s.Ticker IS NOT NULL")})
+    except Exception as e:
+        logger.error('Tickerliste nicht lesbar: %s', e)
+        return []
+
+
 def _undo_conn(db_dir):
     path = os.path.join(db_dir, UNDO_DB)
     conn = sqlite3.connect(path)
@@ -170,6 +191,9 @@ def main():
     if args.get('index_member') and not nur:
         nur = _index_members()
         logger.info('/index_member: %d Mitglieder der ^-Indizes', len(nur))
+    if args.get('inverse') and not nur:
+        nur = _ungrouped()
+        logger.info('/inverse: %d Ticker ohne Gruppenzugehoerigkeit', len(nur))
 
     db_dir = os.path.dirname(Tools().get_path(path='database', file_name='asset_info.db'))
     tzmap = _tz_map()
