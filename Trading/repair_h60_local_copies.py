@@ -19,10 +19,15 @@ Ein Balken b ist eine Kopie, wenn es einen Balken a gibt mit
   * b.Date = a.Date + tz-Versatz(a.Date) -- der Versatz kommt aus
     asset_info.exchangeTimezoneName und wird JE DATUM bestimmt, traegt also
     Sommerzeit und jede Boerse mit (Berlin +1/+2, New York -4/-5),
-  * b hat eine echte Spanne (High > Low), und
+  * b hat eine echte Spanne (High > Low) -- ODER b ist flach, hat Volumen > 0
+    und exakt dasselbe Volumen wie a (die Schlussauktion, siehe unten), und
   * a unterscheidet sich von seinem eigenen Vorgaenger.
 Die letzten beiden Bedingungen schliessen illiquide Werte aus, bei denen ueber
 Stunden identische OHLC stehen und ein Treffer rein zufaellig entstuende.
+
+Die Schlussauktion speichert Yahoo als eigenen flachen Balken (Xetra: 15:30
+UTC). Die erste Fassung der Regel verlangte High > Low und liess deshalb genau
+diese Kopie stehen -- bei SAP.DE der Balken um 17:30 UTC.
 
 Verifiziert an ^GDAXI: 317 Kopien mit +1h, ausschliesslich Okt-Maerz, und 993
 mit +2h, ausschliesslich Maerz-Okt -- exakt komplementaer zur Sommerzeit.
@@ -39,11 +44,10 @@ GRENZEN -- VOR DEM SCHREIBEN LESEN
   begrenztes Schadensfenster und bei US-Werten reicht es bis 2023-05 zurueck --
   bis zum Beginn der Tabelle, lange vor dem yfinance-Upgrade. Woher die Kopien
   dort stammen, ist NICHT geklaert.
-* Die Regel ist UNVOLLSTAENDIG. Sie verlangt identisches OHLC; wo sich die
-  beiden Fassungen unterscheiden (z. B. weil die Schlussauktion in einem der
-  Abrufe anders eingerechnet wurde), bleibt die Ortszeit-Zeile stehen. Geprueft
-  an SAP.DE: nach der Bereinigung steht dort weiterhin ein Balken um 17:30 UTC
-  (= 19:30 Berlin), also nach dem Xetra-Schluss.
+* Die Regel verlangt identisches OHLC. Nicht erfasst werden, weil es keine
+  Kopien sind: flache Fuellbalken mit Volumen 0 nach Handelsschluss (Yahoo
+  wiederholt dort den Schlusskurs) und Reihen, die GANZ in Ortszeit liegen und
+  kein UTC-Gegenstueck haben (SAP.DE 2021-10 bis 2023-04: 09-17 statt 07-15).
 * Verifiziert wurde, dass die verbleibende Reihe stimmig ist: AAPL behaelt
   Vorboerse (08:00-13:00 UTC), regulaere Sitzung (13:30-19:30) und Nachboerse
   (20:00-23:00), im Winter um eine Stunde verschoben. Das gilt fuer die
@@ -119,8 +123,14 @@ def find_copies(rows, zone):
             continue
     treffer = []
     for ts, b in nach_datum.items():
-        if b[2] is None or b[3] is None or not (b[2] > b[3]):
-            continue                      # keine echte Spanne
+        if b[2] is None or b[3] is None:
+            continue
+        flach = not (b[2] > b[3])
+        # Flache Balken (O=H=L=C) nur mit Volumen: das ist die Schlussauktion
+        # (Xetra 17:30 Berlin), die als eigener Balken gespeichert wird. Ohne
+        # Volumen waere ein Treffer bei illiquiden Werten reiner Zufall.
+        if flach and not (b[5] and b[5] > 0):
+            continue
         off = _offset_hours(zone, ts)
         if not off:                       # None oder 0 -> nichts zu tun
             continue
@@ -128,12 +138,33 @@ def find_copies(rows, zone):
         a = nach_datum.get(a_ts)
         if a is None or a[1:5] != b[1:5]:
             continue
+        if flach and a[5] != b[5]:
+            continue                      # flach: Volumen muss exakt passen
         # a darf nicht Teil einer Flachstrecke sein
         vor = nach_datum.get(a_ts - timedelta(hours=1))
         if vor is not None and vor[1:5] == a[1:5]:
             continue
         treffer.append(b)
     return treffer
+
+
+def _above_threshold(treffer):
+    """MIN_HITS getrennt fuer Balken mit Spanne und flache Balken.
+
+    Gemessen per Gegenprobe mit falschem Versatz (+-1h, +3h) an 400 Tickern:
+    flache Treffer 95.006 beim richtigen Versatz gegen 39-92 bei den Kontrollen
+    -- echte Kopien. Treffer mit Spanne lagen nach der ersten Bereinigung
+    dagegen auf Kontrollniveau (157 gegen 136-175), also Rauschen. Mit einer
+    gemeinsamen Schwelle zoegen die vielen flachen Treffer dieses Rauschen mit
+    ueber die Schwelle.
+    """
+    span = [t for t in treffer if t[2] > t[3]]
+    flat = [t for t in treffer if not (t[2] > t[3])]
+    out = []
+    for teil in (span, flat):
+        if len(teil) >= MIN_HITS:
+            out.extend(teil)
+    return out
 
 
 def _index_members():
@@ -250,10 +281,10 @@ def main():
                 conn.close(); gesamt['ohne_h60'] += 1; continue
             rows = cur.execute(f'SELECT Date, Open, High, Low, Close, Volume '
                                f'FROM {TABLE} ORDER BY Date').fetchall()
-            treffer = find_copies(rows, zone)
-            if len(treffer) < MIN_HITS:
+            treffer = _above_threshold(find_copies(rows, zone))
+            if not treffer:
                 conn.close()
-                if treffer:
+                if find_copies(rows, zone):
                     gesamt['unter_schwelle'] += 1
                 continue
             gesamt['ticker'] += 1
