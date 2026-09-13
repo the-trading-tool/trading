@@ -2299,5 +2299,6 @@
   "risk.weight_clamped": "At the clamp",
   "risk.weight_clamped_help": "Share of names where the clamp binds (at most {f}x and at least 1/{f}x of an equal slot).",
   "risk.sizing_note": "Unlike the relative spread, this rule does not necessarily spend the whole budget — a day of nothing but restless names buys less, rather than quietly building a restless portfolio.",
-  "sf.sizing_cap_profile": "by risk profile (absolute)"
+  "sf.sizing_cap_profile": "by risk profile (absolute)",
+  "risk.sizing_saturated": "The dial is saturated: {share} % of names sit at the clamp. The typical swing of this selection is {typical} against a target of {target} — that far apart, neighbouring profiles produce the same result. For an asset class like crypto, match the target volatility to the selection under fine tuning."
 }

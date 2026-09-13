@@ -226,15 +226,28 @@ class RiskProfilePage:
             return
 
         weights = rp.position_weight(selected['vola'], profile)
+        clamped = ((weights <= 1 / rp.MAX_WEIGHT_FACTOR) |
+                   (weights >= rp.MAX_WEIGHT_FACTOR))
         c1, c2, c3 = st.columns(3)
         c1.metric(t('risk.weight_median'), f"{weights.median():.2f}×",
                   help=t('risk.weight_median_help'))
         c2.metric(t('risk.capital_used'), f"{weights.mean() * 100:.0f} %",
                   help=t('risk.capital_used_help'))
-        c3.metric(t('risk.weight_clamped'),
-                  f"{100 * ((weights <= 1 / rp.MAX_WEIGHT_FACTOR) | (weights >= rp.MAX_WEIGHT_FACTOR)).mean():.0f} %",
+        c3.metric(t('risk.weight_clamped'), f"{100 * clamped.mean():.0f} %",
                   help=t('risk.weight_clamped_help', f=rp.MAX_WEIGHT_FACTOR))
         st.caption(t('risk.sizing_note'))
+
+        # Liegt die Auswahl weit ausserhalb der Zielgroesse, haengt fast alles an
+        # der Klammer — dann ist der Regler gesaettigt und zwei benachbarte
+        # Profile liefern dasselbe Ergebnis. Gemessen an der CRYPTO-Gruppe:
+        # Median-Vola 0,58 gegen ein Aktien-Ziel von 0,25, konservativ und
+        # ausgewogen landeten beide bei Gewicht 0,5.
+        if clamped.mean() > 0.5:
+            typical = float(rp.annualised_vol(selected['vola']).median())
+            st.warning(t('risk.sizing_saturated',
+                         share=int(round(clamped.mean() * 100)),
+                         typical=f"{typical:.2f}",
+                         target=f"{profile['target_position_vol']:.2f}"))
 
     # ── Take-away ────────────────────────────────────────────────────────────
     def _expression(self, profile: dict):

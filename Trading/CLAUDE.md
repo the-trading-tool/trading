@@ -1617,3 +1617,45 @@ Value-Trend-Signalen ist beides nicht gegeben.
 **Grenzen dieser Messung:** ein Index, eine Strategie, ein Bullenmarkt, keine Kosten.
 Die Engine hat ausserdem 510 Bars in BKNG und KLAC wegen inkonsistentem OHLC
 uebersprungen (Datenqualitaet, nicht Sizing).
+
+### Gegentest: profile-Sizing auf CRYPTO (2026-09-13)
+
+Gleiche Methode wie der SPX-Lauf, aber bewusst das Gegenteil an Universum: 8 Coins
+(BTC/ETH/SOL/XRP/BNB/TRX/XMR/DOGE, alle -EUR), 2023-2025, 3 Slots, 15.000 EUR,
+Trendformel `(close > sma50) & (ewo > ewo_ema)` — die Value-Trend-Formel feuert auf
+Krypto **nie** (`overallValueTrend` erreicht dort maximal 57 gegen eine Schwelle von 69,
+ohne Fundamentaldaten kommen die Punkte nicht zusammen).
+
+| Modus | CAGR % | Vola | max DD % | Rend./Vola | Quote | Ø Gewicht | Streuung |
+|---|---|---|---|---|---|---|---|
+| none / cash | 39,24 | 0,195 | -17,57 | 2,01 | 33,2 % | — | — |
+| normalized | 41,82 | 0,217 | -20,93 | **1,93** | 35,3 % | — | — |
+| profile: conservative | 27,42 | 0,134 | -10,61 | 2,05 | 20,3 % | 0,51 | 0,03 |
+| profile: balanced | 27,42 | 0,134 | -10,61 | 2,05 | 20,3 % | 0,54 | 0,07 |
+| profile: dynamic | 27,67 | 0,135 | -10,73 | 2,06 | 20,6 % | 0,57 | 0,10 |
+| profile: offensive | 28,11 | 0,139 | -11,63 | 2,02 | 22,3 % | 0,65 | 0,16 |
+| profile: Ziel 0,45 | 31,65 | 0,160 | -14,62 | 1,98 | 27,0 % | 0,83 | 0,23 |
+| profile: Ziel 0,58 | 38,08 | 0,190 | -17,19 | 2,01 | 32,3 % | 1,07 | 0,30 |
+| profile: Ziel 0,80 | 45,47 | 0,236 | -22,11 | 1,93 | 41,2 % | 1,44 | 0,37 |
+
+**Drei Befunde:**
+
+1. **Die ausgelieferten Profile sind fuer Krypto unbrauchbar als Regler.** Die
+   annualisierte Vola der Kaufsignale liegt im Median bei **0,58** (p05 0,35, p95 0,87),
+   die Aktien-Ziele bei 0,21-0,34. Konservativ und ausgewogen landen deshalb **beide**
+   an der Klammer (Ø Gewicht 0,51/0,54, Streuung 0,03/0,07) und liefern Zeile fuer
+   Zeile dasselbe Ergebnis. Mit einem passenden Ziel (0,58 = Median der Auswahl)
+   reproduziert die Regel den ungesizten Lauf fast exakt (38,08 gegen 39,24 CAGR,
+   0,190 gegen 0,195 Vola) — und der Tilt lebt wieder (Streuung 0,30).
+2. **Auch hier kein risikobereinigter Vorsprung.** Rendite/Vola bleibt ueber die ganze
+   Reihe zwischen 1,93 und 2,06 — bei echter Vola-Streuung (BTC 12,4 gegen DOGE 22,7).
+   Die These „bei breiter Streuung zahlt sich der Tilt aus" ist damit **widerlegt**,
+   nicht bestaetigt.
+3. **Wofuer es trotzdem taugt:** nur diese Regel bringt den Drawdown eines
+   Krypto-Depots von -21 % auf -11 %. `normalized` kann das konstruktiv nicht, weil es
+   immer das volle Budget einsetzt — und schneidet hier mit 1,93 sogar am schlechtesten
+   ab.
+
+**Daraus umgesetzt:** die Profilseite warnt jetzt, wenn mehr als die Haelfte der Auswahl
+an der Klammer haengt (`risk.sizing_saturated`), und nennt typische Vola gegen Ziel. Ohne
+diesen Hinweis waere „konservativ und ausgewogen liefern dasselbe" ein stiller Fehler.
