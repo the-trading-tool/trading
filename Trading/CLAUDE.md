@@ -1659,3 +1659,34 @@ ohne Fundamentaldaten kommen die Punkte nicht zusammen).
 **Daraus umgesetzt:** die Profilseite warnt jetzt, wenn mehr als die Haelfte der Auswahl
 an der Klammer haengt (`risk.sizing_saturated`), und nennt typische Vola gegen Ziel. Ohne
 diesen Hinweis waere „konservativ und ausgewogen liefern dasselbe" ein stiller Fehler.
+
+---
+
+## Fix: "[BUY-ERROR] name 'trendScore' is not defined" im Asset Viewer (2026-09-13)
+
+Die gespeicherte Buy-Formel `(trendScore>55) …` brach im Chart, sobald der
+`prof`-Oszillator nicht ausgewaehlt war. Ursache ist eine Luecke im Versprechen
+„gleiche Spaltennamen live und im Backtest": in `asset_simulation` stehen die
+Spalten immer, im Live-Frame nur, solange das erzeugende Indikatormodul aktiv ist.
+Dieselbe Klasse Fehler gab es vorher schon mit `overallValueTrend` (ovt), dort nur in
+`market_overview_page` umgangen (leere Queries), nicht behoben.
+
+**Behoben in `fetch_data.py`:**
+- `indicators_for_expressions(expressions, selected)` liest die Tokens einer
+  Buy/Sell-Formel und liefert die noch nicht aktiven Indikatoren, deren Spalten sie
+  referenziert. Quelle ist `asset_perf2.INDICATOR_BACKFILL_MAP` (lazy importiert,
+  einmal gecacht, `ohlc` ausgenommen) plus ovt (`overallTrend`,
+  `overallValueTrend`, Praefix `ovtEma`). Faellt der Import aus, bleiben wenigstens
+  die Profil-Spalten abgedeckt.
+- `FetchData.fetch_data` rechnet diese Indikatoren **mit, zeichnet sie aber nicht** —
+  sie kommen in eine lokale Liste, nicht in `self.indicators`.
+- **`atr` gab es live gar nicht** (nur `fill_pdict` schreibt die Spalte). Der Ausdruck
+  von der Risikoprofil-Seite `(atr / close <= …)` waere also der naechste Fehler
+  gewesen. Jetzt als leichter Helfer neben `log_return`, ueber `Prof.atr_series` —
+  dieselbe Formel wie die Engine, ein Test vergleicht beide.
+
+**Verifiziert** gegen eine Kopie der DBs (TradingDB auf Scratch, damit ein
+Yahoo-Fallback nicht in Produktion schreibt): ^GDAXI mit genau den Oszillatoren aus dem
+Screenshot (ewo, rsi) und kurts gespeicherten Formeln — keine Fehlermeldung,
+`trendScore`/`riskScore`/`atr` vorhanden, 39 Kaufsignale im Jahr, letzter Close
+25.568,56 wie im Chart.

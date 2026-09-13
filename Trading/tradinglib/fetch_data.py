@@ -18,6 +18,81 @@ from tradinglib.utils import DataUtils
 from datetime import datetime, timedelta
 import streamlit as st
 
+
+# ---------------------------------------------------------------------------
+# Columns a buy/sell formula may reference that only an indicator produces
+# ---------------------------------------------------------------------------
+#
+# The same column names live in asset_simulation AND in the live chart frame —
+# that is the promise that lets a formula run in the backtest and in the chart
+# alike. The live frame only carries an indicator's columns when that indicator
+# is switched on, though, and a formula does not care which oscillators happen to
+# be selected. So a saved buy query failed with "name '…' is not defined" the
+# moment the matching oscillator was not ticked: first with ovt's
+# overallValueTrend, then with trendScore from prof. The indicators such a
+# formula needs are now computed for it, without being drawn.
+
+_EXPR_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Columns not covered by asset_perf2.INDICATOR_BACKFILL_MAP. ovt is not in that
+# map because asset_perf2 writes its two scores directly; ovtEma{span} carries
+# the span in its name, hence the prefix entry.
+_EXTRA_COLUMN_INDICATORS = {
+    'overallTrend': 'ovt',
+    'overallValueTrend': 'ovt',
+}
+_EXTRA_PREFIX_INDICATORS = (('ovtEma', 'ovt'),)
+
+# Map keys that are not indicator modules and must never be instantiated.
+_NOT_AN_INDICATOR = {'ohlc'}
+
+_COLUMN_INDICATOR_CACHE = None
+
+
+def _column_indicator_map() -> dict:
+    """{column: indicator}, built once from the engine's backfill map."""
+    global _COLUMN_INDICATOR_CACHE
+    if _COLUMN_INDICATOR_CACHE is not None:
+        return _COLUMN_INDICATOR_CACHE
+    mapping = dict(_EXTRA_COLUMN_INDICATORS)
+    try:
+        # Lazy: asset_perf2 is a large script module; ovt.py already imports it
+        # the same way on the chart path.
+        from asset_perf2 import INDICATOR_BACKFILL_MAP
+        for name, columns in INDICATOR_BACKFILL_MAP.items():
+            if name in _NOT_AN_INDICATOR:
+                continue
+            for column in columns:
+                mapping.setdefault(column, name)
+    except Exception:
+        # Without the engine map at least the profile scores keep working.
+        for column in ('riskScore', 'riskBucket', 'trendScore'):
+            mapping.setdefault(column, 'prof')
+    _COLUMN_INDICATOR_CACHE = mapping
+    return mapping
+
+
+def indicators_for_expressions(expressions, selected=()) -> list:
+    """Indicators whose columns *expressions* reference and that are not selected.
+
+    Returned in first-reference order, each once.
+    """
+    mapping = _column_indicator_map()
+    chosen = set(selected or ())
+    out = []
+    for expression in expressions or ():
+        for token in _EXPR_TOKEN.findall(expression or ''):
+            name = mapping.get(token)
+            if name is None:
+                for prefix, indicator_name in _EXTRA_PREFIX_INDICATORS:
+                    if token.startswith(prefix):
+                        name = indicator_name
+                        break
+            if name and name not in chosen and name not in out:
+                out.append(name)
+    return out
+
+
 class CurrencyConverter:
     def __init__(self, local_currency="EUR"):
         """Set up the converter, targeting local_currency as the output currency."""
@@ -597,9 +672,28 @@ class FetchData(tt.TickerTools):
                 df = indicator.log_return(df)
             except Exception:
                 pass
+            # atr is a stored column (asset_perf2.fill_pdict) with no live
+            # counterpart, so `atr / close` — the risk-profile cut — failed in
+            # the chart. Same true range and simple mean as the engine, taken
+            # from the one implementation both paths share.
+            if 'atr' not in df.columns and {'High', 'Low', 'Close'} <= set(df.columns):
+                try:
+                    from tradinglib.indicator.prof import Prof
+                    df['atr'] = Prof.atr_series(df)
+                except Exception as _e:
+                    self.logger.warning("live atr failed: %s", _e)
+
+            # Indicators a buy/sell formula references but the chart has not
+            # switched on — computed so the formula evaluates, not drawn.
+            wanted = list(self.indicators)
+            for _extra in indicators_for_expressions(
+                    [self.buy_query, self.sell_query], wanted):
+                self.logger.info("fetch_data %s: computing '%s' for the buy/sell "
+                                 "formula (not selected in the chart)", symbol, _extra)
+                wanted.append(_extra)
 
             # instantiate specific indicator modules requested
-            for itm in list(self.indicators):
+            for itm in wanted:
                 try:
                     # use existing helper to create instance and attach to self
                     self.init_instance(itm, df=df, symbol=symbol)
