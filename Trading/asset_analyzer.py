@@ -534,12 +534,27 @@ class TradingApp:
 
         sel = st.empty()
         (sel_m, _, sel_e, _, sel_a) = sel.columns([0.4,0.05,0.4,0.05,0.1])
-        use_monitored = sel_m.checkbox(t('summary.use_monitored'), True)
+        from tradinglib import summary_sources as ss
+        source = sel_m.radio(
+            t('summary.source'), ss.SOURCES, horizontal=True,
+            format_func=lambda s: t(f'summary.source_{s}'), key='summary_source',
+        )
         show_earnings = sel_e.checkbox(t('summary.earnings_calendar'), allow_show_earnings)
         show_assets = sel_a.button(t('summary.show_assets'))
 
         monitored_assets = self.sys_config.get_value("monitored_assets",'')
-        if not use_monitored or monitored_assets == "":
+        trade_tickers = None
+        if source in ('own', 'paper'):
+            open_only = sel_e.checkbox(t('summary.open_only'), True, key='summary_open_only')
+            fetch = ss.own_trade_tickers if source == 'own' else ss.paper_trade_tickers
+            trade_tickers = fetch(open_only=open_only)
+            if not trade_tickers:
+                st.info(t('summary.no_trade_assets'))
+                return
+
+        if trade_tickers is not None:
+            default_tickers = ", ".join(trade_tickers)
+        elif source == 'market' or monitored_assets == "":
             if results:
                 selected_ticker = st.selectbox(
                     t('summary.select_market'),
