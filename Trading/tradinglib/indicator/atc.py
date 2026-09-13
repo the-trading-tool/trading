@@ -33,6 +33,10 @@ class Atc(_indicator._Indicator):
         'show_zero_mid':  {'type': 'bool',  'default': False, 'label': 'Zero channel: middle line'},
         'show_low_mid':   {'type': 'bool',  'default': False, 'label': 'Low channel: middle line'},
         'show_low_top':   {'type': 'bool',  'default': False, 'label': 'Low channel: upper line'},
+        # Each bar's channel is fitted over this many trailing bars — never
+        # over bars that came later. 252 = one trading year of daily bars.
+        'lookback':       {'type': 'int',   'default': 252,  'min': 20, 'max': 2520,
+                           'label': 'Channel lookback per bar (bars)'},
     }
 
     # Line each anchor is defined by — always drawn, never switchable. The high
@@ -47,7 +51,8 @@ class Atc(_indicator._Indicator):
 
     def __init__(self, df, symbol = "", dev_multi = 2.0, use_gog_scale = False, use_exp_weight = False ,anchors = ["high", "low", "zero"], channel_colors=["darkred", "darkgreen", "darkblue"],
                  show_width = True, show_high_mid = False, show_high_bot = False,
-                 show_zero_mid = False, show_low_mid = False, show_low_top = False):
+                 show_zero_mid = False, show_low_mid = False, show_low_top = False,
+                 lookback = 252):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         if df.empty:
             logger.debug("Empty dataframe")
@@ -68,6 +73,13 @@ class Atc(_indicator._Indicator):
             ('low',  'top'): show_low_top,
         }
         self.max_bars = len(self.df)   # use len(), not len(df['Date'])
+        try:
+            self.lookback = max(20, int(lookback))
+        except (TypeError, ValueError):
+            self.lookback = 252
+        # Today's channel per anchor — what the chart draws as straight lines.
+        # The df columns hold something else: one causal value per bar.
+        self.channels = {}
         self.data()
 
     def draws(self, anchor: str, line: str) -> bool:
@@ -145,8 +157,199 @@ class Atc(_indicator._Indicator):
         return reg_line, reg_line + self.dev_multi * stdev, reg_line - self.dev_multi * stdev, slope, r2, r_val        
     
 
+    # ── Causal computation ────────────────────────────────────────────────────
+    #
+    # A regression channel is not a per-bar series. The old implementation fitted
+    # ONE channel over the whole frame and wrote its line into the columns, so the
+    # value on a past bar came from a fit that already knew the bars after it.
+    # Measured on the stored columns: 98.8-99.6 % of the steps in atc_top_high
+    # were exactly straight, and the values deviated from the channel a trader
+    # actually had on that day by a median 3-40 %. A sell rule on the upper edge
+    # looked dead in the chart (0 signals on ^GDAXI over a year) while firing 16
+    # times in daily operation.
+    #
+    # Now every bar gets the last point of the channel fitted over its own
+    # trailing `lookback` bars, with the same anchor rules as before. The value on
+    # the most recent bar equals the old one whenever the frame spans the
+    # lookback; only history changes, and it changes to what was knowable then.
+
+    @staticmethod
+    def _is_daily(index):
+        """Daily bars: median spacing between 20 hours and four days."""
+        if len(index) < 3:
+            return False
+        spacing = pd.Series(index).diff().dt.total_seconds().median()
+        return bool(spacing) and 20 * 3600 <= spacing <= 4 * 24 * 3600
+
+    def _target_index(self):
+        idx = pd.to_datetime(self.df.index, errors='coerce')
+        if idx.isna().all() and 'Date' in self.df.columns:
+            idx = pd.to_datetime(self.df['Date'], errors='coerce')
+        return pd.DatetimeIndex(idx)
+
+    def _history(self, target):
+        """Full local daily history for daily charts, otherwise the frame itself.
+
+        A daily chart only holds the displayed period, so its first bars would
+        get channels over a handful of bars — and a different number than the
+        backtest, which loads years. Intraday and weekly frames are channelled on
+        their own bars: that is what an intraday channel means.
+        """
+        if self.symbol and self._is_daily(target):
+            try:
+                from tradinglib import four_ps
+                hist = four_ps.load_daily(self.symbol)
+                if hist is not None and len(hist) >= len(target) // 2:
+                    # Older bars cannot reach any bar of the chart through its
+                    # trailing window — cut them, it changes no value.
+                    first = target.min()
+                    if pd.notna(first):
+                        pos = int(hist.index.searchsorted(first))
+                        hist = hist.iloc[max(0, pos - self.lookback - 5):]
+                    return hist[['High', 'Low', 'Close']].astype(float)
+            except Exception:
+                logger.debug("atc: daily history for %s not loadable", self.symbol,
+                             exc_info=True)
+        frame = self.df[['High', 'Low', 'Close']].copy()
+        frame.index = target
+        return frame.astype(float)
+
+    @staticmethod
+    def _prefix(y):
+        """Prefix sums for O(1) least squares over any window."""
+        idx = np.arange(len(y), dtype=float)
+        p1 = np.concatenate(([0.0], np.cumsum(y)))
+        p2 = np.concatenate(([0.0], np.cumsum(y * y)))
+        q = np.concatenate(([0.0], np.cumsum(idx * y)))
+        return p1, p2, q
+
+    @staticmethod
+    def _sums(end, lengths, p1, p2, q):
+        lengths = np.asarray(lengths, dtype=float)
+        start = (end - lengths + 1).astype(int)
+        sy = p1[end + 1] - p1[start]
+        syy = p2[end + 1] - p2[start]
+        sxy = (q[end + 1] - q[start]) - start * sy        # x = i - start
+        sx = lengths * (lengths - 1) / 2.0
+        sxx = (lengths - 1) * lengths * (2 * lengths - 1) / 6.0
+        cov = sxy - sx * sy / lengths
+        varx = sxx - sx * sx / lengths
+        return lengths, sy, syy, sx, cov, varx
+
+    def _slopes_ending_at(self, end, lengths, p1, p2, q):
+        lengths, sy, syy, sx, cov, varx = self._sums(end, lengths, p1, p2, q)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return np.where(varx > 0, cov / varx, 0.0)
+
+    def _channel_end(self, end, length, p1, p2, q):
+        """(mid, stdev) of the least-squares line over `length` bars ending at
+        `end`, evaluated at its last bar — what calc_regression_channel() gives."""
+        lengths, sy, syy, sx, cov, varx = self._sums(end, [length], p1, p2, q)
+        n = lengths[0]
+        slope = cov[0] / varx[0] if varx[0] > 0 else 0.0
+        intercept = (sy[0] - slope * sx[0]) / n
+        mid = intercept + slope * (n - 1)
+        ssr = (syy[0] - sy[0] * sy[0] / n) - slope * cov[0]
+        return mid, float(np.sqrt(max(ssr, 0.0) / n))
+
+    def _length(self, name, y_win, high_win, low_win, min_len):
+        """Regression length for one trailing window — the rules of the old version."""
+        wl = len(y_win)
+        if name == "high":
+            length = wl - int(np.argmax(high_win))
+        elif name == "low":
+            length = wl - int(np.argmin(low_win))
+        else:  # "zero": the length whose slope is closest to zero
+            lengths = np.arange(2, wl)
+            if len(lengths) == 0:
+                length = wl
+            else:
+                slopes = self._slopes_ending_at(wl - 1, lengths, *self._prefix(y_win))
+                length = int(lengths[int(np.argmin(np.abs(slopes)))])
+        return max(min_len, min(length, wl))
+
+    def _causal_columns(self, hist, name):
+        """Per-bar causal channel values for one anchor."""
+        close_t = np.asarray(self.transform_price(hist['Close']), dtype=float)
+        high = hist['High'].to_numpy(dtype=float)
+        low = hist['Low'].to_numpy(dtype=float)
+        n = len(close_t)
+        mid = np.full(n, np.nan)
+        top = np.full(n, np.nan)
+        bot = np.full(n, np.nan)
+
+        # Shift to zero mean before the prefix sums — the channel does not care,
+        # and squared prices summed over years would cost precision.
+        offset = float(np.nanmean(close_t)) if n else 0.0
+        y = close_t - offset
+
+        for end in range(n):
+            start = max(0, end - self.lookback + 1)
+            wl = end - start + 1
+            min_len = max(10, wl // 5)
+            if wl < min_len:
+                continue
+            y_win = y[start:end + 1]
+            length = self._length(name, y_win, high[start:end + 1],
+                                  low[start:end + 1], min_len)
+            if self.use_exp_weight:
+                # Weighted fits have no prefix-sum shortcut; slower, same rule.
+                try:
+                    m, t, b, *_ = self.calc_regression_channel(
+                        pd.Series(close_t[start:end + 1]), length)
+                    mid[end], top[end], bot[end] = m[-1], t[-1], b[-1]
+                except Exception:
+                    pass
+                continue
+            m, sd = self._channel_end(wl - 1, length, *self._prefix(y_win))
+            mid[end] = m + offset
+            top[end] = mid[end] + self.dev_multi * sd
+            bot[end] = mid[end] - self.dev_multi * sd
+
+        mid_p = self.inverse_transform_price(mid)
+        top_p = self.inverse_transform_price(top)
+        bot_p = self.inverse_transform_price(bot)
+        width = top_p - bot_p
+        close = hist['Close'].to_numpy(dtype=float)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            width_pct = np.where(close != 0, width / close * 100.0, np.nan)
+        return pd.DataFrame({
+            f"atc_mid_{name}": mid_p, f"atc_top_{name}": top_p,
+            f"atc_bot_{name}": bot_p, f"atc_width_{name}": width,
+            f"atc_width_pct_{name}": width_pct,
+        }, index=hist.index)
+
+    def _todays_channel(self, hist, name, target):
+        """The straight channel as of the last bar — what the chart draws."""
+        window = hist.iloc[-self.lookback:]
+        wl = len(window)
+        min_len = max(10, wl // 5)
+        if wl < min_len:
+            return None
+        close_t = self.transform_price(window['Close']).astype(float)
+        centred = close_t.to_numpy(dtype=float) - float(close_t.mean())
+        length = self._length(name, centred, window['High'].to_numpy(dtype=float),
+                              window['Low'].to_numpy(dtype=float), min_len)
+        mid, top, bot, *_ = self.calc_regression_channel(close_t, length)
+        seg = pd.DataFrame({
+            'mid': self.inverse_transform_price(mid),
+            'top': self.inverse_transform_price(top),
+            'bot': self.inverse_transform_price(bot),
+        }, index=window.index[-length:])
+        # Only what falls inside the chart — drawing beyond it would stretch the
+        # shared date axis.
+        if len(target) and target.notna().any():
+            seg = seg[(seg.index >= target.min()) & (seg.index <= target.max())]
+        if seg.empty:
+            return None
+        close_last = float(window['Close'].iloc[-1])
+        width = float(seg['top'].iloc[-1] - seg['bot'].iloc[-1])
+        seg.attrs['width'] = width
+        seg.attrs['width_pct'] = width / close_last * 100.0 if close_last else np.nan
+        return seg
+
     def data(self):
-        """Compute the indicator values and attach them as columns to self.df."""
+        """Compute causal channel columns and today's drawable channels."""
 
         if isinstance(self.df.columns, pd.MultiIndex):
             self.df.columns = self.df.columns.get_level_values(0)
@@ -154,133 +357,72 @@ class Atc(_indicator._Indicator):
         self.close = self.df["Close"]
         self.high = self.df["High"]
         self.low = self.df["Low"]
-
         self.close_t = self.transform_price(self.close)
 
-        def add_array(values, name):
-            """Append array-level plot traces (fill areas, bands) to the figure."""
-            new_col = np.full(len(self.df), np.nan)
-            new_col[-len(values):] = values
-            self.df[name] = new_col
+        target = self._target_index()
+        try:
+            hist = self._history(target)
+        except Exception as e:
+            logger.error("atc: %s", e)
+            return
+        if hist.empty:
+            return
 
-        # Mindestlaenge des Regressionsfensters: mindestens 20 % der sichtbaren
-        # Balken, nie unter 10.
-        min_length = max(10, len(self.close) // 5)
-
-        for name, color in zip(self.anchors, self.channel_colors):
-            if name == "high":
-                length = self.find_bar_highest(self.high, self.max_bars)
-            elif name == "low":
-                length = self.find_bar_lowest(self.low, self.max_bars)
-            elif name == "zero":
-                length = self.find_slope_zero(self.close_t, self.max_bars)
-            # Mindestfenster: sonst legt eine 2-Balken-Regression einen Kanal
-            # ohne Aussage an, dessen Raender weit vom Kurs wegkippen.
-            length = max(min_length, min(length, len(self.close)))
-
+        for name in self.anchors:
             try:
-                mid, top, bot, slope, r2, r_val = self.calc_regression_channel(self.close_t, length)
-                mid_p = self.inverse_transform_price(mid)
-                top_p = self.inverse_transform_price(top)
-                bot_p = self.inverse_transform_price(bot)
-                add_array(mid_p, f"atc_mid_{name}")
-                add_array(top_p, f"atc_top_{name}")
-                add_array(bot_p, f"atc_bot_{name}")
-
-                # Kanalbreite = Abstand der beiden Parallelen. Absolut in
-                # Kurseinheiten und relativ zum Kurs -- erst der Prozentwert
-                # ist zwischen Werten vergleichbar (ein DAX-Kanal von 60
-                # Punkten ist eng, bei einer 5-Euro-Aktie waere er gewaltig).
-                # Beides als Spalte, damit es auch in Buy/Sell-Formeln zur
-                # Verfuegung steht.
-                #
-                # Bezug ist bewusst der KURS und nicht die eigene Mittellinie
-                # des Kanals. Die Mittellinien der drei Kanaele liegen weit
-                # auseinander -- beim KOSPI 6.063 (high) gegen 8.030 (low) --,
-                # und mit je eigenem Nenner bekam der sichtbar schmalere Kanal
-                # die groessere Zahl (2.171 Punkte = 35,8 %, gegen 2.846 Punkte
-                # = 35,4 %). Ein gemeinsamer Nenner macht die drei Zahlen
-                # untereinander vergleichbar und deckt sich mit dem, was man im
-                # Chart sieht.
-                width = top_p - bot_p
-                ref = np.asarray(self.close.values[-len(width):], dtype=float)
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    width_pct = np.where(ref != 0, width / ref * 100.0, np.nan)
-                add_array(width, f"atc_width_{name}")
-                add_array(width_pct, f"atc_width_pct_{name}")
+                columns = self._causal_columns(hist, name)
+                if columns.index.equals(target):
+                    projected = columns
+                else:
+                    projected = columns.reindex(target, method='ffill')
+                for col in columns.columns:
+                    self.df[col] = projected[col].to_numpy()
+                seg = self._todays_channel(hist, name, target)
+                if seg is not None:
+                    self.channels[name] = seg
             except Exception as e:
-                logger.error("%s", e)
-                pass
+                logger.error("atc %s: %s", name, e)
 
         if 'atc_bot_low' in self.df:
-            self.df['atc_low'] = self.df['atc_bot_low']                        
+            self.df['atc_low'] = self.df['atc_bot_low']
         if 'atc_top_high' in self.df:
-            self.df['atc_high'] = self.df['atc_top_high']                        
-        
+            self.df['atc_high'] = self.df['atc_top_high']
+
     def add_fig(self):
-        """Add the indicator traces to the given Plotly figure."""
+        """Draw today's channels as straight lines, plus the width label.
+
+        The chart shows the channel as it stands on the last bar. The causal
+        per-bar columns behind the buy/sell formulas are a different thing — a
+        line through those would zig-zag, because each point belongs to a
+        different fit.
+        """
 
         self.fig = go.Figure()
 
-        # Build a temporary flat copy for plotting — never mutate self.df in-place.
-        try:
-            plot_base = self.df.reset_index()   # returns NEW df, no inplace
-        except Exception:
-            plot_base = self.df.copy()
-
-        date_col = next((c for c in ['Date', 'Datetime', 'timestamp'] if c in plot_base.columns), None)
-        if date_col is None:
-            return
-
         for name, color in zip(self.anchors, self.channel_colors):
-
+            seg = self.channels.get(name)
+            if seg is None or seg.empty:
+                continue
             try:
-                top_col = f'atc_top_{name}'
-                mid_col = f'atc_mid_{name}'
-                bot_col = f'atc_bot_{name}'
-
-                ref_col = top_col if top_col in plot_base.columns else mid_col
-                if ref_col not in plot_base.columns:
-                    continue
-                plot_df = plot_base[plot_base[ref_col].notna()]
-                if plot_df.empty:
-                    continue
-
-                if self.draws(name, 'mid') and mid_col in plot_df.columns:
+                x = seg.index
+                if self.draws(name, 'mid'):
                     self.fig.add_trace(go.Scatter(
-                        x=plot_df[date_col],
-                        y=plot_df[mid_col],
+                        x=x, y=seg['mid'],
                         line=dict(dash='dot', color=color, width=2),
-                        opacity=0.7,
-                        showlegend=False,
-                        name=mid_col)
-                    )
-
-                if self.draws(name, 'top') and top_col in plot_df.columns:
+                        opacity=0.7, showlegend=False, name=f'atc_mid_{name}'))
+                if self.draws(name, 'top'):
                     self.fig.add_trace(go.Scatter(
-                        x=plot_df[date_col],
-                        y=plot_df[top_col],
+                        x=x, y=seg['top'],
                         line=dict(color=color, width=2),
-                        opacity=0.7,
-                        showlegend=False,
-                        name=top_col)
-                    )
-
-                if self.draws(name, 'bot') and bot_col in plot_df.columns:
+                        opacity=0.7, showlegend=False, name=f'atc_top_{name}'))
+                if self.draws(name, 'bot'):
                     self.fig.add_trace(go.Scatter(
-                        x=plot_df[date_col],
-                        y=plot_df[bot_col],
+                        x=x, y=seg['bot'],
                         line=dict(color=color, width=2),
-                        opacity=0.7,
-                        showlegend=False,
-                        name=bot_col)
-                    )
-
-                self._add_width_label(plot_df, date_col, name, color,
-                                      slot=self.anchors.index(name))
-
+                        opacity=0.7, showlegend=False, name=f'atc_bot_{name}'))
+                self._add_width_label(seg, name, color, slot=self.anchors.index(name))
             except Exception:
-                pass
+                logger.debug("atc: drawing %s failed", name, exc_info=True)
 
     # Abstand der Beschriftung vom rechten Rand, in Balken. Gestaffelt, damit
     # sich die drei Zahlen nicht ueberlagern, wenn die Kanaele aehnlich breit
@@ -289,7 +431,7 @@ class Atc(_indicator._Indicator):
     # zurueckreichen, das Zoomfenster aber immer am rechten Rand endet.
     LABEL_OFFSET_BARS = (4, 11, 18)
 
-    def _add_width_label(self, plot_df, date_col, name, color, slot=0):
+    def _add_width_label(self, seg, name, color, slot=0):
         """Kanalbreite als Zahl zwischen die beiden Parallelen schreiben.
 
         Bewusst als Text-Spur und nicht als Annotation: Annotationen aus
@@ -299,32 +441,26 @@ class Atc(_indicator._Indicator):
         """
         if not self.show_width:
             return
-        wcol, pcol = f'atc_width_{name}', f'atc_width_pct_{name}'
-        top_col, bot_col = f'atc_top_{name}', f'atc_bot_{name}'
-        if not {wcol, pcol, top_col, bot_col} <= set(plot_df.columns):
-            return
         # Der ausgewiesene Wert gilt fuer den letzten Balken: der absolute
         # Abstand der Parallelen ist ueber den Kanal konstant (2 x dev_multi x
-        # stdev), der Prozentwert aber nicht -- er bezieht sich auf die
-        # Mittellinie, und die wandert. Also immer den aktuellen Rand nehmen.
-        last = plot_df.iloc[-1]
-        width, pct = last[wcol], last[pcol]
-        if pd.isna(width) or pd.isna(pct):
+        # stdev), der Prozentwert bezieht sich auf den Kurs dieses Balkens.
+        width, pct = seg.attrs.get('width'), seg.attrs.get('width_pct')
+        if width is None or pct is None or pd.isna(width) or pd.isna(pct):
             return
         # Gesetzt wird die Zahl kurz VOR dem rechten Rand. Direkt am Rand
         # draengen sich die Kurs- und EMA-Fahnen; in der Kanalmitte lag sie
         # dagegen links ausserhalb des Bildes, weil die Kanaele weiter
         # zurueckreichen als das Zoomfenster des Charts.
         offset = self.LABEL_OFFSET_BARS[slot % len(self.LABEL_OFFSET_BARS)]
-        pos = plot_df.iloc[-min(offset + 1, len(plot_df))]
+        pos = seg.iloc[-min(offset + 1, len(seg))]
         # Mittig zwischen die Parallelen -- unabhaengig davon, welche der
         # beiden gerade gezeichnet wird.
-        y = (pos[top_col] + pos[bot_col]) / 2.0
+        y = (pos['top'] + pos['bot']) / 2.0
         # Unter 1 % zwei Nachkommastellen: im Minutenchart liegen alle drei
         # Kanaele bei "0,3 %", gerundet auf eine Stelle sagt das nichts mehr.
         txt = f'{pct:.2f} %' if abs(pct) < 1 else f'{pct:.1f} %'
         self.fig.add_trace(go.Scatter(
-            x=[pos[date_col]], y=[y],
+            x=[pos.name], y=[y],
             mode='text',
             text=[txt],
             textposition='middle center',

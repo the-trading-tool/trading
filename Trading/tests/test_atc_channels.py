@@ -83,18 +83,19 @@ def test_narrower_channel_never_shows_the_bigger_number(df):
     assert by_abs == by_pct, 'Reihenfolge muss der sichtbaren Breite folgen'
 
 
-def test_absolute_width_is_constant_but_percent_is_not(df):
-    """2 x dev_multi x stdev haengt nicht von der Position ab -- der
-    Prozentwert schon, denn er bezieht sich auf die wandernde Mittellinie.
+def test_drawn_channel_has_parallel_edges(df):
+    """Der GEZEICHNETE Kanal ist eine Regression: 2 x dev_multi x stdev haengt
+    nicht von der Position ab.
 
-    Deshalb nimmt die Beschriftung ihren Wert vom letzten Balken, auch wenn
-    sie weiter links steht.
+    Frueher stand diese Eigenschaft auf den df-Spalten -- sie waren genau diese
+    eine Gerade. Seit ATC kausal ist, traegt jede Spalte je Balken ihren eigenen
+    Fit (siehe test_columns_are_causal_per_bar); konstant ist nur noch der Kanal,
+    den der Chart als heutigen zeichnet.
     """
     a = Atc(df=df.copy())
-    w = a.df['atc_width_high'].dropna()
-    assert w.max() - w.min() == pytest.approx(0.0, abs=1e-9)
-    p = a.df['atc_width_pct_high'].dropna()
-    assert p.max() - p.min() > 0.0
+    seg = a.channels['high']
+    width = seg['top'] - seg['bot']
+    assert width.max() - width.min() == pytest.approx(0.0, abs=1e-9)
 
 
 def test_label_reports_the_value_of_the_last_bar(df):
@@ -175,9 +176,9 @@ def test_width_label_sits_between_the_lines(df):
     assert len(lbl) == 3, 'je Kanal eine Zahl'
     for t in lbl:
         name = t.name.replace('atc_width_', '').replace('_label', '')
-        row = a.df[a.df[f'atc_top_{name}'].notna()]
+        seg = a.channels[name]
         y = float(t.y[0])
-        assert row[f'atc_bot_{name}'].min() <= y <= row[f'atc_top_{name}'].max()
+        assert seg['bot'].min() <= y <= seg['top'].max()
         assert t.text[0].endswith('%')
 
 
@@ -190,3 +191,99 @@ def test_short_frame_does_not_produce_a_degenerate_channel(df):
     a = Atc(df=df.head(30).copy())
     for name in ('high', 'low', 'zero'):
         assert a.df[f'atc_mid_{name}'].notna().sum() >= 10
+
+
+
+# ── Kausalitaet (2026-09-13) ────────────────────────────────────────────────
+#
+# Der Kanal wurde frueher EINMAL ueber den ganzen Frame gelegt und seine Gerade
+# in die Spalten geschrieben. Jeder vergangene Balken bekam damit einen Wert aus
+# einem Fit, der die spaeteren Balken schon kannte. Gemessen: 98,8-99,6 % der
+# Schritte in atc_top_high waren exakt geradlinig, der Wert wich vom damals
+# tatsaechlich sichtbaren Kanal im Median um 3-40 % ab, und eine Sell-Regel am
+# oberen Rand zeigte im Chart 0 Signale, waehrend sie im Tagesbetrieb 16-mal
+# ausloeste.
+
+def _long_frame(n=400, seed=11):
+    rng = np.random.default_rng(seed)
+    close = 100 + np.cumsum(rng.normal(0.05, 1.2, n))
+    idx = pd.Index(pd.date_range('2024-01-01', periods=n, freq='B')
+                   .strftime('%Y-%m-%d %H:%M:%S'), name='Date')
+    return pd.DataFrame({'Open': close, 'High': close + rng.uniform(0.2, 1.5, n),
+                         'Low': close - rng.uniform(0.2, 1.5, n), 'Close': close,
+                         'Volume': 1000}, index=idx)
+
+
+def test_columns_are_causal_per_bar():
+    """Die Zukunft abschneiden darf keinen einzigen vergangenen Wert aendern."""
+    frame = _long_frame()
+    full = Atc(df=frame.copy(), lookback=120).df
+    cut = Atc(df=frame.iloc[:300].copy(), lookback=120).df
+    for col in ('atc_top_high', 'atc_mid_high', 'atc_bot_low', 'atc_mid_zero',
+                'atc_width_pct_zero'):
+        assert np.allclose(full[col].iloc[:300].fillna(-1),
+                           cut[col].fillna(-1), rtol=1e-9, atol=1e-9), col
+
+
+def test_each_bar_matches_a_fresh_fit_on_its_own_trailing_window():
+    """Referenz ist die unveraenderte sklearn-Regression auf dem Fenster bis
+    zu diesem Balken -- genau das, was ein Chart an diesem Tag gezeigt haette."""
+    frame = _long_frame()
+    lookback = 120
+    causal = Atc(df=frame.copy(), lookback=lookback).df
+    for end in (150, 233, 399):
+        window = frame.iloc[end - lookback + 1:end + 1].copy()
+        fresh = Atc(df=window, lookback=lookback)
+        for name in ('high', 'low', 'zero'):
+            seg = fresh.channels[name]
+            assert causal[f'atc_top_{name}'].iloc[end] == pytest.approx(
+                seg['top'].iloc[-1], rel=1e-7), (name, end)
+            assert causal[f'atc_mid_{name}'].iloc[end] == pytest.approx(
+                seg['mid'].iloc[-1], rel=1e-7), (name, end)
+
+
+def test_closed_form_matches_sklearn_regression():
+    """Die Praefixsummen muessen dieselbe Gerade liefern wie LinearRegression."""
+    frame = _long_frame(n=200)
+    a = Atc(df=frame.copy(), lookback=200)
+    close = frame['Close'].astype(float)
+    for length in (10, 57, 200):
+        mid, top, bot, *_ = a.calc_regression_channel(close, length)
+        y = close.to_numpy() - close.mean()
+        m, sd = a._channel_end(len(y) - 1, length, *a._prefix(y))
+        assert m + close.mean() == pytest.approx(mid[-1], rel=1e-9)
+        assert m + close.mean() + a.dev_multi * sd == pytest.approx(top[-1], rel=1e-9)
+
+
+def test_the_last_bar_is_unchanged_by_the_switch(df):
+    """Heute zeigt der Chart dieselbe Zahl wie vorher -- nur die Historie aendert
+    sich. Der Frame (120 Balken) liegt innerhalb des Lookbacks."""
+    a = Atc(df=df.copy())
+    for name in ('high', 'low', 'zero'):
+        seg = a.channels[name]
+        assert a.df[f'atc_top_{name}'].iloc[-1] == pytest.approx(seg['top'].iloc[-1])
+
+
+def test_causal_columns_are_not_one_straight_line():
+    frame = _long_frame()
+    top = Atc(df=frame.copy(), lookback=120).df['atc_top_high'].dropna()
+    second_difference = top.diff().diff().abs().dropna()
+    straight = (second_difference < 1e-9 * top.abs().mean()).mean()
+    assert straight < 0.5, 'kausale Werte stammen aus je eigenem Fit'
+
+
+def test_lookback_bounds_how_far_a_channel_reaches_back():
+    frame = _long_frame()
+    a = Atc(df=frame.copy(), lookback=60)
+    for seg in a.channels.values():
+        assert len(seg) <= 60
+
+
+def test_intraday_frames_are_channelled_on_their_own_bars():
+    """Nur Tageskurse laden die volle Historie nach -- ein Stundenchart bleibt
+    ein Stundenkanal."""
+    frame = _long_frame(n=150)
+    frame.index = pd.Index(pd.date_range('2026-01-05 09:00', periods=150, freq='h')
+                           .strftime('%Y-%m-%d %H:%M:%S'), name='Date')
+    a = Atc(df=frame.copy(), symbol='DOES-NOT-EXIST', lookback=100)
+    assert a.df['atc_top_high'].notna().sum() > 100

@@ -45,7 +45,10 @@ INDICATOR_BACKFILL_MAP: dict = {
     # um das der Kurs pendelt, wenn man den Trend herausrechnet. Als Spalte hier,
     # damit Buy/Sell-Formeln sie auch im Backtest und in der Kandidatensuche
     # verwenden koennen; live lag sie ohnehin schon vor.
-    'atc':     ['atc_top_high', 'atc_bot_low', 'atc_mid_zero'],
+    # atc_mid_high: middle of the channel anchored at the highest high — used
+    # by sell formulas like (Low > atc_mid_high); without it here such a
+    # formula ran in the chart but never in the backtest.
+    'atc':     ['atc_top_high', 'atc_bot_low', 'atc_mid_zero', 'atc_mid_high'],
     # 4 Phase Sequence — phases, base levels and signals (tradinglib/four_ps.py).
     # The indicator reloads the full local daily history itself, so /backfill:fps
     # yields the same values as a full init run.
@@ -977,6 +980,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         atc_top_high = DataUtils.safe_last(df, 'atc_top_high', default=0)
         atc_bot_low = DataUtils.safe_last(df, 'atc_bot_low', default=0)
         atc_mid_zero = DataUtils.safe_last(df, 'atc_mid_zero', default=0)
+        atc_mid_high = DataUtils.safe_last(df, 'atc_mid_high', default=0)
         rsi = DataUtils.safe_last(df, 'rsi', default=0)
         cci = DataUtils.safe_last(df, 'cci', default=0)
         adx = DataUtils.safe_last(df, 'adx', default=0)
@@ -1008,6 +1012,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['atc_top_high'] = atc_top_high
         pdict['atc_bot_low'] = atc_bot_low
         pdict['atc_mid_zero'] = atc_mid_zero
+        pdict['atc_mid_high'] = atc_mid_high
         pdict['rsi'] = rsi
         pdict['cci'] = cci
         pdict['adx'] = adx

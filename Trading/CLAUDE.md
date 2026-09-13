@@ -1690,3 +1690,60 @@ Yahoo-Fallback nicht in Produktion schreibt): ^GDAXI mit genau den Oszillatoren 
 Screenshot (ewo, rsi) und kurts gespeicherten Formeln — keine Fehlermeldung,
 `trendScore`/`riskScore`/`atr` vorhanden, 39 Kaufsignale im Jahr, letzter Close
 25.568,56 wie im Chart.
+
+---
+
+## ATC kausal (2026-09-13)
+
+**Befund.** `Atc` legte EINEN Regressionskanal ueber den ganzen Frame und schrieb
+dessen Gerade in die Spalten. Jeder vergangene Balken bekam damit einen Wert aus
+einem Fit, der die spaeteren Balken schon kannte — im Chart **und** in den
+gespeicherten Daten: `process_symbol` rechnet die Indikatoren einmal auf 2 Jahren
+und liest sie danach nur zeilenweise aus, `/backfill:atc` sogar einmal auf 10 Jahren.
+Gemessen an `asset_simulation_2024/2025` (SAP.DE, AAPL, ALV.DE): 98,8-99,6 % der
+Schritte in `atc_top_high` exakt geradlinig, Abweichung vom tagesaktuellen Kanal im
+Median 3-40 %.
+
+Folge fuer kurts Sell-Formel `(High>=atc_top_high)&(rsi>=72)&(Low>atc_mid_high)`:
+Chart ^GDAXI 1 Jahr **0** Treffer, im Tagesbetrieb (Kanal jeden Tag neu) **16**.
+Ueber 31 Werte im Tagesbetrieb Ø 15 Treffer je Wert/Jahr, alle haben ausgeloest.
+
+**Umbau in `tradinglib/indicator/atc.py`:**
+- Jede Spalte (`atc_{top,mid,bot}_{high,low,zero}`, `atc_width[_pct]_*`) traegt je
+  Balken den letzten Punkt des Kanals ueber die **nachlaufenden `lookback` Balken**
+  (neuer Parameter, Default 252), mit denselben Anker-Regeln wie vorher.
+- Geschlossene Kleinste-Quadrate-Loesung ueber Praefixsummen statt sklearn je Balken;
+  Nullsteigungs-Suche je Balken vektorisiert. 10 Jahre Tageskurse 0,30 s.
+  `use_exp_weight` hat keine Praefixsummen-Abkuerzung und faellt auf den (langsamen)
+  sklearn-Pfad zurueck.
+- **Tagescharts laden die volle lokale Historie nach** (wie `fps`/`prof`), gekappt auf
+  `lookback` Balken vor dem ersten Chartbalken — sonst bekaemen die ersten Chart-Balken
+  Kanaele ueber eine Handvoll Balken und andere Zahlen als der Backtest. 1-Jahres-Chart
+  0,12 s. **Intraday- und Wochenframes** werden auf ihren eigenen Balken gerechnet.
+- **Gezeichnet wird weiter der heutige Kanal als Gerade** (`self.channels`), die
+  Beschriftung ebenso. Eine Linie durch die kausalen Spalten waere ein Zickzack, weil
+  jeder Punkt aus einem anderen Fit stammt.
+- Der Wert am **letzten Balken ist unveraendert**, solange der Frame den Lookback
+  abdeckt; nur die Historie aendert sich. **Sichtbare Aenderung:** laengere Charts
+  (2 Jahre, Intraday mit vielen Balken) zeigen den Kanal nur noch ueber hoechstens
+  `lookback` Balken.
+
+`atc_mid_high` steht jetzt auch in `INDICATOR_BACKFILL_MAP['atc']` und im pdict — die
+Chart-Variante der Sell-Formel lief bisher nur live, nie im Backtest.
+
+**Tests:** der Test, der die konstante Breite der SPALTE festschrieb, war genau das
+alte Verhalten und prueft jetzt den gezeichneten Kanal. Neu: Zukunft abschneiden aendert
+keinen vergangenen Wert; jeder Balken == frischer sklearn-Fit auf seinem eigenen
+Fenster; geschlossene Loesung == LinearRegression; letzter Balken unveraendert;
+Intraday bleibt Intraday.
+
+**Nachweis am gemeldeten Fall** (DB-Kopie, ^GDAXI 1y, ewo+rsi, kurts Formeln):
+Sell-Bedingung roh 17 Tage (vorher 0), 5 Verkaufsmarker (vorher 0). Die Kaufmarker
+fallen von 39 auf 34 — die Buy-Formel trifft weiter an 39 Tagen, aber an 5 davon
+steht jetzt ein Verkauf: bei offener Position hat ein Sell auf demselben Balken
+Vorrang (`BuySellSignalGenerator.apply_signals`).
+
+**OFFEN:** die gespeicherten ATC-Werte in allen `asset_simulation_*.db` sind noch die
+alten, nicht kausalen. Erst `python asset_perf2.py /backfill:atc /force` (je Jahr mit
+`/year:YYYY`, dazu `/all`) bringt den Backtest auf denselben Stand wie den Chart.
+Ueberschreibt bestehende Werte → Backtest-Ergebnisse ATC-basierter Formeln aendern sich.
