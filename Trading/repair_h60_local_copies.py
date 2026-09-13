@@ -56,6 +56,7 @@ nicht den ganzen Bestand auf einmal.
     python repair_h60_local_copies.py /tickers:^GDAXI,SAP.DE
     python repair_h60_local_copies.py /index_member          # nur Index-Mitglieder
     python repair_h60_local_copies.py /inverse               # nur Titel ohne Gruppe
+    python repair_h60_local_copies.py /group:ETP             # eine Kategorie-Gruppe
     python repair_h60_local_copies.py /apply                # schreiben
 """
 import glob
@@ -174,6 +175,28 @@ def _ungrouped():
         return []
 
 
+def _group_members(groups):
+    """Ticker der genannten Gruppen (z. B. ETP, CRYPTO) -- dieselbe Auswahl wie
+    /group:NAME in get_asset_data.py, Gross-/Kleinschreibung egal."""
+    if isinstance(groups, str):
+        groups = groups.split(',')
+    namen = [g.strip().upper() for g in groups if g and g.strip()]
+    if not namen:
+        return []
+    path = Tools().get_path(path='database', file_name='yf_tickers.db')
+    marken = ','.join('?' * len(namen))
+    try:
+        with open_db(path, readonly=True) as conn:
+            return sorted({r[0] for r in conn.execute(
+                "SELECT s.Ticker FROM stock_indices si "
+                "JOIN stocks s ON s.id = si.stock_id "
+                "JOIN indices i ON i.id = si.index_id "
+                f"WHERE UPPER(i.name) IN ({marken})", namen)})
+    except Exception as e:
+        logger.error('Gruppenliste nicht lesbar: %s', e)
+        return []
+
+
 def _undo_conn(db_dir):
     path = os.path.join(db_dir, UNDO_DB)
     conn = sqlite3.connect(path)
@@ -194,6 +217,9 @@ def main():
     if args.get('inverse') and not nur:
         nur = _ungrouped()
         logger.info('/inverse: %d Ticker ohne Gruppenzugehoerigkeit', len(nur))
+    if args.get('group') and not nur:
+        nur = _group_members(args.get('group'))
+        logger.info('/group:%s: %d Ticker', args.get('group'), len(nur))
 
     db_dir = os.path.dirname(Tools().get_path(path='database', file_name='asset_info.db'))
     tzmap = _tz_map()
