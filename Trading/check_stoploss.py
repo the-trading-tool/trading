@@ -112,7 +112,7 @@ def main():
                             ticker=pos['ticker'],
                             broker_symbol=pos['broker_symbol'],
                             action='sell',
-                            qty=pos.get('qty', 0),
+                            qty=pos.get('qty') or result.qty or None,
                             signal_price=pos['current_price'],
                             order_id=result.order_id,
                             status=result.status,

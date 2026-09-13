@@ -366,6 +366,62 @@ class OrderLog(Tools):
         with sqlite3.connect(self._db) as conn:
             conn.execute(query, params)
 
+    def repair_zero_qty_fills(
+        self,
+        mode: str | None = None,
+        broker_id: str | None = None,
+        alpaca_by_id: dict | None = None,
+        errors: list | None = None,
+    ) -> int:
+        """Fill in the quantity of filled orders that were logged with qty 0/NULL.
+
+        A close-position order carries no requested quantity, and the stop-loss
+        path logged it with qty=0. The FIFO matching in the order log then never
+        covered the buy, so closed positions stayed "open" (ADTN/APP/MU/STX).
+
+        Source of the quantity, in this order: the broker's executed quantity
+        (``filled_qty`` from get_orders), else the sum of the FILL activities
+        for that order id (``broker_activities``). Rows without either source
+        are left alone. Returns the number of repaired rows.
+        """
+        where = ["status='filled'", "(qty IS NULL OR qty <= 0)",
+                 "order_id IS NOT NULL", "order_id != ''"]
+        params: list = []
+        if mode:
+            where.append("mode=?")
+            params.append(mode)
+        if broker_id:
+            where.append("broker=?")
+            params.append(broker_id)
+        repaired = 0
+        try:
+            with sqlite3.connect(self._db) as conn:
+                rows = conn.execute(
+                    f"SELECT id, order_id FROM broker_orders WHERE {' AND '.join(where)}",
+                    params).fetchall()
+                has_act = conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' "
+                    "AND name='broker_activities'").fetchone() is not None
+                for row_id, oid in rows:
+                    qty = 0.0
+                    if alpaca_by_id and oid in alpaca_by_id:
+                        qty = float(alpaca_by_id[oid].get('filled_qty') or 0)
+                    if qty <= 0 and has_act:
+                        got = conn.execute(
+                            "SELECT SUM(qty) FROM broker_activities "
+                            "WHERE order_id=? AND activity_type='FILL'", (oid,)).fetchone()
+                        qty = float(got[0] or 0) if got else 0.0
+                    if qty > 0:
+                        conn.execute("UPDATE broker_orders SET qty=? WHERE id=?",
+                                     (qty, row_id))
+                        repaired += 1
+                        logger.info('repair_zero_qty_fills: order %s qty -> %s', oid[:8], qty)
+        except Exception as e:
+            if errors is not None:
+                errors.append(f'repair qty: {e}')
+            logger.warning('repair_zero_qty_fills failed: %s', e)
+        return repaired
+
     # ------------------------------------------------------------------ #
     #  Broker sync                                                         #
     # ------------------------------------------------------------------ #
@@ -420,7 +476,8 @@ class OrderLog(Tools):
             created_at = o.get('created_at') or datetime.now().isoformat()
             symbol     = o.get('symbol', '')
             side       = 'buy' if 'buy' in str(o.get('side', '')).lower() else 'sell'
-            qty        = float(o.get('qty') or 0) or None
+            qty        = (float(o.get('qty') or 0)
+                          or float(o.get('filled_qty') or 0) or None)
             status     = str(o.get('status', 'unknown'))
             signal_date = (filled_at or created_at)[:10]
             try:
@@ -469,16 +526,24 @@ class OrderLog(Tools):
                 raw_price  = alpaca_ord.get('filled_avg_price')
                 fill_price = float(raw_price) if raw_price else None
                 filled_at  = alpaca_ord.get('filled_at') or None
+                filled_qty = float(alpaca_ord.get('filled_qty') or 0) or None
                 try:
                     with sqlite3.connect(self._db) as conn:
+                        # qty only replaced when the broker reports an executed
+                        # quantity -- a canceled order keeps what was requested.
                         conn.execute("""
                             UPDATE broker_orders
-                            SET status=?, fill_price=?, filled_at=?
+                            SET status=?, fill_price=?, filled_at=?,
+                                qty=COALESCE(?, qty)
                             WHERE order_id=? AND (error_msg IS NULL OR error_msg != 'alpaca_import')
-                        """, (new_status, fill_price, filled_at, oid))
+                        """, (new_status, fill_price, filled_at, filled_qty, oid))
                     summary['fills_updated'] += 1
                 except Exception as e:
                     summary['errors'].append(f'update fill {oid[:8]}: {e}')
+
+        # ── Step 1b: Filled orders logged without a quantity ─────────────
+        summary['qty_repaired'] = self.repair_zero_qty_fills(
+            mode, broker_id, alpaca_by_id=alpaca_by_id, errors=summary['errors'])
 
         # ── Step 2: Detect externally-closed positions ───────────────────
         try:
@@ -1668,6 +1733,10 @@ class StopLossMonitor(Tools):
                 'gain_pct':        gain_pct,
                 'hwm_pct':         hwm_pct,
                 'dist_to_trail':   dist_pct,   # % current is above trail stop
+                # Callers that close the position log this quantity; without it
+                # check_stoploss.py wrote qty=0 and the order log kept phantom
+                # open positions (ADTN/APP/MU/STX, 2026-06-09).
+                'qty':             pos['qty'],
                 'breached':        bool(breached),
                 'order_id':        order_id_trail,
                 'updated_at':      now_ts,
