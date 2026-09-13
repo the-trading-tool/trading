@@ -1572,3 +1572,48 @@ Signale-Cache-Key enthaelt jetzt das Profil — sonst zeigte der Tab nach einem
 Profilwechsel weiter die alten Stueckzahlen. Und `tests/conftest.py` setzt
 `_sizing_profile`/`username` mit; die Liste dort muss bei jedem neuen Attribut wachsen,
 das `buy_asset` liest.
+
+### Messung: sizing_cap='profile' im Strategy Finder (2026-09-13)
+
+Headless gefahren (PortfolioSimulator direkt mit dem Frame der Seite, keine
+Streamlit-Instanz), Value Trend Strategy / ^SPX, 2023-2025, 15.000 EUR, 5 Slots,
+ohne Gebuehren. 501 Ticker, 13.538 Kaufsignale.
+
+| Modus | CAGR % | Vola | max DD % | Rendite/Vola | Ø Investitionsquote |
+|---|---|---|---|---|---|
+| none | 32,34 | 0,093 | -4,76 | 3,48 | 54,0 % |
+| cash | 32,40 | 0,092 | -4,75 | 3,53 | 54,0 % |
+| **normalized** | **35,80** | 0,097 | **-3,99** | **3,69** | 54,3 % |
+| profile (balanced) | 28,00 | **0,079** | -4,10 | 3,53 | 46,4 % |
+
+**Ergebnis, unbequem, aber eindeutig: `profile` ist risikobereinigt NICHT besser.**
+Es liefert die niedrigste Portfolio-Vola — also genau das, was es zusagt — aber
+`normalized` bleibt in Rendite/Vola (3,69) und Drawdown vorn.
+
+Der Grund ist messbar: Trades (578), Positionszahl (4,50) und Haltedauer (6,3 Tage)
+sind in **allen** Modi identisch; nur die Groesse unterscheidet sich. Und das
+Ø-Gewicht liegt bei 0,98x — die Kaufsignale dieser Strategie im SPX haben Vola-Werte
+so nah am Balanced-Ziel, dass praktisch **kein Tilt** entsteht. `profile` wirkt hier
+wie `cash` mit 14 % weniger Kapital: CAGR-Verhaeltnis 0,864, Vola-Verhaeltnis 0,859,
+Quoten-Verhaeltnis 0,859 — dieselbe Zahl.
+
+Als **Risiko-Regler** funktioniert es dagegen sauber und monoton:
+
+| Profil | Ziel-Vola | Ø Gewicht | CAGR % | Portfolio-Vola | max DD % | Rendite/Vola | Quote |
+|---|---|---|---|---|---|---|---|
+| conservative | 0,21 | 0,83x | 25,10 | 0,072 | -3,78 | 3,49 | 41,6 % |
+| balanced | 0,25 | 0,98x | 28,00 | 0,079 | -4,10 | 3,53 | 46,4 % |
+| dynamic | 0,28 | 1,10x | 30,14 | 0,085 | -4,39 | 3,55 | 49,8 % |
+| offensive | 0,34 | 1,32x | 34,13 | 0,096 | -4,90 | 3,57 | 56,1 % |
+
+Rendite und Risiko bewegen sich zusammen, Rendite/Vola bleibt flach (3,49-3,57). Der
+Schalter waehlt das Risikoniveau, er erzeugt keinen Vorsprung — und darf auch nicht so
+verkauft werden.
+
+**Wo er sich lohnen kann:** Universen mit breiter Vola-Streuung (CRYPTO, COMMODITIES,
+Small Caps) oder ein Ziel weit weg von der typischen Vola der Auswahl. Im SPX mit
+Value-Trend-Signalen ist beides nicht gegeben.
+
+**Grenzen dieser Messung:** ein Index, eine Strategie, ein Bullenmarkt, keine Kosten.
+Die Engine hat ausserdem 510 Bars in BKNG und KLAC wegen inkonsistentem OHLC
+uebersprungen (Datenqualitaet, nicht Sizing).
