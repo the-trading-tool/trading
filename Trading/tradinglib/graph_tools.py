@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 import time
@@ -90,75 +91,17 @@ class GraphTools:
         breaks = []
 
         if freq < pd.Timedelta(days=1):
-            # --- INTRADAY: night break = largest circular gap in the hour histogram.
-            # Robust against sessions that cross midnight (US assets traded in
-            # Berlin time incl. pre/post-market 10:00 AM -> 02:00 AM next day):
-            # a simple day min/max would see 0..23 h and find no break.
-            weekday_df = df[dow < 5].copy()
-            if weekday_df.empty:
-                return []
-
-            # Ausserboersliche Balken ausblenden (Vorgabe), indem das
-            # Stunden-Histogramm auf Balken MIT Volumen beschraenkt wird. Der
-            # Nachtbruch unten wird dadurch von allein zum Komplement der
-            # regulaeren Sitzung -- kein zweiter Rangebreak noetig.
+            # --- INTRADAY: one break per real gap between consecutive session bars.
             #
-            # Datengetrieben statt ueber einen Boersenkalender, weil die Quelle
-            # beides sauber trennt: bei AAPL tragen die 8.634 Balken der
-            # regulaeren Sitzung Volumen und stehen auf :30, die 8.200
-            # ausserboerslichen stehen auf :00 und haben Volumen 0. Ohne diese
-            # Beschraenkung zeigt der Chart 16 Stunden je Tag statt 6,5.
-            #
-            # Zwei Faelle bleiben absichtlich unberuehrt: Reihen GANZ ohne
-            # Volumen (Indizes wie ^GDAXI) und Reihen, in denen jeder Balken
-            # Volumen traegt (europaeische Einzelwerte). Dort gibt es nichts zu
-            # trennen, und ein Filter wuerde den Rahmen leeren.
-            # Der volumenlose Teil muss ein mehrstuendiger BLOCK sein. Sonst
-            # traefe der Filter die Eroeffnungsauktion: bei europaeischen
-            # Einzelwerten hat genau der erste Balken kein Volumen (SAP.DE,
-            # VOW.DE, AZN.L -- je EINE Stunde, 4-10 % der Zeilen), und ohne
-            # diese Bedingung verschwaende die Eroeffnungsstunde aus dem Chart.
-            # Die echte Zweit-Serie ist unverkennbar groesser: AAPL 55 % ueber
-            # neun Stunden, MSFT 55 % ueber dreizehn.
-            if not extended_hours and 'Volume' in weekday_df.columns:
-                _vol = pd.to_numeric(weekday_df['Volume'], errors='coerce').fillna(0)
-                _leer = weekday_df[_vol <= 0]
-                _anteil = len(_leer) / max(len(weekday_df), 1)
-                _stunden = _leer['Date'].dt.hour.nunique() if len(_leer) else 0
-                if (_vol > 0).any() and _stunden >= 2 and _anteil >= 0.20:
-                    weekday_df = weekday_df[_vol > 0]
-                    if weekday_df.empty:
-                        return []
-
-            dec_hour = (
-                weekday_df['Date'].dt.hour + weekday_df['Date'].dt.minute / 60.0
-            ).round(2)
-
-            # Only evaluate regularly populated hour slots — individual outliers
-            # (e.g. the currently open, partial candle) must not split the gap.
-            counts = dec_hour.value_counts()
-            n_days = weekday_df['Date'].dt.date.nunique()
-            slots = sorted(counts[counts >= max(2, 0.05 * n_days)].index)
-
-            gaps = []
-            for i, h in enumerate(slots):
-                nxt = slots[(i + 1) % len(slots)]
-                raw = (nxt - h) % 24
-                width = raw - freq_h  # Slots can be narrower than freq_h (DST mixed-window)
-                if width > 0:
-                    gaps.append((width, (h + freq_h) % 24, nxt))
-            if gaps:
-                width, b_start, b_end = max(gaps)
-                # Only genuine night gaps — near-24h assets (Forex) have none
-                if width >= max(2 * freq_h, 1.0):
-                    breaks.append(dict(bounds=[float(b_start), float(b_end)], pattern="hour"))
-
-            breaks.append(dict(bounds=["sat", "mon"]))
-
-            # NO holiday break for intraday:
-            # Plotly bug — pattern="hour" + date-range bounds in the same rangebreaks list
-            # produces zigzag artefacts on the x-axis. Minor bumps on bank holidays
-            # are preferable to the alternative (zigzag across the entire chart).
+            # The former approach guessed ONE hour window for all days
+            # (pattern="hour") plus a weekend break. That fails as soon as the
+            # data is irregular: bank holidays (Labor Day left a whole day of
+            # empty axis), half days, trading halts, and illiquid names where
+            # scattered pre-market trades filled the hour histogram (FMAO 30m:
+            # computed night 02:00-10:00, the axis showed 16 h per day).
+            # Explicit date bounds per gap cover all of these with one rule and
+            # never mix pattern + date bounds (the zigzag bug).
+            return self._dynamic_intraday_breaks(df, freq, extended_hours)
 
         else:
             # --- DAILY (only) ---
@@ -187,6 +130,129 @@ class GraphTools:
                 holiday_list = [d.strftime('%Y-%m-%d') for d in missing_days]
                 breaks.append(dict(values=holiday_list))
 
+        return breaks
+
+    # Upper bound on explicit intraday breaks. Plotly handles a few hundred
+    # without noticeable cost; beyond that only the longest gaps are kept (nights,
+    # weekends and holidays are always the longest, so they survive the cut).
+    MAX_INTRADAY_BREAKS = 400
+    # A time bin belongs to the regular session when it is populated on at least
+    # this share of the days of the best-covered bin.
+    SESSION_MIN_COVERAGE = 0.25
+
+    @staticmethod
+    def _second_series_filter(df, extended_hours):
+        """Rows that define the session (volume block filter).
+
+        Hides off-exchange bars by default: for AAPL the 8,634 regular-session
+        bars carry volume and sit on :30, the 8,200 pre/post-market bars sit on
+        :00 with volume 0.
+
+        Two cases are left alone on purpose: series WITHOUT any volume (indices
+        such as ^GDAXI) and series where every bar carries volume. The volume-less
+        part must also be a multi-hour BLOCK, otherwise the filter would hit the
+        opening auction of European single stocks (SAP.DE, VOW.DE, AZN.L -- ONE
+        hour each without volume).
+        """
+        if extended_hours or 'Volume' not in df.columns:
+            return df
+        vol = pd.to_numeric(df['Volume'], errors='coerce').fillna(0)
+        leer = df[vol <= 0]
+        anteil = len(leer) / max(len(df), 1)
+        stunden = leer['Date'].dt.hour.nunique() if len(leer) else 0
+        if (vol > 0).any() and stunden >= 2 and anteil >= 0.20:
+            kept = df[vol > 0]
+            return kept if not kept.empty else df
+        return df
+
+    def session_mask(self, df, freq, extended_hours=False):
+        """Bool Series: which bars belong to the regular session.
+
+        With ``extended_hours`` every bar counts. Otherwise the session is the
+        largest contiguous block of time bins that are populated on enough DAYS
+        (not bars): scattered pre-market trades of an illiquid name hit a bin on
+        a few days only, the regular session on almost all of them. Contiguity is
+        circular, so sessions that cross midnight in display time (US names in
+        Berlin time) stay one block. Isolated populated bins -- e.g. a nightly
+        post-market print -- form their own small block and are left out.
+        """
+        dates = df['Date']
+        if extended_hours or dates.empty:
+            return pd.Series(True, index=df.index)
+        freq_h = freq.total_seconds() / 3600.0
+        bin_h = min(max(freq_h, 0.5), 1.0)
+        tol = max(freq_h, bin_h) + 1e-9
+
+        def _bin(s):
+            dec = s.dt.hour + s.dt.minute / 60.0
+            return (dec // bin_h) * bin_h
+
+        weekday = df[dates.dt.dayofweek < 5]
+        ref = self._second_series_filter(weekday if not weekday.empty else df,
+                                         extended_hours)
+        cov = ref.groupby(_bin(ref['Date']))['Date'].agg(lambda s: s.dt.date.nunique())
+        if cov.empty:
+            return pd.Series(True, index=df.index)
+        keep = sorted(cov[cov >= max(1, self.SESSION_MIN_COVERAGE * cov.max())].index)
+        if not keep:
+            return pd.Series(True, index=df.index)
+
+        # circular runs of adjacent bins
+        runs = [[keep[0]]]
+        for prev, cur in zip(keep, keep[1:]):
+            if cur - prev <= tol:
+                runs[-1].append(cur)
+            else:
+                runs.append([cur])
+        if len(runs) > 1 and (keep[0] + 24 - keep[-1]) <= tol:
+            runs[0] = runs.pop() + runs[0]
+        best = max(runs, key=lambda r: cov.loc[r].sum())
+        return _bin(dates).isin(set(best))
+
+    def _dynamic_intraday_breaks(self, df, freq, extended_hours=False):
+        """Explicit date-bound breaks for every gap between session bars.
+
+        Bars outside the session (pre/post market, when not shown) lie inside
+        these gaps and are hidden by them, exactly as the old hour pattern did.
+        """
+        dates = df['Date']
+        mask = self.session_mask(df, freq, extended_hours)
+        sess = dates[mask].drop_duplicates().sort_values()
+        if sess.empty:
+            return []
+        fmt = '%Y-%m-%d %H:%M:%S'
+        gaps = []
+        sess = sess.reset_index(drop=True)
+        nxt = sess.shift(-1)
+        # A bar occupies at most one interval, but a closer predecessor makes it
+        # narrower: the Xetra closing auction sits at 17:30 after the 17:00 bar,
+        # and reserving a full hour behind it left an empty strip after every day.
+        step = sess.diff().clip(upper=freq).fillna(freq)
+        step = step.where(step > pd.Timedelta(0), freq)
+        start = sess + step
+        # An off-session bar that starts before prev+freq (e.g. a volume-less
+        # 22:00 bar after the 21:30 session bar) must fall inside the break too.
+        off = dates[~mask].sort_values()
+        if not off.empty:
+            pos = np.searchsorted(sess.values, off.values, side='right') - 1
+            earliest = pd.Series(off.values, index=pos)
+            earliest = earliest[earliest.index >= 0].groupby(level=0).min()
+            start.loc[earliest.index] = np.minimum(start.loc[earliest.index].values,
+                                                   earliest.values)
+        has_gap = nxt.notna() & (nxt > start)
+        for s, e in zip(start[has_gap], nxt[has_gap]):
+            gaps.append((e - s, s, e))
+        if len(gaps) > self.MAX_INTRADAY_BREAKS:
+            gaps = sorted(gaps, key=lambda g: g[0], reverse=True)[:self.MAX_INTRADAY_BREAKS]
+        breaks = [dict(bounds=[s.strftime(fmt), e.strftime(fmt)])
+                  for _, s, e in sorted(gaps, key=lambda g: g[1])]
+        # Off-session bars before the first / after the last session bar
+        first, last = sess.iloc[0], sess.iloc[-1]
+        if dates.min() < first:
+            breaks.insert(0, dict(bounds=[dates.min().strftime(fmt), first.strftime(fmt)]))
+        if dates.max() > last:
+            breaks.append(dict(bounds=[start.iloc[-1].strftime(fmt),
+                                       (dates.max() + freq).strftime(fmt)]))
         return breaks
 
     def get_clean_plot_data_and_breaks(self, df, h_start=8.0, h_end=16.5):
