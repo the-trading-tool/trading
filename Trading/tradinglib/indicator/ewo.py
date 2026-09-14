@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import sys
 import plotly.graph_objects as go
 import streamlit as st 
@@ -9,7 +10,10 @@ except ImportError:
 	pass
 
 from tradinglib.indicator import _indicator
+from tradinglib.indicator import _elliott
 from tradinglib.indicator import indicator
+
+WAVE_COLORS = {'impulse': 'royalblue', 'abc': 'darkorange', 'running': 'grey'}
 
 
 class Ewo(_indicator._Indicator):
@@ -22,14 +26,30 @@ class Ewo(_indicator._Indicator):
 		'long_window':  {'type': 'int',   'default': 21,   'min': 5,     'max': 200, 'label': 'EWO long SMA period'},
 		'ema_span':     {'type': 'int',   'default': 9,    'min': 2,     'max': 50,  'label': 'EMA span'},
 		'angle':        {'type': 'float', 'default': 0.01, 'min': 0.001, 'max': 1.0, 'label': 'Signal angle threshold'},
+		# Elliott wave labels (see _elliott.py). The ewo_wave column is always
+		# computed; these switches only control what the chart draws.
+		'show_waves':       {'type': 'bool',  'default': False, 'label': 'Elliott waves: label impulse 1-5'},
+		'show_abc':         {'type': 'bool',  'default': True,  'label': 'Elliott waves: label correction A-B-C'},
+		'show_pending':     {'type': 'bool',  'default': True,  'label': 'Elliott waves: label unfinished count (grey, ?)'},
+		'require_ewo_peak': {'type': 'bool',  'default': True,  'label': 'Elliott waves: wave 3 must carry the EWO peak'},
+		'wave_atr_mult':    {'type': 'float', 'default': 3.0,   'min': 1.0, 'max': 10.0, 'step': 0.5,
+		                     'label': 'Elliott waves: pivot reversal (x ATR)'},
 	}
 
-	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01):
+	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01,
+				 show_waves=False, show_abc=True, show_pending=True, require_ewo_peak=True,
+				 wave_atr_mult=3.0):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.short_window = short_window
 		self.long_window = long_window
 		self.ema_span = ema_span
 		self.angle = angle
+		self.show_waves = bool(show_waves)
+		self.show_abc = bool(show_abc)
+		self.show_pending = bool(show_pending)
+		self.require_ewo_peak = bool(require_ewo_peak)
+		self.wave_atr_mult = float(wave_atr_mult)
+		self.wave_labels = []
 		super().__init__(df=df, symbol=symbol)
 
 		self.data()
@@ -106,6 +126,58 @@ class Ewo(_indicator._Indicator):
 		# used e.g. for ewo_trend_day/wk/mo (asset_perf2)
 		self.df['ewo_trend'] = np.where(self.df['ewo'].diff() > 0, 1, -1)
 		self.filter_alternating_signals(self.angle)
+		self.elliott_waves()
+
+	def elliott_waves(self):
+		"""Causal Elliott count: ewo_wave column + chart labels (see _elliott.py)."""
+		self.wave_labels = []
+		try:
+			wave, labels = _elliott.elliott(self.df, self.df['ewo'].to_numpy(dtype=float),
+											mult=self.wave_atr_mult,
+											require_ewo_peak=self.require_ewo_peak)
+		except (KeyError, ValueError, TypeError):
+			self.df['ewo_wave'] = 0
+			return
+		self.df['ewo_wave'] = wave
+		dates = self.df['Date'] if 'Date' in self.df.columns else self.df.index
+		for lb in labels:
+			lb['date'] = dates[lb['i']] if isinstance(dates, pd.Index) else dates.iloc[lb['i']]
+			self.wave_labels.append(lb)
+
+	def _add_wave_labels(self):
+		"""Draw the wave labels as a text trace on the EWO line.
+
+		A text trace, not layout annotations: tiny_chart moves sub-plot
+		annotations to row 1 and breaks their x reference.
+		"""
+		if not self.show_waves or not self.wave_labels or 'Date' not in self.df.columns:
+			return
+		ewo_by_date = dict(zip(self.df['Date'], self.df['ewo']))
+		groups = {}
+		for lb in self.wave_labels:
+			if lb['group'] == 'abc' and not self.show_abc:
+				continue
+			if lb['state'] != 'done' and not self.show_pending:
+				continue
+			y = ewo_by_date.get(lb['date'])
+			if y is None or y != y:
+				continue
+			color = WAVE_COLORS['running'] if lb['state'] != 'done' else WAVE_COLORS[lb['group']]
+			pos = 'top center' if lb['kind'] > 0 else 'bottom center'
+			g = groups.setdefault((color, pos), {'x': [], 'y': [], 't': []})
+			g['x'].append(lb['date'])
+			g['y'].append(y)
+			g['t'].append(f"<b>{lb['text']}</b>")
+		for (color, pos), g in groups.items():
+			self.fig.add_trace(
+				go.Scatter(x=g['x'], y=g['y'], text=g['t'],
+						   mode='markers+text',
+						   textposition=pos,
+						   textfont=dict(color=color, size=14),
+						   marker=dict(color=color, size=5),
+						   showlegend=False,
+						   hoverinfo='x+text',
+						   name='Elliott'))
 
 	def add_fig(self):
 		"""Compute the indicator values and attach them as columns to self.df."""
@@ -175,6 +247,8 @@ class Ewo(_indicator._Indicator):
 					showlegend = False,
 					line=dict(color='orange', width=2)
 					))
+
+			self._add_wave_labels()
 
 			# we assume a positive market mude and plot a green dotted line if ewo avg is > 0 
 			val = self.df['ewo'].sum() #.median()
