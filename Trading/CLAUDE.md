@@ -1743,7 +1743,12 @@ fallen von 39 auf 34 — die Buy-Formel trifft weiter an 39 Tagen, aber an 5 dav
 steht jetzt ein Verkauf: bei offener Position hat ein Sell auf demselben Balken
 Vorrang (`BuySellSignalGenerator.apply_signals`).
 
-**OFFEN:** die gespeicherten ATC-Werte in allen `asset_simulation_*.db` sind noch die
+**ERLEDIGT 2026-09-14:** `/backfill:atc /force` ueber aktuelles Jahr, `_all` und
+2020-2025 (13.09. 15:16 bis 14.09. 02:14, 31.015 Ticker-Laeufe). Danach je DB 97,9-99,6 %
+der Zeilen mit `atc_mid_high`; noch geradlinige `atc_top_high`-Reihen nur 3-50 je DB,
+fast ausschliesslich Ticker **ohne lokale Tageskurse** („no such table: day_data" —
+nicht neu berechenbar), dazu Einzelfaelle wie DAY/KAR (Uebernahme/Umbenennung).
+Vorheriger Hinweis zur Einordnung: die gespeicherten ATC-Werte waren die
 alten, nicht kausalen. Erst `python asset_perf2.py /backfill:atc /force` (je Jahr mit
 `/year:YYYY`, dazu `/all`) bringt den Backtest auf denselben Stand wie den Chart.
 Ueberschreibt bestehende Werte → Backtest-Ergebnisse ATC-basierter Formeln aendern sich.
