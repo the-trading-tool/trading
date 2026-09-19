@@ -160,12 +160,17 @@ class Headlines(tt.TickerTools):
     def _load_signal_row(self, symbol):
         """Latest simulation row for *symbol* as a plain dict.
 
-        Primary source is the current-year asset_simulation_.db. Indices, metals,
-        FX and crypto are not scored there, so fall back to asset_simulation_all.db
-        (which does carry them). Returns {} when nothing is available.
+        Both asset_simulation_.db (current year) and asset_simulation_all.db are
+        read and the NEWER row wins; on the same date the current-year DB is kept.
+        Taking the first DB that had any row showed stale values for tickers that
+        left their index: the daily run no longer scores them in the year DB
+        (AAD.DE stopped on 2026-08-07, 106 tickers > 7 days behind), so stop-loss
+        and take-profit were computed from a close weeks old -- a stop of 18.67
+        above a price of 17.72. Returns {} when nothing is available.
         """
         if not symbol:
             return {}
+        best, best_src = None, None
         for fname in ('asset_simulation_.db', 'asset_simulation_all.db'):
             try:
                 path = self.get_path(path='database', file_name=fname)
@@ -180,11 +185,15 @@ class Headlines(tt.TickerTools):
                 finally:
                     conn.close()
                 if row is not None and not row.empty:
-                    self._sig_src = fname
-                    return row.iloc[0].to_dict()
+                    cand = row.iloc[0].to_dict()
+                    if best is None or str(cand.get('Date', '')) > str(best.get('Date', '')):
+                        best, best_src = cand, fname
             except Exception:
                 continue
-        return {}
+        if best is None:
+            return {}
+        self._sig_src = best_src
+        return best
 
     def _load_score_history(self, symbol, n=30):
         """Last *n* overallValueTrend / overallTrend values (newest first) from the
