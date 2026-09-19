@@ -3,7 +3,7 @@ signal_notifier.py — Pushover-Benachrichtigungen für Buy- und Sell-Signale.
 
 Liest direkt aus den DBs (kein Streamlit/MTP-Overhead):
   - trades{year}.db   → neue Buys / Sells des Tages
-  - asset_simulation_all.db → stop_loss, take_profit
+  - asset_simulation_.db / _all.db → stop_loss, take_profit (Zeile des Kauftags)
   - banner_notes.db   → KI-Analysetext (nur bei Buys)
 
 Aufgerufen von:
@@ -77,25 +77,46 @@ def _load_sells(date_str: str) -> pd.DataFrame:
         db.conn.close()
 
 
-def _load_sim(ticker: str) -> dict:
-    """stop_loss, take_profit + native Währung aus asset_simulation_all.db.
+_SIM_DBS = ("asset_simulation_.db", "asset_simulation_all.db")
 
-    Wichtig: stop_loss/take_profit stehen in der NATIVEN Währung des Tickers
-    (z. B. GBp/Pence bei LSE), nicht in der Systemwährung — die `currency`-Spalte
-    wird mitgelesen, damit der Buy-Text sie korrekt umrechnen kann.
+
+def _load_sim(ticker: str, buy_date: str = "") -> dict:
+    """stop_loss, take_profit + native currency of the row the buy was made on.
+
+    The buy price comes from the buy day's close, so stop-loss and take-profit
+    must come from that same row. The former lookup took the NEWEST row of
+    asset_simulation_all.db, which at send time is usually the previous day's
+    (the /all run happens later): of 163 buys since June every stop came from a
+    row 1-4 days older, 16 were more than 5 % off and 5 lay ABOVE the buy price.
+
+    Order: exact buy date in asset_simulation_.db (the DB the multi strategies
+    trade on), then in asset_simulation_all.db, then the newest row on or before
+    the buy date. Values are in the ticker's NATIVE currency (e.g. GBp); the
+    currency column is returned so the message can convert them.
     """
-    db = tools.Db_tools(db_path=_DB_PATH, database_name="asset_simulation_all.db")
-    try:
-        df = pd.read_sql_query(
-            "SELECT stop_loss, take_profit, currency FROM asset_simulation WHERE ticker = ? ORDER BY Date DESC LIMIT 1",
-            db.conn, params=(ticker,),
-        )
-        return df.iloc[0].to_dict() if not df.empty else {}
-    except Exception as exc:
-        logger.debug("signal_notifier: sim lookup failed for %s: %s", ticker, exc)
-        return {}
-    finally:
-        db.conn.close()
+    day = str(buy_date or "")[:10]
+    queries = []
+    if day:
+        queries.append(("SELECT stop_loss, take_profit, currency FROM asset_simulation "
+                        "WHERE ticker = ? AND Date LIKE ? LIMIT 1", (ticker, f"{day}%")))
+        queries.append(("SELECT stop_loss, take_profit, currency FROM asset_simulation "
+                        "WHERE ticker = ? AND Date <= ? ORDER BY Date DESC LIMIT 1",
+                        (ticker, f"{day} 23:59:59")))
+    else:
+        queries.append(("SELECT stop_loss, take_profit, currency FROM asset_simulation "
+                        "WHERE ticker = ? ORDER BY Date DESC LIMIT 1", (ticker,)))
+    for sql, params in queries:
+        for fname in _SIM_DBS:
+            db = tools.Db_tools(db_path=_DB_PATH, database_name=fname)
+            try:
+                df = pd.read_sql_query(sql, db.conn, params=params)
+                if not df.empty and pd.notna(df.iloc[0].get("stop_loss")):
+                    return df.iloc[0].to_dict()
+            except Exception as exc:
+                logger.debug("signal_notifier: sim lookup %s failed for %s: %s", fname, ticker, exc)
+            finally:
+                db.conn.close()
+    return {}
 
 
 def _load_ai_text(ticker: str) -> str:
@@ -258,7 +279,7 @@ def _send_buys(df: pd.DataFrame, notifier: PushoverNotifier, system_currency: st
         if force:
             notifier.data.pop(ticker, None)
 
-        sim     = _load_sim(ticker)
+        sim     = _load_sim(ticker, buy_date)
         ai_text = _load_ai_text(ticker)
         message = _build_buy_message(row.to_dict(), sim, ai_text, system_currency)
 
