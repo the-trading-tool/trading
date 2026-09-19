@@ -1695,6 +1695,21 @@ if __name__ == "__main__":
     tickers = list(set(tickers))
     logger.info("%d tickers found.", len(tickers))
 
+    # The default run (index members) also covers everything currently held:
+    # a ticker that left its index would otherwise drop out of the current-year
+    # simulation while still in the depot (AAD.DE, unlinked 2026-08-09).
+    if not (all or inverse or group or index_name):
+        try:
+            from tradinglib.summary_sources import held_tickers
+            extra = sorted(set(held_tickers()) - set(tickers))
+        except Exception as e:
+            logger.warning("held tickers not added: %s", e)
+            extra = []
+        if extra:
+            logger.info("adding %d held ticker(s) outside the indices: %s",
+                        len(extra), ", ".join(extra))
+            tickers += extra
+
     # -----------------------------------------------------------------------
     # /fill — compute only what is missing.
     #

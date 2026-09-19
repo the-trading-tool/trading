@@ -76,7 +76,19 @@ if __name__ == "__main__":
 #        ticker_query = f"SELECT Ticker FROM {info_db_table_name} WHERE " + " = 1 OR ".join(filtered) + " = 1;"
         ticker_list = info_db.read_data(ticker_query)['Ticker']
 #        ticker_list.to_csv("ticker_list.csv",decimal=",",sep=";")
-        ticker_list = ticker_list.tolist()    
+        ticker_list = ticker_list.tolist()
+        # Also keep prices of everything currently held, even when its ticker
+        # left the index (same rule as the asset_perf2 default run).
+        try:
+            from tradinglib.summary_sources import held_tickers
+            extra = sorted(set(held_tickers()) - set(ticker_list))
+        except Exception as e:
+            logger.warning("held tickers not added: %s", e)
+            extra = []
+        if extra:
+            logger.info("adding %d held ticker(s) outside the indices: %s",
+                        len(extra), ", ".join(extra))
+            ticker_list += extra
     elif index_only:
         non_stock_sql = '","'.join(tt.tools.NON_STOCK_GROUPS)
         ticker_query = f'SELECT s.Ticker AS name FROM stocks s JOIN stock_indices si ON s.id = si.stock_id JOIN indices i ON si.index_id = i.id WHERE i.name IN ("{non_stock_sql}")' +' OR s.Ticker LIKE "%=X"'

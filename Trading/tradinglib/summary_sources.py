@@ -94,3 +94,39 @@ def paper_trade_tickers(open_only: bool = True) -> list:
 
     filled = orders[orders['status'].astype(str).str.lower() == 'filled']
     return sorted(set(_net_open(filled, 'ticker', 'action', 'qty')))
+
+
+def multi_strategy_tickers(year: int | None = None) -> list:
+    """Open positions of Multi Strategies (trades{year}.db, not yet sold)."""
+    from datetime import datetime
+    year = year or datetime.now().year
+    try:
+        conn = _connect_ro(f'trades{year}.db')
+        if conn is None:
+            return []
+        with closing(conn):
+            df = pd.read_sql_query(
+                "SELECT DISTINCT ticker FROM trades WHERE ticker IS NOT NULL "
+                "AND (sellVolume IS NULL OR sellVolume = '' OR sellVolume = 0)", conn)
+    except Exception as e:
+        logger.debug('multi_strategy_tickers failed: %s', e)
+        return []
+    return sorted({str(t).strip() for t in df['ticker'] if str(t).strip()})
+
+
+def held_tickers() -> list:
+    """Everything currently held: own trades, paper trading, multi strategies.
+
+    The daily runs select index members only. A position whose ticker left its
+    index (AAD.DE was unlinked from ^SDAXI on 2026-08-09) then silently stopped
+    getting prices and scores in the current-year simulation, and pages reading
+    it showed stop-loss levels from a weeks-old close. The runs add this list so
+    anything held keeps being computed regardless of index membership.
+    """
+    out = set()
+    for fn in (own_trade_tickers, paper_trade_tickers, multi_strategy_tickers):
+        try:
+            out |= set(fn())
+        except Exception as e:
+            logger.debug('held_tickers: %s failed: %s', fn.__name__, e)
+    return sorted(t for t in out if t)
