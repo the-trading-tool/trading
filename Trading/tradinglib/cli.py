@@ -170,6 +170,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['tickers'] = suf
             if pref == 'purge_h60':
                 result['purge_h60'] = True
+            if pref == 'build':
+                result['build'] = True
+            if pref == 'update':
+                result['update'] = suf or True
 
     return result
 

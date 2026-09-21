@@ -810,6 +810,27 @@ def _window_mask(df: pd.DataFrame, lines: list, group_col: str, window: int) -> 
     return out if out is not None else pd.Series(False, index=df.index)
 
 
+def _with_market_context(df: pd.DataFrame, *conditions) -> pd.DataFrame:
+    """Join market breadth (mkt_breadth*) when a formula uses it and it is missing.
+
+    Breadth is per index and day and lives in market_context.db, not on every
+    simulation row; joining it here makes it available to every evaluation path
+    (Strategy Finder, Multi Strategies, paper signals) without widening the
+    simulation DBs. Frames without a real ticker column are left alone -- the
+    chart path attaches it itself, it knows the symbol.
+    """
+    try:
+        from tradinglib import market_context as _mc
+        if (not _mc.references_breadth(*conditions)
+                or all(c in df.columns for c in _mc.BREADTH_COLUMNS)
+                or 'ticker' not in df.columns):
+            return df
+        return _mc.attach_breadth(df)
+    except Exception:
+        logger.debug('market context join failed', exc_info=True)
+        return df
+
+
 def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'ticker',
                         window: int = 1) -> pd.Series:
     """Wertet eine Buy/Sell-Bedingung zu einer Bool-Serie aus (auf df.index ausgerichtet).
@@ -836,6 +857,8 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
     """
     if not condition:
         return pd.Series(False, index=df.index)
+
+    df = _with_market_context(df, condition)
 
     # Mehrzeilige Bedingung: jede Zeile ist eine eigene Bedingung. Bei Fenster 1
     # bleibt es beim bisherigen Verhalten -- die Zeilen werden schlicht mit '&'
@@ -1115,7 +1138,11 @@ class BuySellSignalGenerator:
         expressions work regardless of the capitalisation convention in the
         underlying DataFrame. Alias columns are removed again in apply_signals().
         """
-        self.df = df.copy()
+        # Breadth joined once here instead of on every mask evaluation (the
+        # optimizer evaluates hundreds of combinations on the same frame).
+        self.df = _with_market_context(df, buy_condition, sell_condition)
+        if self.df is df:
+            self.df = df.copy()
         # Add bidirectional OHLCV aliases (only if the alias is absent).
         # Track which ones we added so apply_signals() can drop them again
         # before returning — they must not leak into the display DataFrame.

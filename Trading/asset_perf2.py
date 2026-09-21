@@ -1811,6 +1811,17 @@ if __name__ == "__main__":
 
     sim_db.close()
 
+    # Market breadth (market_context.db) for the days just written. Runs after
+    # the index-member run only -- breadth is computed from index members -- and
+    # before the notifier, whose multi-strategy run may use mkt_breadth* in its
+    # formulas. Recomputing ~60 days takes a second or two.
+    if year == '' and not (all or group or inverse):
+        try:
+            from tradinglib import market_context
+            logger.info("market breadth: %d index-days updated", market_context.update())
+        except Exception as e:
+            logger.warning("market breadth update failed: %s", e)
+
     if year == '' and not all:
         if simulate and not silent:
             logger.info("notifying via pushover...")

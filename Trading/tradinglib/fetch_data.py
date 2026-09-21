@@ -735,6 +735,15 @@ class FetchData(tt.TickerTools):
                     self.logger.error("Error %s instanciating %s: %s", symbol, itm, e)
                     pass
 
+            # Market breadth is per index and day (market_context.db); the chart
+            # frame has no ticker column, so it is joined by the symbol here.
+            try:
+                from tradinglib import market_context as _mc
+                if _mc.references_breadth(self.buy_query, self.sell_query):
+                    df = _mc.attach_breadth(df, symbol=symbol)
+            except Exception as e:
+                self.logger.debug("market breadth for %s not joined: %s", symbol, e)
+
             try:
                 df = indicator.buy_sell(df, buy_query=self.buy_query,
                                         sell_query=self.sell_query,
