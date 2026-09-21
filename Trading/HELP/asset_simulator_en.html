@@ -47,6 +47,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Optimisation:</b> If <code>%%varname</code> is used as a placeholder in an expression, the built-in optimiser automatically searches for the best numeric value for that variable.</div>
 
+<div class="warn"><b>Optimise with test period:</b> Without this option the optimiser picks the best combination on the same data it reports on – the top result is then often just fitted to the data. With a test period the values are chosen before the selected date only (<code>train%</code>) and measured after it (<code>test%</code>). The rank correlation shows whether the ranking carries; if the best training combination is only mid-field in the test period, it is probably chance. The neighbourhood heatmap shows whether good values form a broad plateau (robust) or a single spike (chance).</div>
+
 <h2>Usage</h2>
 <ul>
   <li><b>Compute</b> starts the simulation with the chosen filters and conditions – with multiple years the data is loaded per year and merged</li>
@@ -63,6 +65,17 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Monthly performance heatmap</b> and compact KPI overview (analogous to Dashboard/Multi-Strategies)</li>
   <li><b>Parity analysis:</b> compares the strategy with a simple "buy once and rebalance by volatility" approach over the same period</li>
 </ul>
+
+<h2>🧪 Robustness</h2>
+<p>Computed on the daily mark-to-market equity (open positions at the daily close), so paper losses between buy and sell are visible too.</p>
+<ul>
+  <li><b>Comparison:</b> strategy vs the index (buy and hold) and an equally weighted universe of the same names – total, p.a., max drawdown, return/vol</li>
+  <li><b>Avg. invested</b> and <b>p.a. per euro deployed</b>: a strategy that often sits in cash must be judged on the capital actually deployed</li>
+  <li><b>Results per year</b> with buys, win rate and drawdown – if a single year carries almost everything, be careful</li>
+  <li><b>Training and test period:</b> splits the result at a date. Only meaningful if the formula was not chosen with the test period in view – the real check is the optimiser with a test period</li>
+  <li><b>Random-order comparison:</b> the same signals, but taken each day in random order into the free slots. If the own run is not clearly above (percentile below 75), the ranking adds nothing or the result is noise</li>
+</ul>
+<div class="info">Since 2026-09-21 the total profit includes realised gains of earlier round trips in a name that is held again at the end. Before, they were dropped (^GDAXI 2024–25: 50.2 % instead of 61.2 %). Older results are therefore too low.</div>
 
 <div class="warn">Multi-year simulations and large indices can take a few seconds to minutes, depending on the data volume. <code>duckdb</code> speeds up the queries but is optional.</div>
 </body>

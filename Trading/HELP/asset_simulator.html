@@ -47,6 +47,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <div class="info"><b>Optimierung:</b> Wird in einem Ausdruck <code>%%varname</code> als Platzhalter verwendet, sucht der integrierte Optimizer automatisch den besten numerischen Wert für diese Variable.</div>
 
+<div class="warn"><b>Mit Prüfzeitraum optimieren:</b> Ohne diese Option wählt der Optimierer die beste Kombination auf denselben Daten, auf denen er sie bewertet – das beste Ergebnis ist dann oft nur an die Daten angepasst. Mit Prüfzeitraum werden die Werte nur vor dem gewählten Datum ausgesucht (<code>train%</code>) und danach gemessen (<code>test%</code>). Die Rangkorrelation zeigt, ob die Rangfolge trägt; liegt die beste Lern-Kombination im Prüfzeitraum nur im Mittelfeld, ist sie wahrscheinlich Zufall. Die Heatmap der Nachbarschaft zeigt, ob gute Werte ein breites Plateau bilden (belastbar) oder eine einzelne Spitze (Zufall).</div>
+
 <h2>Bedienung</h2>
 <ul>
   <li><b>Berechnen</b> startet die Simulation mit den gewählten Filtern und Bedingungen – bei mehreren Jahren werden die Daten je Jahr geladen und zusammengeführt</li>
@@ -63,6 +65,17 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Monatliche Performance-Heatmap</b> und kompakte KPI-Übersicht (analog Dashboard/Multi-Strategien)</li>
   <li><b>Paritäts-Analyse:</b> vergleicht die Strategie mit einem einfachen „einmal kaufen und nach Volatilität rebalancieren"-Ansatz über denselben Zeitraum</li>
 </ul>
+
+<h2>🧪 Belastbarkeit</h2>
+<p>Gerechnet auf der täglichen Depotbewertung (offene Positionen zum Tagesschluss), damit auch Buchverluste zwischen Kauf und Verkauf sichtbar sind.</p>
+<ul>
+  <li><b>Vergleich:</b> Strategie gegen den Index (kaufen und halten) und ein gleichgewichtetes Universum aus denselben Titeln – Gesamt, p. a., maximaler Drawdown, Rendite/Vola</li>
+  <li><b>Ø investiert</b> und <b>p. a. je eingesetztem Euro</b>: eine Strategie, die oft in Bargeld liegt, ist am eingesetzten Kapital zu messen</li>
+  <li><b>Ergebnisse je Jahr</b> mit Käufen, Trefferquote und Drawdown – trägt ein einzelnes Jahr fast alles, ist Vorsicht geboten</li>
+  <li><b>Lern- und Prüfzeitraum:</b> teilt das Ergebnis an einem Datum. Aussagekräftig nur, wenn die Formel nicht mit Blick auf den Prüfzeitraum gewählt wurde – die echte Prüfung macht der Optimierer mit Prüfzeitraum</li>
+  <li><b>Zufallsvergleich:</b> dieselben Signale, aber an jedem Tag in zufälliger Reihenfolge in die freien Plätze. Liegt der eigene Lauf nicht deutlich darüber (Perzentil unter 75), bringt die Sortierung nichts oder das Ergebnis ist Rauschen</li>
+</ul>
+<div class="info">Der Gesamtgewinn zählt seit 2026-09-21 die realisierten Gewinne früherer Runden eines Titels mit, der am Ende wieder gehalten wird. Vorher fielen sie weg (^GDAXI 2024–25: 50,2 % statt 61,2 %). Ältere Ergebnisse sind deshalb zu niedrig.</div>
 
 <div class="warn">Mehrjahres-Simulationen und große Indizes können – je nach Datenmenge – einige Sekunden bis Minuten dauern. <code>duckdb</code> beschleunigt die Abfragen, ist aber optional.</div>
 </body>
