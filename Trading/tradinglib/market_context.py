@@ -372,9 +372,14 @@ def _attach(df, table, columns, mapping, ticker_col, date_col, symbol, carry_day
     Daily rows take the value of their own day; with *carry_days* > 0 a missing
     day falls back to the last value of up to that many calendar days before.
     Intraday rows always take the previous day's value.
+
+    A column that exists but is entirely empty is treated as missing and
+    replaced -- an all-NaN placeholder (left by a failed indicator lookup) must
+    not block the real values.
     """
-    if all(c in df.columns for c in columns):
+    if all(c in df.columns and df[c].notna().any() for c in columns):
         return df
+    df = df.drop(columns=[c for c in columns if c in df.columns and df[c].isna().all()])
     out = df.copy()
     if table is None or table.empty:
         for c in columns:

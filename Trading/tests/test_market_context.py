@@ -187,6 +187,29 @@ def test_fehlender_tageswert_nimmt_den_letzten(dbdir):
     assert np.isnan(out['fg_score'].iloc[1])        # nicht beliebig weit zurueck
 
 
+def test_strategy_finder_pfad_mit_indikator_nachladen(dbdir, monkeypatch):
+    """Der Strategy Finder ruft vorher populate_indicators_for_df auf. Das legte
+    fuer fg_score/mkt_breadth50 leere Spalten an (unbekannter Indikator), die den
+    echten Join blockierten -> 0 Signale auf ^GDAXI."""
+    from tradinglib import tools
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    monkeypatch.setattr('tradinglib.score_eval.available_years', lambda *a, **k: [2024])
+    mc.build()
+    df = pd.DataFrame({'ticker': 'T03', 'Date': [d.strftime('%Y-%m-%d 00:00:00') for d in dates],
+                       'close': 10.0})
+    buy = '(fg_score < 45)\n(mkt_breadth50 < 50)'
+    out = tools.Tools().populate_indicators_for_df(df, [buy, ''])
+    assert out['fg_score'].notna().all() and out['mkt_breadth50'].notna().all()
+
+
+def test_leere_platzhalterspalte_wird_ersetzt(dbdir):
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    df = pd.DataFrame({'ticker': ['T03'], 'Date': [dates[0]], 'fg_score': [np.nan]})
+    assert mc.attach_fg(df)['fg_score'].iloc[0] == 30.0
+
+
 def test_intraday_fg_vom_vortag(dbdir):
     tmp, dates = dbdir
     _fg_db(tmp, dates)

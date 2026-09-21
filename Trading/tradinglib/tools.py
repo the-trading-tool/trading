@@ -230,6 +230,12 @@ class Tools:
                 toks.update(TOKEN_RE.findall(e or ''))
             return toks
 
+        # Market context (mkt_breadth*, fg_score) is joined, not computed. Joined
+        # here first so the token loop below sees the columns as present -- it
+        # used to try each as an indicator per ticker, fail, and leave an all-NaN
+        # column that then shadowed the real join (0 signals on ^GDAXI).
+        combined_df = _with_market_context(combined_df, *(expressions or []))
+
         tokens = set()
         for e in expressions:
             tokens |= extract_tokens(e)
@@ -822,6 +828,11 @@ def _with_market_context(df: pd.DataFrame, *conditions) -> pd.DataFrame:
     try:
         from tradinglib import market_context as _mc
         if not _mc.references_context(*conditions) or 'ticker' not in df.columns:
+            return df
+        # Present AND filled -> nothing to do (an all-NaN placeholder is refilled).
+        needed = [c for c in (*_mc.BREADTH_COLUMNS, *_mc.FG_COLUMNS)
+                  if c in ' '.join(str(x or '') for x in conditions)]
+        if needed and all(c in df.columns and df[c].notna().any() for c in needed):
             return df
         return _mc.attach_context(df, conditions)
     except Exception:
