@@ -284,6 +284,7 @@ def attach_breadth(df: pd.DataFrame, ticker_col: str = 'ticker', date_col: str =
 # and it exists for nine indices only.
 
 FG_COLUMNS = ('fg_score',)
+FG_CARRY_DAYS = 5
 _FG_TOKEN = 'fg_score'
 
 
@@ -345,7 +346,12 @@ def attach_fg(df: pd.DataFrame, ticker_col: str = 'ticker', date_col: str = 'Dat
     """Return *df* with fg_score joined by the ticker's scored index and day."""
     table = load_fg(db_path)
     mapping = _fg_index_map(set(table['idx'].unique()), db_path) if not table.empty else {}
-    return _attach(df, table, FG_COLUMNS, mapping, ticker_col, date_col, symbol)
+    # The daily log runs at 22:45, the index runs and their notifier at 16:00 and
+    # 22:00 -- without a fallback the newest day would always be empty and a
+    # formula using fg_score could never fire on it. The score moves slowly, so
+    # the last known value of the preceding days stands in (still causal).
+    return _attach(df, table, FG_COLUMNS, mapping, ticker_col, date_col, symbol,
+                   carry_days=FG_CARRY_DAYS)
 
 
 def attach_context(df: pd.DataFrame, expressions=(), ticker_col: str = 'ticker',
@@ -360,8 +366,13 @@ def attach_context(df: pd.DataFrame, expressions=(), ticker_col: str = 'ticker',
     return out
 
 
-def _attach(df, table, columns, mapping, ticker_col, date_col, symbol):
-    """Join *columns* of an (idx, Date) *table* onto *df* via ticker -> idx."""
+def _attach(df, table, columns, mapping, ticker_col, date_col, symbol, carry_days=0):
+    """Join *columns* of an (idx, Date) *table* onto *df* via ticker -> idx.
+
+    Daily rows take the value of their own day; with *carry_days* > 0 a missing
+    day falls back to the last value of up to that many calendar days before.
+    Intraday rows always take the previous day's value.
+    """
     if all(c in df.columns for c in columns):
         return df
     out = df.copy()
@@ -387,6 +398,12 @@ def _attach(df, table, columns, mapping, ticker_col, date_col, symbol):
         k = key.dropna(subset=['idx', 'Date']).sort_values('Date')
         t = table.sort_values('Date')
         merged = pd.merge_asof(k, t, on='Date', by='idx', allow_exact_matches=False)
+        merged = merged.set_index('_pos').reindex(range(len(out)))
+    elif carry_days:
+        k = key.dropna(subset=['idx', 'Date']).sort_values('Date')
+        t = table.sort_values('Date')
+        merged = pd.merge_asof(k, t, on='Date', by='idx', allow_exact_matches=True,
+                               tolerance=pd.Timedelta(days=carry_days))
         merged = merged.set_index('_pos').reindex(range(len(out)))
     else:
         merged = key.merge(table, on=['idx', 'Date'], how='left')

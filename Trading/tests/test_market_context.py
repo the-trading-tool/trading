@@ -175,6 +175,18 @@ def test_fg_score_in_formel_und_nur_bei_bedarf(dbdir, monkeypatch):
     tools.compute_signal_mask(df, 'fg_score < 45')
 
 
+def test_fehlender_tageswert_nimmt_den_letzten(dbdir):
+    """Der Log-Job laeuft 22:45, der Notifier schon 16:00/22:00 -- der juengste
+    Tag hat noch keinen Wert und darf trotzdem nicht leer bleiben."""
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    later = dates[-1] + pd.Timedelta(days=1)
+    df = pd.DataFrame({'ticker': ['T03', 'T03'], 'Date': [later, later + pd.Timedelta(days=10)]})
+    out = mc.attach_fg(df)
+    assert out['fg_score'].iloc[0] == 70.0
+    assert np.isnan(out['fg_score'].iloc[1])        # nicht beliebig weit zurueck
+
+
 def test_intraday_fg_vom_vortag(dbdir):
     tmp, dates = dbdir
     _fg_db(tmp, dates)
