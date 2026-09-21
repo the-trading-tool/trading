@@ -134,12 +134,52 @@ def test_formel_bekommt_breite_automatisch(dbdir, monkeypatch):
 def test_ohne_breite_in_der_formel_wird_nichts_geladen(monkeypatch):
     from tradinglib import tools
     called = []
-    monkeypatch.setattr(mc, 'attach_breadth', lambda *a, **k: called.append(1))
+    monkeypatch.setattr(mc, 'attach_context', lambda *a, **k: called.append(1))
     df = pd.DataFrame({'ticker': ['A'], 'Date': ['2024-01-02'], 'close': [1.0]})
     tools.compute_signal_mask(df, 'close > 0')
     assert not called
     assert mc.references_breadth('x', '(mkt_breadth200 > 60)')
     assert not mc.references_breadth('close > 1', None)
+
+
+def _fg_db(tmp_path, dates):
+    import sqlite3
+    con = sqlite3.connect(tmp_path / 'fear_greed.db')
+    con.execute('CREATE TABLE fg_history (date TEXT, "index" TEXT, score REAL)')
+    con.executemany('INSERT INTO fg_history VALUES (?,?,?)',
+                    [(d.strftime('%Y-%m-%d'), '^X', 30.0 if k < 10 else 70.0)
+                     for k, d in enumerate(dates)])
+    con.commit(); con.close()
+
+
+def test_fg_score_ueber_den_bewerteten_index(dbdir):
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    df = pd.DataFrame({'ticker': ['T03', 'T03', '^X', 'NOPE'],
+                       'Date': [dates[0], dates[20], dates[20], dates[0]]})
+    out = mc.attach_fg(df)
+    assert out['fg_score'].tolist()[:3] == [30.0, 70.0, 70.0]
+    assert np.isnan(out['fg_score'].iloc[3])
+
+
+def test_fg_score_in_formel_und_nur_bei_bedarf(dbdir, monkeypatch):
+    from tradinglib import tools
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    df = pd.DataFrame({'ticker': 'T03', 'Date': [d.strftime('%Y-%m-%d 00:00:00') for d in dates],
+                       'close': 10.0})
+    m = tools.compute_signal_mask(df, 'fg_score < 45')
+    assert m.tolist() == [True] * 10 + [False] * 20
+    # Nur fg_score referenziert -> keine Breite geladen
+    monkeypatch.setattr(mc, 'attach_breadth', lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+    tools.compute_signal_mask(df, 'fg_score < 45')
+
+
+def test_intraday_fg_vom_vortag(dbdir):
+    tmp, dates = dbdir
+    _fg_db(tmp, dates)
+    df = pd.DataFrame({'close': [1.0]}, index=[dates[10] + pd.Timedelta(hours=11)])
+    assert mc.attach_fg(df, symbol='T03')['fg_score'].iloc[0] == 30.0
 
 
 def test_zu_kleiner_index_liefert_keine_breite():

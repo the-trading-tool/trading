@@ -739,8 +739,9 @@ class FetchData(tt.TickerTools):
             # frame has no ticker column, so it is joined by the symbol here.
             try:
                 from tradinglib import market_context as _mc
-                if _mc.references_breadth(self.buy_query, self.sell_query):
-                    df = _mc.attach_breadth(df, symbol=symbol)
+                _exprs = (self.buy_query, self.sell_query)
+                if _mc.references_context(*_exprs):
+                    df = _mc.attach_context(df, _exprs, symbol=symbol)
             except Exception as e:
                 self.logger.debug("market breadth for %s not joined: %s", symbol, e)
 

@@ -239,7 +239,7 @@ def load_breadth(db_path: str = 'database') -> pd.DataFrame:
     path = _db_path(db_path)
     if not path or not os.path.exists(path):
         return pd.DataFrame(columns=['idx', 'Date', *BREADTH_COLUMNS])
-    key = (path, os.path.getmtime(path))
+    key = ('breadth', path, os.path.getmtime(path))
     if key not in _CACHE:
         con = _ro(path)
         try:
@@ -247,7 +247,8 @@ def load_breadth(db_path: str = 'database') -> pd.DataFrame:
         finally:
             con.close()
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        _CACHE.clear()
+        for k in [k for k in _CACHE if isinstance(k, tuple) and k and k[0] == 'breadth']:
+            del _CACHE[k]
         _CACHE[key] = df
     return _CACHE[key]
 
@@ -267,19 +268,111 @@ def attach_breadth(df: pd.DataFrame, ticker_col: str = 'ticker', date_col: str =
     ticker itself (^GDAXI) gets its own breadth. Rows without a match stay NaN,
     and existing breadth columns are left untouched.
     """
-    if all(c in df.columns for c in BREADTH_COLUMNS):
+    return _attach(df, load_breadth(db_path), BREADTH_COLUMNS,
+                   _primary_cached(db_path), ticker_col, date_col, symbol)
+
+
+# ---------------------------------------------------------------------------
+# Fear & Greed score (fear_greed.db, fg_history) as formula column
+# ---------------------------------------------------------------------------
+#
+# Measured 2020-2026 (fwd 21 days): fear 25-45 beat the universe by +1.66 pp in
+# 7 of 7 years; fear WITHOUT washed-out breadth still +1.46 pp in 7 of 7 at normal
+# volatility -- the score flags fear phases before breadth collapses. Greed >= 75
+# lagged -2.22 pp (5 of 5 years with >= 5 components). Caveat: the score's
+# composition changes over time (3 components 2020-21, 5 in 2022-24, 7 since 2025)
+# and it exists for nine indices only.
+
+FG_COLUMNS = ('fg_score',)
+_FG_TOKEN = 'fg_score'
+
+
+def references_fg(*expressions) -> bool:
+    return any(_FG_TOKEN in str(e or '') for e in expressions)
+
+
+def references_context(*expressions) -> bool:
+    """True when an expression uses any context column (breadth or fg_score)."""
+    return references_breadth(*expressions) or references_fg(*expressions)
+
+
+def load_fg(db_path: str = 'database') -> pd.DataFrame:
+    """fg_history as idx, Date, fg_score (cached per file modification time)."""
+    from tradinglib.tools import Tools
+    path = Tools().get_path(path=db_path, file_name='fear_greed.db')
+    if not path or not os.path.exists(path):
+        return pd.DataFrame(columns=['idx', 'Date', *FG_COLUMNS])
+    key = ('fg', path, os.path.getmtime(path))
+    if key not in _CACHE:
+        con = _ro(path)
+        try:
+            df = pd.read_sql_query('SELECT "index" AS idx, date AS Date, score AS fg_score '
+                                   'FROM fg_history', con)
+        except Exception:
+            df = pd.DataFrame(columns=['idx', 'Date', *FG_COLUMNS])
+        finally:
+            con.close()
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
+        df = df.dropna(subset=['Date']).drop_duplicates(['idx', 'Date'], keep='last')
+        for k in [k for k in _CACHE if isinstance(k, tuple) and k and k[0] == 'fg']:
+            del _CACHE[k]
+        _CACHE[key] = df
+    return _CACHE[key]
+
+
+def _fg_index_map(fg_indices, db_path: str = 'database') -> dict:
+    """ticker -> the largest of its indices that has a Fear & Greed score.
+
+    Differs from the breadth mapping on purpose: a Nasdaq-100 name maps to ^SPX,
+    a TecDAX name to MDAX/SDAX -- whichever scored index it belongs to.
+    """
+    key = ('fg_map', db_path, tuple(sorted(fg_indices)))
+    if key not in _CACHE:
+        rows = load_membership(db_path)
+        rows = rows[rows['idx'].isin(fg_indices)]
+        if rows.empty:
+            _CACHE[key] = {}
+        else:
+            size = rows.groupby('idx')['ticker'].transform('size')
+            rows = rows.assign(size=size).sort_values(['ticker', 'size', 'idx'],
+                                                      ascending=[True, False, True])
+            _CACHE[key] = dict(rows.drop_duplicates('ticker')[['ticker', 'idx']].values)
+    return _CACHE[key]
+
+
+def attach_fg(df: pd.DataFrame, ticker_col: str = 'ticker', date_col: str = 'Date',
+              symbol: str | None = None, db_path: str = 'database') -> pd.DataFrame:
+    """Return *df* with fg_score joined by the ticker's scored index and day."""
+    table = load_fg(db_path)
+    mapping = _fg_index_map(set(table['idx'].unique()), db_path) if not table.empty else {}
+    return _attach(df, table, FG_COLUMNS, mapping, ticker_col, date_col, symbol)
+
+
+def attach_context(df: pd.DataFrame, expressions=(), ticker_col: str = 'ticker',
+                   date_col: str = 'Date', symbol: str | None = None,
+                   db_path: str = 'database') -> pd.DataFrame:
+    """Join whatever context columns *expressions* reference (breadth, fg_score)."""
+    out = df
+    if references_breadth(*expressions):
+        out = attach_breadth(out, ticker_col, date_col, symbol, db_path)
+    if references_fg(*expressions):
+        out = attach_fg(out, ticker_col, date_col, symbol, db_path)
+    return out
+
+
+def _attach(df, table, columns, mapping, ticker_col, date_col, symbol):
+    """Join *columns* of an (idx, Date) *table* onto *df* via ticker -> idx."""
+    if all(c in df.columns for c in columns):
         return df
-    table = load_breadth(db_path)
     out = df.copy()
-    if table.empty:
-        for c in BREADTH_COLUMNS:
+    if table is None or table.empty:
+        for c in columns:
             if c not in out.columns:
                 out[c] = np.nan
         return out
-    primary = _primary_cached(db_path)
     own = set(table['idx'].unique())
     tick = pd.Series(symbol, index=out.index) if symbol else out[ticker_col]
-    idx = tick.map(lambda t: t if t in own else primary.get(t))
+    idx = tick.map(lambda t: t if t in own else mapping.get(t))
     dates = (pd.to_datetime(out[date_col], errors='coerce') if date_col in out.columns
              else pd.to_datetime(pd.Series(out.index, index=out.index), errors='coerce'))
     try:
@@ -297,7 +390,7 @@ def attach_breadth(df: pd.DataFrame, ticker_col: str = 'ticker', date_col: str =
         merged = merged.set_index('_pos').reindex(range(len(out)))
     else:
         merged = key.merge(table, on=['idx', 'Date'], how='left')
-    for c in BREADTH_COLUMNS:
+    for c in columns:
         if c not in out.columns:
             out[c] = merged[c].values
     return out

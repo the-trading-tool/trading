@@ -811,7 +811,7 @@ def _window_mask(df: pd.DataFrame, lines: list, group_col: str, window: int) -> 
 
 
 def _with_market_context(df: pd.DataFrame, *conditions) -> pd.DataFrame:
-    """Join market breadth (mkt_breadth*) when a formula uses it and it is missing.
+    """Join market context (mkt_breadth*, fg_score) when a formula uses it and it is missing.
 
     Breadth is per index and day and lives in market_context.db, not on every
     simulation row; joining it here makes it available to every evaluation path
@@ -821,11 +821,9 @@ def _with_market_context(df: pd.DataFrame, *conditions) -> pd.DataFrame:
     """
     try:
         from tradinglib import market_context as _mc
-        if (not _mc.references_breadth(*conditions)
-                or all(c in df.columns for c in _mc.BREADTH_COLUMNS)
-                or 'ticker' not in df.columns):
+        if not _mc.references_context(*conditions) or 'ticker' not in df.columns:
             return df
-        return _mc.attach_breadth(df)
+        return _mc.attach_context(df, conditions)
     except Exception:
         logger.debug('market context join failed', exc_info=True)
         return df

@@ -389,11 +389,15 @@ def read_history(index: str = "^SPX", db_name: str = "fear_greed.db") -> pd.Data
         con.close()
 
 
-def backfill_history(indices=None, days: int = 180, db_name: str = "fear_greed.db") -> int:
+def backfill_history(indices=None, days: int = 180, db_name: str = "fear_greed.db",
+                     keep_existing: bool = False) -> int:
     """Einmalige Rückrechnung: für die letzten ``days`` Handelstage je Index einen
     historischen Score (``compute(as_of=…)``, kein Lookahead) berechnen und in
     fg_history upserten — damit die Verlaufskurve sofort gefüllt ist. Liest die
-    Reihen je Index EINMAL und scort dann in-memory über die Stichtage."""
+    Reihen je Index EINMAL und scort dann in-memory über die Stichtage.
+
+    ``keep_existing`` skips days already in fg_history, so a long backfill does
+    not overwrite the values the daily job logged with the data of that day."""
     indices = indices or _HISTORY_INDICES
     con = sqlite3.connect(_p(db_name))
     try:
@@ -408,7 +412,13 @@ def backfill_history(indices=None, days: int = 180, db_name: str = "fear_greed.d
             ser = b.get("idx")
             if ser is None or ser.empty:
                 continue
+            have = set()
+            if keep_existing:
+                have = {r[0] for r in con.execute(
+                    'SELECT date FROM fg_history WHERE "index"=?', (ix,))}
             for day in [str(d)[:10] for d in ser.index][-days:]:
+                if day in have:
+                    continue
                 r = _score(ix, b, as_of=day)
                 sc = r.get("score")
                 if sc is None or (isinstance(sc, float) and math.isnan(sc)):
