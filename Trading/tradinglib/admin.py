@@ -1850,12 +1850,12 @@ class Admin():
         try:
             from tradinglib import pine_strategy_export as _pse
             import re as _re2
-            _exp = _pse.export_from_config(_pse._load_transactions(self.username))
+            _exp = _pse.export_from_config(_pse._load_transactions(self.username), username=self.username)
             _bq = _pse._load_query(self.username, 'buy_query')
             _sq = _pse._load_query(self.username, 'sell_query')
             if _bq or _sq:
                 try:
-                    _exp['buy_query / sell_query'] = {'pine': _pse.export_strategy('buy_query', _bq, _sq, signal_window=_pse._query_window(self.username))}
+                    _exp['buy_query / sell_query'] = {'pine': _pse.export_strategy('buy_query', _bq, _sq, signal_window=_pse._query_window(self.username), rules=_pse.rules_for({}, self.username, source='globale Einstellungen'))}
                 except _pse.StrategyExportError as _e:
                     _exp['buy_query / sell_query'] = {'error': str(_e)}
             if not _exp:

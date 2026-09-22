@@ -459,8 +459,108 @@ def _condition(expr: str, window: int = 1) -> str:
     return ' and '.join(_paren(_translate_expr(ln)) for ln in lines)
 
 
-def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1) -> str:
+def _num(v, default=0.0) -> float:
+    try:
+        return float(v) if v not in (None, '') else float(default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _flag(v) -> bool:
+    if isinstance(v, str):
+        return v.strip().lower() in ('1', 'true', 'yes', 'y', 'ja')
+    return bool(v)
+
+
+def _rules_block(rules: dict) -> tuple[str, str]:
+    """Position rules of PortfolioSimulator as Pine: (header args, rule code).
+
+    Mirrors asset_simulator.PortfolioSimulator for ONE symbol:
+      - buy/sell at the close of the signal bar (process_orders_on_close)
+      - hard stop-loss fixed at the entry price, triggered intraday by the low,
+        filled at the level or at the open on a gap — exactly a stop order
+      - trailing stop on the highest CLOSE since entry (seeded with the entry
+        close), exits at the close
+      - min_hold_days blocks only the regular sell, never the stops
+      - cooldown_days blocks re-buying after a sell; no re-buy on the exit bar
+      - a sell signal on the same bar beats a buy signal
+      - position = invest / num_assets × size factor, whole units unless fractional
+    Not reproducible per symbol: the num_assets slot limit, the ranking by
+    order_by across the index, the shared cash and the cross-strategy dedup.
+    """
+    invest = _num(rules.get('invest'), 0)
+    slots = max(1, int(_num(rules.get('num_assets'), 1)))
+    slot = round(invest / slots, 2) if invest > 0 else 0.0
+    cap = str(rules.get('sizing_cap') or 'none').strip().lower()
+    fmax = _num(rules.get('sizing_factor_max'), 2.0) or 2.0
+    header = (f'initial_capital={round(invest, 2) if invest > 0 else 10000}, '
+              'default_qty_type=strategy.cash, '
+              f'default_qty_value={slot if slot > 0 else 10000}, '
+              'process_orders_on_close=true, calc_on_every_tick=false')
+    src = rules.get('source', '')
+    cap_note = {
+        'factor': f'Vola-Faktor (Ø-Vola des Index / Vola des Titels), im Backtest auf [1/{fmax:g}, {fmax:g}] geklammert',
+        'none': 'Vola-Faktor (Ø-Vola des Index / Vola des Titels), ungeklammert',
+        'cash': 'Vola-Faktor, gedeckelt auf das freie Kapital',
+        'normalized': 'inverse Vola, normiert auf die Tagesauswahl',
+        'profile': 'Ziel-Vola des Risikoprofils / Vola des Titels',
+    }.get(cap, cap)
+    code = f"""\
+// ── Positionsregeln (wie PortfolioSimulator{', ' + src if src else ''}) ──
+// Nicht je Titel nachbildbar: Slot-Limit num_assets, Rangfolge nach order_by
+// ueber den Index, gemeinsame Kasse und der Abgleich zwischen Strategien.
+// Groesse im Backtest: {cap_note}. Ohne Index-Universum
+// laesst sich der Faktor hier nicht berechnen -> Eingabe, 1 = Gleichgewichtung.
+r_slot     = input.float({slot if slot > 0 else 10000.0}, "Budget je Position (invest / num_assets)", group="Regeln")
+r_factor   = input.float(1.0, "Groessenfaktor", minval=0.0, group="Regeln")
+r_frac     = input.bool({_pine_bool(_flag(rules.get('fractional')))}, "Bruchstuecke erlaubt", group="Regeln")
+r_sl_pct   = input.float({_num(rules.get('stop_loss'))}, "Stop-Loss % unter Einstand (0 = aus)", minval=0.0, group="Regeln")
+r_tr_pct   = input.float({_num(rules.get('trailing_stop'))}, "Trailing-Stop % unter hoechstem Close (0 = aus)", minval=0.0, group="Regeln")
+r_min_hold = input.int({int(_num(rules.get('min_hold_days')))}, "Mindesthaltedauer (Kalendertage)", minval=0, group="Regeln")
+r_cooldown = input.int({int(_num(rules.get('cooldown_days')))}, "Sperrfrist nach Verkauf (Kalendertage)", minval=0, group="Regeln")
+
+MS_DAY = 86400000.0
+// Kalendertage mit etwas Toleranz (Sommerzeit verschiebt Balkenzeiten um 1 h)
+r_days(int t0) =>
+    (time - t0) / MS_DAY + 0.05
+var float r_hi_close = na
+bool r_in_pos = strategy.position_size > 0
+bool r_exited_now = strategy.closedtrades > nz(strategy.closedtrades[1])
+float r_last_exit = strategy.closedtrades > 0 ? strategy.closedtrades.exit_time(strategy.closedtrades - 1) : na
+bool r_cool_ok = r_cooldown <= 0 or na(r_last_exit) or r_days(int(r_last_exit)) >= r_cooldown
+bool r_hold_ok = not r_in_pos or r_min_hold <= 0 or r_days(strategy.opentrades.entry_time(0)) >= r_min_hold
+if not r_in_pos
+    r_hi_close := na
+else
+    r_hi_close := na(r_hi_close) ? close : math.max(r_hi_close, close)
+bool r_trail_hit = r_in_pos and r_tr_pct > 0 and close <= r_hi_close * (1 - r_tr_pct / 100)
+float r_qty_raw = r_slot * r_factor / close
+float r_qty = r_frac ? r_qty_raw : math.floor(r_qty_raw)
+
+// Stops zuerst, dann Trailing, dann das regulaere Signal (Reihenfolge wie im Backtest)
+// Also while flat: the order then waits for the entry and guards it from the next
+// bar on, as in the backtest (the entry fills at this close = the entry price).
+if r_sl_pct > 0
+    strategy.exit("SL", "Long", stop = (r_in_pos ? strategy.position_avg_price : close) * (1 - r_sl_pct / 100))
+if r_trail_hit
+    strategy.close("Long", comment = "Trail")
+else if r_in_pos and exitCond and r_hold_ok
+    strategy.close("Long", comment = "Sell")
+if not r_in_pos and not r_exited_now and longCond and not exitCond and r_cool_ok and r_qty > 0
+    strategy.entry("Long", strategy.long, qty = r_qty)
+    r_hi_close := close
+"""
+    return header, code
+
+
+def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1,
+                    rules: dict | None = None) -> str:
     """Vollständiges Pine-`strategy()`-Skript für eine Buy/Sell-Formel.
+
+    *rules* (optional) sind die Positionsregeln der Strategie-Konfiguration:
+    ``invest``, ``num_assets``, ``stop_loss``, ``trailing_stop``,
+    ``min_hold_days``, ``cooldown_days``, ``fractional``, ``sizing_cap``,
+    ``sizing_factor_max`` und ``source`` (Herkunft für den Kommentar).
 
     Raises StrategyExportError, wenn eine Bedingung nicht-exportierbare Spalten
     referenziert (z. B. overallValueTrend).
@@ -484,8 +584,10 @@ def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1) -> s
                    if window > 1 and max(len(_split_conditions(buy)),
                                          len(_split_conditions(sell))) > 1 else '')
 
-    return f"""//@version=5
-strategy("{name}", overlay=true, default_qty_type=strategy.percent_of_equity,
+    head = f"""//@version=5
+"""
+    if rules is None:
+        return head + f"""strategy("{name}", overlay=true, default_qty_type=strategy.percent_of_equity,
      default_qty_value=100, calc_on_every_tick=false)
 
 // ── Helfer ───────────────────────────────────────────────────────────────────
@@ -496,24 +598,95 @@ strategy("{name}", overlay=true, default_qty_type=strategy.percent_of_equity,
 {window_note}longCond = {_condition(buy, window)}
 exitCond = {_condition(sell, window)}
 
-if longCond and strategy.position_size == 0
+if longCond and not exitCond and strategy.position_size == 0
     strategy.entry("Long", strategy.long)
 if exitCond and strategy.position_size > 0
     strategy.close("Long")
 """
+    strat_args, rule_code = _rules_block(rules)
+    return head + f"""strategy("{name}", overlay=true, {strat_args})
+
+// ── Helfer ───────────────────────────────────────────────────────────────────
+{helpers}// ── Indikatoren (aus den App-Formeln abgeleitet, Parameter wie im Backtest) ──
+{body}
+
+// ── Bedingungen ──────────────────────────────────────────────────────────────
+{window_note}longCond = {_condition(buy, window)}
+exitCond = {_condition(sell, window)}
+
+{rule_code}"""
 
 
-def export_from_config(transactions: dict) -> dict:
+# Settings of one index entry that feed the position rules.
+_RULE_KEYS = ('invest', 'num_assets', 'trailing_stop', 'stop_loss', 'min_hold_days',
+              'cooldown_days', 'fractional', 'sizing_cap', 'sizing_factor_max')
+
+
+def _global_rules(username: str | None) -> dict:
+    """Global config.db defaults, as PortfolioSimulator reads them when a field is missing."""
+    out = {}
+    if not username:
+        return out
+    import json
+    for key, cfg_key in (('stop_loss', 'stop_loss_pct'), ('min_hold_days', 'min_hold_days'),
+                         ('cooldown_days', 'cooldown_days'), ('fractional', 'fractional_shares'),
+                         ('sizing_cap', 'sizing_cap'), ('sizing_factor_max', 'sizing_factor_max')):
+        try:
+            raw = _config_value(username, cfg_key)
+        except Exception:
+            raw = None
+        if raw in (None, ''):
+            continue
+        try:
+            out[key] = json.loads(raw)
+        except (TypeError, ValueError):
+            out[key] = raw
+    return out
+
+
+def rules_for(entry: dict, username: str | None = None, source: str = '') -> dict:
+    """Position rules of one index entry; missing fields fall back to config.db."""
+    rules = _global_rules(username)
+    for k in _RULE_KEYS:
+        if entry.get(k) is not None:
+            rules[k] = entry[k]
+    rules['source'] = source
+    return rules
+
+
+def _rules_summary(idxs: dict) -> str:
+    """Comment table when the indices of a strategy use different rules."""
+    rows = []
+    for idx, e in idxs.items():
+        vals = ', '.join(f'{k}={e.get(k)}' for k in _RULE_KEYS if e.get(k) is not None)
+        rows.append(f'//   {idx}: {vals}')
+    return '\n'.join(rows)
+
+
+def export_from_config(transactions: dict, username: str | None = None) -> dict:
     """Für jede Strategie EIN Skript (erste Index-Bedingung als Repräsentant).
+
+    Die Positionsregeln kommen aus demselben ersten Index; weichen andere Indizes
+    ab, stehen deren Werte als Kommentar im Skript (die Eingaben lassen sich in
+    TradingView je Chart umstellen).
 
     Returns {strategy_name: {'pine': str} | {'error': str}}.
     """
     result: dict[str, dict] = {}
     for strat, idxs in transactions.items():
-        first = next(iter(idxs.values()), {})
+        if not idxs:
+            continue
+        first_idx, first = next(iter(idxs.items()))
         try:
-            result[strat] = {'pine': export_strategy(strat, first.get('buy', ''), first.get('sell', ''),
-                                                     signal_window=first.get('signal_window') or 1)}
+            pine = export_strategy(strat, first.get('buy', ''), first.get('sell', ''),
+                                   signal_window=first.get('signal_window') or 1,
+                                   rules=rules_for(first, username, source=f'Regeln von {first_idx}'))
+            differs = any(tuple(e.get(k) for k in _RULE_KEYS) != tuple(first.get(k) for k in _RULE_KEYS)
+                          for e in idxs.values())
+            if differs:
+                pine += ('\n// Regeln je Index laut Konfiguration (Eingaben oben je Chart anpassen):\n'
+                         + _rules_summary(idxs) + '\n')
+            result[strat] = {'pine': pine}
         except StrategyExportError as e:
             result[strat] = {'error': str(e)}
     return result
@@ -600,7 +773,7 @@ def main(argv=None) -> int:
             skipped += 1
 
     # 1) Strategien aus multi_transactions
-    for strat, res in export_from_config(_load_transactions(user)).items():
+    for strat, res in export_from_config(_load_transactions(user), username=user).items():
         _emit(strat, res.get('pine'), res.get('error'))
 
     # 2) Eigenstaendige Einzel-Query in config.db (<user>:buy_query / :sell_query)
@@ -608,7 +781,8 @@ def main(argv=None) -> int:
     if buy or sell:
         try:
             _emit('buy_query', export_strategy('buy_query', buy, sell,
-                                               signal_window=_query_window(user)), None)
+                                               signal_window=_query_window(user),
+                                               rules=rules_for({}, user, source='globale Einstellungen')), None)
         except StrategyExportError as e:
             _emit('buy_query', None, str(e))
 

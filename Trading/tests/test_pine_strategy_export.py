@@ -162,3 +162,52 @@ def test_signal_export_nutzt_den_kausalen_atc_ohne_namenskollision():
     assert 'str_atc_fit(int e, int len) =>' in s
     assert 'str_atc_reg(' not in s                   # old anchor regression is gone
     assert s.count('\natc_dev =') == 1                # overlay's own atc_dev untouched
+
+
+_RULES = {'invest': 6000, 'num_assets': 4, 'trailing_stop': 20, 'stop_loss': 8,
+          'min_hold_days': 2, 'cooldown_days': 3, 'fractional': True,
+          'sizing_cap': 'factor', 'sizing_factor_max': 2, 'source': 'Regeln von ^SPX'}
+
+
+def test_regeln_wie_portfoliosimulator():
+    s = pse.export_strategy('R', '(rsi>50)', '(rsi<30)', rules=_RULES)
+    head = s.splitlines()[1]
+    assert 'initial_capital=6000.0' in head and 'process_orders_on_close=true' in head
+    assert 'r_slot     = input.float(1500.0,' in s                  # invest / num_assets
+    assert 'r_sl_pct   = input.float(8.0,' in s
+    assert 'r_tr_pct   = input.float(20.0,' in s
+    assert 'r_min_hold = input.int(2,' in s and 'r_cooldown = input.int(3,' in s
+    assert 'r_frac     = input.bool(true,' in s
+    assert '[1/2, 2] geklammert' in s
+    # hard stop at the entry price (a stop order: level or open on a gap)
+    assert 'strategy.exit("SL", "Long", stop = (r_in_pos ? strategy.position_avg_price : close)' in s
+    # min hold gates only the regular sell; a sell signal beats a buy
+    assert 'else if r_in_pos and exitCond and r_hold_ok' in s
+    assert 'longCond and not exitCond and r_cool_ok' in s
+    assert s.index('strategy.exit("SL"') < s.index('comment = "Trail"') < s.index('comment = "Sell"')
+    _lint(s)
+
+
+def test_ohne_regeln_bleibt_das_einfache_skript():
+    s = pse.export_strategy('R', '(rsi>50)', '(rsi<30)')
+    assert 'default_qty_type=strategy.percent_of_equity' in s and 'r_slot' not in s
+    assert 'if longCond and not exitCond and strategy.position_size == 0' in s
+
+
+def test_regeln_fallen_auf_die_config_zurueck(monkeypatch):
+    cfg = {'stop_loss_pct': '5', 'min_hold_days': '1', 'cooldown_days': '4',
+           'fractional_shares': 'true', 'sizing_cap': '"factor"'}
+    monkeypatch.setattr(pse, '_config_value', lambda user, key: cfg.get(key))
+    r = pse.rules_for({'invest': 1000, 'num_assets': 2, 'stop_loss': 0, 'min_hold_days': None},
+                      'kurt', source='x')
+    assert r['stop_loss'] == 0                      # per-index value beats the global default
+    assert r['min_hold_days'] == 1 and r['cooldown_days'] == 4
+    assert r['fractional'] is True and r['sizing_cap'] == 'factor'
+
+
+def test_abweichende_index_regeln_als_kommentar():
+    tx = {'S': {'^SPX': {'buy': '(rsi>50)', 'sell': '(rsi<30)', 'invest': 6000, 'num_assets': 6},
+                '^N225': {'buy': '(rsi>50)', 'sell': '(rsi<30)', 'invest': 1200, 'num_assets': 3}}}
+    pine = pse.export_from_config(tx)['S']['pine']
+    assert 'r_slot     = input.float(1000.0,' in pine
+    assert '//   ^N225: invest=1200, num_assets=3' in pine

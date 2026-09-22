@@ -55,6 +55,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Mehrzeilige Formeln:</b> jede Zeile ist eine eigene Bedingung, alle werden mit <i>und</i> verknüpft. Bei <code>signal_window</code> &gt; 1 muss jede Zeile innerhalb der letzten N Balken erfüllt gewesen sein, wie in der App.</li>
   <li><b>ATC:</b> kausal wie in der App, je Balken der Kanal über die letzten 252 Balken. Alle Spalten (<code>atc_mid/top/bot/width_high|low|zero</code>) sind verfügbar.</li>
   <li><b>trendScore:</b> Abstand zum Rekordhoch, übersetzt über die kalibrierten Stützstellen. TradingView kennt nur die geladene Historie, bei kurzen Charts liegt das Rekordhoch deshalb zu tief.</li>
+  <li><b>Positionsregeln wie im Backtest:</b> Kauf und Verkauf zum Schlusskurs des Signalbalkens. Stop-Loss fest am Einstandskurs, ausgelöst über das Tagestief (Fill am Stop, bei Gap am Open). Trailing-Stop auf den höchsten Schlusskurs seit Einstieg. Die Mindesthaltedauer sperrt nur den regulären Verkauf, nicht die Stops. Die Sperrfrist verhindert den Rückkauf. Budget je Position = <code>invest / num_assets</code>, Bruchstücke nach Einstellung. Werte aus dem ersten Index der Strategie, fehlende aus der globalen Einstellung. Abweichende Indizes stehen als Kommentar im Skript, und alle Werte sind in TradingView als Eingaben änderbar.</li>
+  <li><b>Nicht nachbildbar je Titel:</b> Slot-Limit, Rangfolge nach <code>order_by</code>, gemeinsame Kasse und der Vola-Faktor der Positionsgröße (er braucht das Index-Universum; Eingabe „Größenfaktor“, 1 = gleich gewichtet).</li>
   <li><b>Nicht exportierbar:</b> <code>overallTrend</code> / <code>overallValueTrend</code>. Beide enthalten Fundamentaldaten, die TradingView nicht hat.</li>
 </ul>
 
