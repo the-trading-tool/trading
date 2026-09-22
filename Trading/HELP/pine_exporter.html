@@ -32,6 +32,23 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li>Markov-Regime · Volumen-Delta · MMM · BOS · u.&nbsp;v.&nbsp;m.</li>
 </ul>
 
+<h3>Order Block Detector und Elliott-Wellen</h3>
+<ul>
+  <li><b>Order Block Detector:</b> Orderblöcke als Zonen (Boxen) mit Gewicht 0–100 wie in der App.
+    Deckkraft und Rahmen folgen dem Gewicht. Eine Zone läuft bis zur Mitigation (Schlusskurs durch die Zone),
+    nach rechts oder fix N Balken. Das S/R-Flusssignal ist optional.
+    Die Spalten <code>obd_bull_top/_bot/_weight</code> und <code>obd_bear_…</code> stehen im Datenfenster.</li>
+  <li><b>EWO:</b> SMA-Fenster, EMA und Winkelschwelle kommen aus der Konfiguration. Der Winkel ist wie in der App in Grad,
+    Kauf und Verkauf wechseln sich strikt ab.</li>
+  <li><b>Elliott-Wellen:</b> kausale Zählung wie in der App: ATR-Zickzack, Impuls 1–5 nach den harten Regeln,
+    danach A-B-C (Zickzack/flach). Die Schalter sind dieselben wie im ⚙-Dialog.
+    Beschriftungen stehen auf den Extrembalken und sind damit Rückschau. Grau mit „?“ markiert eine noch
+    unfertige Zählung am rechten Rand. <code>ewo_wave</code> steht im Datenfenster.
+    Im kombinierten Chart erscheint nur der EWO, ohne Wellenbeschriftung.</li>
+  <li>Buy/Sell-Formeln mit <code>ewo_wave</code>, <code>ewo_diff</code>, <code>ewo_trend</code> oder
+    <code>obd_bull_top</code>, <code>obd_buy</code> usw. werden im Strategie- und Signal-Export mitübersetzt.</li>
+</ul>
+
 <h2>Export-Workflow</h2>
 <ol>
   <li>In der App die gewünschten <b>Overlay</b>- und <b>Oszillator</b>-Indikatoren konfigurieren (⚙-Button)</li>

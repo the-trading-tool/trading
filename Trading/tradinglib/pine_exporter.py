@@ -124,6 +124,19 @@ def _style_inputs(p: dict, prefix: str, default_color: str, group: str) -> str:
     )
 
 
+def _pbool(p: dict, key: str, default: bool) -> bool:
+    """Read a bool param; stored configs may carry 'true'/'false' strings."""
+    v = p.get(key, default)
+    if isinstance(v, str):
+        return v.strip().lower() in ('1', 'true', 'yes', 'ja', 'on')
+    return bool(v)
+
+
+def _pine_bool(v: bool) -> str:
+    """Python bool → Pine literal."""
+    return 'true' if v else 'false'
+
+
 # ── Visibility-toggle helpers ─────────────────────────────────────────────────
 # Applied by generate_overlay / generate_oscillator to add one input.bool per
 # indicator so TradingView users can show / hide each series individually.
@@ -176,6 +189,7 @@ _DRAWING_PRIMITIVES: frozenset[str] = frozenset([
     'line.new(', 'label.new(', 'line.delete(', 'label.delete(',
     'plotcandle(', 'plotshape(', 'plot(', 'fill(', 'bgcolor(',
     'table.cell(', 'table.set_',
+    'box.new(', 'box.set_', 'box.delete(', 'label.set_',
 ])
 
 
@@ -229,6 +243,15 @@ def _append_display_param(
             break
 
     if collected:
+        # A call that already sets ``display`` (e.g. data-window-only columns)
+        # gets that value gated instead of a second, conflicting argument.
+        for n, ln in enumerate(collected):
+            m = re.search(r'\bdisplay\s*=\s*(display\.[\w.]+)', ln)
+            if m:
+                collected[n] = (ln[:m.start(1)]
+                                + f'{toggle_var} ? {m.group(1)} : display.none'
+                                + ln[m.end(1):])
+                return collected, i
         last = collected[-1]
         rp = last.rfind(')')
         if rp >= 0:
@@ -599,27 +622,407 @@ plot(0, "Zero", color.new(color.gray, 50), 1)
 """
 
 
+def _ewo_windows(p: dict) -> tuple[int, int, int, float]:
+    """EWO parameters as in ewo.py: short/long SMA, EMA span, angle threshold (degrees)."""
+    return (int(p.get('short_window', 5)), int(p.get('long_window', 21)),
+            int(p.get('ema_span', 9)), float(p.get('angle', 0.01)))
+
+
+def _elliott_core(pf: str, basis: str, label_y: str) -> str:
+    """Pine port of tradinglib/indicator/_elliott.py (pivots + count_waves).
+
+    *pf* prefixes every name (``ew`` in the oscillator, ``str_ew`` in strategy
+    scripts) so both can live in one script. The caller defines
+    ``{pf}_mult``, ``{pf}_req_peak``, ``{pf}_req_w4`` and ``{pf}_trunc``;
+    *basis* is the EWO series the rules test, *label_y* the series labels sit
+    on. Result: ``{pf}_wave`` (same encoding as the ewo_wave column) plus a
+    queue of finished labels in ``{pf}_st`` for the caller to draw.
+
+    Price, EWO and pivots live in arrays indexed by bar_index, so rule checks
+    over long waves need no history buffer (max_bars_back).
+    """
+    t = ''.join(s.capitalize() for s in pf.split('_'))
+    return f"""\
+// Causal Elliott count — mirrors tradinglib/indicator/_elliott.py:
+// ATR zigzag (a pivot exists only once the close has moved mult x ATR away),
+// impulse 1-5 under the hard rules, then correction A-B-C (zigzag / flat).
+{pf}_max_cands = 12
+{pf}_b_min     = 0.9      // flat: B retraces at least 90 % of A
+{pf}_b_max     = 1.382    // expanded flat: B at most 138.2 % of A
+
+type {t}Cand
+    int dir
+    array<int> idx
+
+type {t}State
+    array<{t}Cand> cands
+    bool corr_on
+    int corr_dir
+    array<int> corr_imp
+    array<int> corr_abc
+    string corr_form
+    array<int> q_pv
+    array<string> q_text
+    array<string> q_group
+    array<string> q_form
+
+var array<float> {pf}_h  = array.new<float>()
+var array<float> {pf}_l  = array.new<float>()
+var array<float> {pf}_e  = array.new<float>()
+var array<float> {pf}_y  = array.new<float>()
+var array<int>   {pf}_tm = array.new<int>()     // bar time: labels far back need xloc.bar_time
+var array<int>   {pf}_pb = array.new<int>()     // pivot: extreme bar
+var array<float> {pf}_pp = array.new<float>()   // pivot: price
+var array<int>   {pf}_pk = array.new<int>()     // pivot: +1 high / -1 low
+var {t}State {pf}_st = {t}State.new(array.new<{t}Cand>(), false, 0, array.new<int>(), array.new<int>(), "", array.new<int>(), array.new<string>(), array.new<string>(), array.new<string>())
+array.push({pf}_h, high)
+array.push({pf}_l, low)
+array.push({pf}_e, {basis})
+array.push({pf}_y, {label_y})
+array.push({pf}_tm, time)
+
+// Wilder ATR(14), first bar = high - low (as _elliott.atr)
+{pf}_tr = na(close[1]) ? high - low : math.max(high - low, math.abs(high - close[1]), math.abs(low - close[1]))
+var float {pf}_atr = na
+{pf}_atr := na({pf}_atr) ? {pf}_tr : {pf}_atr + ({pf}_tr - {pf}_atr) / 14.0
+
+{pf}_after(bool want_high, int start, int stop) =>
+    // extreme of high/low over the bars (start, stop]; [na, -1] when empty
+    float best = na
+    int best_i = -1
+    if stop > start
+        for j = start + 1 to stop
+            float v = want_high ? array.get({pf}_h, j) : array.get({pf}_l, j)
+            if not na(v) and (best_i < 0 or (want_high ? v > best : v < best))
+                best := v
+                best_i := j
+    [best, best_i]
+
+{pf}_add_pivot(int b, float price, int kind) =>
+    array.push({pf}_pb, b)
+    array.push({pf}_pp, price)
+    array.push({pf}_pk, kind)
+    array.size({pf}_pb) - 1
+
+{pf}_s(int j, int d) =>
+    d * array.get({pf}_pp, j)
+
+{pf}_ewx(int a, int b, int d, bool lowest) =>
+    // direction-adjusted EWO extreme between bars a and b (inclusive)
+    float best = na
+    for j = math.min(a, b) to math.max(a, b)
+        float v = array.get({pf}_e, j)
+        if not na(v)
+            best := na(best) ? d * v : lowest ? math.min(best, d * v) : math.max(best, d * v)
+    na(best) ? (lowest ? 1e300 : -1e300) : best
+
+{pf}_extends({t}Cand cand, int k) =>
+    int d = cand.dir
+    int m = array.size(cand.idx)
+    float sk = {pf}_s(k, d)
+    bool ok = false
+    if m == 1 or m == 2
+        ok := sk > {pf}_s(array.get(cand.idx, 0), d)
+    else if m == 3 or m == 4
+        ok := sk > {pf}_s(array.get(cand.idx, 1), d)
+    else if m == 5
+        float s0 = {pf}_s(array.get(cand.idx, 0), d)
+        float s1 = {pf}_s(array.get(cand.idx, 1), d)
+        float s2 = {pf}_s(array.get(cand.idx, 2), d)
+        float s3 = {pf}_s(array.get(cand.idx, 3), d)
+        float s4 = {pf}_s(array.get(cand.idx, 4), d)
+        ok := sk > s3 or {pf}_trunc
+        if ok and (s3 - s2) < (s1 - s0) and (s3 - s2) < (sk - s4)
+            ok := false
+        int b0 = array.get({pf}_pb, array.get(cand.idx, 0))
+        int b1 = array.get({pf}_pb, array.get(cand.idx, 1))
+        int b2 = array.get({pf}_pb, array.get(cand.idx, 2))
+        int b3 = array.get({pf}_pb, array.get(cand.idx, 3))
+        int b4 = array.get({pf}_pb, array.get(cand.idx, 4))
+        int b5 = array.get({pf}_pb, k)
+        if ok and {pf}_req_peak
+            float p1 = {pf}_ewx(b0, b1, d, false)
+            float p3 = {pf}_ewx(b2, b3, d, false)
+            float p5 = {pf}_ewx(b4, b5, d, false)
+            if not (p3 >= p1 and p3 >= p5)
+                ok := false
+        if ok and {pf}_req_w4 and {pf}_ewx(b3, b5, d, true) > 0
+            ok := false
+    ok
+
+{pf}_queue({t}State st, int j, string txt, string grp, string form) =>
+    array.push(st.q_pv, j)
+    array.push(st.q_text, txt)
+    array.push(st.q_group, grp)
+    array.push(st.q_form, form)
+    true
+
+{pf}_search({t}State st, int k) =>
+    array<{t}Cand> keep = array.new<{t}Cand>()
+    bool done = false
+    int nc = array.size(st.cands)
+    if nc > 0
+        for ci = 0 to nc - 1
+            {t}Cand cand = array.get(st.cands, ci)
+            if {pf}_extends(cand, k)
+                array<int> nidx = array.copy(cand.idx)
+                array.push(nidx, k)
+                if array.size(nidx) == 6
+                    for w = 1 to 5
+                        {pf}_queue(st, array.get(nidx, w), str.tostring(w), "impulse", "")
+                    st.corr_on := true
+                    st.corr_dir := cand.dir
+                    st.corr_imp := nidx
+                    st.corr_abc := array.new<int>()
+                    st.corr_form := ""
+                    st.cands := array.new<{t}Cand>()
+                    done := true
+                    break
+                array.push(keep, {t}Cand.new(cand.dir, nidx))
+    if not done
+        // a low starts an up impulse, a high a down impulse
+        array.push(keep, {t}Cand.new(-array.get({pf}_pk, k), array.from(k)))
+        while array.size(keep) > {pf}_max_cands
+            array.shift(keep)
+        st.cands := keep
+    done
+
+{pf}_replay({t}State st, array<int> seq) =>
+    // abandon the correction reading and recount the given pivots
+    st.corr_on := false
+    st.cands := array.new<{t}Cand>()
+    for j in seq
+        {pf}_search(st, j)
+    true
+
+{pf}_correct({t}State st, int k) =>
+    int d = st.corr_dir
+    float s5 = {pf}_s(array.get(st.corr_imp, 5), d)
+    int nabc = array.size(st.corr_abc)
+    if nabc == 0
+        array.push(st.corr_abc, k)
+    else
+        float sa = {pf}_s(array.get(st.corr_abc, 0), d)
+        float sk = {pf}_s(k, d)
+        if nabc == 1
+            float ratio = s5 != sa ? (sk - sa) / (s5 - sa) : 1e300
+            if ratio > {pf}_b_max
+                {pf}_replay(st, array.from(array.get(st.corr_abc, 0), k))
+            else
+                st.corr_form := ratio >= {pf}_b_min ? "flat" : "zigzag"
+                array.push(st.corr_abc, k)
+        else if sk < sa
+            // C beyond the end of A: correction complete
+            {pf}_queue(st, array.get(st.corr_abc, 0), "A", "abc", st.corr_form)
+            {pf}_queue(st, array.get(st.corr_abc, 1), "B", "abc", st.corr_form)
+            {pf}_queue(st, k, "C", "abc", st.corr_form)
+            st.corr_on := false
+            st.cands := array.new<{t}Cand>()
+            {pf}_search(st, k)
+        else
+            {pf}_replay(st, array.from(array.get(st.corr_abc, 0), array.get(st.corr_abc, 1), k))
+    true
+
+{pf}_best({t}State st) =>
+    // longest candidate, the oldest one on ties
+    {t}Cand best = array.get(st.cands, 0)
+    for c in st.cands
+        if array.size(c.idx) > array.size(best.idx)
+            best := c
+    best
+
+{pf}_state({t}State st) =>
+    int res = 0
+    if st.corr_on
+        res := st.corr_dir * (6 + array.size(st.corr_abc))
+    else if array.size(st.cands) > 0
+        {t}Cand best = {pf}_best(st)
+        res := best.dir * array.size(best.idx)
+    res
+
+{pf}_qclear({t}State st) =>
+    array.clear(st.q_pv)
+    array.clear(st.q_text)
+    array.clear(st.q_group)
+    array.clear(st.q_form)
+    true
+
+// Zigzag: at most one pivot per bar, confirmed on the close
+var int   {pf}_dir   = 0     // +1 looking for a high, -1 for a low
+var float {pf}_hi    = na
+var int   {pf}_hi_i  = -1
+var float {pf}_lo    = na
+var int   {pf}_lo_i  = -1
+var float {pf}_ext   = na
+var int   {pf}_ext_i = -1
+var int   {pf}_wave  = 0
+int   {pf}_new_k = -1
+// na step (ATR 0 or missing) = infinite: extremes are tracked, nothing confirms
+float {pf}_step  = not na({pf}_atr) and {pf}_atr > 0 ? {pf}_mult * {pf}_atr : na
+bool  {pf}_can   = not na({pf}_step)
+if not na(close) and not na(high) and not na(low)
+    if {pf}_dir == 0
+        if na({pf}_hi) or high > {pf}_hi
+            {pf}_hi := high
+            {pf}_hi_i := bar_index
+        if na({pf}_lo) or low < {pf}_lo
+            {pf}_lo := low
+            {pf}_lo_i := bar_index
+        if {pf}_can and close <= {pf}_hi - {pf}_step
+            {pf}_new_k := {pf}_add_pivot({pf}_hi_i, {pf}_hi, 1)
+            {pf}_dir := -1
+            [xa, xai] = {pf}_after(false, {pf}_hi_i, bar_index)
+            {pf}_ext := xa
+            {pf}_ext_i := xai
+        else if {pf}_can and close >= {pf}_lo + {pf}_step
+            {pf}_new_k := {pf}_add_pivot({pf}_lo_i, {pf}_lo, -1)
+            {pf}_dir := 1
+            [xb, xbi] = {pf}_after(true, {pf}_lo_i, bar_index)
+            {pf}_ext := xb
+            {pf}_ext_i := xbi
+    else if {pf}_dir > 0
+        if {pf}_ext_i < bar_index and ({pf}_ext_i < 0 or high > {pf}_ext)
+            {pf}_ext := high
+            {pf}_ext_i := bar_index
+        if {pf}_can and {pf}_ext_i >= 0 and close <= {pf}_ext - {pf}_step
+            {pf}_new_k := {pf}_add_pivot({pf}_ext_i, {pf}_ext, 1)
+            {pf}_dir := -1
+            [xc, xci] = {pf}_after(false, {pf}_ext_i, bar_index)
+            {pf}_ext := xc
+            {pf}_ext_i := xci
+    else
+        if {pf}_ext_i < bar_index and ({pf}_ext_i < 0 or low < {pf}_ext)
+            {pf}_ext := low
+            {pf}_ext_i := bar_index
+        if {pf}_can and {pf}_ext_i >= 0 and close >= {pf}_ext + {pf}_step
+            {pf}_new_k := {pf}_add_pivot({pf}_ext_i, {pf}_ext, -1)
+            {pf}_dir := 1
+            [xd, xdi] = {pf}_after(true, {pf}_ext_i, bar_index)
+            {pf}_ext := xd
+            {pf}_ext_i := xdi
+
+if {pf}_new_k >= 0
+    if {pf}_st.corr_on
+        {pf}_correct({pf}_st, {pf}_new_k)
+    else
+        {pf}_search({pf}_st, {pf}_new_k)
+    {pf}_wave := {pf}_state({pf}_st)
+"""
+
+
 def _t_ewo(p: dict) -> str:
-    """Return the Pine Script v5 Elliott Wave Oscillator template with configurable params."""
+    """Return the Pine Script Elliott Wave Oscillator template (ewo.py incl. wave count)."""
     style = _style_inputs(p, 'ewo', 'color.black', 'EWO')
+    sw, lw, span, ang = _ewo_windows(p)
+    basis = p.get('wave_ewo_basis', 'ewo')
+    if basis not in ('ewo', 'joseph_5_35'):
+        basis = 'ewo'
+    mult = float(p.get('wave_atr_mult', 3.0))
+    grp = 'EWO -- Elliott waves'
+    b = _pine_bool
     return f"""\
 // ── Elliott Wave Oscillator ───────────────────────────────────────────────────
-{style}ewo_val  = ta.sma(close, 5) - ta.sma(close, 21)
-ewo_ema  = ta.ema(ewo_val, 9)
-ewo_diff = ewo_ema - ewo_ema[1]
-plot(ewo_diff, "EWO diff",
-     style = plot.style_columns,
-     color = ewo_diff >= 0 ? color.new(color.green, 30) : color.new(color.red, 30))
+{style}ewo_short   = input.int({sw}, "Short SMA period", minval=1, group="EWO")
+ewo_long    = input.int({lw}, "Long SMA period", minval=1, group="EWO")
+ewo_span    = input.int({span}, "EMA span", minval=1, group="EWO")
+ewo_ang_thr = input.float({ang}, "Signal angle threshold (degrees)", group="EWO")
+ewo_val   = ta.sma(close, ewo_short) - ta.sma(close, ewo_long)
+ewo_ema   = ta.ema(ewo_val, ewo_span)
+ewo_diff  = ewo_ema - ewo_ema[1]
+ewo_angle = math.todegrees(math.atan(ewo_val - ewo_val[1]))
+plot(ewo_diff, "EWO diff", style = plot.style_columns, color = ewo_diff >= 0 ? color.new(color.green, 30) : color.new(color.red, 30))
 plot(ewo_val, "EWO",     ewo_col,      ewo_width)
 plot(ewo_ema, "EWO EMA", color.orange, 1)
-ewo_ang_thr  = 0.01
-ewo_rising   = (ewo_val - ewo_val[1]) >  ewo_ang_thr
-ewo_falling  = (ewo_val - ewo_val[1]) < -ewo_ang_thr
-// Signal only on the first bar of each new direction (rising edge of state change)
-ewo_buy  = ewo_rising  and not ewo_rising[1]
-ewo_sell = ewo_falling and not ewo_falling[1]
+// Buy/sell strictly alternate, as ewo.filter_alternating_signals
+var int ewo_pos = 0
+bool ewo_buy  = false
+bool ewo_sell = false
+if ewo_pos == 0 and ewo_angle > ewo_ang_thr
+    ewo_buy := true
+    ewo_pos := 1
+else if ewo_pos == 1 and ewo_angle < -ewo_ang_thr
+    ewo_sell := true
+    ewo_pos := 0
 plotshape(ewo_buy  ? ewo_val : na, "EWO Buy",  shape.triangleup,   location.absolute, color.teal, size = size.small)
 plotshape(ewo_sell ? ewo_val : na, "EWO Sell", shape.triangledown, location.absolute, color.red,  size = size.small)
+
+// ── Elliott waves ─────────────────────────────────────────────────────────────
+ew_show_waves   = input.bool({b(_pbool(p, 'show_waves', False))}, "Label impulse 1-5", group="{grp}")
+ew_show_abc     = input.bool({b(_pbool(p, 'show_abc', True))}, "Label correction A-B-C", group="{grp}")
+ew_show_pending = input.bool({b(_pbool(p, 'show_pending', True))}, "Label unfinished count (grey, ?)", group="{grp}")
+ew_req_peak     = input.bool({b(_pbool(p, 'require_ewo_peak', True))}, "Wave 3 must carry the EWO peak", group="{grp}")
+ew_req_w4       = input.bool({b(_pbool(p, 'require_w4_ewo_zero', False))}, "EWO must pull back to zero in wave 4", group="{grp}")
+ew_trunc        = input.bool({b(_pbool(p, 'allow_truncation', False))}, "Allow truncated wave 5", group="{grp}")
+ew_basis        = input.string("{basis}", "EWO for the wave rules", options=["ewo", "joseph_5_35"], tooltip="joseph_5_35 = SMA 5/35 of (High+Low)/2", group="{grp}")
+ew_mult         = input.float({mult}, "Pivot reversal (x ATR)", minval=1.0, maxval=10.0, step=0.5, group="{grp}")
+ew_col_imp      = input.color(color.rgb(65, 105, 225), "Impulse", group="{grp}")
+ew_col_abc      = input.color(color.rgb(255, 140, 0), "Correction", group="{grp}")
+ew_col_run      = input.color(color.gray, "Unfinished", group="{grp}")
+ew_joseph = ta.sma(hl2, 5) - ta.sma(hl2, 35)
+ew_basis_val = ew_basis == "joseph_5_35" ? ew_joseph : ewo_val
+{_elliott_core('ew', 'ew_basis_val', 'ewo_val')}
+// ewo_wave: +1..+5 impulse up, +6/+7/+8 A/B/C after it, negative = mirrored, 0 = none
+plot(ew_wave, "Elliott wave (ewo_wave)", color.gray, display = display.data_window)
+
+// Finished structures, labelled on their extreme bars (hindsight, like any zigzag leg)
+if array.size(ew_st.q_pv) > 0
+    for qi = 0 to array.size(ew_st.q_pv) - 1
+        string ew_grp = array.get(ew_st.q_group, qi)
+        int ew_lb = array.get(ew_pb, array.get(ew_st.q_pv, qi))
+        float ew_ly = array.get(ew_y, ew_lb)
+        if ew_show_waves and (ew_grp == "impulse" or ew_show_abc) and not na(ew_ly)
+            string ew_txt = array.get(ew_st.q_text, qi)
+            string ew_form = array.get(ew_st.q_form, qi)
+            color ew_c = ew_grp == "impulse" ? ew_col_imp : ew_col_abc
+            label.new(array.get(ew_tm, ew_lb), ew_ly, ew_txt, xloc = xloc.bar_time, color = color.new(color.white, 100), textcolor = ew_c, style = array.get(ew_pk, array.get(ew_st.q_pv, qi)) > 0 ? label.style_label_down : label.style_label_up, size = size.normal, tooltip = ew_form == "" ? ew_txt : ew_txt + " (" + ew_form + ")")
+ew_qclear(ew_st)
+
+// Unfinished count at the right edge (grey, redrawn on the last bar)
+var array<label> ew_run = array.new<label>()
+if barstate.islast
+    while array.size(ew_run) > 0
+        label.delete(array.pop(ew_run))
+    if ew_show_waves and ew_show_pending
+        array<int> rb = array.new<int>()
+        array<int> rk = array.new<int>()
+        array<string> rt = array.new<string>()
+        array<string> rg = array.new<string>()
+        bool has_pending = ew_dir != 0 and ew_ext_i >= 0
+        if ew_st.corr_on
+            int na_abc = array.size(ew_st.corr_abc)
+            if na_abc > 0
+                for li = 0 to na_abc - 1
+                    int pj = array.get(ew_st.corr_abc, li)
+                    array.push(rb, array.get(ew_pb, pj))
+                    array.push(rk, array.get(ew_pk, pj))
+                    array.push(rt, li == 0 ? "A" : li == 1 ? "B" : "C")
+                    array.push(rg, "abc")
+            if has_pending and na_abc < 3
+                array.push(rb, ew_ext_i)
+                array.push(rk, ew_dir)
+                array.push(rt, (na_abc == 0 ? "A" : na_abc == 1 ? "B" : "C") + "?")
+                array.push(rg, "abc")
+        else if array.size(ew_st.cands) > 0
+            EwCand rbest = ew_best(ew_st)
+            int rlen = array.size(rbest.idx)
+            // only a count with waves 1 and 2 confirmed says anything
+            if rlen >= 3
+                for w = 1 to rlen - 1
+                    int pj = array.get(rbest.idx, w)
+                    array.push(rb, array.get(ew_pb, pj))
+                    array.push(rk, array.get(ew_pk, pj))
+                    array.push(rt, str.tostring(w))
+                    array.push(rg, "impulse")
+                if has_pending
+                    array.push(rb, ew_ext_i)
+                    array.push(rk, ew_dir)
+                    array.push(rt, str.tostring(rlen) + "?")
+                    array.push(rg, "impulse")
+        if array.size(rb) > 0
+            for ri = 0 to array.size(rb) - 1
+                float ry = array.get(ew_y, array.get(rb, ri))
+                if (array.get(rg, ri) == "impulse" or ew_show_abc) and not na(ry)
+                    array.push(ew_run, label.new(array.get(ew_tm, array.get(rb, ri)), ry, array.get(rt, ri), xloc = xloc.bar_time, color = color.new(color.white, 100), textcolor = ew_col_run, style = array.get(rk, ri) > 0 ? label.style_label_down : label.style_label_up, size = size.normal))
 """
 
 
@@ -1881,57 +2284,192 @@ plot(nsdt_ma, "NSDT MA", nsdt_col, 2)
 """
 
 
+def _obd_core(pf: str) -> str:
+    """Pine port of Obd._flow_signal + Obd._order_blocks (tradinglib/indicator/obd.py).
+
+    The caller defines ``{pf}_p`` (impulse candles), ``{pf}_thr`` (min move %),
+    ``{pf}_wicks``, ``{pf}_min_w``, ``{pf}_ref`` (ATR for weight 100),
+    ``{pf}_period`` (flow imbalance), ``{pf}_win`` (S/R lookback) and
+    ``{pf}_zone`` (proximity %). Produces the causal columns
+    ``{pf}_bull_top/_bot/_weight``, ``{pf}_bear_top/_bot/_weight``,
+    ``{pf}_buy``/``{pf}_sell`` and, per bar, the zones born (``{pf}_born``)
+    and mitigated (``{pf}_gone``) for the caller to draw.
+    """
+    t = ''.join(s.capitalize() for s in pf.split('_'))
+    return f"""\
+type {t}Zone
+    int kind
+    int start
+    float top
+    float bot
+    float weight
+    int stop = -1
+    box bx
+    label mk
+
+// Flow-imbalance S/R signal: close near the rolling extreme of the last
+// {pf}_win closes, counter to the volume flow (value = close, else na)
+{pf}_chg  = close - close[1]
+{pf}_flow = math.sum(({pf}_chg > 0 ? nz(volume) : 0.0) - ({pf}_chg < 0 ? nz(volume) : 0.0), {pf}_period)
+{pf}_sr_support    = ta.lowest(close, {pf}_win)
+{pf}_sr_resistance = ta.highest(close, {pf}_win)
+{pf}_buy  = math.abs(close - {pf}_sr_support) <= {pf}_sr_support * {pf}_zone / 100.0 and {pf}_flow < 0 ? close : na
+{pf}_sell = math.abs(close - {pf}_sr_resistance) <= {pf}_sr_resistance * {pf}_zone / 100.0 and {pf}_flow > 0 ? close : na
+
+// Wilder ATR(14), first bar = high - low (as obd.py)
+{pf}_tr = na(close[1]) ? high - low : math.max(high - low, math.abs(high - close[1]), math.abs(low - close[1]))
+var float {pf}_atr = na
+{pf}_atr := na({pf}_atr) ? {pf}_tr : {pf}_atr + ({pf}_tr - {pf}_atr) / 14.0
+
+{pf}_weight(float mv, float a, float imp, float vavg) =>
+    // 0..100: impulse in ATR units, scaled by sqrt of the clipped relative volume
+    float w = 0.0
+    if not na(a) and a > 0
+        float rel = not na(vavg) and vavg > 0 and not na(imp) ? imp / vavg : na
+        float vf = na(rel) ? 1.0 : math.sqrt(math.max(0.5, math.min(2.0, rel)))
+        w := math.round(math.min(mv / a * vf / {pf}_ref, 1.0) * 100.0, 1)
+    w
+
+var array<{t}Zone> {pf}_active = array.new<{t}Zone>()
+array<{t}Zone> {pf}_born = array.new<{t}Zone>()
+array<{t}Zone> {pf}_gone = array.new<{t}Zone>()
+
+// 1) Mitigation: a close through the zone ends it
+if array.size({pf}_active) > 0
+    for zi = array.size({pf}_active) - 1 to 0
+        {t}Zone z = array.get({pf}_active, zi)
+        if (z.kind == 1 and close < z.bot) or (z.kind == -1 and close > z.top)
+            z.stop := bar_index
+            array.push({pf}_gone, z)
+            array.remove({pf}_active, zi)
+
+// 2) New block confirmed: candle {pf}_p bars ago, then {pf}_p impulse candles
+if bar_index >= {pf}_p and not na(close[{pf}_p]) and close[{pf}_p] != 0
+    float mv = math.abs(close - close[{pf}_p])
+    if mv / close[{pf}_p] * 100.0 >= {pf}_thr
+        bool up = true
+        bool dn = true
+        for j = 0 to {pf}_p - 1
+            up := up and close[j] > open[j]
+            dn := dn and close[j] < open[j]
+        int kind = close[{pf}_p] < open[{pf}_p] and up ? 1 : close[{pf}_p] > open[{pf}_p] and dn ? -1 : 0
+        if kind != 0
+            float top = {pf}_wicks ? high[{pf}_p] : math.max(open[{pf}_p], close[{pf}_p])
+            float bot = {pf}_wicks ? low[{pf}_p] : math.min(open[{pf}_p], close[{pf}_p])
+            // mean impulse volume vs. the 20-bar average before the block candle
+            float iv = 0.0
+            int ic = 0
+            for j = 0 to {pf}_p - 1
+                if not na(volume[j])
+                    iv += volume[j]
+                    ic += 1
+            float va = 0.0
+            int vc = 0
+            for j = {pf}_p + 1 to {pf}_p + 20
+                if not na(volume[j])
+                    va += volume[j]
+                    vc += 1
+            float w = {pf}_weight(mv, {pf}_atr, ic > 0 ? iv / ic : na, vc >= 5 ? va / vc : na)
+            {t}Zone new_z = {t}Zone.new(kind, bar_index - {pf}_p, top, bot, w)
+            array.push({pf}_active, new_z)
+            array.push({pf}_born, new_z)
+
+// 3) Nearest active zone per side as known on this bar (weight filter applied)
+float {pf}_bull_top    = na
+float {pf}_bull_bot    = na
+float {pf}_bull_weight = na
+float {pf}_bear_top    = na
+float {pf}_bear_bot    = na
+float {pf}_bear_weight = na
+if array.size({pf}_active) > 0
+    for z in {pf}_active
+        if z.weight >= {pf}_min_w
+            if z.kind == 1 and (na({pf}_bull_top) or z.top > {pf}_bull_top)
+                {pf}_bull_top    := z.top
+                {pf}_bull_bot    := z.bot
+                {pf}_bull_weight := z.weight
+            else if z.kind == -1 and (na({pf}_bear_bot) or z.bot < {pf}_bear_bot)
+                {pf}_bear_top    := z.top
+                {pf}_bear_bot    := z.bot
+                {pf}_bear_weight := z.weight
+"""
+
+
 def _t_obd(p: dict) -> str:
-    """Return the Pine Script v5 Order Block Detector overlay template with configurable params."""
-    period     = int(p.get('period',        21))
-    ob_periods = int(p.get('ob_periods',     3))
-    ob_thr     = float(p.get('ob_threshold', 0.0))
-    use_wicks  = bool(p.get('use_wicks',  False))
-    wick_comment = 'true' if use_wicks else 'false'
+    """Return the Pine Script Order Block Detector overlay (obd.py: weighted zones + optional S/R flow signal)."""
+    ext = p.get('ob_extend', 'mitigated')
+    if ext not in ('mitigated', 'right', 'fixed'):
+        ext = 'fixed'           # legacy 'left'/'none', as obd.py
+    ref = float(p.get('ob_weight_ref', 3.0))
+    scale = float(p.get('ob_zone_scale', 1.0))
+    b = _pine_bool
+    grp = 'Order Block Detector'
+    grp_sr = 'Order Block Detector -- S/R flow signal'
     return f"""\
 // ── Order Block Detector ────────────────────────────────────────────────────────
-obd_period     = {period}
-obd_ob_periods = {ob_periods}
-obd_ob_thr     = {ob_thr}
+// Order block = last opposite-coloured candle before an impulse of N same-coloured
+// candles. The zone stays active until a close breaks through it (mitigation).
+// Weight 0..100 = impulse in ATR units x relative volume; opacity and border follow it.
+obd_p       = input.int({int(p.get('ob_periods', 3))}, "Impulse candles", minval=1, group="{grp}")
+obd_thr     = input.float({float(p.get('ob_threshold', 1.0))}, "Min impulse move %", minval=0.0, group="{grp}")
+obd_wicks   = input.bool({b(_pbool(p, 'use_wicks', False))}, "Zone incl. wicks (else body)", group="{grp}")
+obd_extend  = input.string("{ext}", "Extend", options=["mitigated", "right", "fixed"], group="{grp}")
+obd_len     = input.int({int(p.get('ob_length', 10))}, "Length in bars (extend = fixed)", minval=1, maxval=500, group="{grp}")
+obd_show_mit = input.bool({b(_pbool(p, 'ob_show_mitigated', True))}, "Show mitigated (faded)", group="{grp}")
+obd_min_w   = input.int({int(p.get('ob_min_weight', 0))}, "Min weight (0-100)", minval=0, maxval=100, group="{grp}")
+obd_ref     = input.float({ref if ref > 0 else 3.0}, "Impulse in ATR for weight 100", minval=0.1, group="{grp}")
+obd_scale   = input.float({scale if scale > 0 else 1.0}, "Zone height factor", minval=0.1, group="{grp}")
+obd_w_height = input.bool({b(_pbool(p, 'ob_weight_height', False))}, "Zone height follows weight", group="{grp}")
+obd_sr_show  = input.bool({b(_pbool(p, 'sr_show', False))}, "Show", group="{grp_sr}")
+obd_sr_width = input.int({max(1, int(p.get('sr_line_width', 1)))}, "Line width", minval=1, maxval=5, group="{grp_sr}")
+obd_period   = input.int({int(p.get('period', 21))}, "Flow imbalance period", minval=2, group="{grp_sr}")
+obd_win      = input.int({int(p.get('sr_window', 21))}, "Lookback", minval=2, group="{grp_sr}")
+obd_zone     = input.float({float(p.get('sr_zone', 1.0))}, "Proximity zone %", minval=0.0, group="{grp_sr}")
 
-// 1. Order Flow Imbalance (buy / sell volume split by price direction)
-obd_chg     = close - close[1]
-obd_buy_vol = obd_chg > 0 ? volume : 0.0
-obd_sel_vol = obd_chg < 0 ? volume : 0.0
-obd_ofi     = math.sum(obd_buy_vol - obd_sel_vol, obd_period)
-obd_sofi    = ta.ema(obd_ofi, 5)   // smoothed OFI (available for alerts)
+{_obd_core('obd')}
+obd_rgb(int kind, float alpha) =>
+    kind == 1 ? color.rgb(0, 150, 70, 100 - alpha * 100) : color.rgb(210, 40, 40, 100 - alpha * 100)
 
-// 2. Rolling Support / Resistance bands
-obd_sup = ta.lowest(close,  obd_period)
-obd_res = ta.highest(close, obd_period)
-plot(obd_sup, "OBD Support",    color.new(color.teal,   40), 1, plot.style_linebr)
-plot(obd_res, "OBD Resistance", color.new(color.orange, 40), 1, plot.style_linebr)
+obd_tip(ObdZone z, string state) =>
+    (z.kind == 1 ? "Bullish" : "Bearish") + " OB · weight " + str.tostring(z.weight, "#") + "\\n" + str.tostring(z.bot, format.mintick) + " – " + str.tostring(z.top, format.mintick) + "\\n" + state
 
-// 3. Contrarian signals: price near S/R AND OFI pushing the other way
-obd_pct  = 0.01
-obd_buy  = close >= obd_sup * (1.0 - obd_pct) and close <= obd_sup * (1.0 + obd_pct) and obd_ofi < 0
-obd_sell = close >= obd_res * (1.0 - obd_pct) and close <= obd_res * (1.0 + obd_pct) and obd_ofi > 0
-plotshape(obd_buy,  "OBD Buy",  shape.triangleup,   location.belowbar, color.teal, size = size.small)
-plotshape(obd_sell, "OBD Sell", shape.triangledown, location.abovebar, color.red,  size = size.small)
+// New zones: box from the block candle; mitigated/right run on to the right edge
+if array.size(obd_born) > 0
+    for z in obd_born
+        if z.weight >= obd_min_w
+            float w = z.weight / 100.0
+            float mid = (z.top + z.bot) / 2.0
+            float half = (z.top - z.bot) / 2.0 * obd_scale * (obd_w_height ? 0.4 + 0.6 * w : 1.0)
+            half := math.max(half, math.abs(mid) * 0.0005)    // doji blocks: thin band
+            z.bx := box.new(z.start, mid + half, obd_extend == "fixed" ? z.start + obd_len : bar_index, mid - half, border_color = obd_rgb(z.kind, 0.35 + 0.55 * w), border_width = math.max(1, math.round(0.5 + 2.0 * w)), extend = obd_extend == "fixed" ? extend.none : extend.right, bgcolor = obd_rgb(z.kind, 0.06 + 0.30 * w))
+            z.mk := label.new(z.start, mid, "", color = z.kind == 1 ? color.new(color.green, 20) : color.new(color.red, 20), style = z.kind == 1 ? label.style_triangleup : label.style_triangledown, size = size.tiny, tooltip = obd_tip(z, "active"))
 
-// 4. Order Block detection (use_wicks = {wick_comment})
-// Bullish OB: red candle obd_ob_periods bars ago + obd_ob_periods consecutive green candles
-// Bearish OB: green candle obd_ob_periods bars ago + obd_ob_periods consecutive red candles
-obd_red_setup = close[obd_ob_periods] < open[obd_ob_periods]
-obd_grn_setup = close[obd_ob_periods] > open[obd_ob_periods]
-obd_absmove   = math.abs((close - close[obd_ob_periods]) / close[obd_ob_periods]) * 100.0
-obd_move_ok   = obd_ob_thr <= 0.0 or obd_absmove >= obd_ob_thr
+// Mitigated zones: fade (or remove); 'mitigated' stops the box at this bar
+if array.size(obd_gone) > 0
+    for z in obd_gone
+        if not na(z.bx)
+            if not obd_show_mit
+                box.delete(z.bx)
+                label.delete(z.mk)
+            else
+                float w = z.weight / 100.0
+                if obd_extend == "mitigated"
+                    box.set_extend(z.bx, extend.none)
+                    box.set_right(z.bx, bar_index)
+                box.set_bgcolor(z.bx, obd_rgb(z.kind, (0.06 + 0.30 * w) * 0.4))
+                box.set_border_color(z.bx, obd_rgb(z.kind, (0.35 + 0.55 * w) * 0.5))
+                box.set_border_style(z.bx, line.style_dotted)
+                label.set_tooltip(z.mk, obd_tip(z, "mitigated " + str.format_time(time, "yyyy-MM-dd", syminfo.timezone)))
 
-bool obd_up_seq = true
-bool obd_dn_seq = true
-for j = 0 to obd_ob_periods - 1
-    obd_up_seq := obd_up_seq and close[j] > open[j]
-    obd_dn_seq := obd_dn_seq and close[j] < open[j]
-
-obd_bull_ob = obd_move_ok and obd_red_setup and obd_up_seq
-obd_bear_ob = obd_move_ok and obd_grn_setup and obd_dn_seq
-plotshape(obd_bull_ob, "OBD Bullish OB", shape.xcross, location.belowbar, color.green, size = size.small)
-plotshape(obd_bear_ob, "OBD Bearish OB", shape.xcross, location.abovebar, color.red,   size = size.small)
+plot(obd_sr_show ? obd_buy : na, "S/R flow buy", color.new(color.teal, 20), obd_sr_width, plot.style_linebr)
+plot(obd_sr_show ? obd_sell : na, "S/R flow sell", color.new(color.maroon, 20), obd_sr_width, plot.style_linebr)
+// Causal columns as in the app (obd_bull_top …), visible in the data window
+plot(obd_bull_top, "obd_bull_top", color.green, display = display.data_window)
+plot(obd_bull_bot, "obd_bull_bot", color.green, display = display.data_window)
+plot(obd_bull_weight, "obd_bull_weight", color.green, display = display.data_window)
+plot(obd_bear_top, "obd_bear_top", color.red, display = display.data_window)
+plot(obd_bear_bot, "obd_bear_bot", color.red, display = display.data_window)
+plot(obd_bear_weight, "obd_bear_weight", color.red, display = display.data_window)
 """
 
 
@@ -2200,10 +2738,12 @@ plot(_osc_px(-2.0, -4.0, 4.0, {slot}), "Z -2", color.new(color.gray,  60), 1, pl
 def _n_ewo(p: dict, slot: int) -> str:
     """Return the Pine Script v5 normalized EWO block for strategy scripts."""
     style = _style_inputs(p, 'n_ewo', 'color.black', 'EWO (combined)')
+    sw, lw, span, ang = _ewo_windows(p)
     return f"""\
 // ── EWO  (slot {slot}) ────────────────────────────────────────────────────────
-{style}_ewo_v = ta.sma(close, 5) - ta.sma(close, 21)
-_ewo_e = ta.ema(_ewo_v, 9)
+// Elliott wave labels: only in the standalone EWO oscillator export.
+{style}_ewo_v = ta.sma(close, {sw}) - ta.sma(close, {lw})
+_ewo_e = ta.ema(_ewo_v, {span})
 _ewo_d = _ewo_e - _ewo_e[1]
 _ewo_lo = ta.lowest( math.min(_ewo_d, math.min(_ewo_v, _ewo_e)), 300)
 _ewo_hi = ta.highest(math.max(_ewo_d, math.max(_ewo_v, _ewo_e)), 300)
@@ -2213,11 +2753,17 @@ _ewo_db = plot(_osc_px(_ewo_d, _ewo_lo, _ewo_hi, {slot}), "EWO diff",
 fill(_ewo_z, _ewo_db, _ewo_d >= 0 ? color.new(color.green, 50) : color.new(color.red, 50))
 plot(_osc_px(_ewo_v, _ewo_lo, _ewo_hi, {slot}), "EWO",     n_ewo_col,    n_ewo_width)
 plot(_osc_px(_ewo_e, _ewo_lo, _ewo_hi, {slot}), "EWO EMA", color.orange, 1)
-_ewo_rising  = (_ewo_v - _ewo_v[1]) >  0.01
-_ewo_falling = (_ewo_v - _ewo_v[1]) < -0.01
-// Signal only on the first bar of each new direction (rising edge of state change)
-_ewo_buy  = _ewo_rising  and not _ewo_rising[1]
-_ewo_sell = _ewo_falling and not _ewo_falling[1]
+// Angle in degrees, buy/sell strictly alternating (as ewo.py)
+_ewo_ang = math.todegrees(math.atan(_ewo_v - _ewo_v[1]))
+var int _ewo_pos = 0
+bool _ewo_buy  = false
+bool _ewo_sell = false
+if _ewo_pos == 0 and _ewo_ang > {ang}
+    _ewo_buy := true
+    _ewo_pos := 1
+else if _ewo_pos == 1 and _ewo_ang < -{ang}
+    _ewo_sell := true
+    _ewo_pos := 0
 plotshape(_ewo_buy  ? _osc_px(_ewo_v, _ewo_lo, _ewo_hi, {slot}) : na,
           "EWO Buy",  shape.triangleup,   location.absolute, color.teal, size=size.small)
 plotshape(_ewo_sell ? _osc_px(_ewo_v, _ewo_lo, _ewo_hi, {slot}) : na,
@@ -2730,6 +3276,18 @@ _STRAT_COL_MAP: dict[str, str] = {
     'ewo':            'str_ewo',
     'ewo_ema':        'str_ewo_ema',
     'ewo_angle':      'str_ewo_ang',
+    'ewo_diff':       'str_ewo_diff',
+    'ewo_trend':      'str_ewo_trend',
+    'ewo_wave':       'str_ew_wave',
+    # Order Block Detector (obd indicator) — nearest active zone, S/R flow signal
+    'obd_bull_top':    'str_obd_bull_top',
+    'obd_bull_bot':    'str_obd_bull_bot',
+    'obd_bull_weight': 'str_obd_bull_weight',
+    'obd_bear_top':    'str_obd_bear_top',
+    'obd_bear_bot':    'str_obd_bear_bot',
+    'obd_bear_weight': 'str_obd_bear_weight',
+    'obd_buy':         'str_obd_buy',
+    'obd_sell':        'str_obd_sell',
     # Stochastic (stoch indicator)
     'stoch':          'str_stoch',
     'stoch_signal':   'str_stoch_d',
@@ -2764,6 +3322,17 @@ _STRAT_COL_INDICATOR: dict[str, str] = {
     'ewo':            'ewo',
     'ewo_ema':        'ewo',
     'ewo_angle':      'ewo',
+    'ewo_diff':       'ewo',
+    'ewo_trend':      'ewo',
+    'ewo_wave':       'ewo_wave',
+    'obd_bull_top':    'obd',
+    'obd_bull_bot':    'obd',
+    'obd_bull_weight': 'obd',
+    'obd_bear_top':    'obd',
+    'obd_bear_bot':    'obd',
+    'obd_bear_weight': 'obd',
+    'obd_buy':         'obd',
+    'obd_sell':        'obd',
     'stoch':          'stoch',
     'stoch_signal':   'stoch',
     'Z':              'zcr',
@@ -2858,13 +3427,48 @@ str_regime  = na(str_log_ret) ? int(na) :
 
 
 def _strat_ewo(p: dict) -> str:
-    """Return the Pine Script v5 EWO sell-condition expression."""
-    return """\
+    """Return the Pine EWO computation (columns of ewo.py, configured windows)."""
+    sw, lw, span, _ = _ewo_windows(p)
+    return f"""\
 // ── EWO ───────────────────────────────────────────────────────────────────────
-str_ewo     = ta.sma(close, 5) - ta.sma(close, 21)
-str_ewo_ema = ta.ema(str_ewo, 9)
-str_ewo_ang = str_ewo - str_ewo[1]
+str_ewo       = ta.sma(close, {sw}) - ta.sma(close, {lw})
+str_ewo_ema   = ta.ema(str_ewo, {span})
+str_ewo_diff  = str_ewo_ema - str_ewo_ema[1]
+str_ewo_ang   = math.todegrees(math.atan(str_ewo - str_ewo[1]))   // ewo_angle is in degrees
+str_ewo_trend = str_ewo - str_ewo[1] > 0 ? 1 : -1
 """
+
+
+def _strat_ewo_wave(p: dict) -> str:
+    """Return the causal Elliott count (ewo_wave) for strategy/signal scripts. Needs _strat_ewo."""
+    basis = p.get('wave_ewo_basis', 'ewo')
+    b = _pine_bool
+    return f"""\
+// ── Elliott wave count (ewo_wave) ─────────────────────────────────────────────
+str_ew_mult     = {float(p.get('wave_atr_mult', 3.0))}
+str_ew_req_peak = {b(_pbool(p, 'require_ewo_peak', True))}
+str_ew_req_w4   = {b(_pbool(p, 'require_w4_ewo_zero', False))}
+str_ew_trunc    = {b(_pbool(p, 'allow_truncation', False))}
+str_ew_joseph   = ta.sma(hl2, 5) - ta.sma(hl2, 35)
+str_ew_basis    = {'str_ew_joseph' if basis == 'joseph_5_35' else 'str_ewo'}
+{_elliott_core('str_ew', 'str_ew_basis', 'str_ew_basis')}str_ew_qclear(str_ew_st)
+"""
+
+
+def _strat_obd(p: dict) -> str:
+    """Return the Order Block Detector columns (obd_bull_top …, obd_buy/sell) without drawings."""
+    ref = float(p.get('ob_weight_ref', 3.0))
+    return f"""\
+// ── Order Block Detector (columns only) ───────────────────────────────────────
+str_obd_p      = {int(p.get('ob_periods', 3))}
+str_obd_thr    = {float(p.get('ob_threshold', 1.0))}
+str_obd_wicks  = {_pine_bool(_pbool(p, 'use_wicks', False))}
+str_obd_min_w  = {float(p.get('ob_min_weight', 0))}
+str_obd_ref    = {ref if ref > 0 else 3.0}
+str_obd_period = {int(p.get('period', 21))}
+str_obd_win    = {int(p.get('sr_window', 21))}
+str_obd_zone   = {float(p.get('sr_zone', 1.0))}
+{_obd_core('str_obd')}"""
 
 
 def _strat_stoch(p: dict) -> str:
@@ -2984,6 +3588,8 @@ _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
     'rsi':      _strat_rsi,
     'markov':   _strat_markov,
     'ewo':      _strat_ewo,
+    'ewo_wave': _strat_ewo_wave,
+    'obd':      _strat_obd,
     'stoch':    _strat_stoch,
     'zcr':      _strat_zcr,
     'ema':      _strat_ema,
@@ -2993,8 +3599,17 @@ _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
 }
 
 # Fixed emit order so dependent variables are always declared before use.
-_STRAT_ORDER = ['heikin', 'ewo', 'macd', 'rsi', 'stoch', 'momentum',
-                'relvol', 'ema', 'atc', 'zcr', 'markov']
+_STRAT_ORDER = ['heikin', 'ewo', 'ewo_wave', 'macd', 'rsi', 'stoch', 'momentum',
+                'relvol', 'ema', 'atc', 'obd', 'zcr', 'markov']
+
+# Blocks that build on another block's variables.
+_STRAT_REQUIRES: dict[str, tuple[str, ...]] = {
+    'ewo_wave': ('ewo',),
+}
+# Blocks whose params live under another indicator's config.
+_STRAT_PARAM_SOURCE: dict[str, str] = {
+    'ewo_wave': 'ewo',
+}
 
 
 def _translate_query(query: str) -> str:
@@ -3082,7 +3697,8 @@ class PineExporter:
     def _header(title: str, overlay: bool) -> str:
         """Return the Pine Script v5 script header with license, version, and title."""
         ol    = "true" if overlay else "false"
-        extra = ", max_lines_count=500, max_labels_count=500" if overlay else ""
+        # Oscillators draw labels too (EWO wave count); boxes: OBD zones.
+        extra = ", max_lines_count=500, max_labels_count=500, max_boxes_count=500"
         ts    = datetime.now().strftime("%Y-%m-%d %H:%M")
         return (
             f"//@version=6\n"
@@ -3179,7 +3795,7 @@ class PineExporter:
             f"// Overlays  ({overlay_pct:.0f}%): {ovl_names}\n"
             f"// Oscillators ({osc_pct:.0f}%, {n_osc} equal slots): {osc_names}\n"
             f'indicator("Combined", overlay=true, '
-            f"max_bars_back=500, max_lines_count=500, max_labels_count=500)\n\n"
+            f"max_bars_back=500, max_lines_count=500, max_labels_count=500, max_boxes_count=500)\n\n"
         )
 
         layout = (
@@ -3291,6 +3907,8 @@ class PineExporter:
         for col, ind in _STRAT_COL_INDICATOR.items():
             if re.search(r'\b' + re.escape(col) + r'\b', combined):
                 needed.add(ind)
+        for ind in list(needed):
+            needed.update(_STRAT_REQUIRES.get(ind, ()))
 
         # ── 2. Emit computation blocks in dependency order ─────────────────────
         calc_lines: list[str] = []
@@ -3302,7 +3920,7 @@ class PineExporter:
                 calc_lines.append(f"// ── {ind.upper()} — no strategy template available\n")
                 continue
             try:
-                calc_lines.append(fn(self._params(ind)))
+                calc_lines.append(fn(self._params(_STRAT_PARAM_SOURCE.get(ind, ind))))
             except Exception as exc:
                 calc_lines.append(
                     f"// ── {ind.upper()} — render error: {exc}\n"

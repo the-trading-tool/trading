@@ -32,6 +32,23 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li>Markov regime · Volume delta · MMM · BOS · and many more</li>
 </ul>
 
+<h3>Order Block Detector and Elliott waves</h3>
+<ul>
+  <li><b>Order Block Detector:</b> order blocks as zones (boxes) with a weight of 0–100, as in the app.
+    Opacity and border follow the weight. A zone runs until mitigation (a close through the zone),
+    to the right edge or for a fixed number of bars. The S/R flow signal is optional.
+    The columns <code>obd_bull_top/_bot/_weight</code> and <code>obd_bear_…</code> appear in the data window.</li>
+  <li><b>EWO:</b> SMA windows, EMA and angle threshold come from the configuration. As in the app, the angle
+    is in degrees, and buy and sell strictly alternate.</li>
+  <li><b>Elliott waves:</b> causal count as in the app: ATR zigzag, impulse 1–5 under the hard rules,
+    then A-B-C (zigzag/flat). The switches are the same as in the ⚙ dialog.
+    Labels sit on the extreme bars, so they are hindsight. Grey with "?" marks an unfinished count at the
+    right edge. <code>ewo_wave</code> appears in the data window.
+    The combined chart shows the EWO only, without wave labels.</li>
+  <li>Buy/sell formulas that use <code>ewo_wave</code>, <code>ewo_diff</code>, <code>ewo_trend</code> or
+    <code>obd_bull_top</code>, <code>obd_buy</code> etc. are translated in the strategy and signal exports.</li>
+</ul>
+
 <h2>Export workflow</h2>
 <ol>
   <li>In the app, configure the desired <b>Overlay</b> and <b>Oscillator</b> indicators (⚙ button)</li>
