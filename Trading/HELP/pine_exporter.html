@@ -49,6 +49,15 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     <code>obd_bull_top</code>, <code>obd_buy</code> usw. werden im Strategie- und Signal-Export mitübersetzt.</li>
 </ul>
 
+<h3>Strategie-Export (Multi Strategies)</h3>
+<ul>
+  <li><b>Parameter wie im Backtest:</b> Die Strategien handeln auf den gespeicherten Spalten, und die rechnet <code>asset_perf2</code> mit den Standardwerten der Indikatoren. Der Export nimmt deshalb diese Standardwerte und nicht die Chart-Einstellungen aus dem ⚙-Dialog.</li>
+  <li><b>Mehrzeilige Formeln:</b> jede Zeile ist eine eigene Bedingung, alle werden mit <i>und</i> verknüpft. Bei <code>signal_window</code> &gt; 1 muss jede Zeile innerhalb der letzten N Balken erfüllt gewesen sein, wie in der App.</li>
+  <li><b>ATC:</b> kausal wie in der App, je Balken der Kanal über die letzten 252 Balken. Alle Spalten (<code>atc_mid/top/bot/width_high|low|zero</code>) sind verfügbar.</li>
+  <li><b>trendScore:</b> Abstand zum Rekordhoch, übersetzt über die kalibrierten Stützstellen. TradingView kennt nur die geladene Historie, bei kurzen Charts liegt das Rekordhoch deshalb zu tief.</li>
+  <li><b>Nicht exportierbar:</b> <code>overallTrend</code> / <code>overallValueTrend</code>. Beide enthalten Fundamentaldaten, die TradingView nicht hat.</li>
+</ul>
+
 <h2>Export-Workflow</h2>
 <ol>
   <li>In der App die gewünschten <b>Overlay</b>- und <b>Oszillator</b>-Indikatoren konfigurieren (⚙-Button)</li>

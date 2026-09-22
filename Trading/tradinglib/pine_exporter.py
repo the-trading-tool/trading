@@ -3301,8 +3301,10 @@ _STRAT_COL_MAP: dict[str, str] = {
     # Relative Volume ratio (relvol indicator)
     'relvol_ratio':   'str_relvol',
     # Auto Trend Channels (atc indicator) — top of high-anchor / bottom of low-anchor
-    'atc_top_high':   'str_atc_top_high',
-    'atc_bot_low':    'str_atc_bot_low',
+    **{f'atc_{ln}_{an}': f'str_atc_{ln}_{an}'
+       for an in ('high', 'low', 'zero') for ln in ('mid', 'top', 'bot', 'width', 'width_pct')},
+    'atc_high':       'str_atc_top_high',
+    'atc_low':        'str_atc_bot_low',
 }
 
 # Which indicator computation block is required for each column name.
@@ -3340,8 +3342,10 @@ _STRAT_COL_INDICATOR: dict[str, str] = {
     'ema9':           'ema',
     'momentum':       'momentum',
     'relvol_ratio':   'relvol',
-    'atc_top_high':   'atc',
-    'atc_bot_low':    'atc',
+    **{f'atc_{ln}_{an}': 'atc'
+       for an in ('high', 'low', 'zero') for ln in ('mid', 'top', 'bot', 'width', 'width_pct')},
+    'atc_high':       'atc',
+    'atc_low':        'atc',
 }
 
 # ── Per-indicator computation snippets (no plot / plotshape calls) ─────────────
@@ -3529,57 +3533,18 @@ str_relvol      = na(str_relvol_past) or str_relvol_past == 0 ? 1.0 : volume / s
 
 
 def _strat_atc(p: dict) -> str:
-    """Return the Pine Script v5 Auto Trend Channels port (causal, dynamic anchor).
+    """Return the causal ATC columns (atc.py) for strategy/signal scripts.
 
-    Mirrors atc.py: the low channel is a linear regression over [lowest-low → now]
-    and the high channel over [highest-high → now]; band = ±dev·residual_stdev.
-    The manual OLS (str_atc_reg) matches the _t_atc overlay's atc_reg. Anchor
-    length is found per bar via ta.lowest/highestbars within a bounded lookback.
-
-    IMPORTANT — lookahead caveat: atc.py computes ONE regression using data up to
-    *today* and paints it back over history, so its historical buy/sell markers
-    "know" where the bottom/top was. Pine is causal (only past data per bar), so
-    it matches the app at the *current* bar but cannot reproduce the app's
-    historical ATC markers exactly. All vars are str_atc_ prefixed so they never
-    clash with the _t_atc overlay template.
+    Same per-bar algorithm as pine_strategy_export (channel over the trailing
+    ``lookback`` bars per anchor, verified against atc.py), with every name
+    ``str_``-prefixed so it never clashes with the _t_atc overlay template.
+    Params: backtest defaults of the Atc class — the stored columns the
+    strategies trade on are computed with those, not with the chart config.
     """
-    dev = float(p.get('dev_multi', 2.0))
-    win = 300   # max lookback for the anchor search (bounded for performance)
-    return f"""\
-// ── Auto Trend Channels (causal dynamic-anchor regression) ────────────────────
-str_atc_dev = {dev}
-str_atc_win = {win}
-
-str_atc_reg(len) =>
-    float n   = float(len)
-    float sx  = 0.0
-    float sy  = 0.0
-    float sxx = 0.0
-    float sxy = 0.0
-    for i = 0 to len - 1
-        float xi = float(i)
-        float yi = close[len - 1 - i]
-        sx  += xi
-        sy  += yi
-        sxx += xi * xi
-        sxy += xi * yi
-    float denom = n * sxx - sx * sx
-    float b = denom != 0.0 ? (n * sxy - sx * sy) / denom : 0.0
-    float a = (sy - b * sx) / n
-    float ssr = 0.0
-    for i = 0 to len - 1
-        float err = close[len - 1 - i] - (a + b * float(i))
-        ssr += err * err
-    [a + b * (n - 1.0), math.sqrt(ssr / n)]
-
-int str_atc_lw   = math.min(str_atc_win, bar_index + 1)
-int str_atc_llen = math.max(2, -ta.lowestbars(low,  str_atc_lw) + 1)
-int str_atc_hlen = math.max(2, -ta.highestbars(high, str_atc_lw) + 1)
-[str_atc_lcur, str_atc_lstd] = str_atc_reg(str_atc_llen)
-[str_atc_hcur, str_atc_hstd] = str_atc_reg(str_atc_hlen)
-str_atc_bot_low  = str_atc_lcur - str_atc_dev * str_atc_lstd
-str_atc_top_high = str_atc_hcur + str_atc_dev * str_atc_hstd
-"""
+    from tradinglib import pine_strategy_export as pse
+    code = '\n\n'.join([pse._helper_atc()] + [pse._atc_anchor_code(a) for a in ('high', 'low', 'zero')])
+    code = re.sub(r'\batc_', 'str_atc_', code)
+    return "// ── Auto Trend Channels (causal, trailing lookback per bar) ───────────────────\n" + code + "\n"
 
 
 _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
