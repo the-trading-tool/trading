@@ -32,13 +32,19 @@ class Ewo(_indicator._Indicator):
 		'show_abc':         {'type': 'bool',  'default': True,  'label': 'Elliott waves: label correction A-B-C'},
 		'show_pending':     {'type': 'bool',  'default': True,  'label': 'Elliott waves: label unfinished count (grey, ?)'},
 		'require_ewo_peak': {'type': 'bool',  'default': True,  'label': 'Elliott waves: wave 3 must carry the EWO peak'},
+		'require_w4_ewo_zero': {'type': 'bool', 'default': False,
+		                     'label': 'Elliott waves: EWO must pull back to zero in wave 4'},
+		'allow_truncation': {'type': 'bool',  'default': False, 'label': 'Elliott waves: allow truncated wave 5'},
+		'wave_ewo_basis':   {'type': 'select', 'default': 'ewo', 'options': ['ewo', 'joseph_5_35'],
+		                     'label': 'Elliott waves: EWO for the wave rules (joseph_5_35 = SMA 5/35 of (High+Low)/2)'},
 		'wave_atr_mult':    {'type': 'float', 'default': 3.0,   'min': 1.0, 'max': 10.0, 'step': 0.5,
 		                     'label': 'Elliott waves: pivot reversal (x ATR)'},
 	}
 
 	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01,
 				 show_waves=False, show_abc=True, show_pending=True, require_ewo_peak=True,
-				 wave_atr_mult=3.0):
+				 wave_atr_mult=3.0, require_w4_ewo_zero=False, allow_truncation=False,
+				 wave_ewo_basis='ewo'):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.short_window = short_window
 		self.long_window = long_window
@@ -49,6 +55,9 @@ class Ewo(_indicator._Indicator):
 		self.show_pending = bool(show_pending)
 		self.require_ewo_peak = bool(require_ewo_peak)
 		self.wave_atr_mult = float(wave_atr_mult)
+		self.require_w4_ewo_zero = bool(require_w4_ewo_zero)
+		self.allow_truncation = bool(allow_truncation)
+		self.wave_ewo_basis = str(wave_ewo_basis or 'ewo')
 		self.wave_labels = []
 		super().__init__(df=df, symbol=symbol)
 
@@ -132,9 +141,17 @@ class Ewo(_indicator._Indicator):
 		"""Causal Elliott count: ewo_wave column + chart labels (see _elliott.py)."""
 		self.wave_labels = []
 		try:
-			wave, labels = _elliott.elliott(self.df, self.df['ewo'].to_numpy(dtype=float),
+			# The Joseph variant only feeds the wave rules; the ewo column (used
+			# by formulas and backtests) keeps the configured SMA windows.
+			if self.wave_ewo_basis == 'joseph_5_35':
+				basis = _elliott.joseph_ewo(self.df)
+			else:
+				basis = self.df['ewo'].to_numpy(dtype=float)
+			wave, labels = _elliott.elliott(self.df, basis,
 											mult=self.wave_atr_mult,
-											require_ewo_peak=self.require_ewo_peak)
+											require_ewo_peak=self.require_ewo_peak,
+											allow_truncation=self.allow_truncation,
+											require_w4_ewo_zero=self.require_w4_ewo_zero)
 		except (KeyError, ValueError, TypeError):
 			self.df['ewo_wave'] = 0
 			return
@@ -164,13 +181,16 @@ class Ewo(_indicator._Indicator):
 				continue
 			color = WAVE_COLORS['running'] if lb['state'] != 'done' else WAVE_COLORS[lb['group']]
 			pos = 'top center' if lb['kind'] > 0 else 'bottom center'
-			g = groups.setdefault((color, pos), {'x': [], 'y': [], 't': []})
+			g = groups.setdefault((color, pos), {'x': [], 'y': [], 't': [], 'h': []})
 			g['x'].append(lb['date'])
 			g['y'].append(y)
 			g['t'].append(f"<b>{lb['text']}</b>")
+			form = lb.get('form')
+			g['h'].append(f"{lb['text']} ({form})" if form else lb['text'])
 		for (color, pos), g in groups.items():
 			self.fig.add_trace(
 				go.Scatter(x=g['x'], y=g['y'], text=g['t'],
+						   hovertext=g['h'],
 						   mode='markers+text',
 						   textposition=pos,
 						   textfont=dict(color=color, size=14),
