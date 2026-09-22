@@ -3896,10 +3896,82 @@ class PineExporter:
             + "\n".join(calc_lines)
         )
 
+        # ── 2b. Columns only the strategy export knows (trendScore, sup_*, …) ─
+        extra_code, extra_map, blocked = self._shared_column_blocks(combined)
+        if extra_code:
+            calc_code += "\n" + extra_code
+
         # ── 3. Translate buy/sell expressions ─────────────────────────────────
-        pine_buy  = _translate_query(buy_query)  if buy_query  else "false"
-        pine_sell = _translate_query(sell_query) if sell_query else "false"
+        pine_buy = self._translate_signal(buy_query, extra_map, blocked)
+        pine_sell = self._translate_signal(sell_query, extra_map, blocked)
+        if blocked:
+            calc_code += "\n" + "".join(f"// {line}\n" for line in blocked['notes'])
         return calc_code, pine_buy, pine_sell
+
+    @staticmethod
+    def _shared_column_blocks(combined: str) -> tuple[str, dict, dict]:
+        """Borrow column definitions from pine_strategy_export for names this
+        module does not map, renamed with a ``str_`` prefix.
+
+        Returns ``(code, {column: pine_name}, blocked)``; *blocked* holds the
+        columns that cannot be exported at all and a comment per reason.
+        """
+        from tradinglib import pine_strategy_export as pse
+        native = {'close', 'open', 'high', 'low', 'volume'}
+        cols = {c for c in pse._referenced_columns(combined)
+                if c not in _STRAT_COL_MAP and c not in native}
+        unsupported = sorted(c for c in cols if c in pse._UNSUPPORTED)
+        unknown = sorted(c for c in cols
+                         if c not in pse._UNSUPPORTED and (c not in pse._COL_DEFS or c.startswith('_'))
+                         and not re.fullmatch(r'(and|or|not|true|false|na)', c))
+        blocked = {}
+        if unsupported or unknown:
+            notes = []
+            if unsupported:
+                notes.append(f"nicht exportierbar ({', '.join(unsupported)}): "
+                             f"{pse._UNSUPPORTED[unsupported[0]]}")
+            if unknown:
+                notes.append(f"unbekannte Spalten: {', '.join(unknown)}")
+            notes.append("Die betroffene Bedingung ist deshalb auf false gesetzt.")
+            blocked = {'cols': set(unsupported) | set(unknown), 'notes': notes}
+        usable = {c for c in cols if c in pse._COL_DEFS and not c.startswith('_')}
+        if not usable:
+            return '', {}, blocked
+        helpers, defs = pse._resolve(usable)
+        code = '\n\n'.join(helpers + defs)
+        # Every name the borrowed code declares gets the str_ prefix.
+        names = set()
+        for ln in code.splitlines():
+            m = re.match(r'^(?:var\s+(?:[\w<>]+\s+)?)?(\w+)\s*(?:=|\(.*\)\s*=>)', ln)
+            if m and not ln.startswith(('if ', 'for ')):
+                names.add(m.group(1))
+            m = re.match(r'^\[(.+?)\]\s*=', ln)
+            if m:
+                names.update(n.strip() for n in m.group(1).split(','))
+        names -= native
+        for n in sorted(names, key=len, reverse=True):
+            code = re.sub(rf'\b{re.escape(n)}\b', f'str_{n}', code)
+        header = "// ── Weitere Spalten (Definitionen wie im Strategie-Export) ─────────────────\n"
+        return header + code + "\n", {c: f'str_{c}' for c in usable}, blocked
+
+    def _translate_signal(self, query: str, extra_map: dict, blocked: dict) -> str:
+        """One buy/sell formula → Pine bool: lines ANDed like the app, extra
+        columns renamed, and ``false`` when it uses a non-exportable column."""
+        from tradinglib import pine_strategy_export as pse
+        if not query:
+            return "false"
+        if blocked and pse._referenced_columns(query) & blocked['cols']:
+            return "false"
+        lines = pse._split_conditions(query) or [query]
+        parts = []
+        for ln in lines:
+            t = _translate_query(ln)
+            for col, pine in sorted(extra_map.items(), key=lambda x: -len(x[0])):
+                t = re.sub(rf'\b{re.escape(col)}\b', pine, t)
+            parts.append(t)
+        if len(parts) == 1:
+            return parts[0]
+        return ' and '.join(pse._paren(p) for p in parts)
 
     def generate_strategy(self, buy_query: str, sell_query: str) -> str:
         """Generate a standalone Pine Script v5 *strategy* for the configured

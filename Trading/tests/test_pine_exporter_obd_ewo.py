@@ -159,3 +159,27 @@ def test_display_parameter_wird_nicht_verdoppelt():
     out = pe._add_visibility_toggle('obd', body)
     assert 'plot(x, "x", color.red, display = show_obd ? display.data_window : display.none)' in out
     assert 'plot(y, "y", display = show_obd ? display.all : display.none)' in out
+
+
+def test_signal_export_kennt_die_spalten_des_strategie_exports():
+    """Screenshot 2026-09-22: 'Undeclared identifier trendScore' im Overlay-Signal."""
+    buy = ('(((trendScore>=65)&(ewo>ewo_ema))|((Low<atc_bot_low)&(ewo>0))|((close<=sup_support)))'
+           '&(relvol_ratio > 0.5)&(High<atc_mid_zero)&(close>Open)')
+    s = pe.PineExporter(['atc'], []).generate_overlay(
+        include_signals=True, buy_query=buy, sell_query='(High>=atc_top_high)\n(rsi>=75)')
+    assert 'sig_buy_raw  = (((str_trendScore>=65) and (str_ewo>str_ewo_ema))' in s
+    assert 'str_trendScore = str_trend_interp(' in s
+    assert 'str_sup_support = ta.lowest(low, 21)' in s
+    assert 'sig_sell_raw = (high>=str_atc_top_high) and (str_rsi>=75)' in s   # lines ANDed
+    declared = set(re.findall(r'^(?:var\s+(?:[\w<>]+\s+)?)?(\w+)\s*(?::?=|\(.*\)\s*=>)', s, re.M))
+    for m in re.findall(r'^\[(.+?)\]\s*=', s, re.M):
+        declared |= {x.strip() for x in m.split(',')}
+    assert not {u for u in re.findall(r'\bstr_\w+', s)} - declared
+
+
+def test_signal_export_fundamentalscore_wird_false_statt_compilerfehler():
+    s = pe.PineExporter([], []).generate_signal_overlay(
+        '(overallValueTrend>=1.1*overallTrend)&(ewo>=ewo_ema)', '(rsi>=75)')
+    assert 'sig_buy_raw  = false' in s
+    assert '// nicht exportierbar (overallTrend, overallValueTrend)' in s
+    assert 'sig_sell_raw = (str_rsi>=75)' in s
