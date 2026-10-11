@@ -1554,78 +1554,105 @@ plotshape(lqz_zone and barstate.isconfirmed, "High Vol",
 
 
 def _t_atc(p: dict) -> str:
-    """Return the Pine Script v5 Average True Channel overlay template with configurable params."""
-    dev = float(p.get('dev_multi', 2.0))
-    return f"""\
-// ── Auto Trend Channels (line.new on last bar — mirrors Python ATC) ───────────
-// Three symmetric regression channels: highest-high / lowest-low / full-range anchor.
-// OLS fit + residual stdev computed with for-loops (avoids ta.linreg series-int limit).
-atc_dev = {dev}
+    """Return the Auto Trend Channels overlay — today's channels as atc.py draws them.
 
-// Manual OLS on close[0..length-1]: returns [anchor_val, current_val, residual_stdev]
-atc_reg(length) =>
-    float n   = float(length)
-    float sx  = 0.0
-    float sy  = 0.0
-    float sxx = 0.0
-    float sxy = 0.0
-    for i = 0 to length - 1
-        float xi = float(i)
-        float yi = close[length - 1 - i]
-        sx  += xi
-        sy  += yi
-        sxx += xi * xi
-        sxy += xi * yi
-    float denom = n * sxx - sx * sx
-    float b     = denom != 0.0 ? (n * sxy - sx * sy) / denom : 0.0
-    float a     = (sy - b * sx) / n
-    float ssr   = 0.0
-    for i = 0 to length - 1
-        float err = close[length - 1 - i] - (a + b * float(i))
-        ssr += err * err
-    [a, a + b * (n - 1.0), math.sqrt(ssr / n)]
+    Same channel rules as the app (atc.Atc._todays_channel): window = the last
+    ``lookback`` bars, high anchor = bars since the highest high, low anchor =
+    since the lowest low, zero anchor = the length with the flattest slope,
+    minimum length max(10, window/5). Drawn per channel: the line the anchor sits
+    on (high: top, low: bottom, zero: both) plus the optional lines from the ⚙
+    dialog, and the width label. The fit code is shared with the formula
+    exports (pine_strategy_export._helper_atc), with the chart's own params.
+    """
+    from tradinglib import pine_strategy_export as pse
+    helper = pse._helper_atc(p)
+    b = _pine_bool
+    opt = {k: _pbool(p, k, False) for k in ('show_high_mid', 'show_high_bot', 'show_zero_mid',
+                                            'show_low_mid', 'show_low_top')}
+    return f"""\
+// ── Auto Trend Channels (today's channels, as the app draws them) ─────────────
+// Each channel is a straight least-squares line over its anchor length, redrawn
+// on the last bar. Formula signals test a different series: one fit per bar
+// (see the signal export), so a past bar's value is not on these lines.
+{helper}
+
+atc_wexp     = input.bool({b(_pbool(p, 'use_exp_weight', False))}, "Exponential weighting", group="ATC")
+atc_width_on = input.bool({b(_pbool(p, 'show_width', True))}, "Show channel width", group="ATC")
+atc_hi_mid   = input.bool({b(opt['show_high_mid'])}, "High channel: middle line", group="ATC")
+atc_hi_bot   = input.bool({b(opt['show_high_bot'])}, "High channel: lower line", group="ATC")
+atc_ze_mid   = input.bool({b(opt['show_zero_mid'])}, "Zero channel: middle line", group="ATC")
+atc_lo_mid   = input.bool({b(opt['show_low_mid'])}, "Low channel: middle line", group="ATC")
+atc_lo_top   = input.bool({b(opt['show_low_top'])}, "Low channel: upper line", group="ATC")
+atc_col_hi   = input.color(color.new(color.rgb(139, 0, 0), 30), "High channel", group="ATC -- Style")
+atc_col_lo   = input.color(color.new(color.rgb(0, 100, 0), 30), "Low channel", group="ATC -- Style")
+atc_col_ze   = input.color(color.new(color.rgb(0, 0, 139), 30), "Zero channel", group="ATC -- Style")
+
+atc_line(int e, int len, bool wexp) =>
+    // least squares over the bars e-len+1 .. e (k = 0 is the newest bar);
+    // optional weights 0.9^k as atc.exponential_weights. Stdev as np.std of
+    // the residuals (unweighted, around their mean — not zero once weighted),
+    // as calc_regression_channel. Returns [oldest value, newest value, stdev].
+    float sw = 0.0
+    float swk = 0.0
+    float swkk = 0.0
+    float swy = 0.0
+    float swky = 0.0
+    float w = 1.0
+    for k = 0 to len - 1
+        float y = array.get(atc_y, e - k)
+        sw += w
+        swk += w * k
+        swkk += w * k * k
+        swy += w * y
+        swky += w * k * y
+        if wexp
+            w := w * 0.9
+    float varx = swkk - swk * swk / sw
+    float b = varx > 0 ? (swky - swk * swy / sw) / varx : 0.0
+    float a = (swy - b * swk) / sw
+    float sr = 0.0
+    float srr = 0.0
+    for k = 0 to len - 1
+        float r = array.get(atc_y, e - k) - (a + b * k)
+        sr += r
+        srr += r * r
+    float rm = sr / len
+    [a + b * (len - 1), a, math.sqrt(math.max(srr / len - rm * rm, 0.0))]
+
+var array<line>  atc_lines  = array.new<line>()
+var array<label> atc_labels = array.new<label>()
+
+atc_draw(int anchor, color col, bool show_mid, bool show_top, bool show_bot, int offset) =>
+    // offset: bars before the right edge for the width label (staggered 4/11/18)
+    if atc_wl >= atc_min
+        int len = atc_len(anchor, bar_index, atc_wl, atc_min)
+        [y0, y1, sd] = atc_line(bar_index, len, atc_wexp)
+        int x0 = bar_index - len + 1
+        float dv = atc_dev * sd
+        if show_mid
+            array.push(atc_lines, line.new(x0, atc_px(y0), bar_index, atc_px(y1), color = col, width = 2, style = line.style_dotted))
+        if show_top
+            array.push(atc_lines, line.new(x0, atc_px(y0 + dv), bar_index, atc_px(y1 + dv), color = col, width = 2))
+        if show_bot
+            array.push(atc_lines, line.new(x0, atc_px(y0 - dv), bar_index, atc_px(y1 - dv), color = col, width = 2))
+        if atc_width_on and close != 0
+            float width = atc_px(y1 + dv) - atc_px(y1 - dv)
+            float pct = width / close * 100
+            int k = math.min(offset, len - 1)
+            float ym = len > 1 ? y1 + (y0 - y1) * k / (len - 1) : y1
+            string txt = math.abs(pct) < 1 ? str.tostring(pct, "0.00") + " %" : str.tostring(pct, "0.0") + " %"
+            array.push(atc_labels, label.new(bar_index - k, (atc_px(ym + dv) + atc_px(ym - dv)) / 2, txt, style = label.style_none, textcolor = col, size = size.normal, tooltip = str.tostring(width, format.mintick) + " (" + str.tostring(pct, "0.00") + " %)"))
+    true
 
 if barstate.islast
-    // ── High anchor (darkred) ─────────────────────────────────────────────────
-    int atc_h_off = 0
-    for i = 1 to math.min(499, bar_index)
-        if high[i] > high[atc_h_off]
-            atc_h_off := i
-    atc_hlen = math.max(2, atc_h_off + 1)
-    atc_hx0  = bar_index - atc_hlen + 1
-    [atc_h_anc, atc_h_cur, atc_hstd] = atc_reg(atc_hlen)
-    line.new(atc_hx0, atc_h_anc,                       bar_index, atc_h_cur,
-             color=color.new(color.red, 40), width=1, style=line.style_dotted)
-    line.new(atc_hx0, atc_h_anc + atc_dev * atc_hstd, bar_index, atc_h_cur + atc_dev * atc_hstd,
-             color=color.new(color.red, 0), width=2)
-    line.new(atc_hx0, atc_h_anc - atc_dev * atc_hstd, bar_index, atc_h_cur - atc_dev * atc_hstd,
-             color=color.new(color.red, 0), width=2)
-
-    // ── Low anchor (darkgreen) ────────────────────────────────────────────────
-    int atc_l_off = 0
-    for i = 1 to math.min(499, bar_index)
-        if low[i] < low[atc_l_off]
-            atc_l_off := i
-    atc_llen = math.max(2, atc_l_off + 1)
-    atc_lx0  = bar_index - atc_llen + 1
-    [atc_l_anc, atc_l_cur, atc_lstd] = atc_reg(atc_llen)
-    line.new(atc_lx0, atc_l_anc,                       bar_index, atc_l_cur,
-             color=color.new(color.green, 40), width=1, style=line.style_dotted)
-    line.new(atc_lx0, atc_l_anc + atc_dev * atc_lstd, bar_index, atc_l_cur + atc_dev * atc_lstd,
-             color=color.new(color.green, 0), width=2)
-    line.new(atc_lx0, atc_l_anc - atc_dev * atc_lstd, bar_index, atc_l_cur - atc_dev * atc_lstd,
-             color=color.new(color.green, 0), width=2)
-
-    // ── Zero anchor (darkblue — full visible range, flattest-slope approx.) ──
-    atc_zlen = math.min(500, bar_index + 1)
-    atc_zx0  = bar_index - atc_zlen + 1
-    [atc_z_anc, atc_z_cur, atc_zstd] = atc_reg(atc_zlen)
-    line.new(atc_zx0, atc_z_anc,                       bar_index, atc_z_cur,
-             color=color.new(color.blue, 40), width=1, style=line.style_dotted)
-    line.new(atc_zx0, atc_z_anc + atc_dev * atc_zstd, bar_index, atc_z_cur + atc_dev * atc_zstd,
-             color=color.new(color.blue, 0), width=2)
-    line.new(atc_zx0, atc_z_anc - atc_dev * atc_zstd, bar_index, atc_z_cur - atc_dev * atc_zstd,
-             color=color.new(color.blue, 0), width=2)
+    while array.size(atc_lines) > 0
+        line.delete(array.pop(atc_lines))
+    while array.size(atc_labels) > 0
+        label.delete(array.pop(atc_labels))
+    // anchor line always (high: top, low: bottom, zero: both), the rest per setting
+    atc_draw(1, atc_col_hi, atc_hi_mid, true, atc_hi_bot, 4)
+    atc_draw(-1, atc_col_lo, atc_lo_mid, atc_lo_top, true, 11)
+    atc_draw(0, atc_col_ze, atc_ze_mid, true, true, 18)
 """
 
 

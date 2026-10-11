@@ -49,6 +49,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     <code>obd_bull_top</code>, <code>obd_buy</code> etc. are translated in the strategy and signal exports.</li>
 </ul>
 
+<h3>Auto Trend Channels</h3>
+<ul>
+  <li>The overlay draws today's channel as in the app: the window is the last <code>lookback</code> bars (default 252), the high anchor starts at the highest high, the low anchor at the lowest low, and the zero channel uses the flattest slope. Each channel shows the line its anchor sits on, plus the optional lines from the ⚙ dialog and the channel width.</li>
+  <li>Formula signals test a separate series with one channel per bar, so a past value does not lie on these straight lines.</li>
+</ul>
+
 <h3>Strategy export (Multi Strategies)</h3>
 <ul>
   <li><b>Parameters as in the backtest:</b> the strategies trade on the stored columns, which <code>asset_perf2</code> computes with the indicators' default values. The export therefore uses those defaults, not the chart settings from the ⚙ dialog.</li>

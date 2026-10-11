@@ -80,8 +80,8 @@ def test_parameter_wie_im_backtest_aus_den_klassen():
     from tradinglib.indicator.rsi import Rsi
     s = pse.export_strategy('p', '(rsi>50)&(High<atc_mid_zero)', '(rsi<30)')
     assert f"ta.rsi(close, {Rsi.params['lookback']['default']})" in s
-    assert f"input.int({Atc.params['lookback']['default']}, \"ATC Rueckblick" in s
-    assert f"input.float({float(Atc.params['dev_multi']['default'])}, \"ATC Std-Abweichung\"" in s
+    assert f"input.int({Atc.params['lookback']['default']}, \"ATC: channel lookback per bar" in s
+    assert f"input.float({float(Atc.params['dev_multi']['default'])}, \"ATC: channel deviation multiplier\"" in s
 
 
 def test_ewo_wave_und_obd_spalten():
@@ -220,3 +220,60 @@ def test_signal_export_erklaert_die_atc_linien_statt_vor_lookahead_zu_warnen():
     assert '"ATC bottom (low anchor, per bar)"' in s
     low = s.lower()
     assert 'lookahead' not in low and 'look-ahead' not in low and 'cannot reproduce' not in low
+
+
+def _pine_atc_line_mirror(y, e, length, wexp):
+    """Python mirror of the overlay's atc_line(): [oldest, newest, stdev]."""
+    ks = np.arange(length)
+    w = 0.9 ** ks if wexp else np.ones(length)
+    ys = y[e - ks]
+    sw, swk, swkk = w.sum(), (w * ks).sum(), (w * ks * ks).sum()
+    swy, swky = (w * ys).sum(), (w * ks * ys).sum()
+    varx = swkk - swk * swk / sw
+    b = (swky - swk * swy / sw) / varx if varx > 0 else 0.0
+    a = (swy - b * swk) / sw
+    r = ys - (a + b * ks)
+    sd = np.sqrt(max((r * r).sum() / length - r.mean() ** 2, 0.0))
+    return a + b * (length - 1), a, sd
+
+
+@pytest.mark.parametrize('wexp', [False, True])
+def test_atc_overlay_zeichnet_den_kanal_wie_atc_py(wexp):
+    """Overlay = today's channel of atc.py (start, end, edges) for all three anchors."""
+    from tradinglib.indicator.atc import Atc
+    rng = np.random.default_rng(7)
+    n = 400
+    c = 80 * np.cumprod(1 + rng.normal(0.0003, 0.018, n))
+    h = c * (1 + np.abs(rng.normal(0, 0.01, n)))
+    l = c * (1 - np.abs(rng.normal(0, 0.01, n)))
+    hist = pd.DataFrame({'High': h, 'Low': l, 'Close': c}, index=pd.bdate_range('2021-01-01', periods=n))
+    atc = Atc.__new__(Atc)
+    atc.use_gog_scale, atc.use_exp_weight, atc.dev_multi, atc.lookback = False, wexp, 2.0, 252
+    e, wl = n - 1, 252
+    mn = max(10, wl // 5)
+    for name, anchor in (('high', 1), ('low', -1), ('zero', 0)):
+        seg = atc._todays_channel(hist, name, hist.index)
+        y_win = c[e - wl + 1:]
+        length = atc._length(name, y_win - y_win.mean(), h[e - wl + 1:], l[e - wl + 1:], mn)
+        assert len(seg) == length
+        y0, y1, sd = _pine_atc_line_mirror(c, e, length, wexp)
+        np.testing.assert_allclose([seg['mid'].iloc[0], seg['mid'].iloc[-1]], [y0, y1], rtol=1e-9)
+        np.testing.assert_allclose([seg['top'].iloc[-1], seg['bot'].iloc[0]],
+                                   [y1 + 2 * sd, y0 - 2 * sd], rtol=1e-9)
+
+
+def test_atc_overlay_vorlage_folgt_der_konfiguration():
+    from tradinglib.pine_exporter import PineExporter
+
+    class _Conf:
+        def get_plugin_params(self, name):
+            return {'dev_multi': 1.5, 'lookback': 120, 'show_high_bot': True,
+                    'show_width': False, 'use_exp_weight': 'true'}
+    s = PineExporter(['atc'], [], sys_conf=_Conf()).generate_overlay()
+    assert 'input.float(1.5, "ATC: channel deviation multiplier"' in s
+    assert 'input.int(120, "ATC: channel lookback per bar (bars)"' in s
+    assert 'atc_hi_bot   = input.bool(true,' in s and 'atc_hi_mid   = input.bool(false,' in s
+    assert 'atc_width_on = input.bool(false,' in s and 'atc_wexp     = input.bool(true,' in s
+    assert 'if show_atc and barstate.islast' in s
+    assert 'atc_reg(' not in s and 'math.min(499' not in s       # old 500-bar anchor search gone
+    assert s.count('atc_draw(') == 4                             # definition + three channels

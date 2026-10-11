@@ -66,20 +66,26 @@ _HELPERS: dict[str, str] = {
 }
 
 
-def _helper_atc() -> str:
+def _helper_atc(params: dict | None = None) -> str:
     """Causal ATC as atc.py: per bar the channel over the trailing `lookback` bars.
 
     High anchor = bars since the highest high, low anchor = since the lowest low,
     zero anchor = the length whose slope is closest to zero; channel value is the
     last point of that least-squares line ± dev × residual stdev. Prices live in
     arrays indexed by bar_index, so no history buffer is needed.
+
+    *params* overrides the class defaults — the chart overlay passes the ⚙
+    settings, formula exports keep the defaults the backtest computed with.
     """
-    p = _defaults('atc')
+    p = {**_defaults('atc'), **{k: v for k, v in (params or {}).items()
+                                 if k in _FALLBACK['atc'] and v is not None}}
+    if isinstance(p['use_gog_scale'], str):
+        p['use_gog_scale'] = p['use_gog_scale'].strip().lower() in ('1', 'true', 'yes', 'ja')
     return f"""\
 // ATC kausal (spiegelt atc.py): je Balken Kanal ueber die letzten atc_lb Balken
-atc_dev = input.float({float(p['dev_multi'])}, "ATC Std-Abweichung", group="ATC")
-atc_lb  = input.int({int(p['lookback'])}, "ATC Rueckblick je Balken", minval=20, group="ATC")
-atc_log = input.bool({_pine_bool(p['use_gog_scale'])}, "ATC Log-Skala", group="ATC")
+atc_dev = input.float({float(p['dev_multi'])}, "ATC: channel deviation multiplier", group="ATC")
+atc_lb  = input.int({int(p['lookback'])}, "ATC: channel lookback per bar (bars)", minval=20, group="ATC")
+atc_log = input.bool({_pine_bool(p['use_gog_scale'])}, "ATC: log scale", group="ATC")
 var array<float> atc_y = array.new<float>()
 var array<float> atc_h = array.new<float>()
 var array<float> atc_l = array.new<float>()

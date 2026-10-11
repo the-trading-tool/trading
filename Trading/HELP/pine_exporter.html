@@ -49,6 +49,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     <code>obd_bull_top</code>, <code>obd_buy</code> usw. werden im Strategie- und Signal-Export mitübersetzt.</li>
 </ul>
 
+<h3>Auto Trend Channels</h3>
+<ul>
+  <li>Gezeichnet wird der heutige Kanal wie in der App: Fenster = die letzten <code>lookback</code> Balken (Standard 252), Hoch-Anker ab dem höchsten Hoch, Tief-Anker ab dem tiefsten Tief, Null-Kanal mit der flachsten Steigung. Je Kanal erscheint die Linie, auf der der Anker liegt, dazu die optionalen Linien aus dem ⚙-Dialog und die Kanalbreite.</li>
+  <li>Formel-Signale prüfen dagegen eine eigene Reihe mit einem Kanal je Balken. Ein vergangener Wert liegt deshalb nicht auf diesen Geraden.</li>
+</ul>
+
 <h3>Strategie-Export (Multi Strategies)</h3>
 <ul>
   <li><b>Parameter wie im Backtest:</b> Die Strategien handeln auf den gespeicherten Spalten, und die rechnet <code>asset_perf2</code> mit den Standardwerten der Indikatoren. Der Export nimmt deshalb diese Standardwerte und nicht die Chart-Einstellungen aus dem ⚙-Dialog.</li>
