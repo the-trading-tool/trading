@@ -73,6 +73,73 @@ def set_index_links(db_file: str, stock_id: int, add: list, remove: list) -> tup
     return added, removed
 
 
+def membership_followup(ticker: str, old: list, new: list, db_path: str = 'database',
+                        held: set | None = None) -> list[tuple[str, str, dict]]:
+    """What a membership change means for the data, as ``(level, locale key, params)``.
+
+    Strategy Finder and Multi Strategies pick an index's tickers through a live
+    join on ``stock_indices`` (make_query q=3) — the simulation rows themselves
+    carry no index. A change therefore counts at once, provided the ticker HAS
+    rows. What can go wrong is coverage: the daily default run of asset_perf2 /
+    get_asset_data only selects members of ``^`` indices (plus held tickers),
+    so a ticker that now sits in category groups only stops being updated.
+    """
+    out: list[tuple[str, str, dict]] = []
+    old, new = set(old), set(new)
+    real = sorted(n for n in new if n.startswith('^'))
+    groups = sorted(n for n in new if not n.startswith('^'))
+    if held is None:
+        try:
+            from tradinglib.summary_sources import held_tickers
+            held = set(held_tickers())
+        except Exception:
+            held = set()
+    daily = bool(real) or ticker in held
+
+    last = None
+    try:
+        sim = tools.Tools().get_path(path=db_path, file_name='asset_simulation_.db')
+        if os.path.exists(sim):
+            with open_db(sim, readonly=True) as conn:
+                row = conn.execute("SELECT MAX(Date) FROM asset_simulation WHERE ticker = ?",
+                                   (ticker,)).fetchone()
+                last = str(row[0])[:10] if row and row[0] else None
+    except Exception:
+        last = None
+    try:
+        has_prices = os.path.exists(tools.Tools().get_path(path=db_path,
+                                                           file_name=f'yf_{ticker}.db'))
+    except Exception:
+        has_prices = True
+
+    # Command that computes this ticker now: /fill only touches incomplete tickers.
+    if real:
+        run = f'python asset_perf2.py /index:{real[0]} /fill /silent'
+    elif groups:
+        run = f'python asset_perf2.py /group:{",".join(groups)} /fill /silent'
+    else:
+        run = ''
+
+    if not new:
+        out.append(('warning', 'admin.idx_follow_orphan', {'ticker': ticker}))
+    elif last is None:
+        if not has_prices:
+            out.append(('warning', 'admin.idx_follow_no_prices',
+                        {'ticker': ticker, 'cmd': f'python get_asset_data.py /tickers:{ticker} 1d:max'}))
+        out.append(('warning', 'admin.idx_follow_no_sim', {'ticker': ticker, 'cmd': run}))
+    else:
+        out.append(('info', 'admin.idx_follow_live', {'ticker': ticker, 'date': last}))
+
+    if new and not daily:
+        out.append(('warning', 'admin.idx_follow_not_daily',
+                    {'ticker': ticker, 'groups': ', '.join(groups),
+                     'cmd': run, 'cmd_prices': f'python get_asset_data.py /group:{",".join(groups)}'}))
+    if {n for n in old ^ new if n.startswith('^')}:
+        out.append(('info', 'admin.idx_follow_breadth',
+                    {'indices': ', '.join(sorted(n for n in old ^ new if n.startswith('^')))}))
+    return out
+
+
 def _fetch_single_ticker(ticker: str, db_path: str = 'database') -> tuple[list, list]:
     """Fetch asset info and price data (1m, 1d, 1mo) for a single ticker.
     Returns (ok_messages, error_messages)."""
@@ -634,6 +701,11 @@ class Admin():
                 placeholder=t('admin.ticker_symbol_ph'),
                 key="im_edit_ticker",
             ).strip().upper()
+            _me_done = st.session_state.pop('im_edit_result', None)
+            if _me_done:
+                st.success(_me_done['ok'])
+                for _lvl, _key, _kw in _me_done['follow']:
+                    (st.warning if _lvl == 'warning' else st.info)(t(_key, **_kw))
             if _me_ticker:
                 _me_sid, _me_current = None, []
                 try:
@@ -681,8 +753,14 @@ class Admin():
                                  type="primary", disabled=not (_me_add or _me_rem)):
                         try:
                             _n_add, _n_rem = set_index_links(_im_db, _me_sid, _me_add, _me_rem)
-                            st.success(t('admin.idx_edit_ok', ticker=_me_ticker,
-                                         added=_n_add, removed=_n_rem))
+                            # Survives the rerun below, shown once above the form.
+                            st.session_state['im_edit_result'] = {
+                                'ticker': _me_ticker,
+                                'ok': t('admin.idx_edit_ok', ticker=_me_ticker,
+                                        added=_n_add, removed=_n_rem),
+                                'follow': membership_followup(
+                                    _me_ticker, _me_current, _me_sel, self.db_path),
+                            }
                             st.session_state.pop(_me_key, None)
                             st.rerun()
                         except Exception as _mee:

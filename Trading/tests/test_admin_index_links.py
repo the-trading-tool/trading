@@ -84,3 +84,61 @@ def test_freie_eingabe_wird_unterstuetzt():
     import streamlit as st
     assert admin._MULTISELECT_NEW_OPTIONS == (
         'accept_new_options' in inspect.signature(st.multiselect).parameters)
+
+
+@pytest.fixture()
+def dbdir(tmp_path, monkeypatch):
+    """TradingDB with a current-year simulation row for SAP.DE and prices for SAP.DE only."""
+    monkeypatch.setenv('TradingDB', str(tmp_path))
+    with open_db(str(tmp_path / 'asset_simulation_.db')) as conn:
+        conn.execute("CREATE TABLE asset_simulation (ticker TEXT, Date TEXT)")
+        conn.execute("INSERT INTO asset_simulation VALUES ('SAP.DE', '2026-10-09 00:00:00')")
+    (tmp_path / 'yf_SAP.DE.db').write_bytes(b'')
+    return tmp_path
+
+
+def _keys(follow):
+    return [k for _, k, _ in follow]
+
+
+def test_hinweis_verschieben_zwischen_indizes_braucht_keinen_lauf(dbdir):
+    f = admin.membership_followup('SAP.DE', ['^GDAXI'], ['^MDAXI'], held=set())
+    assert _keys(f) == ['admin.idx_follow_live', 'admin.idx_follow_breadth']
+    assert f[0][2]['date'] == '2026-10-09'
+    assert f[1][2]['indices'] == '^GDAXI, ^MDAXI'
+
+
+def test_hinweis_nur_noch_gruppe_wird_nicht_fortgeschrieben(dbdir):
+    f = admin.membership_followup('SAP.DE', ['^GDAXI'], ['WATCHLIST'], held=set())
+    assert 'admin.idx_follow_not_daily' in _keys(f)
+    kw = dict((k, p) for _, k, p in f)['admin.idx_follow_not_daily']
+    assert kw['cmd'] == 'python asset_perf2.py /group:WATCHLIST /fill /silent'
+    assert kw['cmd_prices'] == 'python get_asset_data.py /group:WATCHLIST'
+    # held tickers stay in the daily run regardless of their index
+    held = admin.membership_followup('SAP.DE', ['^GDAXI'], ['WATCHLIST'], held={'SAP.DE'})
+    assert 'admin.idx_follow_not_daily' not in _keys(held)
+
+
+def test_hinweis_ohne_simulation_und_ohne_kurse(dbdir):
+    f = dict((k, p) for _, k, p in admin.membership_followup('NEW.DE', [], ['^SDAXI'], held=set()))
+    assert f['admin.idx_follow_no_prices']['cmd'] == 'python get_asset_data.py /tickers:NEW.DE 1d:max'
+    assert f['admin.idx_follow_no_sim']['cmd'] == 'python asset_perf2.py /index:^SDAXI /fill /silent'
+
+
+def test_hinweis_in_keinem_index_mehr(dbdir):
+    assert _keys(admin.membership_followup('SAP.DE', ['^GDAXI'], [], held=set()))[0] == \
+        'admin.idx_follow_orphan'
+
+
+def test_hinweistexte_lassen_sich_formatieren(dbdir):
+    """Every follow-up key exists in both languages and takes exactly its params."""
+    cases = [admin.membership_followup('SAP.DE', ['^GDAXI'], ['^MDAXI'], held=set()),
+             admin.membership_followup('SAP.DE', ['^GDAXI'], ['WATCHLIST'], held=set()),
+             admin.membership_followup('NEW.DE', [], ['^SDAXI'], held=set()),
+             admin.membership_followup('SAP.DE', ['^GDAXI'], [], held=set())]
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for lang in ('de', 'en'):
+        texts = json.load(open(os.path.join(here, 'locales', f'{lang}.json'), encoding='utf-8'))
+        for follow in cases:
+            for _, key, kw in follow:
+                assert texts[key].format(**kw)
