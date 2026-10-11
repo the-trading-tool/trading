@@ -2,6 +2,7 @@ import sqlite3
 import streamlit as st
 import pandas as pd
 from tradinglib import tools
+from tradinglib import fts_index
 from tradinglib import make_query as mq
 from tradinglib.i18n import t
 from tradinglib.tools import open_db
@@ -37,53 +38,24 @@ class FullTextSearch(tools.Db_tools):
     def update_fts_table(self):
         """Drop and rebuild the FTS5 table from the current source table data."""
         conn = self.get_connection()
-        cursor = conn.cursor()
-
-        # Drop the existing FTS table
-        cursor.execute(f"DROP TABLE IF EXISTS {self.fts_table_name};")
-
-        # Recreate the FTS table
-        cursor.execute(f"""
-        CREATE VIRTUAL TABLE {self.fts_table_name}
-        USING fts5(ticker, longName);
-        """)
-
-        # Re-insert data from the original table
-        cursor.execute(f"""
-        INSERT INTO {self.fts_table_name} (ticker, longName)
-        SELECT ticker, longName FROM {self.table_name};
-        """)
-
-        conn.commit()
-        conn.close()
+        try:
+            fts_index.rebuild(conn, self.table_name)
+        finally:
+            conn.close()
 
     def create_fts_table(self):
-        """Create the FTS5 virtual table for ticker/longName search if it doesn't exist yet."""
+        """Build the search index when it is missing, outdated or empty.
+
+        Schema and fill live in tradinglib.fts_index so the app, the admin
+        button and get_asset_info.py cannot drift apart. ``ensure`` also
+        rebuilds when the existing table predates a column (the ISIN was added
+        later) — CREATE VIRTUAL TABLE IF NOT EXISTS would silently keep it.
+        """
         conn = self.get_connection()
-        cursor = conn.cursor()
-
-        # Create FTS table with two columns (ticker and longName)
-        cursor.execute(f"""
-        CREATE VIRTUAL TABLE IF NOT EXISTS {self.fts_table_name}
-        USING fts5(ticker, longName);
-        """)
-
-        # Check if data already exists
-        cursor.execute(f"SELECT COUNT(*) FROM {self.fts_table_name};")
-        if cursor.fetchone()[0] == 0:
-            # Check if the source table has the required columns
-            cursor.execute(f"PRAGMA table_info({self.table_name})")
-            existing_cols = {row[1] for row in cursor.fetchall()}
-            if 'ticker' in existing_cols and 'longName' in existing_cols:
-                cursor.execute(f"""
-                INSERT INTO {self.fts_table_name} (ticker, longName)
-                SELECT DISTINCT ticker, longName FROM {self.table_name};
-                """)
-            # If columns are missing (get_asset_info.py has not run yet),
-            # the FTS table stays empty — searches will return no results.
-
-        conn.commit()
-        conn.close()
+        try:
+            fts_index.ensure(conn, self.table_name)
+        finally:
+            conn.close()
 
     # Characters that cause FTS5 syntax errors when unquoted
     _FTS5_SPECIAL = frozenset('=+-*^():"\\')
@@ -95,6 +67,15 @@ class FullTextSearch(tools.Db_tools):
         when the query contains characters that would cause an FTS5 syntax
         error (e.g. tickers like DX=F, ES=F).
         """
+        # A typed '*' is what people reach for when they expect a wildcard, but
+        # the prefix star is appended below anyway. Passing theirs through turns
+        # 'IE0*' into 'IE0**' (fts5 syntax error) and, because '*' counts as a
+        # special character, diverts the query to the LIKE fallback — which runs
+        # against the base table and therefore cannot see ISINs at all.
+        query = (query or '').strip().strip('*').strip()
+        if not query:
+            return []
+
         conn = self.get_connection()
         cursor = conn.cursor()
 

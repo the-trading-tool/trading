@@ -24,26 +24,12 @@ def rebuild_fts_table(conn, table_name='asset_info'):
     """Suchtabelle (FTS5) <table_name>_fts neu aufbauen, damit frisch geladene
     Ticker sofort in der Volltextsuche der App findbar sind.
 
-    Entspricht funktional dem Admin-Button „Update index" (search.py
-    FullTextSearch.update_fts_table), kommt aber ohne Streamlit-Import aus –
-    Struktur (fts5(ticker, longName)) muss identisch bleiben, damit
-    create_fts_table() in der App die bestehende Tabelle übernimmt.
+    Schema und Befüllung liegen in tradinglib.fts_index — dieselbe Definition,
+    die auch die App und der Admin-Button „Update index" verwenden. Das Modul
+    importiert kein Streamlit, dieser Lauf bleibt also UI-frei.
     """
-    fts = f"{table_name}_fts"
-    cur = conn.cursor()
-    # Quell-Spalten prüfen — ohne ticker/longName keinen Rebuild versuchen
-    # (z.B. wenn alle yfinance-Abrufe fehlschlugen und asset_info leer/teilbefüllt ist)
-    cur.execute(f"PRAGMA table_info({table_name})")
-    cols = {row[1] for row in cur.fetchall()}
-    if not {'ticker', 'longName'} <= cols:
-        logger.warning("FTS-Rebuild übersprungen: Spalten ticker/longName fehlen in %s.", table_name)
-        return
-    cur.execute(f"DROP TABLE IF EXISTS {fts};")
-    cur.execute(f"CREATE VIRTUAL TABLE {fts} USING fts5(ticker, longName);")
-    cur.execute(f"INSERT INTO {fts} (ticker, longName) SELECT ticker, longName FROM {table_name};")
-    conn.commit()
-    n = cur.execute(f"SELECT COUNT(*) FROM {fts}").fetchone()[0]
-    logger.info("FTS-Suchtabelle %s neu aufgebaut (%d Einträge).", fts, n)
+    from tradinglib import fts_index
+    fts_index.rebuild(conn, table_name)
 
 # Liste der Tickersymbole
 
