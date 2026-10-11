@@ -12,6 +12,7 @@ Verwendung:
     python backfill_isin.py /log:DEBUG    # verbose Logging
 """
 
+import re
 import sqlite3
 import sys
 import time
@@ -42,6 +43,7 @@ def parse_args(argv=None):
         'limit':    None,
         'delay_ms': DEFAULT_DELAY_MS,
         'dry':      False,
+        'from_ticker_only': False,
         'log_to_console': True,
         'log_level': 'INFO',
         'log_file':  None,
@@ -65,6 +67,9 @@ def parse_args(argv=None):
                 pass
         elif key == 'dry':
             opts['dry'] = True
+        elif key in ('from-ticker', 'from_ticker'):
+            # Only the offline stage; skips the rate-limited provider loop.
+            opts['from_ticker_only'] = True
         elif key == 'log':
             opts['log_level'] = val.upper() if val else 'DEBUG'
         elif key == 'logfile' and val:
@@ -141,6 +146,32 @@ def update_isin(conn: sqlite3.Connection, ticker: str, isin: str):
     )
 
 
+ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{9}\d$')
+
+
+def adopt_isin_tickers(conn: sqlite3.Connection, dry_run: bool = False) -> list:
+    """Fill the ISIN column where the ticker symbol itself already is an ISIN.
+
+    Some instruments were imported with their ISIN as the symbol (the whole ETF
+    group is like this). The value is right there, just in the wrong column, so
+    every ISIN-dependent path — ``IsinResolver``, the broker tradability check,
+    the ``require_isin`` filter, the Scalable order basket — reports 'no_isin'
+    and gives up before it ever asks anyone.
+
+    Offline and free: no provider is involved, the ISIN is simply copied across.
+    Returns the list of adopted tickers (does not commit).
+    """
+    rows = conn.execute(
+        "SELECT Ticker FROM stocks "
+        "WHERE (ISIN IS NULL OR TRIM(ISIN) IN ('', 'None', 'nan'))"
+    ).fetchall()
+    adopted = [r[0] for r in rows if r[0] and ISIN_RE.match(str(r[0]).strip())]
+    if not dry_run:
+        for ticker in adopted:
+            update_isin(conn, ticker, str(ticker).strip())
+    return adopted
+
+
 # ── Hauptprogramm ──────────────────────────────────────────────────────────
 
 def main():
@@ -160,6 +191,23 @@ def main():
         logger.info("*** DRY-RUN — keine Änderungen werden gespeichert ***")
 
     with open_db(db_path) as conn:
+        # Stage 1: offline. Tickers that already are an ISIN need no provider,
+        # and running this first keeps them out of the rate-limited loop below.
+        adopted = adopt_isin_tickers(conn, dry_run=dry_run)
+        if adopted:
+            logger.info(
+                f"{len(adopted)} Ticker sind selbst eine ISIN — Spalte übernommen: "
+                + ', '.join(adopted[:10]) + (' …' if len(adopted) > 10 else '')
+            )
+            if not dry_run:
+                conn.commit()
+        else:
+            logger.info("Keine Ticker gefunden, die selbst eine ISIN sind.")
+
+        if opts['from_ticker_only']:
+            logger.info("/from-ticker — Provider-Abfrage übersprungen.")
+            return
+
         tickers = load_missing(conn, opts['limit'])
         total   = len(tickers)
 
