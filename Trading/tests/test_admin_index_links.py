@@ -59,8 +59,28 @@ def test_doppelte_verknuepfung_und_unbekannter_index(db):
 def test_locale_keys_in_beiden_sprachen():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     src = open(os.path.join(here, 'tradinglib', 'admin.py'), encoding='utf-8').read()
-    used = set(re.findall(r"t\('(admin\.idx_edit_\w+)'", src))
+    used = set(re.findall(r"'(admin\.idx_edit_\w+)'", src))
     assert used
     for lang in ('de', 'en'):
         keys = json.load(open(os.path.join(here, 'locales', f'{lang}.json'), encoding='utf-8'))
         assert not used - set(keys), (lang, sorted(used - set(keys)))
+
+
+def test_neue_gruppe_beim_verschieben_anlegen(db):
+    """Alte Zuordnung entfernen und dabei eine noch nicht vorhandene Gruppe anlegen."""
+    sid, current = admin.index_links(db, 'AAD.DE')
+    target = ['WATCHLIST']
+    added, removed = admin.set_index_links(db, sid, sorted(set(target) - set(current)),
+                                           sorted(set(current) - set(target)))
+    assert (added, removed) == (1, 1)
+    assert admin.index_links(db, 'AAD.DE')[1] == ['WATCHLIST']
+    with open_db(db, readonly=True) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM indices WHERE name='WATCHLIST'").fetchone()[0] == 1
+
+
+def test_freie_eingabe_wird_unterstuetzt():
+    """Ohne accept_new_options braeuchte die UI ein eigenes Textfeld."""
+    import inspect
+    import streamlit as st
+    assert admin._MULTISELECT_NEW_OPTIONS == (
+        'accept_new_options' in inspect.signature(st.multiselect).parameters)

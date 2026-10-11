@@ -22,6 +22,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+# Streamlit >= 1.45 lets the user type a value that is not in `options`; older
+# versions need a separate text field for a new index name.
+try:
+    import inspect as _inspect
+    _MULTISELECT_NEW_OPTIONS = 'accept_new_options' in _inspect.signature(st.multiselect).parameters
+except Exception:                                    # pragma: no cover - defensive
+    _MULTISELECT_NEW_OPTIONS = False
+
+
 def index_links(db_file: str, ticker: str) -> tuple[int | None, list[str]]:
     """Return ``(stock_id, index names)`` of a ticker, ``(None, [])`` if unknown."""
     with open_db(db_file, readonly=True) as conn:
@@ -636,14 +645,34 @@ class Admin():
                     st.warning(t('admin.idx_edit_unknown', ticker=_me_ticker))
                 else:
                     _me_key = f"im_edit_sel_{_me_sid}"
-                    _me_sel = st.multiselect(
+                    _me_kwargs = {}
+                    if _MULTISELECT_NEW_OPTIONS:
+                        # Ein noch nicht vorhandener Name darf eingetippt werden;
+                        # set_index_links legt die Gruppe dann an.
+                        _me_kwargs['accept_new_options'] = True
+                    _me_sel = [str(n).strip() for n in st.multiselect(
                         t('admin.idx_edit_indices', ticker=_me_ticker),
                         options=[n for _, n, _ in _im_indices],
                         default=_me_current,
                         key=_me_key,
-                    )
+                        help=t('admin.idx_edit_new_help'),
+                        **_me_kwargs,
+                    ) if str(n).strip()]
+                    if not _MULTISELECT_NEW_OPTIONS:
+                        _me_new = st.text_input(
+                            t('admin.new_index'), placeholder=t('admin.new_index_ph'),
+                            key="im_edit_new_index").strip()
+                        if _me_new:
+                            _me_sel = _me_sel + [_me_new]
                     _me_add = sorted(set(_me_sel) - set(_me_current))
                     _me_rem = sorted(set(_me_current) - set(_me_sel))
+                    _me_fresh = [n for n in _me_add if n not in {x for _, x, _ in _im_indices}]
+                    if _me_fresh:
+                        st.info(t('admin.idx_edit_creates',
+                                  names=', '.join(_me_fresh),
+                                  kind=t('admin.idx_edit_kind_index'
+                                         if all(n.startswith('^') for n in _me_fresh)
+                                         else 'admin.idx_edit_kind_group')))
                     if _me_add or _me_rem:
                         st.caption(t('admin.idx_edit_diff',
                                      add=', '.join(_me_add) or '–',
