@@ -4049,15 +4049,22 @@ plotshape(strat_sell, "Sell Signal", shape.triangledown, location.abovebar,
         """
         calc_code, pine_buy, pine_sell = self._query_calc_blocks(buy_query, sell_query)
 
-        # Plot the ATC regression channel when the query references it, so the
-        # user can see the lower/upper channel the signal is testing against.
+        # Plot the ATC edges the signal tests when the query references them.
+        # These are the causal per-bar values (one fit per bar, as the stored
+        # atc_* columns of the backtest) — not the straight channel the app
+        # draws, which is only today's fit. The script says so, otherwise the
+        # stepped line looks like a broken port of the app's channel.
         atc_extra = ""
         if "str_atc_bot_low" in calc_code or "str_atc_top_high" in calc_code:
             atc_extra = (
-                'sig_show_atc = input.bool(true, "Show ATC channel", group="Signals")\n'
-                'plot(sig_show_atc ? str_atc_bot_low  : na, "ATC bottom (low anchor)",'
+                '// ATC: the lines below are the per-bar values the signal tests: each bar\n'
+                '// fits its own channel over the trailing bars, exactly like the atc_* columns\n'
+                '// in the app\'s backtest. They match the app bar for bar, but look stepped:\n'
+                '// the app chart draws only today\'s channel as a straight line.\n'
+                'sig_show_atc = input.bool(true, "Show ATC edges tested by the signal", group="Signals")\n'
+                'plot(sig_show_atc ? str_atc_bot_low  : na, "ATC bottom (low anchor, per bar)",'
                 ' color.new(color.green, 20), 1)\n'
-                'plot(sig_show_atc ? str_atc_top_high : na, "ATC top (high anchor)",'
+                'plot(sig_show_atc ? str_atc_top_high : na, "ATC top (high anchor, per bar)",'
                 ' color.new(color.red,   20), 1)\n'
             )
 

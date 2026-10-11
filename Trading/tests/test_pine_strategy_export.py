@@ -211,3 +211,12 @@ def test_abweichende_index_regeln_als_kommentar():
     pine = pse.export_from_config(tx)['S']['pine']
     assert 'r_slot     = input.float(1000.0,' in pine
     assert '//   ^N225: invest=1200, num_assets=3' in pine
+
+
+def test_signal_export_erklaert_die_atc_linien_statt_vor_lookahead_zu_warnen():
+    from tradinglib.pine_exporter import PineExporter
+    s = PineExporter([], []).generate_signal_overlay('(Low<atc_bot_low)', '(High>=atc_top_high)')
+    assert 'exactly like the atc_* columns' in s
+    assert '"ATC bottom (low anchor, per bar)"' in s
+    low = s.lower()
+    assert 'lookahead' not in low and 'look-ahead' not in low and 'cannot reproduce' not in low
