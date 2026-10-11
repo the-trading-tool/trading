@@ -21,7 +21,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <h2>Tab 1 – Ticker management</h2>
 <ul>
   <li>Add new tickers manually or import them from a CSV file</li>
-  <li>Delete existing tickers or assign them to a different index</li>
+  <li>Delete existing tickers</li>
+  <li><b>Manage indices:</b> view the members of an index, delete the index, and change the membership of a single ticker. Select the indices and groups the ticker should belong to; deselected ones are removed and newly selected ones are added. That is also how you move a ticker from one index to another. Prices, ISIN and transactions stay untouched. <b>Note:</b> <code>sync_index_members.py</code> later reconciles the real indices with their source and can overwrite a manual change.</li>
   <li>Maintain the ISIN mapping (<code>yf_tickers.db</code>)</li>
   <li>Scalable import: read ISIN lists from broker exports</li>
 </ul>

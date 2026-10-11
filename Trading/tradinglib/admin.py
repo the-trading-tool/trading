@@ -22,6 +22,48 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def index_links(db_file: str, ticker: str) -> tuple[int | None, list[str]]:
+    """Return ``(stock_id, index names)`` of a ticker, ``(None, [])`` if unknown."""
+    with open_db(db_file, readonly=True) as conn:
+        row = conn.execute("SELECT id FROM stocks WHERE Ticker = ?", (ticker,)).fetchone()
+        if not row:
+            return None, []
+        names = [r[0] for r in conn.execute("""
+            SELECT i.name FROM indices i
+            JOIN stock_indices si ON i.id = si.index_id
+            WHERE si.stock_id = ?
+            ORDER BY i.name
+        """, (row[0],)).fetchall()]
+    return row[0], names
+
+
+def set_index_links(db_file: str, stock_id: int, add: list, remove: list) -> tuple[int, int]:
+    """Link a ticker to indices / unlink it; returns ``(added, removed)``.
+
+    Only the links in ``stock_indices`` change — the ticker, its prices and its
+    trades stay as they are, exactly like a departure in sync_index_members.py.
+    An index that does not exist yet is created, so a group can be started here.
+    """
+    added = removed = 0
+    with open_db(db_file) as conn:
+        for name in add:
+            conn.execute("INSERT OR IGNORE INTO indices (name) VALUES (?)", (name,))
+            idx_id = conn.execute("SELECT id FROM indices WHERE name = ?", (name,)).fetchone()[0]
+            cur = conn.execute(
+                "INSERT INTO stock_indices (stock_id, index_id) SELECT ?, ? WHERE NOT EXISTS "
+                "(SELECT 1 FROM stock_indices WHERE stock_id = ? AND index_id = ?)",
+                (stock_id, idx_id, stock_id, idx_id))
+            added += cur.rowcount or 0
+        for name in remove:
+            cur = conn.execute("""
+                DELETE FROM stock_indices
+                WHERE stock_id = ?
+                  AND index_id = (SELECT id FROM indices WHERE name = ?)
+            """, (stock_id, name))
+            removed += cur.rowcount or 0
+    return added, removed
+
+
 def _fetch_single_ticker(ticker: str, db_path: str = 'database') -> tuple[list, list]:
     """Fetch asset info and price data (1m, 1d, 1mo) for a single ticker.
     Returns (ok_messages, error_messages)."""
@@ -574,6 +616,51 @@ class Admin():
                         except Exception as _ime:
                             st.error(t('admin.index_mgmt_error', error=_ime))
                             logger.exception("Error deleting index %s", _im_sel_name)
+            # ── Zugehörigkeit eines Tickers ändern (verschieben) ──────
+            st.markdown("---")
+            st.markdown(t('admin.idx_edit_title'))
+            st.caption(t('admin.idx_edit_hint'))
+            _me_ticker = st.text_input(
+                t('admin.idx_edit_ticker'),
+                placeholder=t('admin.ticker_symbol_ph'),
+                key="im_edit_ticker",
+            ).strip().upper()
+            if _me_ticker:
+                _me_sid, _me_current = None, []
+                try:
+                    _me_sid, _me_current = index_links(_im_db, _me_ticker)
+                except Exception as _mee:
+                    st.error(t('admin.idx_edit_error', error=_mee))
+
+                if _me_sid is None:
+                    st.warning(t('admin.idx_edit_unknown', ticker=_me_ticker))
+                else:
+                    _me_key = f"im_edit_sel_{_me_sid}"
+                    _me_sel = st.multiselect(
+                        t('admin.idx_edit_indices', ticker=_me_ticker),
+                        options=[n for _, n, _ in _im_indices],
+                        default=_me_current,
+                        key=_me_key,
+                    )
+                    _me_add = sorted(set(_me_sel) - set(_me_current))
+                    _me_rem = sorted(set(_me_current) - set(_me_sel))
+                    if _me_add or _me_rem:
+                        st.caption(t('admin.idx_edit_diff',
+                                     add=', '.join(_me_add) or '–',
+                                     remove=', '.join(_me_rem) or '–'))
+                    if st.button(t('admin.idx_edit_btn'), key="im_edit_save",
+                                 type="primary", disabled=not (_me_add or _me_rem)):
+                        try:
+                            _n_add, _n_rem = set_index_links(_im_db, _me_sid, _me_add, _me_rem)
+                            st.success(t('admin.idx_edit_ok', ticker=_me_ticker,
+                                         added=_n_add, removed=_n_rem))
+                            st.session_state.pop(_me_key, None)
+                            st.rerun()
+                        except Exception as _mee:
+                            st.error(t('admin.idx_edit_error', error=_mee))
+                            logger.exception("Error editing index links for %s",
+                                             _me_ticker)
+
             _spin.empty()
 
         del_ticker_expander = st.expander(t('admin.del_ticker_expander'), expanded=False)

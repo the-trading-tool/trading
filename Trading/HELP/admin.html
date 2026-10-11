@@ -21,7 +21,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <h2>Tab 1 – Ticker-Verwaltung</h2>
 <ul>
   <li>Neue Ticker manuell hinzufügen oder aus einer CSV-Datei importieren</li>
-  <li>Bestehende Ticker löschen oder einem anderen Index zuordnen</li>
+  <li>Bestehende Ticker löschen</li>
+  <li><b>Indizes verwalten:</b> Mitglieder eines Index ansehen, den Index löschen und die Zuordnung eines einzelnen Tickers ändern. Dort die Indizes und Gruppen auswählen, zu denen der Ticker gehören soll; abgewählte werden entfernt, neu gewählte hinzugefügt. So lässt sich ein Ticker von einem Index in einen anderen verschieben. Kurse, ISIN und Transaktionen bleiben unberührt. <b>Achtung:</b> <code>sync_index_members.py</code> gleicht die echten Indizes später wieder mit ihrer Quelle ab und kann eine Handänderung überschreiben.</li>
   <li>ISIN-Mapping pflegen (<code>yf_tickers.db</code>)</li>
   <li>Skalierter Import: ISIN-Listen aus Broker-Exporten einlesen</li>
 </ul>
