@@ -8,6 +8,22 @@ from tradinglib.i18n import t
 from tradinglib.tools import open_db
 from tradinglib.utils import get_display_name
 
+# Session key of the full-text query box. main_page.py reads it to decide which
+# of the two selectors wins, so it is defined once rather than typed per file.
+FTS_QUERY_KEY = '_fts_search_query'
+
+
+def clear_fts_query():
+    """Drop the full-text query when the market dropdown is used.
+
+    The two selectors compete: main_page gives a typed query precedence over the
+    market selection, so a query left in the box silently swallows the market
+    pick until it is cleared by hand. Writing a constant to a fixed key is safe
+    even if Streamlit re-fires the callback while tearing a widget down — the
+    worst case is an empty search box, not a half-written selection.
+    """
+    st.session_state[FTS_QUERY_KEY] = ''
+
 
 class FullTextSearch(tools.Db_tools):
 
@@ -212,7 +228,8 @@ class FullTextSearch(tools.Db_tools):
         expander = self.region.expander(t('search.fts_expander'))
 
         with expander:
-            search_query = st.text_input(t('search.ticker_name'), '', placeholder=self.symbol, key='_fts_search_query')
+            search_query = st.text_input(t('search.ticker_name'), '', placeholder=self.symbol,
+                                         key=FTS_QUERY_KEY)
             if search_query:
                 ctr = ['.','&','"']
                 for c in ctr:
@@ -383,7 +400,8 @@ class MarketSearch(tools.Db_tools):
                                 t('search.select_company'),
                                 ticker_list,
                                 index=pos,
-                                key=_key
+                                key=_key,
+                                on_change=clear_fts_query,
                             )
                         self.ticker_selected = selected_ticker
                         self.ticker_selected_longname = ""

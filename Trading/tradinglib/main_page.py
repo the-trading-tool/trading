@@ -1108,7 +1108,7 @@ class render_mainpage(fetch_data.FetchData):
         #   1. FTS text-input typed          → highest
         #   2. Market-search selection       → default visible selection
         _auto_resolved = st.session_state.get(f'_auto_resolved_{self.symbol}', '') if self._symbol_from_url else ''
-        _fts_user_typed = bool(st.session_state.get('_fts_search_query', ''))
+        _fts_user_typed = bool(st.session_state.get(sr.FTS_QUERY_KEY, ''))
 
         if _auto_resolved:
             # Case A: URL-provided symbol
