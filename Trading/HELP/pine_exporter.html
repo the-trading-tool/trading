@@ -49,6 +49,14 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     <code>obd_bull_top</code>, <code>obd_buy</code> usw. werden im Strategie- und Signal-Export mitübersetzt.</li>
 </ul>
 
+<h3>Profile scores (prof)</h3>
+<ul>
+  <li>Oszillator mit <code>riskScore</code> (0–100, 100 = am ruhigsten, aus der ATR als Anteil am Kurs), <code>trendScore</code> (0–100, 100 = am Rekordhoch) und <code>riskBucket</code> (1 konservativ … 4 offensiv) im Datenfenster.</li>
+  <li>Gerechnet wird wie in der App auf Tagesbasis, auch in Intraday- und Wochencharts. Stützstellen und Profilschnitte kommen aus der aktuellen Kalibrierung; nach einer Neukalibrierung bitte neu exportieren.</li>
+  <li>Das Rekordhoch sieht nur die Tageshistorie, die TradingView geladen hat. Bei Werten mit langer Historie kann <code>trendScore</code> deshalb höher liegen als in der App.</li>
+  <li><code>riskScore</code>, <code>riskBucket</code>, <code>trendScore</code> und <code>atr</code> sind auch in Buy/Sell-Formeln des Signal- und Strategie-Exports verfügbar.</li>
+</ul>
+
 <h3>Auto Trend Channels</h3>
 <ul>
   <li>Gezeichnet wird der heutige Kanal wie in der App: Fenster = die letzten <code>lookback</code> Balken (Standard 252), Hoch-Anker ab dem höchsten Hoch, Tief-Anker ab dem tiefsten Tief, Null-Kanal mit der flachsten Steigung. Je Kanal erscheint die Linie, auf der der Anker liegt, dazu die optionalen Linien aus dem ⚙-Dialog und die Kanalbreite.</li>

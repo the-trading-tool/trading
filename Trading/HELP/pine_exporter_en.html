@@ -49,6 +49,14 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     <code>obd_bull_top</code>, <code>obd_buy</code> etc. are translated in the strategy and signal exports.</li>
 </ul>
 
+<h3>Profile scores (prof)</h3>
+<ul>
+  <li>Oscillator with <code>riskScore</code> (0–100, 100 = calmest, from ATR as a share of price), <code>trendScore</code> (0–100, 100 = at the record high) and <code>riskBucket</code> (1 conservative … 4 offensive) in the data window.</li>
+  <li>As in the app, it is computed on daily bars, also on intraday and weekly charts. Breakpoints and profile cuts come from the current calibration; export again after a recalibration.</li>
+  <li>The record high only sees the daily history TradingView has loaded. For assets with a long history, <code>trendScore</code> can therefore be higher than in the app.</li>
+  <li><code>riskScore</code>, <code>riskBucket</code>, <code>trendScore</code> and <code>atr</code> are also available in buy/sell formulas of the signal and strategy exports.</li>
+</ul>
+
 <h3>Auto Trend Channels</h3>
 <ul>
   <li>The overlay draws today's channel as in the app: the window is the last <code>lookback</code> bars (default 252), the high anchor starts at the highest high, the low anchor at the lowest low, and the zero channel uses the flattest slope. Each channel shows the line its anchor sits on, plus the optional lines from the ⚙ dialog and the channel width.</li>

@@ -48,6 +48,7 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'zcr':    'Standard zero-crossing-rate concept (signal processing)',
     'hbo':    'Hull Butterfly Oscillator — custom Hull MA derivative',
     'scr':    'Seasonal Score Oscillator — custom forward-return seasonal average',
+    'prof':   'Profile scores — custom; calibration from tradinglib.risk_profile',
     # ── Overlays ─────────────────────────────────────────────────────────────
     'atc':    'Average True Channel — custom implementation',
     'bol':    'John Bollinger (1980s) — Bollinger Bands',
@@ -137,6 +138,23 @@ def _pine_bool(v: bool) -> str:
     return 'true' if v else 'false'
 
 
+def _prefix_names(code: str, prefix: str, keep=()) -> str:
+    """Prefix every top-level name the Pine *code* declares (variables, var
+    arrays, functions, tuple targets), so a borrowed block cannot clash with
+    the names of the script it is pasted into."""
+    names = set()
+    for ln in code.splitlines():
+        m = re.match(r'^(?:var\s+(?:[\w<>]+\s+)?)?(\w+)\s*(?:=|\(.*\)\s*=>)', ln)
+        if m and not ln.startswith(('if ', 'for ')):
+            names.add(m.group(1))
+        m = re.match(r'^\[(.+?)\]\s*=', ln)
+        if m:
+            names.update(n.strip() for n in m.group(1).split(','))
+    for n in sorted(names - set(keep), key=len, reverse=True):
+        code = re.sub(rf'\b{re.escape(n)}\b', f'{prefix}{n}', code)
+    return code
+
+
 # ── Visibility-toggle helpers ─────────────────────────────────────────────────
 # Applied by generate_overlay / generate_oscillator to add one input.bool per
 # indicator so TradingView users can show / hide each series individually.
@@ -157,6 +175,7 @@ _INDICATOR_LABELS: dict[str, str] = {
     'zcr':    'Z-Score',
     'hbo':    'Hull Butterfly Oscillator',
     'scr':    'Seasonal Score',
+    'prof':   'Profile scores (risk / trend)',
     # Overlays
     'atc':    'Auto Trend Channels',
     'bol':    'Bollinger Bands',
@@ -247,6 +266,8 @@ def _append_display_param(
         # gets that value gated instead of a second, conflicting argument.
         for n, ln in enumerate(collected):
             m = re.search(r'\bdisplay\s*=\s*(display\.[\w.]+)', ln)
+            if m and m.group(1) == 'display.none':
+                return collected, i          # never shown anyway (fill anchor)
             if m:
                 collected[n] = (ln[:m.start(1)]
                                 + f'{toggle_var} ? {m.group(1)} : display.none'
@@ -3207,8 +3228,79 @@ plot(_osc_px(_scr_1mo_n, -100.0, 100.0, {slot}), "SCR 1mo", n_scr_col, n_scr_wid
 """
 
 
+def _prof_core(pf: str, p: dict) -> str:
+    """riskScore / riskBucket / trendScore as prof.py, on daily bars.
+
+    prof.py scores the full DAILY history and projects it onto the chart's
+    timeframe; request.security(..., "D") does the same here, so a weekly or
+    intraday chart shows the daily scores. The calibration (breakpoints,
+    profile cuts) is read from risk_profile via pine_strategy_export, the same
+    helpers the formula exports use.
+    """
+    from tradinglib import pine_strategy_export as pse
+    helpers = _prefix_names('\n'.join([pse._helper_interp(), pse._helper_trend(),
+                                       pse._helper_risk()]), f'{pf}_')
+    n = max(2, int(p.get('atr_period', 14) or 14))
+    return f"""\
+{pf}_len = input.int({n}, "ATR period for the risk score", minval=2, maxval=60, group="Profile scores")
+{helpers}
+// Daily basis as in the app; on intraday charts this is the developing day.
+// The record high only sees the daily history TradingView has loaded.
+{pf}_daily(int n) =>
+    // ATR = simple mean of the true range (first bar: high - low), as prof.atr_series
+    float a = ta.sma(ta.tr(true), n)
+    float hi = ta.max(close)
+    [close > 0 ? a / close : na, hi > 0 ? close / hi - 1.0 : na]
+[{pf}_atrp, {pf}_dist] = request.security(syminfo.tickerid, "D", {pf}_daily({pf}_len), lookahead = barmerge.lookahead_off)
+{pf}_risk   = {pf}_risk_interp({pf}_atrp)
+{pf}_bucket = {pf}_risk_bucket_of({pf}_atrp)
+{pf}_trend  = {pf}_trend_interp({pf}_dist)
+"""
+
+
+def _t_prof(p: dict) -> str:
+    """Return the Profile scores oscillator (prof.py): risk score, trend score, risk bucket."""
+    trend_col = _hex_to_pine_color(p.get('color_trend', ''), 'color.rgb(46, 139, 87)')
+    risk_col = _hex_to_pine_color(p.get('color_risk', ''), 'color.rgb(70, 130, 180)')
+    return f"""\
+// ── Profile scores (risk / trend) ──────────────────────────────────────────────
+// riskScore 0..100 (100 = calmest, from ATR as a share of price), trendScore
+// 0..100 (100 = at the record high), riskBucket 1..4 = calmest profile whose
+// ATR cut the bar passes (1 conservative … 4 offensive). Quality filter, not a
+// return forecast — see the app's risk profile page.
+{_prof_core('prof', p)}
+prof_trend_col = input.color({trend_col}, "Trend score", group="Profile scores -- Style")
+prof_risk_col  = input.color({risk_col}, "Risk score", group="Profile scores -- Style")
+prof_zero_plot  = plot(0, "", color.new(color.gray, 100), display = display.none)
+prof_trend_plot = plot(prof_trend, "Trend score", prof_trend_col, 2)
+fill(prof_trend_plot, prof_zero_plot, color.new(prof_trend_col, 90))
+plot(prof_risk, "Risk score", prof_risk_col, 2)
+plot(prof_bucket, "Risk bucket", color.gray, display = display.data_window)
+hline(25, "", color = color.new(color.red, 0), linestyle = hline.style_dotted)
+hline(50, "", color = color.new(color.gray, 0), linestyle = hline.style_dotted)
+hline(75, "", color = color.new(color.green, 0), linestyle = hline.style_dotted)
+"""
+
+
+def _n_prof(p: dict, slot: int) -> str:
+    """Return the normalized Profile scores block for the combined chart (fixed 0..100 range)."""
+    trend_col = _hex_to_pine_color(p.get('color_trend', ''), 'color.rgb(46, 139, 87)')
+    risk_col = _hex_to_pine_color(p.get('color_risk', ''), 'color.rgb(70, 130, 180)')
+    return f"""\
+// ── Profile scores  (slot {slot}) ──────────────────────────────────────────────
+{_prof_core('_prof', p)}
+plot(_osc_px(_prof_trend, 0.0, 100.0, {slot}), "Trend score", {trend_col}, 2)
+plot(_osc_px(_prof_risk,  0.0, 100.0, {slot}), "Risk score",  {risk_col}, 2)
+plot(_prof_bucket, "Risk bucket", color.gray, display = display.data_window)
+plot(_osc_px(25.0, 0.0, 100.0, {slot}), "", color.new(color.red,   60), 1, plot.style_linebr)
+plot(_osc_px(50.0, 0.0, 100.0, {slot}), "", color.new(color.gray,  60), 1, plot.style_linebr)
+plot(_osc_px(75.0, 0.0, 100.0, {slot}), "", color.new(color.green, 60), 1, plot.style_linebr)
+"""
+
+
 _OSC_NORM_TEMPLATES: dict[str, Callable] = {
     'adx':    _n_adx,
+    'prof':   _n_prof,
     'cci':    _n_cci,
     'cumd':   _n_cumd,
     'dema':   _n_dema,
@@ -3229,6 +3321,7 @@ _OSC_NORM_TEMPLATES: dict[str, Callable] = {
 
 _OSC_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'adx':    _t_adx,
+    'prof':   _t_prof,
     'cci':    _t_cci,
     'cumd':   _t_cumd,
     'dema':   _t_dema,
@@ -3966,18 +4059,7 @@ class PineExporter:
             return '', {}, blocked
         helpers, defs = pse._resolve(usable)
         code = '\n\n'.join(helpers + defs)
-        # Every name the borrowed code declares gets the str_ prefix.
-        names = set()
-        for ln in code.splitlines():
-            m = re.match(r'^(?:var\s+(?:[\w<>]+\s+)?)?(\w+)\s*(?:=|\(.*\)\s*=>)', ln)
-            if m and not ln.startswith(('if ', 'for ')):
-                names.add(m.group(1))
-            m = re.match(r'^\[(.+?)\]\s*=', ln)
-            if m:
-                names.update(n.strip() for n in m.group(1).split(','))
-        names -= native
-        for n in sorted(names, key=len, reverse=True):
-            code = re.sub(rf'\b{re.escape(n)}\b', f'str_{n}', code)
+        code = _prefix_names(code, 'str_', keep=native)
         header = "// ── Weitere Spalten (Definitionen wie im Strategie-Export) ─────────────────\n"
         return header + code + "\n", {c: f'str_{c}' for c in usable}, blocked
 

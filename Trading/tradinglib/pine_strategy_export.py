@@ -163,39 +163,80 @@ atc_px(float v) =>
     atc_log ? math.pow(10, v) : v"""
 
 
-def _helper_trend() -> str:
-    """trendScore as prof.py/risk_profile.trend_score: distance to the record high,
-    piecewise linear over the calibrated knots."""
+def _rp_constants():
+    """Calibration from risk_profile (fallback: the values of 2026-09-12)."""
     try:
         from tradinglib import risk_profile as rp
-        xs, ys = list(rp.TREND_BREAKPOINTS), list(rp.TREND_SCORES)
+        cuts = [(v['bucket'], v.get('max_atr_pct'))
+                for v in sorted(rp.PROFILES.values(), key=lambda v: v['order'])]
+        return (list(rp.TREND_BREAKPOINTS), list(rp.TREND_SCORES),
+                list(rp.ATR_BREAKPOINTS), list(rp.BREAKPOINT_SCORES), cuts)
     except Exception:
-        xs = [-1.0, -0.9076, -0.6362, -0.3876, -0.1811, -0.0361, 0.0]
-        ys = [0.0, 5.0, 25.0, 50.0, 75.0, 95.0, 100.0]
-    fx = ', '.join(str(float(x)) for x in xs)
-    fy = ', '.join(str(float(y)) for y in ys)
+        return ([-1.0, -0.9076, -0.6362, -0.3876, -0.1811, -0.0361, 0.0],
+                [0.0, 5.0, 25.0, 50.0, 75.0, 95.0, 100.0],
+                [0.005, 0.0151, 0.0216, 0.0291, 0.0417, 0.0759, 0.20],
+                [100.0, 95.0, 75.0, 50.0, 25.0, 5.0, 0.0],
+                [(1, 0.022), (2, 0.030), (3, 0.042), (4, None)])
+
+
+def _floats(values) -> str:
+    return ', '.join(str(float(v)) for v in values)
+
+
+def _helper_interp() -> str:
+    """Piecewise-linear interpolation, clamped at both ends (= np.interp)."""
+    return """\
+// Stueckweise linear, an den Enden geklammert (wie np.interp)
+pw_interp(float x, array<float> xs, array<float> ys) =>
+    float r = na
+    int n = array.size(xs)
+    if not na(x)
+        if x <= array.get(xs, 0)
+            r := array.get(ys, 0)
+        else if x >= array.get(xs, n - 1)
+            r := array.get(ys, n - 1)
+        else
+            for i = 1 to n - 1
+                if x <= array.get(xs, i)
+                    float x0 = array.get(xs, i - 1)
+                    float y0 = array.get(ys, i - 1)
+                    r := y0 + (array.get(ys, i) - y0) * (x - x0) / (array.get(xs, i) - x0)
+                    break
+    r"""
+
+
+def _helper_trend() -> str:
+    """trendScore as prof.py/risk_profile.trend_score: distance to the record high,
+    piecewise linear over the calibrated knots. Needs the 'interp' helper."""
+    xs, ys, *_ = _rp_constants()
     return f"""\
 // trendScore (spiegelt prof.py): Abstand zum Rekordhoch -> 0..100 ueber die
 // kalibrierten Stuetzstellen (risk_profile.TREND_BREAKPOINTS). Achtung: das
 // Rekordhoch sieht nur die in TradingView geladene Historie.
-var trend_x = array.from({fx})
-var trend_y = array.from({fy})
+var trend_x = array.from({_floats(xs)})
+var trend_y = array.from({_floats(ys)})
 trend_interp(float d) =>
-    float r = na
-    int n = array.size(trend_x)
-    if not na(d)
-        if d <= array.get(trend_x, 0)
-            r := array.get(trend_y, 0)
-        else if d >= array.get(trend_x, n - 1)
-            r := array.get(trend_y, n - 1)
-        else
-            for i = 1 to n - 1
-                if d <= array.get(trend_x, i)
-                    float x0 = array.get(trend_x, i - 1)
-                    float y0 = array.get(trend_y, i - 1)
-                    r := y0 + (array.get(trend_y, i) - y0) * (d - x0) / (array.get(trend_x, i) - x0)
-                    break
-    r"""
+    pw_interp(d, trend_x, trend_y)"""
+
+
+def _helper_risk() -> str:
+    """riskScore/riskBucket as prof.py/risk_profile: ATR share of price onto 0..100
+    (100 = calmest) and the calmest profile whose ATR cut the bar passes.
+    Needs the 'interp' helper."""
+    _, _, xs, ys, cuts = _rp_constants()
+    cond = ''.join(f'atrp <= {float(cut)} ? {b} : ' for b, cut in cuts if cut is not None)
+    widest = max(b for b, _ in cuts)
+    return f"""\
+// riskScore / riskBucket (spiegelt prof.py): ATR(14, einfacher Mittelwert der
+// True Range) als Anteil am Kurs -> 0..100 (risk_profile.ATR_BREAKPOINTS) bzw.
+// das ruhigste Profil, dessen ATR-Schnitt der Balken noch erfuellt.
+var risk_x = array.from({_floats(xs)})
+var risk_y = array.from({_floats(ys)})
+risk_interp(float atrp) =>
+    pw_interp(atrp, risk_x, risk_y)
+risk_bucket_of(float atrp) =>
+    // ohne ATR (Anlaufphase) gilt das breiteste Profil, wie risk_profile.risk_bucket
+    na(atrp) ? {widest} : {cond}{widest}"""
 
 
 def _helper_elliott() -> str:
@@ -235,7 +276,9 @@ def _helper_obd() -> str:
 # Helpers built from the indicator classes, rendered on demand.
 _HELPER_BUILDERS = {
     'atc_base':  _helper_atc,
+    'interp':    _helper_interp,
     'trend_ath': _helper_trend,
+    'risk':      _helper_risk,
 }
 
 
@@ -321,7 +364,16 @@ _COL_DEFS: dict[str, dict] = {
     # ── trendScore (prof.py) ──────────────────────────────────────────────────
     'trendScore':     {'code': 'trend_ath = ta.max(close)\n'
                                'trendScore = trend_interp(trend_ath > 0 ? close / trend_ath - 1.0 : na)',
-                       'deps': [], 'helpers': ['trend_ath']},
+                       'deps': [], 'helpers': ['interp', 'trend_ath']},
+
+    # ── riskScore / riskBucket / atr (prof.py) ────────────────────────────────
+    'atr':            {'code': 'atr = ta.sma(ta.tr(true), 14)', 'deps': [], 'helpers': []},
+    '_atr_pct':       {'code': 'risk_atr_pct = close > 0 ? atr / close : na',
+                       'deps': ['atr'], 'helpers': []},
+    'riskScore':      {'code': 'riskScore = risk_interp(risk_atr_pct)',
+                       'deps': ['_atr_pct'], 'helpers': ['interp', 'risk']},
+    'riskBucket':     {'code': 'riskBucket = risk_bucket_of(risk_atr_pct)',
+                       'deps': ['_atr_pct'], 'helpers': ['interp', 'risk']},
 
     # ── Order Block Detector (obd.py, naechste aktive Zone je Seite) ─────────
     '_obd':           {'code': _helper_obd, 'deps': [], 'helpers': []},
