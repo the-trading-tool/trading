@@ -157,21 +157,47 @@ class Headlines(tt.TickerTools):
         # Fall back to a plain string ticker if that is what was passed in.
         return self.ticker if isinstance(self.ticker, str) else ''
 
+    def _current_sim_dbs(self):
+        """Simulation databases that can hold an up-to-date row, newest-first order
+        irrelevant (the caller compares dates).
+
+        Discovered instead of hardcoded: group runs write their own file —
+        ASSET_PERFORMANCE_ETP scores the 3219 ETPs into asset_simulation_etp.db —
+        and a fixed pair of names silently served whatever stale row the main DB
+        still had. JEGA.DE showed support/resistance of 25.99/26.65 from
+        2026-06-17 next to a live price of 28.54.
+
+        Year files (asset_simulation_2024.db) are pure history and can never be
+        the newest row, so they are skipped rather than queried.
+        """
+        import glob
+        import re
+        year_db = re.compile(r'^asset_simulation_\d{4}\.db$', re.IGNORECASE)
+        try:
+            base = os.path.dirname(self.get_path(path='database',
+                                                 file_name='asset_simulation_.db'))
+            names = [os.path.basename(p)
+                     for p in glob.glob(os.path.join(base, 'asset_simulation_*.db'))]
+        except Exception:
+            return ['asset_simulation_.db', 'asset_simulation_all.db']
+        current = sorted(n for n in names if not year_db.match(n))
+        return current or ['asset_simulation_.db']
+
     def _load_signal_row(self, symbol):
         """Latest simulation row for *symbol* as a plain dict.
 
-        Both asset_simulation_.db (current year) and asset_simulation_all.db are
-        read and the NEWER row wins; on the same date the current-year DB is kept.
-        Taking the first DB that had any row showed stale values for tickers that
-        left their index: the daily run no longer scores them in the year DB
-        (AAD.DE stopped on 2026-08-07, 106 tickers > 7 days behind), so stop-loss
-        and take-profit were computed from a close weeks old -- a stop of 18.67
-        above a price of 17.72. Returns {} when nothing is available.
+        Every current simulation DB is read and the NEWER row wins. Taking the
+        first DB that had any row showed stale values for tickers that left their
+        index: the daily run no longer scores them in the year DB (AAD.DE stopped
+        on 2026-08-07, 106 tickers > 7 days behind), so stop-loss and take-profit
+        were computed from a close weeks old -- a stop of 18.67 above a price of
+        17.72. The same happened to every ETP once group runs got their own file.
+        Returns {} when nothing is available.
         """
         if not symbol:
             return {}
         best, best_src = None, None
-        for fname in ('asset_simulation_.db', 'asset_simulation_all.db'):
+        for fname in self._current_sim_dbs():
             try:
                 path = self.get_path(path='database', file_name=fname)
                 if not os.path.exists(path):
