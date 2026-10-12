@@ -37,27 +37,45 @@ def _get_atr_for_own_trades(ticker: str, db_path: str = 'database') -> tuple:
     the ticker's listing currency (GBp/pence on the LSE, USD in New York).
     """
     import os
+    import sqlite3
     from tradinglib.tools import Tools
-    candidates = ['asset_simulation_.db'] + [
-        f'asset_simulation_{y}.db' for y in range(dt.datetime.now().year, dt.datetime.now().year - 4, -1)
-    ] + ['asset_simulation_all.db']
-    for fname in candidates:
+    from tradinglib.utils import current_sim_dbs
+
+    def _atr_from(fname):
+        """(Date, atr, currency) of the newest row for the ticker, or None."""
         full = Tools().get_path(path=db_path, file_name=fname)
-        if os.path.exists(full) and os.path.getsize(full) > 4096:
-            # All simulation DBs store their data in a single table named
-            # 'asset_simulation' (no filename-derived suffix).
-            try:
-                import sqlite3
-                with sqlite3.connect(full) as conn:
-                    row = conn.execute(
-                        "SELECT atr, currency FROM asset_simulation WHERE ticker=? "
-                        "ORDER BY date DESC LIMIT 1",
-                        (ticker,)
-                    ).fetchone()
-                if row and row[0]:
-                    return float(row[0]), str(row[1] or '')
-            except Exception:
-                pass
+        if not (os.path.exists(full) and os.path.getsize(full) > 4096):
+            return None
+        # All simulation DBs store their data in a single table named
+        # 'asset_simulation' (no filename-derived suffix).
+        try:
+            with sqlite3.connect(f'file:{full}?mode=ro', uri=True) as conn:
+                return conn.execute(
+                    "SELECT Date, atr, currency FROM asset_simulation WHERE ticker=? "
+                    "ORDER BY Date DESC LIMIT 1",
+                    (ticker,)
+                ).fetchone()
+        except Exception:
+            return None
+
+    # Among the current DBs the NEWEST row wins, not the first file that happens
+    # to hold one: a ticker scored by a group run (ETPs land in
+    # asset_simulation_etp.db) usually also has a months-old leftover in the main
+    # DB, and that stale row would otherwise set the trailing stop.
+    best = None
+    for fname in current_sim_dbs(db_path):
+        row = _atr_from(fname)
+        if row and row[1] and (best is None or str(row[0]) > str(best[0])):
+            best = row
+    if best:
+        return float(best[1]), str(best[2] or '')
+
+    # Only when no current DB knows the ticker: fall back through the year files
+    # (newest first). An ATR this old is a poor stop basis, but better than none.
+    for y in range(dt.datetime.now().year, dt.datetime.now().year - 4, -1):
+        row = _atr_from(f'asset_simulation_{y}.db')
+        if row and row[1]:
+            return float(row[1]), str(row[2] or '')
     return 0.0, ''
 
 

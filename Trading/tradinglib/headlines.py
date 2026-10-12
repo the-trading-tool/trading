@@ -170,18 +170,8 @@ class Headlines(tt.TickerTools):
         Year files (asset_simulation_2024.db) are pure history and can never be
         the newest row, so they are skipped rather than queried.
         """
-        import glob
-        import re
-        year_db = re.compile(r'^asset_simulation_\d{4}\.db$', re.IGNORECASE)
-        try:
-            base = os.path.dirname(self.get_path(path='database',
-                                                 file_name='asset_simulation_.db'))
-            names = [os.path.basename(p)
-                     for p in glob.glob(os.path.join(base, 'asset_simulation_*.db'))]
-        except Exception:
-            return ['asset_simulation_.db', 'asset_simulation_all.db']
-        current = sorted(n for n in names if not year_db.match(n))
-        return current or ['asset_simulation_.db']
+        from tradinglib.utils import current_sim_dbs
+        return current_sim_dbs('database')
 
     def _load_signal_row(self, symbol):
         """Latest simulation row for *symbol* as a plain dict.

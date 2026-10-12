@@ -1,5 +1,7 @@
 import sqlite3
 import os
+import re
+import glob
 from io import BytesIO
 import numpy as np
 import pandas as pd
@@ -712,5 +714,40 @@ def get_display_name(row, name_col: str = 'longName', fallback_col: str = 'short
         return ''
 
 
-__all__ = ["DataUtils", "get_display_name", "display_name_sql"]
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Simulation database discovery
+# ─────────────────────────────────────────────────────────────────────────────
+
+_YEAR_SIM_DB = re.compile(r'^asset_simulation_\d{4}\.db$', re.IGNORECASE)
+
+
+def current_sim_dbs(db_path: str = 'database') -> list:
+    """Filenames of the simulation DBs that can hold an up-to-date row.
+
+    Discovered rather than hardcoded: group runs write their own file —
+    ASSET_PERFORMANCE_ETP scores the ETPs into asset_simulation_etp.db — and a
+    fixed list silently served whatever stale row the main DB still had.
+
+    Year files (asset_simulation_2024.db) are pure history and can never be the
+    newest row, so they are left out; callers that want them as a last resort
+    add them deliberately.
+
+    Callers must still compare dates across the returned files: having several
+    current sources is exactly why "first file that has a row" is wrong.
+    """
+    from tradinglib.tools import Tools
+    try:
+        base = os.path.dirname(Tools().get_path(path=db_path,
+                                                file_name='asset_simulation_.db'))
+        names = [os.path.basename(p)
+                 for p in glob.glob(os.path.join(base, 'asset_simulation_*.db'))]
+    except Exception as e:
+        logger.debug('Simulation DB discovery failed: %s', e)
+        return ['asset_simulation_.db', 'asset_simulation_all.db']
+    current = sorted(n for n in names if not _YEAR_SIM_DB.match(n))
+    return current or ['asset_simulation_.db']
+
+__all__ = ["DataUtils", "get_display_name", "display_name_sql", "current_sim_dbs"]
