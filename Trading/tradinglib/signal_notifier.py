@@ -77,7 +77,23 @@ def _load_sells(date_str: str) -> pd.DataFrame:
         db.conn.close()
 
 
-_SIM_DBS = ("asset_simulation_.db", "asset_simulation_all.db")
+_MAIN_SIM_DB = "asset_simulation_.db"
+
+
+def _sim_dbs() -> tuple:
+    """Simulation DBs to consult, main DB first.
+
+    The order here is deliberately NOT recency: stop-loss and take-profit have
+    to come from the DB the strategy actually traded on, so asset_simulation_.db
+    keeps priority and the first hit wins (see _load_sim). Group files such as
+    asset_simulation_etp.db are appended rather than hardcoded, so a ticker
+    scored only by a group run is found at all instead of silently yielding no
+    stop. Appending cannot change the pick for tickers the main DB knows.
+    """
+    from tradinglib.utils import current_sim_dbs
+    names = list(current_sim_dbs(_DB_PATH))
+    rest = [n for n in names if n != _MAIN_SIM_DB]
+    return tuple(([_MAIN_SIM_DB] if _MAIN_SIM_DB in names else []) + rest)
 
 
 def _load_sim(ticker: str, buy_date: str = "") -> dict:
@@ -89,10 +105,10 @@ def _load_sim(ticker: str, buy_date: str = "") -> dict:
     (the /all run happens later): of 163 buys since June every stop came from a
     row 1-4 days older, 16 were more than 5 % off and 5 lay ABOVE the buy price.
 
-    Order: exact buy date in asset_simulation_.db (the DB the multi strategies
-    trade on), then in asset_simulation_all.db, then the newest row on or before
-    the buy date. Values are in the ticker's NATIVE currency (e.g. GBp); the
-    currency column is returned so the message can convert them.
+    Order: exact buy date across the simulation DBs (see _sim_dbs — the DB the
+    multi strategies trade on first), then the newest row on or before the buy
+    date in the same order. Values are in the ticker's NATIVE currency (e.g.
+    GBp); the currency column is returned so the message can convert them.
     """
     day = str(buy_date or "")[:10]
     queries = []
@@ -106,7 +122,7 @@ def _load_sim(ticker: str, buy_date: str = "") -> dict:
         queries.append(("SELECT stop_loss, take_profit, currency FROM asset_simulation "
                         "WHERE ticker = ? ORDER BY Date DESC LIMIT 1", (ticker,)))
     for sql, params in queries:
-        for fname in _SIM_DBS:
+        for fname in _sim_dbs():
             db = tools.Db_tools(db_path=_DB_PATH, database_name=fname)
             try:
                 df = pd.read_sql_query(sql, db.conn, params=params)
