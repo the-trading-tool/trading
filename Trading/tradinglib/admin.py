@@ -2049,7 +2049,7 @@ class Admin():
             _sq = _pse._load_query(self.username, 'sell_query')
             if _bq or _sq:
                 try:
-                    _exp['buy_query / sell_query'] = {'pine': _pse.export_strategy('buy_query', _bq, _sq, signal_window=_pse._query_window(self.username), rules=_pse.rules_for({}, self.username, source='globale Einstellungen'))}
+                    _exp['buy_query / sell_query'] = {'pine': _pse.export_strategy('buy_query', _bq, _sq, signal_window=_pse._query_window(self.username), params=_pse.chart_params(self.username), rules=_pse.rules_for({}, self.username, source='globale Einstellungen'))}
                 except _pse.StrategyExportError as _e:
                     _exp['buy_query / sell_query'] = {'error': str(_e)}
             if not _exp:

@@ -65,7 +65,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <h3>Strategy export (Multi Strategies)</h3>
 <ul>
-  <li><b>Parameters as in the backtest:</b> the strategies trade on the stored columns, which <code>asset_perf2</code> computes with the indicators' default values. The export therefore uses those defaults, not the chart settings from the ⚙ dialog.</li>
+  <li><b>Parameters as in the backtest:</b> the strategies trade on the stored columns, which <code>asset_perf2</code> computes with the indicators' default values. The export therefore uses those defaults, not the chart settings from the ⚙ dialog. The exception is the Order Block Detector: it is not stored in the backtest and only runs in the chart, so <code>obd_*</code> columns use your ⚙ settings, such as the minimum weight.</li>
   <li><b>Multi-line formulas:</b> each line is its own condition, and all of them are combined with <i>and</i>. With <code>signal_window</code> &gt; 1, each line must have been true within the last N bars, as in the app.</li>
   <li><b>ATC:</b> causal as in the app, with the channel over the last 252 bars on each bar. All columns (<code>atc_mid/top/bot/width_high|low|zero</code>) are available.</li>
   <li><b>trendScore:</b> distance to the record high, mapped through the calibrated breakpoints. TradingView only knows the loaded history, so on short charts the record high is too low.</li>

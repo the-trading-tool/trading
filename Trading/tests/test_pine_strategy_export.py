@@ -277,3 +277,20 @@ def test_atc_overlay_vorlage_folgt_der_konfiguration():
     assert 'if show_atc and barstate.islast' in s
     assert 'atc_reg(' not in s and 'math.min(499' not in s       # old 500-bar anchor search gone
     assert s.count('atc_draw(') == 4                             # definition + three channels
+
+
+def test_obd_im_strategie_export_nutzt_die_chart_einstellungen(monkeypatch):
+    """obd has no stored backtest columns, so the chart's ⚙ settings apply."""
+    import json
+    cfg = {'plugin_params:obd': json.dumps({'ob_min_weight': 34, 'ob_periods': 4, 'use_wicks': 'true'}),
+           'plugin_params:rsi': json.dumps({'lookback': 21})}
+    monkeypatch.setattr(pse, '_config_value', lambda user, key: cfg.get(key))
+    params = pse.chart_params('kurt')
+    assert params == {'obd': {'ob_min_weight': 34, 'ob_periods': 4, 'use_wicks': 'true'}}
+    s = pse.export_strategy('o', '(close > obd_bull_top) & (rsi > 50)', '(rsi < 30)', params=params)
+    assert 'xobd_min_w  = 34.0' in s and 'xobd_p      = 4' in s and 'xobd_wicks  = true' in s
+    assert 'rsi = ta.rsi(close, 8)' in s           # stored indicators keep the backtest defaults
+    # without a user: class defaults
+    assert 'xobd_min_w  = 0.0' in pse.export_strategy('o', '(close > obd_bull_top)', '(rsi < 30)')
+    tx = {'S': {'^SPX': {'buy': '(close > obd_bull_top)', 'sell': '(rsi < 30)'}}}
+    assert 'xobd_min_w  = 34.0' in pse.export_from_config(tx, username='kurt')['S']['pine']

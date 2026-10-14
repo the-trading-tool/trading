@@ -19,6 +19,8 @@ import re
 # sie mit den Standardparametern der Indikator-Klassen (kein params_map). Die
 # Chart-Einstellungen aus dem ⚙-Dialog gelten dort NICHT — deshalb werden hier
 # die Klassen-Defaults gelesen, nicht die plugin_params.
+# Ausnahme: Indikatoren ohne gespeicherte Backtest-Spalten (obd) laufen nur im
+# Chart -- dort gelten die ⚙-Einstellungen (_CHART_PARAM_BLOCKS).
 _FALLBACK = {
     'ewo':    {'short_window': 5, 'long_window': 21, 'ema_span': 9,
                'wave_atr_mult': 3.0, 'require_ewo_peak': True,
@@ -255,10 +257,19 @@ def _helper_elliott() -> str:
     )
 
 
-def _helper_obd() -> str:
-    """Order Block Detector columns, shared with pine_exporter._obd_core."""
+def _helper_obd(params: dict | None = None) -> str:
+    """Order Block Detector columns, shared with pine_exporter._obd_core.
+
+    Unlike the stored indicators, obd has no backtest columns (asset_perf2 does
+    not compute it) — its formulas only ever run in the chart. The chart's ⚙
+    settings (*params*) are therefore the reference here, e.g. the minimum
+    weight; the class defaults only fill what is not set.
+    """
     from tradinglib.pine_exporter import _obd_core
-    p = _defaults('obd')
+    p = {**_defaults('obd'), **{k: v for k, v in (params or {}).items()
+                                if k in _FALLBACK['obd'] and v is not None}}
+    if isinstance(p['use_wicks'], str):
+        p['use_wicks'] = p['use_wicks'].strip().lower() in ('1', 'true', 'yes', 'ja')
     ref = float(p['ob_weight_ref']) or 3.0
     return (
         f"xobd_p      = {int(p['ob_periods'])}\n"
@@ -444,8 +455,33 @@ def _translate_expr(expr: str) -> str:
     return re.sub(r'\s+', ' ', e).strip()
 
 
-def _resolve(cols: set[str]) -> tuple[list[str], list[str]]:
-    """Return (helper_blocks, def_blocks) in korrekter Reihenfolge, dedupliziert."""
+# Blocks without stored backtest columns: their reference is the chart, so they
+# are rendered with the user's ⚙ params (block -> indicator).
+_CHART_PARAM_BLOCKS = {'_obd': 'obd'}
+
+
+def chart_params(username: str | None) -> dict:
+    """The user's ⚙ params for the indicators in _CHART_PARAM_BLOCKS."""
+    import json
+    out = {}
+    if not username:
+        return out
+    for ind in set(_CHART_PARAM_BLOCKS.values()):
+        try:
+            raw = _config_value(username, f'plugin_params:{ind}')
+            val = json.loads(raw) if raw else {}
+            if isinstance(val, dict):
+                out[ind] = val
+        except Exception:
+            pass
+    return out
+
+
+def _resolve(cols: set[str], params: dict | None = None) -> tuple[list[str], list[str]]:
+    """Return (helper_blocks, def_blocks) in korrekter Reihenfolge, dedupliziert.
+
+    *params* = chart_params(): ⚙ settings for the blocks in _CHART_PARAM_BLOCKS.
+    """
     def_blocks: list[str] = []
     helper_keys: list[str] = []
     done: set[str] = set()
@@ -462,7 +498,8 @@ def _resolve(cols: set[str]) -> tuple[list[str], list[str]]:
         done.add(col)
         code = spec['code']
         if callable(code):
-            code = code()
+            ind = _CHART_PARAM_BLOCKS.get(col)
+            code = code((params or {}).get(ind)) if ind else code()
         if code is not None:
             def_blocks.append(code)
 
@@ -612,6 +649,7 @@ if not r_in_pos and not r_exited_now and longCond and not exitCond and r_cool_ok
 
 
 def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1,
+                    params: dict | None = None,
                     rules: dict | None = None) -> str:
     """Vollständiges Pine-`strategy()`-Skript für eine Buy/Sell-Formel.
 
@@ -633,7 +671,7 @@ def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1,
     if unknown:
         raise StrategyExportError(f'{name}: unbekannte Spalten {sorted(unknown)}')
 
-    helper_blocks, def_blocks = _resolve(cols)
+    helper_blocks, def_blocks = _resolve(cols, params)
     helpers = ('\n\n'.join(helper_blocks) + '\n\n') if helper_blocks else ''
     body = '\n\n'.join(def_blocks)
     window = int(signal_window or 1)
@@ -731,12 +769,14 @@ def export_from_config(transactions: dict, username: str | None = None) -> dict:
     Returns {strategy_name: {'pine': str} | {'error': str}}.
     """
     result: dict[str, dict] = {}
+    cparams = chart_params(username)
     for strat, idxs in transactions.items():
         if not idxs:
             continue
         first_idx, first = next(iter(idxs.items()))
         try:
             pine = export_strategy(strat, first.get('buy', ''), first.get('sell', ''),
+                                   params=cparams,
                                    signal_window=first.get('signal_window') or 1,
                                    rules=rules_for(first, username, source=f'Regeln von {first_idx}'))
             differs = any(tuple(e.get(k) for k in _RULE_KEYS) != tuple(first.get(k) for k in _RULE_KEYS)
@@ -838,7 +878,7 @@ def main(argv=None) -> int:
     buy, sell = _load_query(user, 'buy_query'), _load_query(user, 'sell_query')
     if buy or sell:
         try:
-            _emit('buy_query', export_strategy('buy_query', buy, sell,
+            _emit('buy_query', export_strategy('buy_query', buy, sell, params=chart_params(user),
                                                signal_window=_query_window(user),
                                                rules=rules_for({}, user, source='globale Einstellungen')), None)
         except StrategyExportError as e:
