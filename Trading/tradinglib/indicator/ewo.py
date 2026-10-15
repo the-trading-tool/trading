@@ -37,6 +37,10 @@ class Ewo(_indicator._Indicator):
 		'allow_truncation': {'type': 'bool',  'default': False, 'label': 'Elliott waves: allow truncated wave 5'},
 		'wave_ewo_basis':   {'type': 'select', 'default': 'ewo', 'options': ['ewo', 'joseph_5_35'],
 		                     'label': 'Elliott waves: EWO for the wave rules (joseph_5_35 = SMA 5/35 of (High+Low)/2)'},
+		'max_w2_retrace':   {'type': 'float', 'default': 0.9,   'min': 0.5, 'max': 1.0, 'step': 0.05,
+		                     'label': 'Elliott waves: max. wave 2 retracement of wave 1 (1.0 = rule only)'},
+		'prefer_ewo_direction': {'type': 'bool', 'default': True,
+		                     'label': 'Elliott waves: on competing counts prefer the EWO direction'},
 		'wave_atr_mult':    {'type': 'float', 'default': 3.0,   'min': 1.0, 'max': 10.0, 'step': 0.5,
 		                     'label': 'Elliott waves: pivot reversal (x ATR)'},
 	}
@@ -44,7 +48,7 @@ class Ewo(_indicator._Indicator):
 	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01,
 				 show_waves=False, show_abc=True, show_pending=True, require_ewo_peak=True,
 				 wave_atr_mult=3.0, require_w4_ewo_zero=False, allow_truncation=False,
-				 wave_ewo_basis='ewo'):
+				 wave_ewo_basis='ewo', max_w2_retrace=0.9, prefer_ewo_direction=True):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.short_window = short_window
 		self.long_window = long_window
@@ -58,6 +62,8 @@ class Ewo(_indicator._Indicator):
 		self.require_w4_ewo_zero = bool(require_w4_ewo_zero)
 		self.allow_truncation = bool(allow_truncation)
 		self.wave_ewo_basis = str(wave_ewo_basis or 'ewo')
+		self.max_w2_retrace = float(max_w2_retrace)
+		self.prefer_ewo_direction = bool(prefer_ewo_direction)
 		self.wave_labels = []
 		super().__init__(df=df, symbol=symbol)
 
@@ -151,7 +157,9 @@ class Ewo(_indicator._Indicator):
 											mult=self.wave_atr_mult,
 											require_ewo_peak=self.require_ewo_peak,
 											allow_truncation=self.allow_truncation,
-											require_w4_ewo_zero=self.require_w4_ewo_zero)
+											require_w4_ewo_zero=self.require_w4_ewo_zero,
+											max_w2_retrace=self.max_w2_retrace,
+											prefer_ewo_direction=self.prefer_ewo_direction)
 		except (KeyError, ValueError, TypeError):
 			self.df['ewo_wave'] = 0
 			return
@@ -170,8 +178,13 @@ class Ewo(_indicator._Indicator):
 		if not self.show_waves or not self.wave_labels or 'Date' not in self.df.columns:
 			return
 		ewo_by_date = dict(zip(self.df['Date'], self.df['ewo']))
+		# Pivots that sit a few bars apart would print their labels on top of
+		# each other; crowded ones step sideways instead.
+		min_gap = max(3, int(len(self.df) * 0.02))
+		side = ['center', 'right', 'left']
 		groups = {}
-		for lb in self.wave_labels:
+		last_i, crowd = None, 0
+		for lb in sorted(self.wave_labels, key=lambda x: x['i']):
 			if lb['group'] == 'abc' and not self.show_abc:
 				continue
 			if lb['state'] != 'done' and not self.show_pending:
@@ -179,14 +192,22 @@ class Ewo(_indicator._Indicator):
 			y = ewo_by_date.get(lb['date'])
 			if y is None or y != y:
 				continue
+			crowd = crowd + 1 if (last_i is not None and lb['i'] - last_i < min_gap) else 0
+			last_i = lb['i']
 			color = WAVE_COLORS['running'] if lb['state'] != 'done' else WAVE_COLORS[lb['group']]
-			pos = 'top center' if lb['kind'] > 0 else 'bottom center'
+			pos = f"{'top' if lb['kind'] > 0 else 'bottom'} {side[crowd % len(side)]}"
 			g = groups.setdefault((color, pos), {'x': [], 'y': [], 't': [], 'h': []})
 			g['x'].append(lb['date'])
 			g['y'].append(y)
 			g['t'].append(f"<b>{lb['text']}</b>")
-			form = lb.get('form')
-			g['h'].append(f"{lb['text']} ({form})" if form else lb['text'])
+			# Hover carries the pivot price: in the oscillator panel the label
+			# sits on the EWO line, so which price swing it means is not visible.
+			parts = [lb['text']]
+			if lb.get('price') is not None:
+				parts.append(f"{lb['price']:,.2f}")
+			if lb.get('form'):
+				parts.append(lb['form'])
+			g['h'].append(' · '.join(parts))
 		for (color, pos), g in groups.items():
 			self.fig.add_trace(
 				go.Scatter(x=g['x'], y=g['y'], text=g['t'],

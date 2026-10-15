@@ -189,3 +189,66 @@ def test_new_options_keep_the_wave_column_causal(df):
     for cut in range(40, len(df), 7):
         part = Ewo(df.iloc[:cut], **kw).df['ewo_wave'].to_numpy()
         assert np.array_equal(part, full[:cut]), cut
+
+
+# --- reading selection and label placement (2026-10-15) -----------------------
+
+def test_deep_wave_2_is_rejected_by_the_guideline():
+    # Wave 2 gives back 92 % of wave 1: rule-conforming, but read as a count it
+    # claims the whole move up was merely a correction.
+    points = LEAD + [(50, 130), (70, 102.4), (100, 190), (112, 165), (132, 200),
+                     (144, 175), (154, 188), (168, 150), (182, 175)]
+    assert [t for t, _ in done(Ewo(make_df(points))) if t.isdigit()] == []
+    loose = [t for t, _ in done(Ewo(make_df(points), max_w2_retrace=1.0)) if t.isdigit()]
+    assert loose == ['1', '2', '3', '4', '5']
+
+
+def test_running_count_is_labelled_only_from_wave_3():
+    # Up to the second pivot nothing is drawn; wave 3 confirmed -> labels.
+    df = make_df(TEXTBOOK)
+    two = Ewo(df.iloc[:80])          # 1 and 2 confirmed
+    assert [lb['text'] for lb in two.wave_labels if lb['state'] == 'running'] == []
+    three = Ewo(df.iloc[:100])       # wave 3 confirmed
+    assert [lb['text'] for lb in three.wave_labels if lb['state'] == 'running'] == ['1', '2', '3']
+
+
+def pivot(i, price, kind):
+    return {'i': i, 'c': i + 2, 'price': price, 'kind': kind}
+
+
+def test_competing_counts_follow_the_ewo_direction():
+    # Same pivots, two readings: down 1-2-3 starting at the high (3 pivots) and
+    # up 1-2 starting at the low (2 pivots). The longer one is counter-trend by
+    # construction, so the EWO sign decides.
+    pv = [pivot(10, 150, 1), pivot(30, 110, -1), pivot(50, 140, 1)]
+    n = 60
+    rising, falling = np.full(n, 5.0), np.full(n, -5.0)
+    assert _elliott.count_waves(pv, n, rising)[0][-1] == 2        # up count wins
+    assert _elliott.count_waves(pv, n, falling)[0][-1] == -3      # down count wins
+    assert _elliott.count_waves(pv, n, rising, prefer_ewo_direction=False)[0][-1] == -3
+
+
+def test_ewo_direction_does_not_outvote_a_much_longer_count(df):
+    # The textbook count stays intact: the preference only applies within one
+    # pivot of the longest candidate.
+    assert [t for t, _ in done(Ewo(df))] == ['1', '2', '3', '4', '5', 'A', 'B', 'C']
+
+
+def test_labels_carry_the_pivot_price(df):
+    inst = Ewo(df, show_waves=True)
+    by_text = {lb['text']: lb for lb in inst.wave_labels}
+    assert round(by_text['3']['price'], 1) == round(df['High'].iloc[by_text['3']['i']], 1)
+    inst.add_fig()
+    hover = [h for tr in inst.fig.data if tr.name == 'Elliott' for h in tr.hovertext]
+    assert any(h.startswith('3 · ') for h in hover)
+    assert any('zigzag' in h for h in hover)
+
+
+def test_crowded_labels_step_sideways():
+    # A and B only a few bars apart must not print on the same spot.
+    points = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
+                     (128, 178), (132, 193), (150, 150), (165, 175)]
+    inst = Ewo(make_df(points), show_waves=True)
+    inst.add_fig()
+    positions = {tr.textposition for tr in inst.fig.data if tr.name == 'Elliott'}
+    assert len(positions) > 1

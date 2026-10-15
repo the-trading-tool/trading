@@ -19,6 +19,11 @@ Impulse, hard rules (a count is dropped as soon as one breaks):
   - wave 5 goes beyond the end of wave 3 — unless ``allow_truncation``: the
     rulebook allows a truncated fifth, but without sub-wave analysis it cannot be
     told apart from any small bounce after wave 4, hence opt-in.
+Impulse, guideline on top (``max_w2_retrace``, 1.0 switches it off):
+  - wave 2 gives back at most that fraction of wave 1. The rule alone allows
+    anything short of 100 %, where a count reads as "the whole move up was just
+    a correction" — measured over real counts, a wave 2 deeper than 90 % is the
+    rare exception (15 %), and the usual range is 50-78.6 %.
 EWO guidelines after Tom Joseph (optional):
   - ``require_ewo_peak``: the EWO extreme of wave 3 is at least as large as those
     of waves 1 and 5 (wave 5 therefore shows the classic divergence)
@@ -36,7 +41,11 @@ Correction after the impulse (B measured as retracement of A):
   sub-waves are not checked — one degree per ATR multiple.
 
 A count is one rule-conforming reading, not "the" count — Elliott counts are
-ambiguous by nature. ``wave`` per bar only uses pivots confirmed up to that bar,
+ambiguous by nature. Where several readings compete, ``prefer_ewo_direction``
+picks the one that agrees with the EWO (see ``_pick``), and an unfinished count
+is only labelled once wave 3 is confirmed (``MIN_RUNNING_WAVES``).
+
+``wave`` per bar only uses pivots confirmed up to that bar,
 so the column is safe for buy/sell formulas and backtests; the chart labels sit
 on the extreme bars and are hindsight, like every zigzag leg.
 
@@ -51,6 +60,7 @@ MAX_CANDIDATES = 12
 ABC = ('A', 'B', 'C')
 FLAT_B_MIN = 0.9      # Frost/Prechter: in a flat, B retraces at least 90 % of A
 FLAT_B_MAX = 1.382    # guideline ceiling for the B wave of an expanded flat
+MIN_RUNNING_WAVES = 4  # label an unfinished count only once wave 3 is confirmed
 
 
 def atr(high, low, close, period=14) -> np.ndarray:
@@ -166,7 +176,12 @@ def _extends(cand, k, pv, ewo, opts):
     if m == 1:
         return s[1] > s[0]
     if m == 2:
-        return s[2] > s[0]
+        if s[2] <= s[0]:
+            return False
+        # Guideline on top of the rule: a wave 2 that gives almost everything
+        # back is usually a mislabelled trend reversal, not a correction.
+        span = s[1] - s[0]
+        return span <= 0 or (s[1] - s[2]) / span <= opts['max_w2_retrace']
     if m == 3:
         return s[3] > s[1]
     if m == 4:
@@ -191,7 +206,8 @@ def _extends(cand, k, pv, ewo, opts):
 
 
 def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
-                allow_truncation=False, require_w4_ewo_zero=False):
+                allow_truncation=False, require_w4_ewo_zero=False,
+                max_w2_retrace=0.9, prefer_ewo_direction=True):
     """Fit impulse + correction on confirmed pivots.
 
     Returns ``(wave, labels)``: ``wave`` is an int array of length ``n``;
@@ -203,14 +219,36 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
     """
     ewo = np.asarray(ewo, dtype=float)
     opts = {'require_ewo_peak': require_ewo_peak, 'allow_truncation': allow_truncation,
-            'require_w4_ewo_zero': require_w4_ewo_zero}
+            'require_w4_ewo_zero': require_w4_ewo_zero, 'max_w2_retrace': max_w2_retrace}
     wave = np.zeros(n, dtype=int)
     labels = []
     st = {'cands': [], 'corr': None}   # search candidates / correction in progress
 
     def _label(j, text, group, state, form=None):
         labels.append({'i': pv[j]['i'], 'text': text, 'kind': pv[j]['kind'],
-                       'group': group, 'state': state, 'form': form})
+                       'price': pv[j]['price'], 'group': group, 'state': state,
+                       'form': form})
+
+    def _pick(cands, sign):
+        """The candidate currently read as 'the' count, given the EWO sign.
+
+        A counter-trend reading is always one pivot ahead of the with-trend one:
+        it starts at the pivot before. Plain 'most pivots' therefore picks the
+        counter-trend count by construction after every new pivot. Among the
+        candidates within one pivot of the longest, the one whose direction
+        matches the EWO wins; length (then age) only breaks the tie. Candidates
+        further behind keep losing — a nearly complete impulse is not thrown
+        away over a sign flip.
+        """
+        if not cands:
+            return None
+        longest = max(len(c['idx']) for c in cands)
+        near = [c for c in cands if len(c['idx']) >= longest - 1]
+        if prefer_ewo_direction and sign:
+            agree = [c for c in near if c['dir'] * sign > 0]
+            if agree:
+                near = agree
+        return max(near, key=lambda c: len(c['idx']))   # first (oldest) on ties
 
     def _search(k):
         keep = []
@@ -265,19 +303,24 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
         else:
             _search(k)
 
-    def _state():
+    def _state(sign):
         corr = st['corr']
         if corr is not None:
             return corr['dir'] * (6 + len(corr['abc']))
-        if not st['cands']:
-            return 0
-        best = max(st['cands'], key=lambda c: len(c['idx']))   # first (oldest) on ties
-        return best['dir'] * len(best['idx'])
+        best = _pick(st['cands'], sign)
+        return best['dir'] * len(best['idx']) if best else 0
 
     for k, p in enumerate(pv):
         _feed(k)
         end = pv[k + 1]['c'] if k + 1 < len(pv) else n
-        wave[p['c']:end] = _state()
+        # The candidate set is fixed until the next pivot confirms, but the EWO
+        # keeps moving — so the reading is settled per bar, from that bar's EWO.
+        by_sign = {s: _state(s) for s in (-1, 0, 1)}
+        if len(set(by_sign.values())) == 1:
+            wave[p['c']:end] = by_sign[0]
+        else:
+            seg = np.sign(np.nan_to_num(ewo[p['c']:end])).astype(int)
+            wave[p['c']:end] = [by_sign[s] for s in seg]
 
     # Unfinished structure at the right edge.
     corr = st['corr']
@@ -286,23 +329,26 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
             _label(j, letter, 'abc', 'running', corr['form'])
         if pending is not None and len(corr['abc']) < 3:
             labels.append({'i': pending['i'], 'text': ABC[len(corr['abc'])] + '?',
-                           'kind': pending['kind'], 'group': 'abc', 'state': 'pending',
-                           'form': corr['form']})
-    elif st['cands']:
-        best = max(st['cands'], key=lambda c: len(c['idx']))
-        # Only a count with waves 1 and 2 confirmed says anything.
-        if len(best['idx']) >= 3:
+                           'kind': pending['kind'], 'price': pending['price'],
+                           'group': 'abc', 'state': 'pending', 'form': corr['form']})
+    else:
+        last = ewo[n - 1] if n else np.nan
+        best = _pick(st['cands'], int(np.sign(last)) if last == last else 0)
+        # A 1-2 reading flips with every new pivot; only label an unfinished
+        # count once wave 3 is confirmed.
+        if best is not None and len(best['idx']) >= MIN_RUNNING_WAVES:
             for w, j in enumerate(best['idx'][1:], start=1):
                 _label(j, str(w), 'impulse', 'running')
             if pending is not None:
                 labels.append({'i': pending['i'], 'text': f"{len(best['idx'])}?",
-                               'kind': pending['kind'], 'group': 'impulse', 'state': 'pending',
-                               'form': None})
+                               'kind': pending['kind'], 'price': pending['price'],
+                               'group': 'impulse', 'state': 'pending', 'form': None})
     return wave, labels
 
 
 def elliott(df, ewo, mult=3.0, require_ewo_peak=True, atr_period=14,
-            allow_truncation=False, require_w4_ewo_zero=False):
+            allow_truncation=False, require_w4_ewo_zero=False,
+            max_w2_retrace=0.9, prefer_ewo_direction=True):
     """Run pivots + count on a price frame. Returns ``(wave, labels)``."""
     close = pd.to_numeric(df['Close'], errors='coerce').to_numpy(dtype=float)
     high = pd.to_numeric(df['High'], errors='coerce').to_numpy(dtype=float) if 'High' in df else close
@@ -312,4 +358,6 @@ def elliott(df, ewo, mult=3.0, require_ewo_peak=True, atr_period=14,
     return count_waves(pv, len(close), np.asarray(ewo, dtype=float),
                        require_ewo_peak=require_ewo_peak, pending=pending,
                        allow_truncation=allow_truncation,
-                       require_w4_ewo_zero=require_w4_ewo_zero)
+                       require_w4_ewo_zero=require_w4_ewo_zero,
+                       max_w2_retrace=max_w2_retrace,
+                       prefer_ewo_direction=prefer_ewo_direction)
