@@ -298,7 +298,7 @@ JOBS = [
     ("22:45", "log_fear_greed.py",     "/quiet",                              WD,               "FEAR_GREED_LOG",              "",      "",            "", 1),
     ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:CRYPTO,COMMODITIES,METALS,CURRENCIES", "hours",   "YAHOO_H_DATA_GROUP",  "",      "",            "", 1),
     ("15",    "get_asset_data.py",     "1m:2d /group:CRYPTO,COMMODITIES,METALS,CURRENCIES",         "minutes", "YAHOO_M_DATA_GROUP",  "",      "",            "", 1),
-    ("1",     "get_asset_data.py",     "1m:2d 60m:2d /group:ETP /worker:4",   "hours",          "YAHOO_H_DATA_ETP",            "",      "",            "", 1),
+    ("18:30", "get_asset_data.py",     "1d:1mo 60m:2d 1m:2d /group:ETP /worker:4", WD,           "YAHOO_D_DATA_ETP",            "",      "",            "", 1),
     ("22:00", "asset_perf2.py",        "/all /add_current /silent /group:ETP", WD+",saturday",  "ASSET_PERFORMANCE_ETP",       "",      "",            "", 1),
     ("10:00", "get_asset_data.py",     "1m:5d 1mo:5y 60m:2y 1d:5y /all /group:ETP /worker:4",       "saturday", "YAHOO_W_ETP",        "",      "",            "", 1),
     ("10:30", "warm_market_stress.py", "",                                    WD+",saturday,sunday", "WARM_MARKET_STRESS",     "",      "",            "", 1),

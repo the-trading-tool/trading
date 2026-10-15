@@ -577,6 +577,28 @@ def collect_missing_dates(sim_db_path: str, tickers: list[str],
     return missing
 
 
+# Groups whose /all run goes to asset_simulation_etp.db. ETF is a subset of ETP
+# (all 9 members sit in both), so /group:ETP,ETF means the same run. Before,
+# only exactly ['ETP'] counted: the scheduler's "/all /group:ETP,ETF" silently
+# fell through to "all tickers except ETP" -- a second full _all.db run every
+# night, while the ETP simulation stopped being updated.
+ETP_GROUPS = frozenset({'ETP', 'ETF'})
+
+
+def is_etp_run(group) -> bool:
+    """True when an /all run with these groups is the ETP/ETF run."""
+    return bool(group) and set(group) <= ETP_GROUPS
+
+
+def etp_ticker_query(group) -> str:
+    """Members of the ETP/ETF groups named in *group* (uppercased names)."""
+    names = '","'.join(sorted(set(group)))
+    return ('SELECT s.Ticker FROM stocks s '
+            'JOIN stock_indices si ON s.id = si.stock_id '
+            'JOIN indices i ON si.index_id = i.id '
+            f'WHERE UPPER(i.name) IN ("{names}")')
+
+
 def _fmt_size(num_bytes: float) -> str:
     """Format a byte count for log output."""
     for unit in ('B', 'KB', 'MB'):
@@ -1557,7 +1579,7 @@ if __name__ == "__main__":
 
     db_table = "asset_simulation"
     if all:
-        sim_db_name = f"{db_table}_etp.db" if group == ['ETP'] else f"{db_table}_all.db"
+        sim_db_name = f"{db_table}_etp.db" if is_etp_run(group) else f"{db_table}_all.db"
     else:
         sim_db_name = f"{db_table}_{year}.db"
 
@@ -1676,12 +1698,9 @@ if __name__ == "__main__":
                 f'WHERE UPPER(i.name) IN ("{idx_sql}")'
             )
     if all:
-        if group == ['ETP']:
-            ticker_query = ('SELECT s.Ticker FROM stocks s '
-                             'JOIN stock_indices si ON s.id = si.stock_id '
-                             'JOIN indices i ON si.index_id = i.id '
-                             'WHERE UPPER(i.name) = "ETP"')
-            logger.info("Using all ETP tickers")
+        if is_etp_run(group):
+            ticker_query = etp_ticker_query(group)
+            logger.info("Using all %s tickers", "/".join(sorted(set(group))))
         else:
             ticker_query = ('SELECT Ticker FROM stocks WHERE id NOT IN ('
                              'SELECT si.stock_id FROM stock_indices si '

@@ -34,7 +34,7 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><td><code>/group:ETP</code></td><td>Only members of the named group(s); several comma-separated, e.g. <code>/group:METALS,COMMODITIES</code>. For separate runs of ETP, CRYPTO, CURRENCIES etc.</td></tr>
 <tr><td><code>/inverse</code></td><td>Only tickers assigned to <b>no</b> group (single names without index/group link).</td></tr>
 <tr><td><code>/all</code></td><td>All stocks and indices <b>except the ETP group</b>; writes to <code>asset_simulation_all.db</code>.</td></tr>
-<tr><td><code>/all /group:ETP</code></td><td>Only ETP members; writes to <code>asset_simulation_etp.db</code>. Runs independently of <code>/all</code> – its own expensive computation pass.</td></tr>
+<tr><td><code>/all /group:ETP</code></td><td>Only ETP members; writes to <code>asset_simulation_etp.db</code>. Runs independently of <code>/all</code> – its own expensive computation pass. <code>/group:ETF</code> and <code>/group:ETP,ETF</code> count as the ETP run too (the ETF group is part of ETP). Any other group with <code>/all</code> computes all tickers except ETP.</td></tr>
 <tr><td><code>/year:2024</code></td><td>Restrict the computation to one calendar year (snapshot/backtest).</td></tr>
 <tr><td><code>/worker:N</code></td><td>N parallel processes (ProcessPoolExecutor, CPU-heavy). On Windows automatically limited when unspecified (RAM per process).</td></tr>
 </table>
