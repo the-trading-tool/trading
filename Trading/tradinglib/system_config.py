@@ -684,10 +684,17 @@ class SystemConfig(tools.Db_tools):
 
     @st.dialog('Indicator Settings', width='large')
     def render_plugin_params(self, plugin_name: str, params_schema: dict):
-        """Render a dialog for editing and persisting per-indicator parameter overrides."""
+        """Render a dialog for editing and persisting per-indicator parameter overrides.
+
+        The widgets live in a form: a number typed into st.number_input is only
+        committed on Enter/blur, so a plain Save button next to it stored the
+        previous value on the first click. Inside a form every widget commits
+        with the submit button.
+        """
         st.write(f"**{plugin_name}**")
         current = self.get_plugin_params(plugin_name)
         new_params = {}
+        form = st.form(f"_plgparams_{plugin_name}")
 
         for key, spec in params_schema.items():
             # Explicit session-state key prevents Streamlit from resetting the widget value
@@ -713,11 +720,11 @@ class SystemConfig(tools.Db_tools):
                 raw = current.get(key, spec['default'])
                 if wk not in st.session_state:
                     st.session_state[wk] = raw if (isinstance(raw, str) and raw.startswith('#') and len(raw) == 7) else '#1E90FF'
-                new_params[key] = st.color_picker(spec['label'], key=wk)
+                new_params[key] = form.color_picker(spec['label'], key=wk)
             elif spec['type'] == 'bool':
-                new_params[key] = st.checkbox(spec['label'], key=wk)
+                new_params[key] = form.checkbox(spec['label'], key=wk)
             elif spec['type'] == 'int':
-                new_params[key] = st.number_input(
+                new_params[key] = form.number_input(
                     spec['label'],
                     min_value=spec.get('min', 1),
                     max_value=spec.get('max', 500),
@@ -725,7 +732,7 @@ class SystemConfig(tools.Db_tools):
                     key=wk,
                 )
             elif spec['type'] == 'float':
-                new_params[key] = st.number_input(
+                new_params[key] = form.number_input(
                     spec['label'],
                     min_value=float(spec['min']) if 'min' in spec else None,
                     max_value=float(spec['max']) if 'max' in spec else None,
@@ -734,9 +741,9 @@ class SystemConfig(tools.Db_tools):
                 )
             elif spec['type'] == 'select':
                 opts = spec.get('options', [])
-                new_params[key] = st.selectbox(spec['label'], opts, key=wk)
+                new_params[key] = form.selectbox(spec['label'], opts, key=wk)
 
-        if st.button("Save"):
+        if form.form_submit_button("Save"):
             self.set_plugin_params(plugin_name, new_params)
             # Clear session-state keys so the next dialog open loads freshly saved values from DB
             for k in params_schema:
