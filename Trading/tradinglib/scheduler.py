@@ -385,6 +385,29 @@ class Scheduler:
             for job in schedule.jobs:
                 self.write(str(job), stdout=True)
 
+    @staticmethod
+    def next_job_label(jobs=None) -> str:
+        """'dd.mm.yyyy HH:MM NAME' of the next due job(s); '' when nothing is planned.
+
+        Several jobs due at the same minute are listed together, so the line
+        shows everything that is about to start, not an arbitrary one of them.
+        """
+        jobs = list(schedule.jobs if jobs is None else jobs)
+        due = [j for j in jobs if getattr(j, 'next_run', None)]
+        if not due:
+            return ''
+        first = min(j.next_run for j in due)
+        minute = first.replace(second=0, microsecond=0)
+        names = []
+        for j in sorted(due, key=lambda j: j.next_run):
+            if j.next_run.replace(second=0, microsecond=0) != minute:
+                break
+            kw = getattr(j.job_func, 'keywords', None) or {}
+            name = kw.get('job_name') or getattr(j.job_func, '__name__', '?')
+            if name not in names:
+                names.append(name)
+        return f"{first.strftime('%d.%m.%Y %H:%M')} {', '.join(names)}"
+
     def run_next_n_jobs(self, conn, n):
         """Run up to n overdue jobs (sorted by next_run) when the process table has capacity."""
         now = datetime.now()
@@ -428,7 +451,7 @@ class Scheduler:
         while not self._stop_event.is_set():
             try:
                 with self.lock:
-                    self.write("Pending job@ " + schedule.next_run().strftime("%d.%m.%Y %H:%M"), stdout=True, printonly=True)
+                    self.write("Pending job@ " + self.next_job_label(), stdout=True, printonly=True)
                     max_jobs_to_run = 5
                     if len(self.load_processes_from_db(conn)) < max_jobs_to_run:
                         self.run_next_n_jobs(conn, max_jobs_to_run)
@@ -442,7 +465,7 @@ class Scheduler:
                 if not self.run_in_browser:
                     self.write('Standalone mode', stdout=True)
                     if schedule.next_run():
-                        self.write("Idle until: " + schedule.next_run().strftime("%d.%m.%Y %H:%M"), stdout=True)
+                        self.write("Idle until: " + self.next_job_label(), stdout=True)
                     self.write('Current jobs planned', stdout=True)
                     for job in schedule.jobs:
                         self.write(job, stdout=True)
