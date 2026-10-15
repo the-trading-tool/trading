@@ -34,11 +34,12 @@ Correction after the impulse (B measured as retracement of A):
   - zigzag (5-3-5): B retraces less than ``FLAT_B_MIN`` of A
   - flat (3-3-5): B retraces at least ``FLAT_B_MIN`` of A; an expanded flat may
     go beyond the start of A (= end of wave 5) up to ``FLAT_B_MAX``
-  - both: C ends beyond the end of A
-  A B beyond ``FLAT_B_MAX`` or a C short of A ends the correction reading; the
-  pivots from A on are recounted as a possible new impulse. Running flats,
-  truncated Cs, triangles, combinations and diagonals are not recognised, and
-  sub-waves are not checked — one degree per ATR multiple.
+  - C ends beyond the end of A — except in a running flat, where B went beyond
+    the start of A (``RUNNING_B_MIN``) and C then falls short of A
+  A B beyond ``FLAT_B_MAX``, or a C short of A outside a running flat, ends the
+  correction reading; the pivots from A on are recounted as a possible new
+  impulse. Truncated Cs of a zigzag, triangles, combinations and diagonals are
+  not recognised, and sub-waves are not checked — one degree per ATR multiple.
 
 A count is one rule-conforming reading, not "the" count — Elliott counts are
 ambiguous by nature. Where several readings compete, ``prefer_ewo_direction``
@@ -60,6 +61,7 @@ MAX_CANDIDATES = 12
 ABC = ('A', 'B', 'C')
 FLAT_B_MIN = 0.9      # Frost/Prechter: in a flat, B retraces at least 90 % of A
 FLAT_B_MAX = 1.382    # guideline ceiling for the B wave of an expanded flat
+RUNNING_B_MIN = 1.0   # a running flat needs B beyond the start of A
 MIN_RUNNING_WAVES = 4  # label an unfinished count only once wave 3 is confirmed
 
 
@@ -287,11 +289,17 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
                 _replay([abc[0], k])
                 return
             corr['form'] = 'flat' if ratio >= FLAT_B_MIN else 'zigzag'
+            corr['b_ratio'] = ratio
             abc.append(k)
             return
-        if s_k < s_a:                                       # C beyond the end of A
+        # C normally ends beyond the end of A. The exception is the running
+        # flat: B pushed beyond the start of A (= the end of wave 5) and C then
+        # falls short of A — strength that shows up as a shallow correction.
+        running = corr['form'] == 'flat' and corr.get('b_ratio', 0) > RUNNING_B_MIN
+        if s_k < s_a or running:
+            form = corr['form'] if s_k < s_a else 'running flat'
             for letter, j in zip(ABC, abc + [k]):
-                _label(j, letter, 'abc', 'done', corr['form'])
+                _label(j, letter, 'abc', 'done', form)
             st['corr'], st['cands'] = None, []
             _search(k)
         else:

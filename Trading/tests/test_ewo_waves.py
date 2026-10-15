@@ -252,3 +252,22 @@ def test_crowded_labels_step_sideways():
     inst.add_fig()
     positions = {tr.textposition for tr in inst.fig.data if tr.name == 'Elliott'}
     assert len(positions) > 1
+
+
+# --- running flat (2026-10-15) ------------------------------------------------
+
+def test_running_flat_is_recognised():
+    # B at 203 pushes past the end of wave 5 (200), C at 185 stops short of
+    # A (180): textbook running flat.
+    points = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
+                     (136, 180), (148, 203), (166, 185), (180, 195)]
+    assert done_forms(Ewo(make_df(points))) == [('A', 'running flat')] * 1 + \
+        [('B', 'running flat'), ('C', 'running flat')]
+
+
+def test_short_c_without_b_beyond_wave_5_stays_rejected():
+    # Same shape, but B at 199 never passes the end of wave 5 -> no running
+    # flat, and C short of A ends the reading.
+    points = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
+                     (136, 180), (148, 199), (166, 185), (180, 195)]
+    assert done_forms(Ewo(make_df(points))) == []
