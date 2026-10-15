@@ -63,3 +63,61 @@ def test_nichts_vorhanden(dbdir):
     _sim(dbdir / 'asset_simulation_.db', [])
     _sim(dbdir / 'asset_simulation_all.db', [])
     assert sn._load_sim('Z', '2026-09-12') == {}
+
+
+# --- Waehrung von Stop-Loss/Take-Profit (2026-10-15) --------------------------
+#
+# GS wurde als "Kurs: 785.24 EUR / Stop-Loss: 833.12 EUR" verschickt: der Kurs
+# aus trades.db in EUR, Stop und Ziel aber die USD-Zahlen aus asset_simulation
+# mit EUR-Label (833.12 USD = 743.14 EUR). Die Umrechnung im Notifier lief nie,
+# weil weder run_notifier noch die CLI system_currency uebergeben haben.
+
+BUY_ROW = {'ticker': 'GS', 'longName': 'The Goldman Sachs Group, Inc.',
+           'Strategy': 'Support/RSI', 'stockIndex': '^SPX', 'currency': 'EUR',
+           'buyPrice': 785.24, 'buyVolume': 2, 'buyValue': -1565.58}
+SIM_USD = {'stop_loss': 833.12, 'take_profit': 953.84, 'currency': 'USD'}
+
+
+def _lines(msg):
+    return {line.split(':', 1)[0]: line.split(':', 1)[1].strip()
+            for line in msg.splitlines() if ':' in line}
+
+
+def test_sl_tp_werden_in_die_systemwaehrung_umgerechnet(monkeypatch):
+    monkeypatch.setattr(sn.DataUtils, 'get_exchange_rate', lambda **kw: 1.1211)
+    out = _lines(sn._build_buy_message(BUY_ROW, SIM_USD, '', system_currency='EUR'))
+    assert out['Stop-Loss'] == '743.13 EUR'        # die App zeigt 743.14 bei ihrem Tageskurs
+    assert out['Take-Profit'] == '850.81 EUR'
+
+
+def test_ohne_umrechnung_steht_die_native_waehrung_dran(monkeypatch):
+    monkeypatch.setattr(sn.DataUtils, 'get_exchange_rate', lambda **kw: 0)
+    out = _lines(sn._build_buy_message(BUY_ROW, SIM_USD, '', system_currency='EUR'))
+    assert out['Stop-Loss'] == '833.12 USD'        # nie "833.12 EUR"
+
+
+def test_ohne_systemwaehrung_steht_die_native_waehrung_dran():
+    out = _lines(sn._build_buy_message(BUY_ROW, SIM_USD, '', system_currency=''))
+    assert out['Stop-Loss'] == '833.12 USD'
+
+
+def test_gleiche_waehrung_bleibt_unveraendert(monkeypatch):
+    monkeypatch.setattr(sn.DataUtils, 'get_exchange_rate',
+                        lambda **kw: pytest.fail('keine Umrechnung noetig'))
+    sim = {'stop_loss': 16.06, 'take_profit': 18.58, 'currency': 'EUR'}
+    out = _lines(sn._build_buy_message(BUY_ROW, sim, '', system_currency='EUR'))
+    assert out['Stop-Loss'] == '16.06 EUR'
+
+
+def _config(path, rows):
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE config (key TEXT, value TEXT)")
+        conn.executemany("INSERT INTO config VALUES (?,?)", rows)
+
+
+def test_systemwaehrung_kommt_aus_der_config(dbdir):
+    _config(dbdir / 'config.db', [('kurt:system_currency', '"EUR"'),
+                                  ('admin:system_currency', '"USD"')])
+    assert sn._system_currency('kurt') == 'EUR'
+    assert sn._system_currency('admin') == 'USD'
+    assert sn._system_currency('niemand') == ''

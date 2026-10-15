@@ -135,6 +135,27 @@ def _load_sim(ticker: str, buy_date: str = "") -> dict:
     return {}
 
 
+def _system_currency(username: str) -> str:
+    """System currency from config.db — read directly, no SystemConfig/Streamlit.
+
+    Nobody passed ``system_currency`` into run() (neither run_notifier nor the
+    CLI), so the SL/TP conversion below never ran while the label still fell
+    back to the trade's currency: GS was sent as "Stop-Loss: 833.12 EUR" with a
+    USD figure (= 743.14 EUR).
+    """
+    db = tools.Db_tools(db_path=_DB_PATH, database_name="config.db")
+    try:
+        for key in (f"{username}:system_currency", ":system_currency"):
+            df = pd.read_sql_query("SELECT value FROM config WHERE key = ?", db.conn, params=(key,))
+            if not df.empty and df.iloc[0]["value"]:
+                return str(df.iloc[0]["value"]).strip().strip('"')
+    except Exception as exc:
+        logger.debug("signal_notifier: system currency lookup failed: %s", exc)
+    finally:
+        db.conn.close()
+    return ""
+
+
 def _load_ai_text(ticker: str) -> str:
     """KI-Analysetext aus banner_notes.db (leer wenn nicht vorhanden)."""
     db = tools.Db_tools(db_path=_DB_PATH, database_name="banner_notes.db")
@@ -177,19 +198,29 @@ def _build_buy_message(row: dict, sim: dict, ai_text: str, system_currency: str 
     # falsch (AAF.L: 388 GBp mit EUR-Label statt 4,54 EUR). Daher auf die
     # Systemwährung umrechnen: price_system = price_native / rate (GBp->GBP*100
     # wird in get_exchange_rate intern behandelt).
+    # Without a conversion the figures keep their native label instead of
+    # borrowing the trade's currency — a USD stop must never read "EUR".
     sl = sim.get("stop_loss")
     tp = sim.get("take_profit")
     sim_ccy = str(sim.get("currency") or "")
-    if system_currency and sim_ccy and sim_ccy != system_currency:
-        try:
-            rate = DataUtils.get_exchange_rate(symbol=sim_ccy, system_currency=system_currency)
-            if rate:
-                if sl is not None:
-                    sl = float(sl) / rate
-                if tp is not None:
-                    tp = float(tp) / rate
-        except Exception:
-            logger.debug("signal_notifier: SL/TP fx conversion failed for %s", ticker, exc_info=True)
+    sl_label = sim_ccy or cur_label
+    if sim_ccy and system_currency:
+        if sim_ccy == system_currency:
+            sl_label = system_currency
+        else:
+            try:
+                rate = DataUtils.get_exchange_rate(symbol=sim_ccy, system_currency=system_currency)
+                if rate:
+                    if sl is not None:
+                        sl = float(sl) / rate
+                    if tp is not None:
+                        tp = float(tp) / rate
+                    sl_label = system_currency
+                else:
+                    logger.warning("signal_notifier: no %s->%s rate for %s — sending native values",
+                                   sim_ccy, system_currency, ticker)
+            except Exception:
+                logger.debug("signal_notifier: SL/TP fx conversion failed for %s", ticker, exc_info=True)
 
     lines = [
         f"{ticker}  {row.get('longName', ticker)}",
@@ -197,8 +228,8 @@ def _build_buy_message(row: dict, sim: dict, ai_text: str, system_currency: str 
         f"Index: {row.get('stockIndex', '')}",
         f"Kurs: {_fmt(row.get('buyPrice'))} {currency}",
         f"Volumen: {_fmt(row.get('buyVolume'), 0)}  Wert: {_fmt(row.get('buyValue'))} {currency}",
-        f"Stop-Loss: {_fmt(sl)} {cur_label}",
-        f"Take-Profit: {_fmt(tp)} {cur_label}",
+        f"Stop-Loss: {_fmt(sl)} {sl_label}",
+        f"Take-Profit: {_fmt(tp)} {sl_label}",
     ]
     if ai_text:
         summary = ai_text[:_AI_TEXT_LIMIT].rsplit(" ", 1)[0]
@@ -263,6 +294,7 @@ def run(username: str = "admin", date_str: str | None = None, force: bool = Fals
     Returns:
         (buy_count, sell_count) — Anzahl gesendeter Nachrichten
     """
+    system_currency = system_currency or _system_currency(username)
     if date_str is None:
         # Nicht dt.now() — die Signale tragen das Datum der letzten Kurskerze
         # (i. d. R. T-1). Fällt keine Ableitung an (leere DB), auf heute zurück.
