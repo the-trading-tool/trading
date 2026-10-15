@@ -271,3 +271,31 @@ def test_short_c_without_b_beyond_wave_5_stays_rejected():
     points = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
                      (136, 180), (148, 199), (166, 185), (180, 195)]
     assert done_forms(Ewo(make_df(points))) == []
+
+
+# --- truncated C (2026-10-15) -------------------------------------------------
+
+TRUNCATED_C = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
+                      (136, 170), (146, 190), (158, 174), (172, 192)]
+
+
+def test_truncated_c_is_off_by_default():
+    # C at 174 covers 80 % of the way from B (190) back to A (170) but never
+    # reaches it.
+    assert done_forms(Ewo(make_df(TRUNCATED_C))) == []
+
+
+def test_truncated_c_is_accepted_when_allowed():
+    forms = done_forms(Ewo(make_df(TRUNCATED_C), min_c_travel=0.75))
+    assert [t for t, _ in forms] == ['A', 'B', 'C']
+    assert all(f == 'zigzag, truncated C' for _, f in forms)
+
+
+def test_a_c_that_barely_moves_stays_rejected():
+    points = LEAD + [(50, 130), (62, 115), (92, 190), (104, 165), (124, 200),
+                     (136, 170), (146, 190), (158, 186), (172, 196)]
+    assert done_forms(Ewo(make_df(points), min_c_travel=0.75)) == []
+
+
+def test_full_c_keeps_its_plain_form(df):
+    assert done_forms(Ewo(df, min_c_travel=0.6)) == [('A', 'zigzag'), ('B', 'zigzag'), ('C', 'zigzag')]

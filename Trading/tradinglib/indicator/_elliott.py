@@ -36,10 +36,11 @@ Correction after the impulse (B measured as retracement of A):
     go beyond the start of A (= end of wave 5) up to ``FLAT_B_MAX``
   - C ends beyond the end of A — except in a running flat, where B went beyond
     the start of A (``RUNNING_B_MIN``) and C then falls short of A
-  A B beyond ``FLAT_B_MAX``, or a C short of A outside a running flat, ends the
+  - ``min_c_travel`` < 1.0 additionally accepts a truncated C of that depth,
+    measured from B towards A (1.0 = the strict rule, C must pass A)
+  A B beyond ``FLAT_B_MAX``, or a C too short for all of the above, ends the
   correction reading; the pivots from A on are recounted as a possible new
-  impulse. Truncated Cs of a zigzag, triangles, combinations and diagonals are
-  not recognised, and sub-waves are not checked — one degree per ATR multiple.
+  impulse. Triangles, combinations and diagonals are not recognised, and sub-waves are not checked — one degree per ATR multiple.
 
 A count is one rule-conforming reading, not "the" count — Elliott counts are
 ambiguous by nature. Where several readings compete, ``prefer_ewo_direction``
@@ -62,6 +63,7 @@ ABC = ('A', 'B', 'C')
 FLAT_B_MIN = 0.9      # Frost/Prechter: in a flat, B retraces at least 90 % of A
 FLAT_B_MAX = 1.382    # guideline ceiling for the B wave of an expanded flat
 RUNNING_B_MIN = 1.0   # a running flat needs B beyond the start of A
+MIN_C_TRAVEL = 1.0    # how far C must travel from B towards A (1.0 = past A)
 MIN_RUNNING_WAVES = 4  # label an unfinished count only once wave 3 is confirmed
 
 
@@ -209,7 +211,8 @@ def _extends(cand, k, pv, ewo, opts):
 
 def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
                 allow_truncation=False, require_w4_ewo_zero=False,
-                max_w2_retrace=0.9, prefer_ewo_direction=True):
+                max_w2_retrace=0.9, prefer_ewo_direction=True,
+                min_c_travel=MIN_C_TRAVEL):
     """Fit impulse + correction on confirmed pivots.
 
     Returns ``(wave, labels)``: ``wave`` is an int array of length ``n``;
@@ -292,12 +295,21 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
             corr['b_ratio'] = ratio
             abc.append(k)
             return
-        # C normally ends beyond the end of A. The exception is the running
-        # flat: B pushed beyond the start of A (= the end of wave 5) and C then
-        # falls short of A — strength that shows up as a shallow correction.
+        # C normally ends beyond the end of A. Two exceptions: the running flat,
+        # where B pushed beyond the start of A (= the end of wave 5) and C then
+        # falls short of A; and — only when ``min_c_travel`` is lowered — a
+        # truncated C, which covers most of the way from B to A but not all.
+        s_b = d * pv[abc[1]]['price']
+        span = s_b - s_a
+        travel = (s_b - s_k) / span if span else np.inf
         running = corr['form'] == 'flat' and corr.get('b_ratio', 0) > RUNNING_B_MIN
-        if s_k < s_a or running:
-            form = corr['form'] if s_k < s_a else 'running flat'
+        if s_k < s_a or running or travel >= min_c_travel:
+            if s_k < s_a:
+                form = corr['form']
+            elif running:
+                form = 'running flat'
+            else:
+                form = f"{corr['form']}, truncated C"
             for letter, j in zip(ABC, abc + [k]):
                 _label(j, letter, 'abc', 'done', form)
             st['corr'], st['cands'] = None, []
@@ -356,7 +368,8 @@ def count_waves(pv, n, ewo, require_ewo_peak=True, pending=None,
 
 def elliott(df, ewo, mult=3.0, require_ewo_peak=True, atr_period=14,
             allow_truncation=False, require_w4_ewo_zero=False,
-            max_w2_retrace=0.9, prefer_ewo_direction=True):
+            max_w2_retrace=0.9, prefer_ewo_direction=True,
+            min_c_travel=MIN_C_TRAVEL):
     """Run pivots + count on a price frame. Returns ``(wave, labels)``."""
     close = pd.to_numeric(df['Close'], errors='coerce').to_numpy(dtype=float)
     high = pd.to_numeric(df['High'], errors='coerce').to_numpy(dtype=float) if 'High' in df else close
@@ -368,4 +381,5 @@ def elliott(df, ewo, mult=3.0, require_ewo_peak=True, atr_period=14,
                        allow_truncation=allow_truncation,
                        require_w4_ewo_zero=require_w4_ewo_zero,
                        max_w2_retrace=max_w2_retrace,
-                       prefer_ewo_direction=prefer_ewo_direction)
+                       prefer_ewo_direction=prefer_ewo_direction,
+                       min_c_travel=min_c_travel)

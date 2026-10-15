@@ -41,6 +41,8 @@ class Ewo(_indicator._Indicator):
 		                     'label': 'Elliott waves: max. wave 2 retracement of wave 1 (1.0 = rule only)'},
 		'prefer_ewo_direction': {'type': 'bool', 'default': True,
 		                     'label': 'Elliott waves: on competing counts prefer the EWO direction'},
+		'min_c_travel':     {'type': 'float', 'default': 1.0,   'min': 0.5, 'max': 1.0, 'step': 0.05,
+		                     'label': 'Elliott waves: min. C travel from B towards A (1.0 = C must pass A)'},
 		'wave_atr_mult':    {'type': 'float', 'default': 3.0,   'min': 1.0, 'max': 10.0, 'step': 0.5,
 		                     'label': 'Elliott waves: pivot reversal (x ATR)'},
 	}
@@ -48,7 +50,8 @@ class Ewo(_indicator._Indicator):
 	def __init__(self, df, symbol="", short_window=5, long_window=21, ema_span=9, angle=0.01,
 				 show_waves=False, show_abc=True, show_pending=True, require_ewo_peak=True,
 				 wave_atr_mult=3.0, require_w4_ewo_zero=False, allow_truncation=False,
-				 wave_ewo_basis='ewo', max_w2_retrace=0.9, prefer_ewo_direction=True):
+				 wave_ewo_basis='ewo', max_w2_retrace=0.9, prefer_ewo_direction=True,
+				 min_c_travel=1.0):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.short_window = short_window
 		self.long_window = long_window
@@ -64,6 +67,7 @@ class Ewo(_indicator._Indicator):
 		self.wave_ewo_basis = str(wave_ewo_basis or 'ewo')
 		self.max_w2_retrace = float(max_w2_retrace)
 		self.prefer_ewo_direction = bool(prefer_ewo_direction)
+		self.min_c_travel = float(min_c_travel)
 		self.wave_labels = []
 		super().__init__(df=df, symbol=symbol)
 
@@ -159,7 +163,8 @@ class Ewo(_indicator._Indicator):
 											allow_truncation=self.allow_truncation,
 											require_w4_ewo_zero=self.require_w4_ewo_zero,
 											max_w2_retrace=self.max_w2_retrace,
-											prefer_ewo_direction=self.prefer_ewo_direction)
+											prefer_ewo_direction=self.prefer_ewo_direction,
+											min_c_travel=self.min_c_travel)
 		except (KeyError, ValueError, TypeError):
 			self.df['ewo_wave'] = 0
 			return
