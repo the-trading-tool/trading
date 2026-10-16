@@ -247,3 +247,18 @@ def test_split_gemischt_wie_in_der_praxis():
     assert split_conditions(q) == ["(close<=sup_support*1.02)",
                                    "(relvol_ratio > 2)",
                                    "(close>Open)"]
+
+
+def test_populate_ignoriert_pandas_methoden(caplog):
+    """`High.rolling(5).max().shift(1)` in einer Formel: rolling/max/shift sind
+    Methoden, keine Indikatoren. Frueher je Ticker als Indikator versucht ->
+    Traceback 'Indicator rolling not found' und leere Spalten 'rolling'/'shift'."""
+    from tradinglib.tools import Tools
+    df = pd.DataFrame({'ticker': ['A'] * 10,
+                       'Date': pd.date_range('2025-01-01', periods=10).strftime('%Y-%m-%d 00:00:00'),
+                       'close': np.arange(10.0), 'High': np.arange(10.0) + 1, 'Low': np.arange(10.0) - 1})
+    buy = '(close > (2*(High.rolling(5).max().shift(1)+Low.rolling(5).min().shift(1)+close.shift(1))/3))'
+    with caplog.at_level('ERROR'):
+        out = Tools().populate_indicators_for_df(df, [buy, ''])
+    assert not {'rolling', 'shift', 'max', 'min'} & set(out.columns)
+    assert 'not found' not in caplog.text

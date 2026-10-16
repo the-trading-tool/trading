@@ -222,7 +222,10 @@ class Tools:
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         params_map = params_map or {}
-        TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_@]*")
+        # Names right after a '.' are pandas methods (High.rolling(5).max().shift(1)),
+        # not columns -- treated as indicators they were computed per ticker,
+        # failed, and logged a traceback each.
+        TOKEN_RE = re.compile(r"(?<![\w.@])[A-Za-z_][A-Za-z0-9_@]*")
 
         def extract_tokens(expr):
             toks = set()
