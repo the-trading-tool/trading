@@ -1033,6 +1033,7 @@
   "sf.calc_btn": "Calculate",
   "sf.reset_btn": "Reset",
   "sf.calc_hint": "Press Calculate to load data and run the simulation for the selected criteria",
+  "sf.calc_in_progress": "⏳ Calculating the simulation for {index} ({years}) …",
   "sf.limit": "Limit:",
   "sf.download_dataset": "📥 Download dataset",
   "sf.download_trades": "📥 Download Trades",
