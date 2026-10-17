@@ -2376,5 +2376,8 @@
   "risk.weight_clamped_help": "Anteil der Titel, bei denen die Klammer greift (höchstens {f}× und mindestens 1/{f}× eines gleichen Anteils).",
   "risk.sizing_note": "Anders als die relative Verteilung gibt diese Regel nicht zwangsläufig das ganze Budget aus — ein Tag mit lauter unruhigen Titeln kauft weniger, statt still ein unruhiges Depot aufzubauen.",
   "sf.sizing_cap_profile": "nach Risikoprofil (absolut)",
-  "risk.sizing_saturated": "Der Regler ist gesättigt: {share} % der Titel hängen an der Klammer. Die typische Schwankung dieser Auswahl liegt bei {typical}, das Ziel bei {target} — so weit auseinander liefern benachbarte Profile dasselbe Ergebnis. Für eine Anlageklasse wie Krypto die Ziel-Volatilität in der Feinjustierung an die Auswahl anpassen."
+  "risk.sizing_saturated": "Der Regler ist gesättigt: {share} % der Titel hängen an der Klammer. Die typische Schwankung dieser Auswahl liegt bei {typical}, das Ziel bei {target} — so weit auseinander liefern benachbarte Profile dasselbe Ergebnis. Für eine Anlageklasse wie Krypto die Ziel-Volatilität in der Feinjustierung an die Auswahl anpassen.",
+  "selector.apply": "Übernehmen",
+  "selector.apply_save": "Übernehmen + speichern",
+  "selector.apply_save_help": "Übernimmt die Auswahl und speichert sie samt Plot-Einstellung als Standard für neue Sitzungen."
 }

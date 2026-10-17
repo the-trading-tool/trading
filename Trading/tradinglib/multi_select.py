@@ -45,6 +45,13 @@ class MultiCheckboxSelector:
 
         self.instance_id = st.session_state[f"{self.instance_name}_uuid"]
 
+        # Bookkeeping for _is_user_change(): how often the selector was built
+        # (once per script run) and which values the last render() displayed.
+        self._init_key = f"{self.instance_name}_init_n"
+        self._shown_key = f"{self.instance_name}_shown"
+        self._shown_at_key = f"{self.instance_name}_shown_at"
+        st.session_state[self._init_key] = st.session_state.get(self._init_key, 0) + 1
+
         # ------------------------------------------------------------------ #
         # Resolve defaults from sys_conf for all four selectors.            #
         # Kept separate per list so the post-init guarantee can use the     #
@@ -158,6 +165,28 @@ class MultiCheckboxSelector:
                         short = o.split(' - ')[0].lower()
                         st.session_state[f"{lid}_{o}_{self.instance_id}"] = (short in fallback_set)
 
+    def _is_user_change(self, key: str) -> bool:
+        """True only for a real click on a checkbox the previous run displayed.
+
+        Callbacks run before the next script run. Streamlit can fire on_change
+        without a click (e.g. a rerun after a code change with runOnSave, or a
+        widget re-created after a run that did not render it) -- and with the
+        value "off". With per-click persistence every such "off" removed one
+        stored indicator: overlay/oszilator shrank to one entry each while the
+        no-plot lists grew to nearly everything (2026-10-17). Indicators now
+        only persist through an explicit submit button (see
+        _render_indicator_form); this guard still protects the Interval/Period
+        callbacks. A change only counts when the previous run rendered this
+        selector (shown_at == current init count) and the value differs from
+        what that run displayed.
+        """
+        if st.session_state.get(self._shown_at_key) != st.session_state.get(self._init_key):
+            return False
+        shown = st.session_state.get(self._shown_key) or {}
+        if key not in shown:
+            return False
+        return bool(st.session_state.get(key, False)) != shown[key]
+
     def _save_to_config(self, list_id: str) -> None:
         """Persist current selections for list_id to the config DB so other sessions pick them up."""
         if self.sys_conf is None:
@@ -185,59 +214,98 @@ class MultiCheckboxSelector:
                     self.sys_conf.set_value(config_key, selections)
             break
 
-    def _save_selection_delta(self, list_id: str, option: str, is_selected: bool) -> None:
-        """Persist a single Overlay/Oszilator selection toggle to config.db as a
-        targeted delta — same fix as _save_no_plot_flag, applied to the
-        selection itself. A full-set rewrite from session_state (the original
-        _save_to_config path) was the source of the "Overlay-Default-
-        Korruption": Streamlit re-fires on_change when widgets are recreated
-        after a non-render rerun, at which point the session_state set is
-        partial and would overwrite the good config value. A single-option
-        delta against the config-stored set is idempotent under such spurious
-        re-fires, so it is safe to auto-persist.
+    def _save_indicator_list(self, list_id: str) -> None:
+        """Write the whole Overlay/Oszilator selection and its Plot flags.
+
+        Only ever called from the "save as default" submit button — an explicit
+        click. The per-checkbox writers that used to persist every toggle are
+        gone: Streamlit re-fires on_change without a click, and each spurious
+        "off" removed one stored indicator (2026-10-17). A full rewrite is safe
+        here because a button press cannot fire spuriously.
+
+        An empty selection is stored as []; the next session then falls back to
+        the factory defaults (see _resolve_list).
         """
         if self.sys_conf is None:
             return
         conf_key = {'Overlay': 'overlay', 'Oszilator': 'oszilator'}.get(list_id)
         if not conf_key:
             return
-        short = option.split(' - ')[0]
-        raw = self.sys_conf.get_value(conf_key, [])
-        current = [str(n) for n in raw] if isinstance(raw, list) else []
-        rest = [n for n in current if n.lower() != short.lower()]
-        if is_selected:
-            rest.append(short)
-        # Never overwrite a non-empty DB value with an empty list (mirrors the
-        # same guard in _save_to_config) — clearing the last default is a job
-        # for the ⚙ settings dialog, not an (possibly spurious) checkbox event.
-        if rest:
-            self.sys_conf.set_value(conf_key, rest)
+        options = self._options_for(list_id)
+        selected = [o.split(' - ')[0] for o in options
+                    if st.session_state.get(f"{list_id}_{o}_{self.instance_id}", False)]
+        no_plot = [o.split(' - ')[0] for o in options
+                   if not st.session_state.get(f"plot_{list_id}_{o}_{self.instance_id}", True)]
+        self.sys_conf.set_value(conf_key, selected)
+        self.sys_conf.set_value(f'{conf_key}_no_plot', no_plot)
 
-    def _save_no_plot_flag(self, list_id: str, option: str, is_plot: bool) -> None:
-        """Persist a single Plot-toggle to config.db as a targeted delta.
+    def _apply_cb(self, save_list=None):
+        """Submit callback: keep the submitted selection (and optionally save it)."""
+        st.session_state[self._touched_key] = True
+        if save_list:
+            self._save_indicator_list(save_list)
 
-        Updates only the toggled indicator in the stored no-plot set instead of
-        rewriting the whole set from session_state. The full-set rewrite (V1's
-        _save_no_plot_to_config) was the source of the "Overlay-Default-Korruption":
-        Streamlit re-fires on_change when widgets are recreated after a non-render
-        rerun, at which point the session_state set is partial and would overwrite
-        the good config value. A single-option delta against the config-stored set
-        is idempotent under such spurious re-fires, so it is safe to auto-persist.
+    def _open_cfg_cb(self, list_id, short_name):
+        """⚙ submit callback: apply the form and open the settings dialog after it."""
+        st.session_state[self._touched_key] = True
+        st.session_state[f"{self.instance_name}_open_cfg"] = (list_id, short_name)
+
+    @staticmethod
+    def _plugin_param_schema(plugin_cls) -> dict:
+        """Style params (background) merged with the indicator's own params."""
+        from tradinglib.indicator._indicator import _Indicator
+        plugin_params = getattr(plugin_cls, 'params', {})
+        # An indicator with its own color params does not need the generic picker.
+        has_own_colors = any(spec.get('type') == 'color' for spec in plugin_params.values())
+        base_style = {k: v for k, v in _Indicator.style_params.items()
+                      if not (has_own_colors and k == 'line_color')}
+        return {**base_style, **plugin_params}
+
+    def _render_indicator_form(self, list_id, options, shown) -> None:
+        """Overlay/Oszilator checkboxes inside a form — no rerun per click.
+
+        Every click used to rerun the whole page (chart and indicators), so
+        setting up a view took one full reload per checkbox. Inside the form
+        nothing happens until a submit button: "apply" for this session,
+        "apply + save" to make it the default. The ⚙ button is a submit button
+        too (forms allow no plain buttons); it applies the form and opens the
+        indicator dialog. Plot is shown for every indicator, because a form
+        cannot show or hide widgets while it is being edited.
         """
-        if self.sys_conf is None:
-            return
-        conf_key = {'Overlay': 'overlay_no_plot', 'Oszilator': 'oszilator_no_plot'}.get(list_id)
-        if not conf_key:
-            return
-        short = option.split(' - ')[0]
-        raw = self.sys_conf.get_value(conf_key, [])
-        current = [str(n) for n in raw] if isinstance(raw, list) else []
-        # Rebuild preserving order; compare case-insensitively so a single name
-        # never ends up duplicated with differing case.
-        rest = [n for n in current if n.lower() != short.lower()]
-        if not is_plot:
-            rest.append(short)
-        self.sys_conf.set_value(conf_key, rest)
+        from tradinglib.i18n import t
+        inst = self.instance_id
+        with st.form(f"form_{list_id}_{inst}", border=False):
+            for option in options:
+                unique_key = f"{list_id}_{option}_{inst}"
+                plot_key = f"plot_{list_id}_{option}_{inst}"
+                short_name = option.split(' - ')[0]
+                plugin_cls = (MultiCheckboxSelector.indicators.get_class(short_name)
+                              if self.sys_conf else None)
+                if plugin_cls:
+                    c1, c2, c3 = st.columns([0.60, 0.15, 0.25])
+                else:
+                    (c1, c3), c2 = st.columns([0.70, 0.30]), None
+                shown[unique_key] = bool(c1.checkbox(option, key=unique_key))
+                if c2 is not None:
+                    c2.form_submit_button("⚙", key=f"cfg_{unique_key}", help=f"Configure {short_name}",
+                                          on_click=self._open_cfg_cb, args=(list_id, short_name))
+                shown[plot_key] = bool(c3.checkbox("Plot", key=plot_key))
+            b1, b2 = st.columns(2)
+            b1.form_submit_button(t('selector.apply'), key=f"apply_{list_id}_{inst}",
+                                  on_click=self._apply_cb, use_container_width=True)
+            if self.sys_conf is not None:
+                b2.form_submit_button(t('selector.apply_save'), key=f"save_{list_id}_{inst}",
+                                      on_click=self._apply_cb, args=(list_id,),
+                                      use_container_width=True, help=t('selector.apply_save_help'))
+
+        # ⚙ pressed in this form: open the dialog outside the form.
+        flag = f"{self.instance_name}_open_cfg"
+        pending = st.session_state.get(flag)
+        if pending and pending[0] == list_id and self.sys_conf is not None:
+            st.session_state.pop(flag, None)
+            plugin_cls = MultiCheckboxSelector.indicators.get_class(pending[1])
+            if plugin_cls:
+                self.sys_conf.render_plugin_params(pending[1], self._plugin_param_schema(plugin_cls))
 
     # ------------------------------------------------------------------ #
     # Interval x Period Guard: verhindert Overload-Kombinationen, indem   #
@@ -362,6 +430,9 @@ class MultiCheckboxSelector:
         else:
             columns = col_row.columns(num_columns, gap='small')
 
+        # Values this render displays -- the reference for _is_user_change().
+        shown = {}
+
         # Iterate over each list and generate checkboxes inside expanders
         for index, (list_id, options) in enumerate(self.lists):
             col = columns[index % num_columns]  # Assign columns dynamically
@@ -370,113 +441,42 @@ class MultiCheckboxSelector:
                 with st.expander(f"{list_id}:"):
                     if list_id == 'Period' and max_valid_period:
                         st.caption(f"max. {max_valid_period} · Intervall {current_interval}")
+                    if list_id in ('Overlay', 'Oszilator'):
+                        self._render_indicator_form(list_id, options, shown)
+                        continue
+
                     # Callback for radio-button behaviour (Interval / Period) + config persistence
                     def _make_single_select_cb(lid, opt, inst_id, opts, selector_self):
                         def _cb():
-                            st.session_state[selector_self._touched_key] = True
+                            genuine = selector_self._is_user_change(f"{lid}_{opt}_{inst_id}")
+                            if genuine:
+                                st.session_state[selector_self._touched_key] = True
                             if st.session_state.get(f"{lid}_{opt}_{inst_id}"):
                                 for o in opts:
                                     if o != opt:
                                         st.session_state[f"{lid}_{o}_{inst_id}"] = False
-                            selector_self._save_to_config(lid)
+                            if genuine:
+                                selector_self._save_to_config(lid)
                         return _cb
 
-                    def _make_save_cb(lid, opt, key, selector_self):
-                        # Overlay/Oszilator toggles: mark the selector as
-                        # user-touched (so the init guard stops forcing config
-                        # defaults) and persist via a corruption-safe single-
-                        # option delta — see _save_selection_delta for why a
-                        # full-set rewrite from session_state isn't safe here.
-                        def _cb():
-                            st.session_state[selector_self._touched_key] = True
-                            selector_self._save_selection_delta(
-                                lid, opt, st.session_state.get(key, False))
-                        return _cb
-
-                    def _make_plot_cb(lid, opt, p_key, selector_self):
-                        # Unlike the overlay/oscillator *selection* toggles (which stay
-                        # session-scoped), the Plot flag is persisted — but via a
-                        # corruption-safe single-option delta, see _save_no_plot_flag.
-                        def _cb():
-                            st.session_state[selector_self._touched_key] = True
-                            selector_self._save_no_plot_flag(
-                                lid, opt, st.session_state.get(p_key, True))
-                        return _cb
-
-                    selected_options = []
                     for option in options:
-                        # Unique keys with instance ID
                         unique_key = f"{list_id}_{option}_{self.instance_id}"
-                        short_name = option.split(' - ')[0]
-
-                        # Show ⚙ config button for any indicator with a known class
-                        # (all indicators now get style_params in addition to their own params)
-                        plugin_cls = None
-                        if self.sys_conf and list_id in ('Overlay', 'Oszilator'):
-                            plugin_cls = MultiCheckboxSelector.indicators.get_class(short_name)
-
-                        single_select = list_id in ('Interval', 'Period')
                         cb_kwargs = {}
-                        if single_select:
+                        if list_id in ('Interval', 'Period'):
                             cb_kwargs['on_change'] = _make_single_select_cb(
                                 list_id, option, self.instance_id, options, self)
-                        elif self.sys_conf:
-                            cb_kwargs['on_change'] = _make_save_cb(list_id, option, unique_key, self)
-
-                        is_indicator = list_id in ('Overlay', 'Oszilator')
-                        plot_key = f"plot_{list_id}_{option}_{self.instance_id}" if is_indicator else None
-
-                        if plugin_cls:
-                            from tradinglib.indicator._indicator import _Indicator
-                            plugin_params = getattr(plugin_cls, 'params', {})
-                            # If the indicator already defines its own color params, skip the
-                            # generic 'line_color' from style_params to avoid a redundant picker.
-                            has_own_colors = any(
-                                spec.get('type') == 'color'
-                                for spec in plugin_params.values()
+                        # Periods that would exceed MAX_BARS candles for the
+                        # current interval are locked (not selectable).
+                        if list_id == 'Period' and option in invalid_periods:
+                            cb_kwargs['disabled'] = True
+                            cb_kwargs['help'] = (
+                                f"> {self.MAX_BARS} bars at interval {current_interval} — "
+                                f"choose a smaller period or a larger interval"
                             )
-                            base_style = {
-                                k: v for k, v in _Indicator.style_params.items()
-                                if not (has_own_colors and k == 'line_color')
-                            }
-                            # Merge style params (background) with indicator-specific params (foreground)
-                            merged_params = {
-                                **base_style,
-                                **plugin_params,
-                            }
-                            c1, c2, c3 = st.columns([0.60, 0.15, 0.25])
-                            checked = c1.checkbox(option, key=unique_key, **cb_kwargs)
-                            if c2.button("⚙", key=f"cfg_{unique_key}", help=f"Configure {short_name}"):
-                                self.sys_conf.render_plugin_params(short_name, merged_params)
-                            if checked:
-                                c3.checkbox("Plot", key=plot_key,
-                                            on_change=_make_plot_cb(list_id, option, plot_key, self))
-                        elif is_indicator:
-                            c1, c2 = st.columns([0.70, 0.30])
-                            checked = c1.checkbox(option, key=unique_key, **cb_kwargs)
-                            if checked:
-                                c2.checkbox("Plot", key=plot_key,
-                                            on_change=_make_plot_cb(list_id, option, plot_key, self))
-                        else:
-                            # Periods that would exceed MAX_BARS candles for the
-                            # current interval are locked (not selectable).
-                            is_over_budget = (list_id == 'Period' and option in invalid_periods)
-                            if is_over_budget:
-                                cb_kwargs['disabled'] = True
-                                cb_kwargs['help'] = (
-                                    f"> {self.MAX_BARS} bars at interval {current_interval} — "
-                                    f"choose a smaller period or a larger interval"
-                                )
-                            checked = st.checkbox(option, key=unique_key, **cb_kwargs)
+                        shown[unique_key] = bool(st.checkbox(option, key=unique_key, **cb_kwargs))
 
-                        # Save selection only on change
-                        if checked and not st.session_state[unique_key]:
-                            st.session_state[unique_key] = True
-                        elif not checked and st.session_state[unique_key]:
-                            st.session_state[unique_key] = False
-
-                        if st.session_state[unique_key]:
-                            selected_options.append(option)
+        st.session_state[self._shown_key] = shown
+        st.session_state[self._shown_at_key] = st.session_state.get(self._init_key)
                         
     #                st.write(f"Selected options ({list_id}): {', '.join(selected_options) or 'None'}")
 
