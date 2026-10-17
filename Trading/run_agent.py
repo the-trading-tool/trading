@@ -37,6 +37,30 @@ logging.basicConfig(
 logger = logging.getLogger('run_agent')
 
 
+def sync_order_log(log, broker, mode: str, broker_id: str) -> dict:
+    """Bring the local order log up to the broker's state before the cycles run.
+
+    The sell cycle only treats a position as open when its buy is 'filled' in
+    the local log. Fills used to be synced only by the Trading page (once per
+    browser session or on the Sync button), so buys the agent had placed stayed
+    'submitted' locally — GS, TMUS and UE in October 2026 — and their sell
+    conditions were never evaluated. A failed sync must not stop the run: the
+    stop-loss job works on the broker's positions directly.
+    """
+    try:
+        summary = log.sync_from_broker(broker, mode, broker_id)
+    except Exception as e:
+        logger.warning('Broker sync failed: %s', e)
+        return {}
+    if summary.get('imported') or summary.get('fills_updated') or summary.get('external_closes'):
+        logger.info('Broker sync: imported=%s fills_updated=%s external_closes=%s',
+                    summary.get('imported'), summary.get('fills_updated'),
+                    summary.get('external_closes'))
+    for err in summary.get('errors') or []:
+        logger.warning('Broker sync: %s', err)
+    return summary
+
+
 def main():
     """Parse CLI args, run the TradingAgent buy/sell cycle, and optionally send Pushover alerts."""
     parser = argparse.ArgumentParser(description='TradingAgent runner')
@@ -131,6 +155,8 @@ def main():
         if not broker.is_connected():
             logger.error('Broker not connected — check API credentials.')
             sys.exit(2)
+
+        sync_order_log(log, broker, mode, broker_id)
 
         agent  = TradingAgent(cfg, log, broker_id=broker_id)
         result = agent.run(
