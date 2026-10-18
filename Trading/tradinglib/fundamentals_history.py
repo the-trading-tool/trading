@@ -43,6 +43,8 @@ CLI::
 
     python -m tradinglib.fundamentals_history            # coverage report
     python -m tradinglib.fundamentals_history /seed      # first snapshot from asset_info
+    python -m tradinglib.fundamentals_history /compact   # drop rows that changed no tracked field
+    python -m tradinglib.fundamentals_history /import:<backup.db>   # prepend an old asset_info copy
 """
 
 from __future__ import annotations
@@ -59,14 +61,26 @@ TABLE = 'asset_info_history'
 
 # Figures that describe the company, not its price. A ratio against the price
 # belongs on the read side, computed with the close of the day being scored.
+#
+# marketCap and enterpriseValue were tracked until 2026-10-18. Both move with
+# the price, so they changed for almost every ticker every week: 9,732 of the
+# first 26,607 follow-up rows existed only because of them. They are derived at
+# read time instead (sharesOutstanding x close; + totalDebt - totalCash).
 TRACKED_FIELDS = (
     'forwardEps', 'trailingEps', 'bookValue', 'dividendRate', 'payoutRatio',
     'targetHighPrice', 'targetMeanPrice', 'targetLowPrice',
     'numberOfAnalystOpinions', 'recommendationMean',
     'totalRevenue', 'ebitda', 'totalDebt', 'totalCash', 'freeCashflow',
-    'sharesOutstanding', 'marketCap', 'enterpriseValue',
+    'sharesOutstanding',
     'returnOnAssets', 'returnOnEquity', 'operatingMargins', 'grossMargins',
     'profitMargins', 'earningsGrowth', 'revenueGrowth', 'debtToEquity',
+    # Short interest (FINRA, US listings, twice a month; added 2026-10-18).
+    # dateShortInterest is the settlement date as epoch seconds -- the figures
+    # are published about eight trading days later, so a reader must not use
+    # them before dateShortInterest + that lag. shortRatio depends on volume,
+    # not on price.
+    'sharesShort', 'shortPercentOfFloat', 'shortRatio', 'dateShortInterest',
+    'floatShares',
 )
 
 # A figure counts as changed when it moves by more than this, relative to its
@@ -89,6 +103,12 @@ def ensure_table(conn) -> None:
         f"PRIMARY KEY (ticker, asof))")
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_ticker_asof "
                  f"ON {TABLE} (ticker, asof)")
+    # Fields added to TRACKED_FIELDS later get their column here; older rows
+    # keep NULL there, which reads as "not recorded yet".
+    present = {r[1] for r in conn.execute(f"PRAGMA table_info({TABLE})")}
+    for field in TRACKED_FIELDS:
+        if field not in present:
+            conn.execute(f"ALTER TABLE {TABLE} ADD COLUMN {field} REAL")
     conn.commit()
 
 
@@ -174,6 +194,35 @@ def record(conn, rows, asof: str = '') -> int:
     except Exception:
         logger.warning("fundamentals history: snapshot not written", exc_info=True)
         return 0
+
+
+def compact(conn) -> int:
+    """Delete rows that changed no tracked figure against the row before them.
+
+    Needed once after a field leaves TRACKED_FIELDS: rows written only because
+    of that field say nothing any more. The first row of every ticker stays, so
+    every as-of lookup returns the same tracked values as before. Returns the
+    number of deleted rows.
+    """
+    ensure_table(conn)
+    columns = ', '.join(TRACKED_FIELDS)
+    drop = []
+    previous_ticker, kept = None, None
+    for row in conn.execute(f"SELECT ticker, asof, {columns} FROM {TABLE} "
+                            f"ORDER BY ticker, asof"):
+        ticker, asof = row[0], row[1]
+        values = dict(zip(TRACKED_FIELDS, (_numeric(v) for v in row[2:])))
+        if ticker != previous_ticker:
+            previous_ticker, kept = ticker, values
+            continue
+        if _changed(values, kept):
+            kept = values
+        else:
+            drop.append((ticker, asof))
+    conn.executemany(f"DELETE FROM {TABLE} WHERE ticker = ? AND asof = ?", drop)
+    conn.commit()
+    logger.info("fundamentals history: %d unchanged rows removed", len(drop))
+    return len(drop)
 
 
 def asof_frame(tickers, when, db_path: str = 'database') -> pd.DataFrame:
@@ -266,6 +315,55 @@ def seed_from_asset_info(db_path: str = 'database') -> int:
         conn.close()
 
 
+def import_snapshot(conn, snapshot_path: str) -> int:
+    """Prepend the figures of an old ``asset_info`` copy (a backup) to the series.
+
+    Each row is dated by its own ``timestamp`` — the day it was fetched, which is
+    when those figures were known. A row is only written when it is older than
+    the ticker's first stored row, so the import extends the series backwards and
+    never overwrites or interleaves with what was recorded live. Running it twice
+    writes nothing the second time. Returns the number of rows written.
+
+    Per-share figures stay in the units of their day: a split after the snapshot
+    (BRCC 1:10 in August 2026) leaves them out of line with split-adjusted closes.
+    That is true of every row in this table, not just imported ones.
+    """
+    from tradinglib.tools import open_db
+
+    ensure_table(conn)
+    source = open_db(snapshot_path, readonly=True)
+    try:
+        present = {r[1] for r in source.execute("PRAGMA table_info(asset_info)")}
+        fields = [f for f in TRACKED_FIELDS if f in present]
+        if 'ticker' not in present or 'timestamp' not in present or not fields:
+            logger.warning("fundamentals history: %s has no usable asset_info", snapshot_path)
+            return 0
+        rows = source.execute(
+            f"SELECT ticker, timestamp, {', '.join(fields)} FROM asset_info").fetchall()
+    finally:
+        source.close()
+
+    first = dict(conn.execute(f"SELECT ticker, MIN(asof) FROM {TABLE} GROUP BY ticker"))
+    batch = []
+    for ticker, stamp, *values in rows:
+        asof = str(stamp or '')[:10]
+        if not ticker or len(asof) != 10:
+            continue
+        if ticker in first and asof >= first[ticker]:
+            continue
+        numbers = dict(zip(fields, (_numeric(v) for v in values)))
+        if all(v is None for v in numbers.values()):
+            continue
+        batch.append((ticker, asof) + tuple(numbers.get(f) for f in TRACKED_FIELDS))
+    placeholders = ','.join('?' * (len(TRACKED_FIELDS) + 2))
+    conn.executemany(
+        f"INSERT OR IGNORE INTO {TABLE} (ticker, asof, {', '.join(TRACKED_FIELDS)}) "
+        f"VALUES ({placeholders})", batch)
+    conn.commit()
+    logger.info("fundamentals history: %d rows imported from %s", len(batch), snapshot_path)
+    return len(batch)
+
+
 def format_coverage(db_path: str = 'database') -> str:
     """Coverage as text, with what it is and is not good for yet."""
     stats = coverage(db_path)
@@ -296,6 +394,23 @@ def main(argv=None) -> int:
     if any(a in ('/seed', '--seed') for a in args):
         written = seed_from_asset_info()
         print(f"{written} snapshot rows written")
+    # Path taken from the raw argument: lowercasing would be harmless on Windows,
+    # but not elsewhere.
+    for raw in argv[1:]:
+        if raw.lower().startswith('/import:'):
+            from tradinglib.tools import open_db
+            conn = open_db(_db_path())
+            try:
+                print(f"{import_snapshot(conn, raw.split(':', 1)[1])} rows imported")
+            finally:
+                conn.close()
+    if any(a in ('/compact', '--compact') for a in args):
+        from tradinglib.tools import open_db
+        conn = open_db(_db_path())
+        try:
+            print(f"{compact(conn)} unchanged rows removed")
+        finally:
+            conn.close()
     print(format_coverage())
     return 0
 

@@ -43,7 +43,9 @@ def test_no_price_derived_ratio_is_tracked():
     """A ratio against today's price would smuggle the look-ahead back in."""
     forbidden = {'forwardPE', 'trailingPE', 'priceToBook', 'pegRatio',
                  'trailingPegRatio', 'priceToSalesTrailing12Months',
-                 'pctTargetHighPrice', 'currentPrice', 'previousClose'}
+                 'pctTargetHighPrice', 'currentPrice', 'previousClose',
+                 # move with the price: changed nearly every ticker every week
+                 'marketCap', 'enterpriseValue'}
     assert not (set(fh.TRACKED_FIELDS) & forbidden)
     # the ingredients for computing those at read time must be there instead
     assert {'forwardEps', 'bookValue', 'targetHighPrice'} <= set(fh.TRACKED_FIELDS)
@@ -134,3 +136,69 @@ def test_several_tickers_are_kept_apart(db):
 def test_rows_without_a_ticker_are_ignored(db):
     with _conn(db) as conn:
         assert fh.record(conn, [{'forwardEps': 1.0}], asof='2026-01-05') == 0
+
+
+def test_compact_entfernt_nur_zeilen_ohne_aenderung(db):
+    """After a field leaves TRACKED_FIELDS, rows written only for it go — as-of answers stay."""
+    import sqlite3
+    conn = sqlite3.connect(db)
+    fh.ensure_table(conn)
+    cols = ', '.join(fh.TRACKED_FIELDS)
+    def put(ticker, asof, eps):
+        vals = [None] * len(fh.TRACKED_FIELDS)
+        vals[fh.TRACKED_FIELDS.index('trailingEps')] = eps
+        conn.execute(f"INSERT INTO {fh.TABLE} (ticker, asof, {cols}) VALUES (?, ?, {','.join('?' * len(vals))})",
+                     [ticker, asof] + vals)
+    put('A', '2026-09-12', 1.0)
+    put('A', '2026-09-20', 1.0)        # only marketCap had moved back then
+    put('A', '2026-09-27', 1.2)
+    put('A', '2026-10-04', 1.2)
+    put('B', '2026-09-12', 2.0)
+    conn.commit()
+    assert fh.compact(conn) == 2
+    left = conn.execute(f"SELECT ticker, asof FROM {fh.TABLE} ORDER BY ticker, asof").fetchall()
+    assert left == [('A', '2026-09-12'), ('A', '2026-09-27'), ('B', '2026-09-12')]
+
+
+def test_neue_felder_bekommen_ihre_spalte(db):
+    """A table created before the short-interest fields gains the columns on use."""
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.execute(f"CREATE TABLE {fh.TABLE} (ticker TEXT NOT NULL, asof TEXT NOT NULL, "
+                 f"forwardEps REAL, PRIMARY KEY (ticker, asof))")
+    conn.commit()
+    fh.ensure_table(conn)
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({fh.TABLE})")}
+    assert {'sharesShort', 'shortPercentOfFloat', 'shortRatio', 'dateShortInterest',
+            'floatShares'} <= cols
+    assert fh.record(conn, [{'ticker': 'GS', 'sharesShort': 6921097, 'shortRatio': 3.78}],
+                     asof='2026-10-18') == 1
+
+
+def test_import_setzt_altes_snapshot_nur_vor_den_beginn(db, tmp_path):
+    """A backup extends the series backwards, dated by each row's fetch time."""
+    snap = str(tmp_path / 'backup.db')
+    s = sqlite3.connect(snap)
+    s.execute("CREATE TABLE asset_info (ticker TEXT, timestamp TEXT, forwardEps REAL, "
+              "sharesShort REAL, longName TEXT)")
+    s.executemany("INSERT INTO asset_info VALUES (?, ?, ?, ?, ?)", [
+        ('AAPL', '2026-08-02 11:52:28.25', 9.51, 1.4e8, 'Apple'),   # before the series -> in
+        ('MSFT', '2026-09-20 09:00:00', 13.0, None, 'Microsoft'),   # after its start -> out
+        ('NEW', '2025-01-26 07:00:00', 1.0, None, 'New'),           # unknown ticker -> in
+        ('EMPTY', '2026-08-02 11:00:00', None, None, 'Fund'),       # nothing tracked -> out
+    ])
+    s.commit()
+    s.close()
+    conn = _conn(db)
+    fh.record(conn, [_row('AAPL', forwardEps=9.57), _row('MSFT', forwardEps=13.5)],
+              asof='2026-09-12')
+
+    assert fh.import_snapshot(conn, snap) == 2
+    assert fh.import_snapshot(conn, snap) == 0                       # idempotent
+    rows = conn.execute(f"SELECT ticker, asof, forwardEps, sharesShort FROM {fh.TABLE} "
+                        f"ORDER BY ticker, asof").fetchall()
+    assert rows == [('AAPL', '2026-08-02', 9.51, 1.4e8), ('AAPL', '2026-09-12', 9.57, None),
+                    ('MSFT', '2026-09-12', 13.5, None), ('NEW', '2025-01-26', 1.0, None)]
+    conn.close()
+    assert fh.asof_frame(['AAPL'], '2026-08-15')['forwardEps'].tolist() == [9.51]
+    assert fh.asof_frame(['AAPL'], '2026-09-12')['forwardEps'].tolist() == [9.57]

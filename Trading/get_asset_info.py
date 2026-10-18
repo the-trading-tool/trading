@@ -19,6 +19,14 @@ db_name = ts.Tools().get_path(path = 'database', file_name="asset_info.db")
 # Verbindung zur SQLite-Datenbank herstellen (oder erstellen, falls sie nicht existiert)
 conn = open_db(db_name, timeout=10)
 
+# Quarterly results (tradinglib.fundamentals_quarterly) are fetched alongside the
+# info, but only for equities whose next release has passed (or that were not
+# checked for 30 days) — set in __main__ before the download loop. The parsed
+# result travels in the row_map under QUARTERLY_KEY and is popped before the
+# asset_info upsert, so it never becomes a column.
+QUARTERLY_KEY = '__quarterly__'
+_QUARTERLY_DUE: set = set()
+
 
 def rebuild_fts_table(conn, table_name='asset_info'):
     """Suchtabelle (FTS5) <table_name>_fts neu aufbauen, damit frisch geladene
@@ -179,6 +187,11 @@ def fetch_info_for(ticker):
             except Exception:
                 value = None
             row_map[column_name] = value
+        if ticker in _QUARTERLY_DUE and info.get('quoteType') == 'EQUITY':
+            from tradinglib import fundamentals_quarterly
+            quarterly = fundamentals_quarterly.fetch(ticker)
+            if quarterly is not None:
+                row_map[QUARTERLY_KEY] = quarterly
         return row_map
     except Exception:
         # ignore tickers that fail, but continue
@@ -215,6 +228,15 @@ if __name__ == '__main__':
     # already established are gone at the source.
     ticker_list = asset_status.filter_active(ticker_list, context='get_asset_info')
 
+    # Which tickers' quarterly results are worth fetching this run.
+    try:
+        from tradinglib import fundamentals_quarterly
+        _QUARTERLY_DUE.update(fundamentals_quarterly.due_tickers(conn, ticker_list))
+        logger.info("get_asset_info: quarterly results due for up to %d tickers "
+                    "(equities only)", len(_QUARTERLY_DUE))
+    except Exception:
+        logger.warning("get_asset_info: quarterly due list failed", exc_info=True)
+
     # row_maps werden nur hier im Main-Thread eingesammelt (kein Lock nötig)
     batch = []
     if max_workers > 1:
@@ -230,6 +252,9 @@ if __name__ == '__main__':
             if row_map:
                 batch.append(row_map)
 
+    # Quarterly results ride in the row_maps; take them out before the upsert.
+    quarterly = {rm['ticker']: rm.pop(QUARTERLY_KEY) for rm in batch if QUARTERLY_KEY in rm}
+
     # flush batch using DataUtils helper
     if len(batch) > 0:
         DataUtils.bulk_upsert_dicts(conn, 'asset_info', batch)
@@ -243,6 +268,14 @@ if __name__ == '__main__':
     if len(batch) > 0:
         from tradinglib import fundamentals_history
         fundamentals_history.record(conn, batch)
+
+    # Point-in-time quarterly results (first reported value wins, see module).
+    if quarterly:
+        from tradinglib import fundamentals_quarterly
+        new_q = sum(fundamentals_quarterly.record(conn, t, rows, nxt)
+                    for t, (rows, nxt) in quarterly.items())
+        logger.info("get_asset_info: quarterly results checked for %d equities, "
+                    "%d new quarters", len(quarterly), new_q)
 
     # FTS-Suchtabelle neu aufbauen, damit neue Ticker sofort volltextsuchbar sind
     # (ersetzt den manuellen Admin-Klick "Update index"). Fehler hier dürfen den
