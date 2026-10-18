@@ -634,7 +634,7 @@ class Headlines(tt.TickerTools):
         # --- Risk (beta / short / governance — mostly equities) ---------
         risk_items = [
             self._item(t('keydata.beta'), self._info('beta')),
-            self._item(t('keydata.short_float'), self._pct(self._pct_of('shortPercentOfFloat'))),
+            *self._short_items(),
             self._item(t('keydata.overall_risk'), self._info('overallRisk')),
         ]
         self._grid(reg, t('keydata.risk'), risk_items, per_row=6)
@@ -651,6 +651,36 @@ class Headlines(tt.TickerTools):
     # ------------------------------------------------------------------ #
     # Section builders
     # ------------------------------------------------------------------ #
+    def _short_items(self):
+        """Short interest (FINRA, US listings only; reported twice a month).
+
+        The change vs the prior report comes from sharesShort / sharesShortPriorMonth;
+        rising short interest is shown red. The settlement date is shown as well:
+        the figures are published about eight trading days after it.
+        """
+        short_pct = self._pct_of('shortPercentOfFloat')
+        shares = self._info('sharesShort', digits=0)
+        prior = self._info('sharesShortPriorMonth', digits=0)
+        change = None
+        try:
+            if shares and prior:
+                change = t('keydata.short_change',
+                           pct=self._pct((float(shares) / float(prior) - 1) * 100, plus=True))
+        except (TypeError, ValueError, ZeroDivisionError):
+            change = None
+        as_of = self._date('dateShortInterest')
+        help_txt = t('keydata.short_help', date=as_of) if as_of else None
+        return [
+            self._item(t('keydata.short_float'), self._pct(short_pct),
+                       delta=change, delta_color='inverse', help=help_txt),
+            self._item(t('keydata.shares_short'), self._big(shares) if shares else None),
+            self._item(t('keydata.short_ratio'), self._info('shortRatio'),
+                       help=t('keydata.short_ratio_help')),
+            self._item(t('keydata.float_shares'), self._big(self._info('floatShares', digits=0))
+                       if self._info('floatShares', digits=0) else None),
+            self._item(t('keydata.short_date'), as_of),
+        ]
+
     def _price_items(self, symbol, c):
         items = []
         # Period returns from local daily history (independent of chart interval).
