@@ -73,21 +73,30 @@ class FullTextSearch(tools.Db_tools):
         finally:
             conn.close()
 
-    # Characters that cause FTS5 syntax errors when unquoted
-    _FTS5_SPECIAL = frozenset('=+-*^():"\\')
+    @staticmethod
+    def _fts_match_expr(query):
+        """Turn free text into an FTS5 MATCH expression that cannot be a syntax error.
+
+        Every whitespace-separated word becomes a quoted string, so punctuation
+        inside a ticker ('PAL.DE', 'DX=F', 'AT&T') is handed to the tokenizer
+        instead of the query parser — unquoted, '.' alone raised
+        'fts5: syntax error near "."'. The tokenizer splits 'PAL.DE' into the
+        phrase "pal de", which is exactly how the indexed ticker was tokenized.
+        Only the last word gets the prefix star, as before.
+        """
+        words = [w.replace('"', '""') for w in query.split()]
+        return ' '.join(f'"{w}"' for w in words) + '*'
 
     def search(self, query, limit=10):
         """Search for prefix matches and return up to limit results.
 
-        Uses FTS5 for normal queries; falls back to LIKE on the base table
-        when the query contains characters that would cause an FTS5 syntax
-        error (e.g. tickers like DX=F, ES=F).
+        Uses FTS5 with quoted words (see _fts_match_expr); falls back to LIKE
+        on the base table only when the query has no letter or digit at all,
+        because then the tokenizer yields an empty phrase.
         """
         # A typed '*' is what people reach for when they expect a wildcard, but
-        # the prefix star is appended below anyway. Passing theirs through turns
-        # 'IE0*' into 'IE0**' (fts5 syntax error) and, because '*' counts as a
-        # special character, diverts the query to the LIKE fallback — which runs
-        # against the base table and therefore cannot see ISINs at all.
+        # the prefix star is appended below anyway. Passing theirs through would
+        # end up as a literal word inside the quoted phrase and match nothing.
         query = (query or '').strip().strip('*').strip()
         if not query:
             return []
@@ -95,7 +104,7 @@ class FullTextSearch(tools.Db_tools):
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        if any(c in self._FTS5_SPECIAL for c in query):
+        if not any(c.isalnum() for c in query):
             cursor.execute(f"""
                 SELECT ticker, longName FROM {self.table_name}
                 WHERE ticker LIKE ? OR longName LIKE ?
@@ -108,7 +117,7 @@ class FullTextSearch(tools.Db_tools):
                 WHERE {self.fts_table_name} MATCH ?
                 ORDER BY ticker
                 LIMIT ?;
-                """, (query + '*', limit))
+                """, (self._fts_match_expr(query), limit))
 
         results = cursor.fetchall()
         conn.close()
