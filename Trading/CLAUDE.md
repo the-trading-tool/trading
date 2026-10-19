@@ -1787,3 +1787,77 @@ Volle Vorlage als Formel: `(mtt_pass == 1) & (mtt_rs >= 70)`.
   96-98 % der Zeilen mit Rating, gespeichert == live (0 Abweichungen in ~4.200 Stichproben).
   Template inkl. RS >= 70 erfuellt: 21 % der Zeilen 2021, 20 % 2024, 18 % 2026.
 - Naechster Schritt: messen (score_eval je Jahr), bevor irgendetwas davon als Signal gilt.
+
+### Schritt 3 — Messung: das Trend Template bringt in unseren Daten keinen Vorsprung (2026-10-19)
+
+2020-2026, nur Zeilen mit RS-Rating (4,75 Mio. Zeilen, 3.556 Ticker), brutto, Universum =
+heutige Indexmitglieder (Ueberlebensverzerrung).
+
+**Filter gegen das Universum** (Vorsprung in Prozentpunkten, 21 / 63 Tage):
+
+| Filter | Anteil | 21 T | Jahre positiv | 63 T | Jahre positiv |
+|---|---|---|---|---|---|
+| A: `mtt_pass==1 & mtt_rs>=70` | 16 % | -0,15 | 3/7 | -0,32 | 2/7 |
+| nur Template (7 Bedingungen) | 22 % | -0,12 | 3/7 | -0,24 | 3/7 |
+| nur `mtt_rs >= 70` | 30 % | +0,20 | 3/7 | +0,53 | 5/7 |
+| nur `mtt_rs >= 90` | 10 % | +0,52 | 4/7 | +0,75 | 5/7 |
+| A + neues 52W-Schlusshoch | 2,7 % | -0,40 | 1/7 | -0,69 | 2/7 |
+| B: A + Ausbruch + Volumen | 0,5 % | -0,07 | 3/7 | -0,79 | 1/7 |
+| Referenz `close>sma200 & sma50>sma200` | 48 % | -0,14 | 3/7 | -0,12 | 3/7 |
+
+IC `mtt_rs` 0,012 (21 T) / 0,020 (63 T), `mtt_score` 0,013 / 0,022 — kaum messbar.
+`mtt_score` 0..7 ist bei der Rendite **nicht monoton** (Score 0 am besten: Mean Reversion +
+Ueberlebende), beim Drawdown schon (-8,2 % -> -6,1/-6,4 %): wie `trendScore` ein Ruhe-Filter,
+keine Renditequelle. Innerhalb der Risikostufen bleibt A bei -0,51..+0,16 pp.
+
+**Trades** (Einstieg naechster Schluss, Ausstieg `((close<sma50)&(relvol_ratio>=1.2))|(mtt_score<=4)`
+oder 8 % Stop, eine Position je Ticker; "vs Markt" = gegen das gleichgewichtete Universum ueber
+dieselben Tage):
+
+| Einstieg | Trades | Treffer | Ø | PF | Haltedauer | Ø vs Markt | Jahre vs Markt positiv |
+|---|---|---|---|---|---|---|---|
+| A | 36.620 | 34,3 % | +1,64 % | 1,44 | 37 d | -0,11 % | 1/7 (nur 2025) |
+| B | 7.939 | 32,9 % | +2,01 % | 1,37 | 48 d | -0,15 % | 2/7 (2020, 2025) |
+| A + 52W-Hoch | 16.727 | 35,2 % | +1,94 % | 1,43 | 50 d | -0,25 % | 1/7 |
+| Trend-Referenz | 210.846 | 41,4 % | +0,60 % | 1,34 | 14 d | -0,10 % | 2/7 |
+
+Der PF > 1 ist der steigende Markt, nicht das Template. 2022 verliert jede Variante deutlich
+(PF 0,41-0,52). **Fazit:** A und B nicht als Kaufsignal verwenden. Einzig `mtt_rs >= 90` zeigt
+einen kleinen, nicht stabilen Vorsprung (63 T: 5/7 Jahre, 2026 bisher -3,2 pp) mit tieferem
+Drawdown. Die Nachrechnung hat bestehende Daten nachweislich nicht veraendert (Vergleich gegen
+die Sicherungen: gleiche Zeilenzahl, 0 geaenderte Zeilen ausserhalb `mtt_*`).
+
+### Schritt 4 — VCP gemessen: kein belastbarer Vorsprung (2026-10-19)
+
+Gemessen mit einer kausalen VCP-Erkennung (Zickzack mit ATR-Schwelle 3-8 %, Basis =
+hoechstes bestaetigtes Hoch der letzten 325 Balken, 2-6 Ruecksetzer, jeder hoechstens so
+tief wie der vorige, erster <= 40 %, letzter <= 10 %, Ausbruch = Schluss ueber dem Pivot
+bei >= 1,4x Volumen). **Nach der Messung auf Wunsch nicht implementiert** — das Modul
+wurde wieder entfernt, es gibt keine `vcp_*`-Spalten.
+
+Messung auf lokalen Tageskursen, 3.420 Ticker mit RS-Rating, Einstiege seit 2020,
+2.360 VCP-Ausbrueche; "vs Markt" = gegen das gleichgewichtete Universum ueber dieselben Tage.
+
+| Einstieg (Ausstieg: 63 Balken oder 8 % Stop) | Trades | Ø vs Markt | Jahre positiv |
+|---|---|---|---|
+| Referenz: Template + 52W-Schlusshoch + Volumen, ohne VCP | 14.767 | -0,39 % | 2/7 |
+| VCP-Ausbruch | 2.135 | -0,59 % | 2/7 |
+| + Template | 1.543 | -0,59 % | 2/7 |
+| + RS >= 70 | 1.190 | -0,25 % | 2/7 |
+| + Volumen-Ruecklauf (dry-up) <= 0,8 | 371 | +0,79 % | 5/7 |
+| + letzte Kontraktion <= 6 % | 889 | -0,92 % | 3/7 |
+| + mind. 3 Kontraktionen | 512 | -0,63 % | 3/7 |
+
+Mit den anderen beiden Ausstiegen (Schritt-3-Regel bzw. `close < sma50`) gleiches Bild.
+
+**Der Dry-up-Effekt haelt der Gegenprobe nicht stand:** t-Wert ~1 (ueber Monate ~0,1-0,6),
+nicht monoton (dry-up <= 0,6: -0,49 %), ohne die 10 besten Trades -1,46 %, positiv nur
+ausserhalb der USA (KS/HK/T), US -0,13 %. **Belastbar ist nur die Gegenrichtung:** Ausbrueche,
+bei denen das Volumen in der letzten Kontraktion NICHT zurueckging (dry-up > 1,2), liegen
+bei -2,44 % gegen den Markt (t -2,7 / -3,0 ueber Monate, 6 von 7 Jahren negativ) — als
+Ausschlussfilter brauchbar, als Kaufsignal nicht.
+
+**Fazit der Minervini-Linie:** Weder Template noch VCP schlagen in diesem Universum den
+gleichgewichteten Markt. Einschraenkungen: Universum = heutige Indexmitglieder
+(Ueberlebensverzerrung hebt den Vergleichsmassstab), brutto, Ausstiege vereinfacht
+(keine Teilverkaeufe/Nachkaeufe wie bei Minervini).
