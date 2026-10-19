@@ -44,6 +44,26 @@ def test_support_rsi_mehrzeilig_mit_signalfenster():
     _lint(s)
 
 
+def test_shift_wird_vorbalken():
+    """sup_support.shift(1) = Vortag in der App -> sup_support[1] in Pine."""
+    assert pse.shift_to_history('close < x.shift(2)') == 'close < x[2]'
+    assert pse.shift_to_history('x.shift()') == 'x[1]'
+    assert pse.shift_to_history('x.shift( 3 )') == 'x[3]'
+    assert pse.shift_to_history('x.shift(-1)') == 'x.shift(-1)'   # future bar: no Pine form
+    buy = '(close*1.015<=sup_support.shift(1))&(ewo>ewo_ema)&(dTrend>0)&(wkTrend>0)'
+    s = pse.export_strategy('sup', buy, '(close>sup_resistance.shift(1)*0.985)|(ewo<ewo_ema)')
+    assert 'close*1.015<=sup_support[1]' in s
+    assert 'close>sup_resistance[1]*0.985' in s
+    assert 'sup_support = ta.lowest(low, 21)' in s
+    assert 'shift' not in s
+    _lint(s)
+
+
+def test_negativer_shift_wird_abgelehnt():
+    with pytest.raises(pse.StrategyExportError, match='shift'):
+        pse.export_strategy('x', '(close<sup_support.shift(-1))', '(rsi<30)')
+
+
 def test_mehrzeilig_ohne_fenster_ist_und():
     s = pse.export_strategy('x', '(rsi>50)\n(ewo>0)', '(rsi<30)')
     assert 'longCond = (rsi>50) and (ewo>0)' in s

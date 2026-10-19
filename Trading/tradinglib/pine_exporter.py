@@ -3705,8 +3705,10 @@ def _translate_query(query: str) -> str:
          (longest name first to prevent partial matches, e.g. 'macd_signal'
          before 'macd').
       2. Replace Python logical operators: & → and, | → or, ~ → not
+    ``x.shift(n)`` becomes the Pine history reference ``x[n]`` first.
     """
-    result = query.strip()
+    from tradinglib.pine_strategy_export import shift_to_history
+    result = shift_to_history(query.strip())
     # Column name substitution (longest match first)
     for col, pine_var in sorted(_STRAT_COL_MAP.items(), key=lambda x: -len(x[0])):
         result = re.sub(r'\b' + re.escape(col) + r'\b', pine_var, result)

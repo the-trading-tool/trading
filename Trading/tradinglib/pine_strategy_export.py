@@ -436,18 +436,31 @@ class StrategyExportError(ValueError):
     """Raised when a buy/sell formula references non-exportable columns."""
 
 
+_SHIFT_RE = re.compile(r'\.shift\(\s*(\d*)\s*\)')
+
+
+def shift_to_history(expr: str) -> str:
+    """pandas ``x.shift(n)`` → Pine history reference ``x[n]`` (``shift()`` = 1).
+
+    Only non-negative n: a negative shift reads future bars and has no Pine form,
+    so it stays as is and fails the column check instead of exporting silently.
+    """
+    return _SHIFT_RE.sub(lambda m: f'[{m.group(1) or 1}]', expr or '')
+
+
 def _referenced_columns(expr: str) -> set[str]:
     """Alle Bezeichner (Spaltennamen) eines Ausdrucks, case-normalisiert.
 
     Ein literales ``\\n`` (JSON-Form der Zeilentrennung) ist kein Bezeichner ``n``.
+    ``.shift(n)`` ist ein Vorbalken-Zugriff, keine Spalte ``shift``.
     """
-    text = str(expr or '').replace('\\n', '\n')
+    text = shift_to_history(str(expr or '').replace('\\n', '\n'))
     return {_CASE_MAP.get(t, t) for t in re.findall(r'[A-Za-z_][A-Za-z0-9_]*', text)}
 
 
 def _translate_expr(expr: str) -> str:
     """Python-Buy/Sell-Ausdruck → Pine-Boolescher-Ausdruck."""
-    e = expr or ''
+    e = shift_to_history(expr)
     for src, dst in _CASE_MAP.items():
         e = re.sub(rf'\b{src}\b', dst, e)
     e = re.sub(r'\[\s*-(\d+)\s*\]', r'[\1]', e)          # col[-1] → col[1]

@@ -177,6 +177,15 @@ def test_signal_export_kennt_die_spalten_des_strategie_exports():
     assert not {u for u in re.findall(r'\bstr_\w+', s)} - declared
 
 
+def test_signal_export_uebersetzt_shift_als_vorbalken():
+    s = pe.PineExporter([], []).generate_overlay(
+        include_signals=True, buy_query='(close*1.015<=sup_support.shift(1))\n(ewo>ewo_ema)',
+        sell_query='(close>sup_resistance.shift(1)*0.985)')
+    assert 'close*1.015<=str_sup_support[1]' in s
+    assert 'close>str_sup_resistance[1]*0.985' in s
+    assert 'shift' not in s.split('sig_buy_raw', 1)[1].split('\n', 1)[0]
+
+
 def test_signal_export_fundamentalscore_wird_false_statt_compilerfehler():
     s = pe.PineExporter([], []).generate_signal_overlay(
         '(overallValueTrend>=1.1*overallTrend)&(ewo>=ewo_ema)', '(rsi>=75)')
