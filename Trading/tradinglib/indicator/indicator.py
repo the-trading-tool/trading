@@ -421,47 +421,15 @@ def trend_pct(a, b):
     return pct
 
 def support_resistance(df, window=21):
-    """Rolling support/resistance per bar: lowest Low / highest High of the last
-    ``window`` bars INCLUDING the current one (= Pine ``ta.lowest(low, window)``).
-
-    Returns two Series aligned to ``df``. Each bar only sees its own window, so
-    the values are causal -- returning the last value for the whole frame (the
-    old behaviour) wrote today's level into every past row.
-    """
+    """Detect and attach support and resistance levels to the DataFrame."""
+    
+    df = df.copy()
     if get_num_rows(df) == 0:
-        return pd.Series(dtype=float, index=df.index), pd.Series(dtype=float, index=df.index)
-    support = df['Low'].rolling(window=window).min()
-    resistance = df['High'].rolling(window=window).max()
-    return support, resistance
-
-
-def support_resistance_htf(df, freq, window=21):
-    """Weekly/monthly support/resistance as of each DAILY bar, causally.
-
-    For day d in period p: the last ``window - 1`` completed periods plus the part
-    of p up to and including d -- what a weekly/monthly frame ending on d shows
-    (the in-progress bar holds only the days so far). Forward-filling a weekly
-    bar onto its days instead would let Monday see the whole week's low.
-
-    ``freq``: 'W' (Mon-Sun weeks) or 'M'. Returns two Series on ``df.index``.
-    """
-    if get_num_rows(df) == 0:
-        return pd.Series(dtype=float, index=df.index), pd.Series(dtype=float, index=df.index)
-    periods = pd.DatetimeIndex(df.index).to_period(freq)
-    out = []
-    for col, agg in (('Low', 'min'), ('High', 'max')):
-        s = pd.Series(df[col].to_numpy(dtype=float), index=df.index)
-        grouped = s.groupby(periods)
-        per_period = getattr(grouped, agg)()
-        roll = per_period.rolling(window - 1, min_periods=window - 1)
-        prev = getattr(roll, agg)().shift(1)
-        running = grouped.cummin() if agg == 'min' else grouped.cummax()
-        prev_daily = prev.reindex(periods).to_numpy()
-        combine = np.fmin if agg == 'min' else np.fmax
-        vals = combine(prev_daily, running.to_numpy())
-        vals[np.isnan(prev_daily)] = np.nan      # fewer than `window` periods yet
-        out.append(pd.Series(vals, index=df.index))
-    return out[0], out[1]
+        return 0,0
+    df['Support'] = df['Low'].rolling(window=window).min()
+    df['Resistance'] = df['High'].rolling(window=window).max()
+        
+    return df['Support'].iloc[-1], df['Resistance'].iloc[-1]
 
 def sharpe_ratio(df, N=252, rf=0.01):
     """Compute and attach the rolling Sharpe ratio column."""

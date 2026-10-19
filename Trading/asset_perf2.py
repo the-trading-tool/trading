@@ -81,14 +81,6 @@ INDICATOR_BACKFILL_TF: dict = {
     'markov': [('1wk', '6y', '_wk'), ('1mo', '10y', '_mo')],
 }
 
-# Higher-timeframe columns derived causally from the DAILY frame (as of each day,
-# in-progress period included up to that day) instead of forward-filling wk/mo
-# bars, which would leak the rest of the week/month into earlier days.
-# indicator -> [(pandas period freq, suffix)]
-INDICATOR_BACKFILL_FROM_DAILY: dict = {
-    'sup': [('W', '_wk'), ('M', '_mo')],
-}
-
 
 def _ensure_sim_columns(conn, table: str, columns: list[str]) -> None:
     """Add any missing REAL columns to *table* (ALTER TABLE … ADD COLUMN)."""
@@ -153,24 +145,12 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
                 logger.warning("backfill %s / %s%s: indicator error: %s",
                                symbol, ind_name, suffix, e)
 
-    # 2c. Higher-timeframe variants derived from the daily frame (causal)
-    if 'sup' in indicator_names:
-        from tradinglib.indicator.indicator import support_resistance_htf
-        for freq, suffix in INDICATOR_BACKFILL_FROM_DAILY['sup']:
-            try:
-                df_raw[f'sup_support{suffix}'], df_raw[f'sup_resistance{suffix}'] = \
-                    support_resistance_htf(df_raw, freq)
-            except Exception as e:
-                logger.warning("backfill %s / sup%s: error: %s", symbol, suffix, e)
-
     # 3. Collect the DB columns we need to update
     target_cols: list[str] = []
     for ind_name in indicator_names:
         base_cols = INDICATOR_BACKFILL_MAP.get(ind_name, [])
         target_cols.extend(base_cols)
         for _, _, suffix in INDICATOR_BACKFILL_TF.get(ind_name, []):
-            target_cols.extend(f'{c}{suffix}' for c in base_cols)
-        for _, suffix in INDICATOR_BACKFILL_FROM_DAILY.get(ind_name, []):
             target_cols.extend(f'{c}{suffix}' for c in base_cols)
     target_cols = [c for c in target_cols if c in df_raw.columns]
     if not target_cols:

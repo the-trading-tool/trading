@@ -32,12 +32,11 @@ class Sup(_indicator._Indicator):
         self.data()
                 
     def data(self):
-        """Compute the indicator values and attach them as columns to self.df.
+        """Compute the indicator values and attach them as columns to self.df."""
+    
+        (self.df['sup_support'], self.df['sup_resistance']) = indicator.support_resistance(self.df)
 
-        Window stays at the default 21 on purpose: the backtest (asset_perf2) and
-        the Pine strategy export use 21, and live must match them.
-        """
-        self.df['sup_support'], self.df['sup_resistance'] = indicator.support_resistance(self.df)
+        pass
         
     def add_fig(self):
         """Add the indicator traces to the given Plotly figure."""
