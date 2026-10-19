@@ -1752,3 +1752,38 @@ Vorheriger Hinweis zur Einordnung: die gespeicherten ATC-Werte waren die
 alten, nicht kausalen. Erst `python asset_perf2.py /backfill:atc /force` (je Jahr mit
 `/year:YYYY`, dazu `/all`) bringt den Backtest auf denselben Stand wie den Chart.
 Ueberschreibt bestehende Werte → Backtest-Ergebnisse ATC-basierter Formeln aendern sich.
+
+---
+
+## Neu in dieser Session (2026-10-18) — Minervini: Datengrundlage und Trend Template
+
+### Schritt 1 — Fundamentaldaten point-in-time
+- `tradinglib/fundamentals_quarterly.py`: Tabelle `fundamentals_quarterly` (je Ticker/Quartal,
+  Meldedatum echt aus `earnings_dates` oder Quartalsende + 75 Tage = `estimated`), erster
+  gemeldeter Wert gilt. `get_asset_info.py` holt faellige Quartale im Sonntagslauf mit.
+  Erstbefuellung 2026-10-18: 95.989 Quartale, 4.594 Ticker, 96 % echte Meldedaten,
+  4.145 Ticker mit >= 8 Quartalen.
+- `fundamentals_history`: marketCap/enterpriseValue nicht mehr verfolgt, Leerverkaufsfelder neu,
+  Backup vom 02.08.2026 per `/import:` vor den Reihenbeginn gesetzt.
+  **Werte je Aktie sind nicht split-bereinigt** (BRCC 1:10) — beim Lesen korrigieren.
+
+### Schritt 2 — Trend Template (`tradinglib/minervini.py`, Indikator `mtt`)
+Spalten: `mtt_sma150`, `mtt_slope200` (% ueber 21 Balken), `mtt_high52`/`mtt_low52`
+(Schlusskurse, 252 Balken), `mtt_rs_raw` (0,4·r63 + 0,2·r126 + 0,2·r189 + 0,2·r252),
+`mtt_score` (0..7), `mtt_pass` (alle sieben), `mtt_rs` (RS-Rating 1..99).
+Volle Vorlage als Formel: `(mtt_pass == 1) & (mtt_rs >= 70)`.
+
+- **RS-Rating ist querschnittlich** und wird nach jedem asset_perf2-Lauf und nach
+  `/backfill:mtt` von `minervini.update_rs()` geschrieben (vor dem Notifier). Vergleichsgruppe
+  = alle ^-Indexmitglieder **derselben Handelswaehrung** (USD 2.398, JPY 225, EUR 219, ...);
+  Nichtmitglieder werden auf deren Skala eingeordnet, ohne sie zu veraendern. Maerkte mit
+  < 50 Mitgliedern (CHF: 19) bekommen kein Rating. 0 = nicht berechnet.
+- Live liest der Indikator `mtt_rs` aus den Sim-DBs (ein neuer Balken traegt das letzte Rating);
+  die sieben Einzelbedingungen rechnet er selbst auf der vollen lokalen Tageshistorie, deshalb
+  live == gespeichert (geprueft an AAPL auf einer DB-Kopie).
+- `lyHigh`/`lyLow` sind **kein** 52-Wochen-Fenster — fuer das Template `mtt_high52`/`mtt_low52`.
+- Bestandsdaten: `python asset_perf2.py /backfill:mtt /force` (+ `/all`, `/year:YYYY`),
+  gelaufen 2026-10-18 fuer aktuelles Jahr, `_all`, 2020-2025 (nicht etp), 8-19 min je DB;
+  96-98 % der Zeilen mit Rating, gespeichert == live (0 Abweichungen in ~4.200 Stichproben).
+  Template inkl. RS >= 70 erfuellt: 21 % der Zeilen 2021, 20 % 2024, 18 % 2026.
+- Naechster Schritt: messen (score_eval je Jahr), bevor irgendetwas davon als Signal gilt.

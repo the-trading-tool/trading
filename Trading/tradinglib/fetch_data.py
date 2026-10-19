@@ -40,6 +40,8 @@ _EXPR_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _EXTRA_COLUMN_INDICATORS = {
     'overallTrend': 'ovt',
     'overallValueTrend': 'ovt',
+    # Cross-sectional, written by minervini.update_rs, read back by mtt.
+    'mtt_rs': 'mtt',
 }
 _EXTRA_PREFIX_INDICATORS = (('ovtEma', 'ovt'),)
 

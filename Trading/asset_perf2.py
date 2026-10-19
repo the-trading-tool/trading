@@ -62,6 +62,11 @@ INDICATOR_BACKFILL_MAP: dict = {
     # both path-dependent — so /backfill:prof yields the same values a full init
     # run writes, and the live chart shows the same numbers again.
     'prof':    ['riskScore', 'riskBucket', 'trendScore'],
+    # Minervini Trend Template (tradinglib/minervini.py), per ticker on the full
+    # local daily history. The RS rating mtt_rs is cross-sectional and not in
+    # this list: minervini.update_rs ranks mtt_rs_raw after each run/backfill.
+    'mtt':     ['mtt_sma150', 'mtt_slope200', 'mtt_high52', 'mtt_low52',
+                'mtt_rs_raw', 'mtt_score', 'mtt_pass'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
     'ohlc':    ['Open', 'High', 'Low'],
@@ -1077,6 +1082,10 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
             _prof_val = DataUtils.safe_last(df, _prof_col, default=0)
             pdict[_prof_col] = 0.0 if _prof_val is None or pd.isna(_prof_val) else float(_prof_val)
 
+        for _mtt_col in INDICATOR_BACKFILL_MAP['mtt']:
+            _mtt_val = DataUtils.safe_last(df, _mtt_col, default=0)
+            pdict[_mtt_col] = 0.0 if _mtt_val is None or pd.isna(_mtt_val) else float(_mtt_val)
+
         for _fps_col in ('fps_phase', 'fps_best_trend', 'fps_trend_gain', 'fps_base_high',
                          'fps_base_low', 'fps_base_weeks', 'fps_breakout', 'fps_buy',
                          'fps_sell', 'fps_stop', 'fps_target', 'fps_rs', 'fps_dist_high',
@@ -1462,7 +1471,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling
@@ -1649,6 +1658,9 @@ if __name__ == "__main__":
             logger.info("backfill mode: %s -> indicators=%s force=%s",
                         sim_db_path, backfill_inds, force_flag)
             backfill_db(sim_db_path, 'database', backfill_inds, force=force_flag)
+            if 'mtt' in backfill_inds:
+                from tradinglib import minervini
+                minervini.update_rs(sim_db_path)
         exit(0)
     # -----------------------------------------------------------------------
 
@@ -1829,6 +1841,18 @@ if __name__ == "__main__":
         logger.warning("Duplikate konnten nicht entfernt werden (Tabelle evtl. leer): %s", e)
 
     sim_db.close()
+
+    # Minervini RS rating for the days just written: a cross-sectional rank, so
+    # it can only be computed once all tickers of the run are stored -- and
+    # before the notifier, whose formulas may use mtt_rs.
+    written_days = [str(p.get('Date', ''))[:10] for p in all_results if p.get('Date')]
+    if written_days:
+        try:
+            from tradinglib import minervini
+            minervini.update_rs(_Tools().get_path(path='database', file_name=sim_db_name),
+                                since=min(written_days))
+        except Exception as e:
+            logger.warning("RS rating update failed: %s", e)
 
     # Market breadth (market_context.db) for the days just written. Runs after
     # the index-member run only -- breadth is computed from index members -- and
