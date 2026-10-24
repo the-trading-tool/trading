@@ -3792,8 +3792,9 @@ def _strat_atc(p: dict) -> str:
 def _strat_rft(p: dict) -> str:
     """Return the Range Filtered Trend columns (rft_state, rft_signal …) without drawings.
 
-    rft is not stored in the simulation DBs, so a formula using it only ever
-    runs on the chart — with the chart's parameters, which are used here too.
+    The signal overlay mirrors the chart's markers, and the chart computes rft
+    with the ⚙ parameters — so those are used here. The stored backtest columns
+    use the class defaults (see pine_strategy_export._helper_rft).
     """
     return f"""\
 // ── Range Filtered Trend (columns only; AlgoAlpha, MPL-2.0) ───────────────────

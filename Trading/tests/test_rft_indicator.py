@@ -97,6 +97,22 @@ def test_figur_wird_gezeichnet():
     assert {'Kalman trend', 'Upper band', 'Lower band', 'Trend start'} <= names
 
 
+def test_spalten_passen_zur_engine_und_aktivieren_den_indikator():
+    import asset_perf2
+    from tradinglib.fetch_data import indicators_for_expressions
+    assert list(rft.COLUMNS) == asset_perf2.INDICATOR_BACKFILL_MAP['rft']
+    assert indicators_for_expressions(['(rft_state == 1) & (rft_signal == 1)']) == ['rft']
+
+
+def test_strategie_export_mit_klassen_defaults():
+    """Stored columns use the class defaults, so the strategy export does too."""
+    from tradinglib import pine_strategy_export as pse
+    st = pse.export_strategy('r', '(rft_signal == 1) & (rft_state == 1)', '(rft_trend == -1)')
+    assert 'xrft_period = 77' in st and 'xrft_dev    = 1.2' in st
+    assert 'rft_signal = xrft_signal' in st and 'rft_trend = xrft_trend' in st
+    assert 'xrft_kalman = xrft_kalman_fn(close, xrft_period, xrft_alpha, xrft_beta)' in st
+
+
 def test_ohne_ohlc_leere_spalten():
     ind = rft.Rft(pd.DataFrame({'Close': [1.0, 2.0]}, index=pd.date_range('2026-01-01', periods=2)))
     assert all(ind.df[c].isna().all() for c in rft.COLUMNS)

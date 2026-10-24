@@ -67,6 +67,11 @@ INDICATOR_BACKFILL_MAP: dict = {
     # this list: minervini.update_rs ranks mtt_rs_raw after each run/backfill.
     'mtt':     ['mtt_sma150', 'mtt_slope200', 'mtt_high52', 'mtt_low52',
                 'mtt_rs_raw', 'mtt_score', 'mtt_pass'],
+    # Range Filtered Trend (tradinglib/indicator/rft.py, AlgoAlpha port). On
+    # daily frames the indicator puts local history in front as warm-up, so a
+    # 2-year run, a 10-year backfill and the chart agree.
+    'rft':     ['rft_kalman', 'rft_supertrend', 'rft_upper', 'rft_lower',
+                'rft_trend', 'rft_ktrend', 'rft_state', 'rft_signal'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
     'ohlc':    ['Open', 'High', 'Low'],
@@ -1082,7 +1087,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
             _prof_val = DataUtils.safe_last(df, _prof_col, default=0)
             pdict[_prof_col] = 0.0 if _prof_val is None or pd.isna(_prof_val) else float(_prof_val)
 
-        for _mtt_col in INDICATOR_BACKFILL_MAP['mtt']:
+        for _mtt_col in INDICATOR_BACKFILL_MAP['mtt'] + INDICATOR_BACKFILL_MAP['rft']:
             _mtt_val = DataUtils.safe_last(df, _mtt_col, default=0)
             pdict[_mtt_col] = 0.0 if _mtt_val is None or pd.isna(_mtt_val) else float(_mtt_val)
 
@@ -1471,7 +1476,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt','rft'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling

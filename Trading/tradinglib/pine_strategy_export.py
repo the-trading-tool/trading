@@ -33,6 +33,8 @@ _FALLBACK = {
     'obd':    {'ob_periods': 3, 'ob_threshold': 1.0, 'use_wicks': False,
                'ob_min_weight': 0, 'ob_weight_ref': 3.0, 'period': 21,
                'sr_window': 21, 'sr_zone': 1.0},
+    'rft':    {'kalman_alpha': 0.01, 'kalman_beta': 0.1, 'kalman_period': 77,
+               'deviation': 1.2, 'st_factor': 0.7, 'st_atr_period': 7},
 }
 
 
@@ -284,6 +286,24 @@ def _helper_obd(params: dict | None = None) -> str:
     )
 
 
+def _helper_rft() -> str:
+    """Range Filtered Trend columns, shared with pine_exporter._rft_core.
+
+    Stored by asset_perf2 with the class defaults, so those are used here.
+    """
+    from tradinglib.pine_exporter import _rft_core
+    p = _defaults('rft')
+    return (
+        f"xrft_alpha  = {float(p['kalman_alpha'])}\n"
+        f"xrft_beta   = {float(p['kalman_beta'])}\n"
+        f"xrft_period = {int(p['kalman_period'])}\n"
+        f"xrft_dev    = {float(p['deviation'])}\n"
+        f"xrft_stf    = {float(p['st_factor'])}\n"
+        f"xrft_atrp   = {int(p['st_atr_period'])}\n"
+        + _rft_core('xrft').rstrip('\n')
+    )
+
+
 # Helpers built from the indicator classes, rendered on demand.
 _HELPER_BUILDERS = {
     'atc_base':  _helper_atc,
@@ -392,6 +412,12 @@ _COL_DEFS: dict[str, dict] = {
        for col in ('obd_bull_top', 'obd_bull_bot', 'obd_bull_weight',
                    'obd_bear_top', 'obd_bear_bot', 'obd_bear_weight',
                    'obd_buy', 'obd_sell')},
+
+    # ── Range Filtered Trend (rft.py, AlgoAlpha port; Klassen-Defaults) ─────
+    '_rft':           {'code': _helper_rft, 'deps': [], 'helpers': []},
+    **{col: {'code': f'{col} = x{col}', 'deps': ['_rft'], 'helpers': []}
+       for col in ('rft_kalman', 'rft_supertrend', 'rft_upper', 'rft_lower',
+                   'rft_trend', 'rft_ktrend', 'rft_state', 'rft_signal')},
 
     # ── Heikin Ashi (Basis via ha_base-Helper; EMA-Länge 21 wie heikin.py) ────
     'ha_close':    {'code': None, 'deps': [], 'helpers': ['ha_base']},
