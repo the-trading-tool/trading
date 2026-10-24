@@ -626,7 +626,8 @@ class StockDataSaver(TickerTools):
         _log = logging.getLogger(__name__)
         failed_intervals = []
         daily_requested = False   # wurde 1d (day_data) überhaupt angefragt?
-        daily_stunted = False     # Yahoo lieferte für 1d nur ≤ 5 / keine Zeilen
+        daily_stunted = False     # Yahoo lieferte für 1d nur ≤ 5 Zeilen
+        daily_failed = False      # 1d download raised or came back empty
 
         for interval in intervals:
             _log.debug("Fetching data for interval: %s", interval)
@@ -643,7 +644,7 @@ class StockDataSaver(TickerTools):
                     _log.warning("No data for %s interval=%s (ticker unknown or delisted)", self.ticker, interval)
                     failed_intervals.append(interval)
                     if is_daily:
-                        daily_stunted = True
+                        daily_failed = True
                 else:
                     self.save_to_db(data, interval)
                     # Manche Yahoo-Symbole (z. B. Vola-Indizes wie ^VIXEQ) liefern
@@ -655,12 +656,20 @@ class StockDataSaver(TickerTools):
                 _log.warning("Download failed for %s interval=%s", self.ticker, interval)
                 failed_intervals.append(interval)
                 if is_daily:
-                    daily_stunted = True
+                    daily_failed = True
             time.sleep(0.8)
 
         # Fallback: fehlende Tageshistorie aus den (längeren) Stundendaten
         # resampeln, statt sie dauerhaft leer zu lassen. Läuft NUR wenn 1d
         # angefragt und verkümmert war → normale Ticker bleiben unberührt.
+        #
+        # A failed 1d download (HTTP 429, timeout, empty answer) is NOT a
+        # stunted symbol: it used to trigger this fallback too, and a single
+        # rate-limited run then replaced years of provider daily bars with
+        # hourly resamples. On failure the fallback only runs when day_data is
+        # still (almost) empty, e.g. ^VIXEQ where period='max' raises.
+        if daily_requested and daily_failed and not daily_stunted:
+            daily_stunted = self._daily_row_count() < 20
         if daily_requested and daily_stunted:
             try:
                 n = self._backfill_daily_from_hourly()
@@ -673,12 +682,64 @@ class StockDataSaver(TickerTools):
 
         return failed_intervals
 
+    def _daily_row_count(self) -> int:
+        """Number of rows currently stored in day_data (0 if the table is missing)."""
+        try:
+            return int(self.cursor.execute("SELECT COUNT(*) FROM day_data").fetchone()[0])
+        except Exception:
+            return 0
+
+    def _exchange_calendar(self) -> Tuple[str, bool]:
+        """(exchange timezone, trades on weekends) for this ticker.
+
+        Read from asset_info.db; unknown symbols fall back to UTC and a
+        weekday-only calendar unless the symbol looks like a crypto pair.
+        """
+        tz, quote_type = None, None
+        try:
+            path = self.get_path(self.db_path, "asset_info.db")
+        except Exception:
+            path = ""
+        if path and os.path.exists(path):
+            try:
+                con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+                try:
+                    row = con.execute(
+                        "SELECT exchangeTimezoneName, quoteType FROM asset_info "
+                        "WHERE ticker = ?", (self.ticker,)).fetchone()
+                finally:
+                    con.close()
+                if row:
+                    tz, quote_type = row
+            except Exception:
+                logging.getLogger(__name__).debug(
+                    "no exchange calendar for %s", self.ticker, exc_info=True)
+        try:
+            import zoneinfo
+            zoneinfo.ZoneInfo(tz)
+        except Exception:
+            tz = "UTC"
+        weekends = (str(quote_type or "").upper() == "CRYPTOCURRENCY"
+                    or bool(re.search(r"-(USD|EUR|USDT|BTC|ETH)$", self.ticker)))
+        return tz, weekends
+
     def _backfill_daily_from_hourly(self, min_rows: int = 20) -> int:
         """Fallback für Symbole ohne Yahoo-Tageshistorie: baut Tageskerzen aus
-        ``h60_data`` (O=first/H=max/L=min/C=last/V=sum) und upsertet sie via
-        ``INSERT OR REPLACE`` in ``day_data``. Nutzt die im DB akkumulierte
-        Stundenhistorie (nicht nur den aktuellen Fetch). Gibt die Zahl der
-        geschriebenen Tageskerzen zurück (0 = zu wenig Stundendaten / nichts)."""
+        ``h60_data`` (O=first/H=max/L=min/C=last/V=sum) und schreibt sie in
+        ``day_data``. Nutzt die im DB akkumulierte Stundenhistorie (nicht nur
+        den aktuellen Fetch). Gibt die Zahl der geschriebenen Tageskerzen
+        zurück (0 = zu wenig Stundendaten / nichts).
+
+        h60_data is stored UTC-naive. Bars are grouped by the EXCHANGE-LOCAL
+        calendar day: grouping by UTC day put the US post-market bar stamped
+        Sat 00:00 UTC (and the Sunday-evening open of futures/FX, the Monday
+        open of the ASX) into a day of its own. Local weekend days are dropped
+        unless the symbol trades on weekends.
+
+        Only days missing from day_data are written -- a provider daily bar is
+        never replaced by a resample, which would also pull in pre/post-market
+        prints.
+        """
         try:
             h = pd.read_sql_query(
                 "SELECT Date, Open, High, Low, Close, Volume FROM h60_data", self.conn)
@@ -690,9 +751,19 @@ class StockDataSaver(TickerTools):
         h = h.dropna(subset=['Date']).set_index('Date').sort_index()
         for c in ('Open', 'High', 'Low', 'Close', 'Volume'):
             h[c] = pd.to_numeric(h[c], errors='coerce')
+        tz, weekends = self._exchange_calendar()
+        h.index = h.index.tz_localize('UTC').tz_convert(tz).tz_localize(None)
         daily = h.resample('1D').agg(
             {'Open': 'first', 'High': 'max', 'Low': 'min',
              'Close': 'last', 'Volume': 'sum'}).dropna(subset=['Close'])
+        if not weekends:
+            daily = daily[daily.index.dayofweek < 5]
+        try:
+            existing = pd.read_sql_query("SELECT Date FROM day_data", self.conn)['Date']
+        except Exception:
+            existing = pd.Series(dtype=object)  # no day_data table yet
+        existing = pd.to_datetime(existing, errors='coerce').dropna().dt.normalize()
+        daily = daily[~daily.index.isin(existing)]
         if daily.empty:
             return 0
         daily.index.name = 'Date'
