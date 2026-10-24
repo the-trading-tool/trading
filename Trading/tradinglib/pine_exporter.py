@@ -69,6 +69,7 @@ _INDICATOR_ATTRIBUTION: dict[str, str] = {
     'qtrend': 'Quantitative Trend — custom implementation',
     'gframa': 'QuantEdgeB — G-FRAMA (Gaussian-smoothed Fractal Adaptive Moving Average)',
     'renko':  'Renko chart — standard brick-based price-movement technique',
+    'rft':    'AlgoAlpha — "Range Filtered Trend Signals" (TradingView, MPL-2.0)',
     'sup':    'Standard support / resistance detection concept',
     'vwap':   'Volume Weighted Average Price — standard market-microstructure concept',
     'wml':    'Weighted Momentum Levels — custom implementation',
@@ -197,6 +198,7 @@ _INDICATOR_LABELS: dict[str, str] = {
     'qtrend': 'Quantitative Trend',
     'gframa': 'G-FRAMA',
     'renko':  'Renko Candles',
+    'rft':    'Range Filtered Trend',
     'sup':    'Support/Resistance',
     'vwap':   'VWAP',
     'wml':    'Week/Month Levels',
@@ -206,7 +208,7 @@ _INDICATOR_LABELS: dict[str, str] = {
 # signal that the block must be gated by the visibility toggle.
 _DRAWING_PRIMITIVES: frozenset[str] = frozenset([
     'line.new(', 'label.new(', 'line.delete(', 'label.delete(',
-    'plotcandle(', 'plotshape(', 'plot(', 'fill(', 'bgcolor(',
+    'plotcandle(', 'plotshape(', 'plotchar(', 'plot(', 'fill(', 'bgcolor(', 'barcolor(',
     'table.cell(', 'table.set_',
     'box.new(', 'box.set_', 'box.delete(', 'label.set_',
 ])
@@ -389,10 +391,10 @@ def _add_visibility_toggle(name: str, body: str) -> str:
                 i += 1
                 continue
 
-            # ── plot / plotshape / plotcandle / fill / bgcolor ─────────────────
+            # ── plot / plotshape / plotchar / plotcandle / fill / bg-/barcolor ──
             # Collect the full (possibly multi-line) call and append display param.
             if re.match(
-                r'^(?:\w+\s*=\s*)?(plot|plotshape|plotcandle|fill|bgcolor)\(',
+                r'^(?:\w+\s*=\s*)?(plot|plotshape|plotchar|plotcandle|fill|bgcolor|barcolor)\(',
                 stripped,
             ):
                 call_lines, i = _append_display_param(lines, i, tv)
@@ -428,6 +430,7 @@ def _t_macd(p: dict) -> str:
     if sty not in ('solid', 'dashed', 'dotted'):
         sty = 'solid'
     grp = "MACD -- Style"
+    v4c = _pine_bool(_pbool(p, 'variant_4c', False))
     return f"""\
 // ── MACD ──────────────────────────────────────────────────────────────────────
 macd_col    = input.color({col_macd},   "MACD color",   group="{grp}")
@@ -435,15 +438,20 @@ macd_sig_col= input.color({col_signal}, "Signal color", group="{grp}")
 macd_width  = input.int({wid}, "Width", minval=1, maxval=5, group="{grp}")
 macd_style  = input.string("{sty}", "Line style", options=["solid","dashed","dotted"], group="{grp}")
 macd_lstyle = macd_style == "dashed" ? line.style_dashed : macd_style == "dotted" ? line.style_dotted : line.style_solid
+// MACD 4C (vkno422): the MACD line itself as columns — lime/green above zero
+// (rising/falling), maroon/red below zero (falling/rising)
+macd_4c     = input.bool({v4c}, "MACD 4C (four-colour MACD bars)", group="{grp}")
 macd_fast   = {fast}
 macd_slow   = {slow}
 macd_signal = {sign}
 [macd_line, macd_sig, macd_hist] = ta.macd(close, macd_fast, macd_slow, macd_signal)
-plot(macd_line, "MACD",      macd_col,     macd_width)
+macd_4c_col = macd_line > 0 ? (macd_line > macd_line[1] ? color.lime : color.green) : (macd_line < macd_line[1] ? color.maroon : color.red)
+plot(macd_4c ? na : macd_line, "MACD",      macd_col,     macd_width)
 plot(macd_sig,  "Signal",    macd_sig_col, 1)
-plot(macd_hist, "Histogram",
+plot(macd_4c ? na : macd_hist, "Histogram",
      color  = macd_hist >= 0 ? color.new(color.green, 30) : color.new(color.red, 30),
      style  = plot.style_columns)
+plot(macd_4c ? macd_line : na, "MACD 4C", color = macd_4c_col, style = plot.style_columns)
 """
 
 
@@ -2672,20 +2680,25 @@ def _n_macd(p: dict, slot: int) -> str:
     if sty not in ('solid', 'dashed', 'dotted'):
         sty = 'solid'
     grp = "MACD (combined) -- Style"
+    v4c = _pine_bool(_pbool(p, 'variant_4c', False))
     return f"""\
 // ── MACD  (slot {slot}) ───────────────────────────────────────────────────────
 n_macd_col     = input.color({col_macd},   "MACD color",   group="{grp}")
 n_macd_sig_col = input.color({col_signal}, "Signal color", group="{grp}")
 n_macd_width   = input.int({wid}, "Width", minval=1, maxval=5, group="{grp}")
 n_macd_style   = input.string("{sty}", "Line style", options=["solid","dashed","dotted"], group="{grp}")
+n_macd_4c      = input.bool({v4c}, "MACD 4C (four-colour MACD bars)", group="{grp}")
 [_macd_l, _macd_s, _macd_h] = ta.macd(close, {fast}, {slow}, {sign})
 _macd_lo = ta.lowest( math.min(_macd_l, math.min(_macd_s, _macd_h)), 300)
 _macd_hi = ta.highest(math.max(_macd_l, math.max(_macd_s, _macd_h)), 300)
+// MACD 4C: the MACD line replaces the histogram, coloured by side and direction
+_macd_bar = n_macd_4c ? _macd_l : _macd_h
+_macd_bc  = n_macd_4c ? (_macd_l > 0 ? (_macd_l > _macd_l[1] ? color.lime : color.green) : (_macd_l < _macd_l[1] ? color.maroon : color.red)) : (_macd_h >= 0 ? color.green : color.red)
 _macd_z  = plot(_osc_px(0.0,     _macd_lo, _macd_hi, {slot}), "MACD zero", color.new(color.gray, 100))
-_macd_hb = plot(_osc_px(_macd_h, _macd_lo, _macd_hi, {slot}), "MACD Hist",
-                _macd_h >= 0 ? color.new(color.green, 30) : color.new(color.red, 30), 1)
-fill(_macd_z, _macd_hb, _macd_h >= 0 ? color.new(color.green, 50) : color.new(color.red, 50))
-plot(_osc_px(_macd_l, _macd_lo, _macd_hi, {slot}), "MACD",   n_macd_col,     n_macd_width)
+_macd_hb = plot(_osc_px(_macd_bar, _macd_lo, _macd_hi, {slot}), "MACD Hist",
+                color.new(_macd_bc, 30), 1)
+fill(_macd_z, _macd_hb, color.new(_macd_bc, 50))
+plot(n_macd_4c ? na : _osc_px(_macd_l, _macd_lo, _macd_hi, {slot}), "MACD",   n_macd_col,     n_macd_width)
 plot(_osc_px(_macd_s, _macd_lo, _macd_hi, {slot}), "Signal", n_macd_sig_col, 1)
 """
 
@@ -3298,6 +3311,109 @@ plot(_osc_px(75.0, 0.0, 100.0, {slot}), "", color.new(color.green, 60), 1, plot.
 """
 
 
+def _rft_core(pf: str) -> str:
+    """Range Filtered Trend columns as rft.py — AlgoAlpha's Pine code, prefixed.
+
+    The caller defines ``{pf}_alpha``, ``{pf}_beta``, ``{pf}_period``,
+    ``{pf}_dev``, ``{pf}_stf`` (Supertrend factor) and ``{pf}_atrp`` (ATR
+    period). Produces ``{pf}_kalman``, ``{pf}_supertrend``, ``{pf}_upper``,
+    ``{pf}_lower``, ``{pf}_trend``, ``{pf}_ktrend``, ``{pf}_state`` and
+    ``{pf}_signal`` — the columns rft.py writes.
+    """
+    return f"""\
+// Kalman-smoothed close (AlgoAlpha's kalman(a, b, alpha, beta))
+{pf}_kalman_fn(float a, float b, float alpha, float beta) =>
+    var float v1 = na
+    var float v2 = 1.0
+    var float v3 = alpha * b
+    var float v4 = 0.0
+    var float v5 = na
+    if na(v1)
+        v1 := a[1]
+    v5 := v1
+    v4 := v2 / (v2 + v3)
+    v1 := v5 + v4 * (a - v5)
+    v2 := (1 - v4) * v2 + beta / b
+    v1
+
+// Supertrend run on the Kalman line, ATR from the real bars
+{pf}_st_fn(float k, float factor, int atrPeriod) =>
+    atr = ta.atr(atrPeriod)
+    upperBand = k + factor * atr
+    lowerBand = k - factor * atr
+    prevLowerBand = nz(lowerBand[1])
+    prevUpperBand = nz(upperBand[1])
+    lowerBand := lowerBand > prevLowerBand or k[1] < prevLowerBand ? lowerBand : prevLowerBand
+    upperBand := upperBand < prevUpperBand or k[1] > prevUpperBand ? upperBand : prevUpperBand
+    int _direction = na
+    float superTrend = na
+    prevSuperTrend = superTrend[1]
+    if na(atr[1])
+        _direction := 1
+    else if prevSuperTrend == prevUpperBand
+        _direction := k > upperBand ? -1 : 1
+    else
+        _direction := k < lowerBand ? 1 : -1
+    superTrend := _direction == -1 ? lowerBand : upperBand
+    [superTrend, _direction]
+
+{pf}_kalman = {pf}_kalman_fn(close, {pf}_period, {pf}_alpha, {pf}_beta)
+[{pf}_supertrend, {pf}_dir] = {pf}_st_fn({pf}_kalman, {pf}_stf, {pf}_atrp)
+{pf}_vola  = ta.wma(high - low, 200)
+{pf}_upper = {pf}_kalman + {pf}_vola * {pf}_dev
+{pf}_lower = {pf}_kalman - {pf}_vola * {pf}_dev
+// Short-term trend: last close outside the band; long-term: Supertrend direction
+var int {pf}_trend = 0
+if close > {pf}_upper
+    {pf}_trend := 1
+else if close < {pf}_lower
+    {pf}_trend := -1
+{pf}_ktrend = {pf}_dir < 0 ? 1 : {pf}_dir > 0 ? -1 : 0
+// +1 trending (both agree), -1 ranging (they disagree)
+{pf}_state  = {pf}_ktrend * {pf}_trend
+{pf}_signal = ta.crossover({pf}_state, 0) ? {pf}_trend : 0
+"""
+
+
+def _t_rft(p: dict) -> str:
+    """Return the Range Filtered Trend overlay (rft.py; AlgoAlpha, MPL-2.0)."""
+    grp, grp_s = "Range Filtered Trend", "Range Filtered Trend -- Style"
+    bull = _hex_to_pine_color(p.get('color_bull', ''), '#00ffbb')
+    bear = _hex_to_pine_color(p.get('color_bear', ''), '#ff1100')
+    b = _pine_bool
+    return f"""\
+// ── Range Filtered Trend ──────────────────────────────────────────────────────
+// Port of "Range Filtered Trend Signals [AlgoAlpha]", © AlgoAlpha, published
+// under the Mozilla Public License 2.0 (https://mozilla.org/MPL/2.0/).
+// Grey line = trending (Kalman line and Supertrend agree), grey band = ranging.
+rft_alpha  = input.float({float(p.get('kalman_alpha', 0.01))}, "Kalman alpha", group="{grp}")
+rft_beta   = input.float({float(p.get('kalman_beta', 0.1))}, "Kalman beta", group="{grp}")
+rft_period = input.int({int(p.get('kalman_period', 77))}, "Kalman period", minval=2, group="{grp}")
+rft_dev    = input.float({float(p.get('deviation', 1.2))}, "Deviation", group="{grp}")
+rft_stf    = input.float({float(p.get('st_factor', 0.7))}, "Supertrend factor", group="{grp}")
+rft_atrp   = input.int({int(p.get('st_atr_period', 7))}, "Supertrend ATR period", minval=1, group="{grp}")
+rft_green  = input.color({bull}, "Bullish color", group="{grp_s}")
+rft_red    = input.color({bear}, "Bearish color", group="{grp_s}")
+rft_show_sig   = input.bool({b(_pbool(p, 'show_signals', True))}, "Show trend-start dots", group="{grp_s}")
+rft_show_range = input.bool({b(_pbool(p, 'show_range', True))}, "Fill the range band", group="{grp_s}")
+rft_bars       = input.bool(true, "Colour the candles", group="{grp_s}")
+
+{_rft_core('rft')}
+rft_mid = math.avg(close, open)
+rft_p1 = plot(rft_state == 1 ? rft_kalman : na, "Kalman trend", color.gray, 3, plot.style_linebr)
+rft_m  = plot(rft_mid, "Mid body", color.gray, display = display.none)
+rft_up = plot(rft_trend == -1 or rft_state == -1 ? rft_upper : na, "Upper band", rft_state == -1 ? color.gray : rft_ktrend == -1 ? color.new(rft_red, 70) : color.gray, 1, plot.style_circles)
+rft_lo = plot(rft_trend == 1 or rft_state == -1 ? rft_lower : na, "Lower band", rft_state == -1 ? color.gray : rft_ktrend == 1 ? color.new(rft_green, 70) : color.gray, 1, plot.style_circles)
+plotchar(rft_show_sig and rft_signal != 0 ? rft_kalman : na, "Trend start", "◉", location.absolute, rft_trend == 1 ? rft_green : rft_red, size = size.tiny)
+fill(rft_p1, rft_m, rft_kalman, rft_mid, color.new(chart.bg_color, 80), color.new(rft_trend == -1 ? rft_red : rft_green, 70))
+fill(rft_up, rft_lo, rft_show_range and rft_state == -1 ? color.new(color.gray, 90) : na, "Range")
+barcolor(not rft_bars ? na : rft_state == -1 ? color.new(color.gray, 20) : rft_trend == 1 ? color.new(rft_green, 20) : color.new(rft_red, 20))
+// Columns as in the app (rft_state, rft_signal …), visible in the data window
+plot(rft_state, "rft_state", color.gray, display = display.data_window)
+plot(rft_signal, "rft_signal", color.gray, display = display.data_window)
+"""
+
+
 _OSC_NORM_TEMPLATES: dict[str, Callable] = {
     'adx':    _n_adx,
     'prof':   _n_prof,
@@ -3358,6 +3474,7 @@ _OVL_TEMPLATES: dict[str, Callable[[dict], str]] = {
     'pvt':    _t_pvt,
     'qtrend': _t_qtrend,
     'renko':  _t_renko,
+    'rft':    _t_rft,
     'sup':    _t_sup,
     'vwap':   _t_vwap,
     'wml':    _t_wml,
@@ -3425,6 +3542,9 @@ _STRAT_COL_MAP: dict[str, str] = {
        for an in ('high', 'low', 'zero') for ln in ('mid', 'top', 'bot', 'width', 'width_pct')},
     'atc_high':       'str_atc_top_high',
     'atc_low':        'str_atc_bot_low',
+    # Range Filtered Trend (rft indicator)
+    **{f'rft_{c}': f'str_rft_{c}' for c in ('kalman', 'supertrend', 'upper', 'lower',
+                                             'trend', 'ktrend', 'state', 'signal')},
 }
 
 # Which indicator computation block is required for each column name.
@@ -3466,6 +3586,8 @@ _STRAT_COL_INDICATOR: dict[str, str] = {
        for an in ('high', 'low', 'zero') for ln in ('mid', 'top', 'bot', 'width', 'width_pct')},
     'atc_high':       'atc',
     'atc_low':        'atc',
+    **{f'rft_{c}': 'rft' for c in ('kalman', 'supertrend', 'upper', 'lower',
+                                    'trend', 'ktrend', 'state', 'signal')},
 }
 
 # ── Per-indicator computation snippets (no plot / plotshape calls) ─────────────
@@ -3667,6 +3789,23 @@ def _strat_atc(p: dict) -> str:
     return "// ── Auto Trend Channels (causal, trailing lookback per bar) ───────────────────\n" + code + "\n"
 
 
+def _strat_rft(p: dict) -> str:
+    """Return the Range Filtered Trend columns (rft_state, rft_signal …) without drawings.
+
+    rft is not stored in the simulation DBs, so a formula using it only ever
+    runs on the chart — with the chart's parameters, which are used here too.
+    """
+    return f"""\
+// ── Range Filtered Trend (columns only; AlgoAlpha, MPL-2.0) ───────────────────
+str_rft_alpha  = {float(p.get('kalman_alpha', 0.01))}
+str_rft_beta   = {float(p.get('kalman_beta', 0.1))}
+str_rft_period = {int(p.get('kalman_period', 77))}
+str_rft_dev    = {float(p.get('deviation', 1.2))}
+str_rft_stf    = {float(p.get('st_factor', 0.7))}
+str_rft_atrp   = {int(p.get('st_atr_period', 7))}
+{_rft_core('str_rft')}"""
+
+
 _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
     'heikin':   _strat_heikin,
     'macd':     _strat_macd,
@@ -3681,11 +3820,12 @@ _STRAT_CALCS: dict[str, Callable[[dict], str]] = {
     'momentum': _strat_momentum,
     'relvol':   _strat_relvol,
     'atc':      _strat_atc,
+    'rft':      _strat_rft,
 }
 
 # Fixed emit order so dependent variables are always declared before use.
 _STRAT_ORDER = ['heikin', 'ewo', 'ewo_wave', 'macd', 'rsi', 'stoch', 'momentum',
-                'relvol', 'ema', 'atc', 'obd', 'zcr', 'markov']
+                'relvol', 'ema', 'atc', 'obd', 'rft', 'zcr', 'markov']
 
 # Blocks that build on another block's variables.
 _STRAT_REQUIRES: dict[str, tuple[str, ...]] = {

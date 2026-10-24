@@ -22,10 +22,17 @@ class Macd(_indicator._Indicator):
 		'down_level':     {'type': 'int',   'default': 25, 'min': 1, 'max': 100, 'label': 'Down level threshold'},
 		'color_macd':     {'type': 'color', 'default': '',             'label': 'MACD line color'},
 		'color_signal':   {'type': 'color', 'default': '',             'label': 'Signal line color'},
+		'variant_4c':     {'type': 'bool',  'default': False,
+						   'label': 'MACD 4C: MACD line as four-colour bars (instead of histogram)'},
 	}
 
+	# MACD 4C (vkno422, TradingView): the MACD line itself drawn as columns,
+	# coloured by side of zero and direction against the previous bar.
+	COLORS_4C = {'up_rising': 'lime', 'up_falling': 'green',
+				 'down_falling': 'maroon', 'down_rising': 'red'}
+
 	def __init__(self, df, symbol = "", window_sign=9, window_fast=12, window_slow=26, down_level=25,
-				 color_macd='', color_signal=''):
+				 color_macd='', color_signal='', variant_4c=False):
 		"""Initialize the indicator with the provided DataFrame and optional symbol/params."""
 		self.window = window_sign
 		self.window_fast = window_fast
@@ -33,6 +40,8 @@ class Macd(_indicator._Indicator):
 		self.down_level = down_level
 		self.color_macd   = color_macd   or 'black'
 		self.color_signal = color_signal or 'blue'
+		self.variant_4c = str(variant_4c).strip().lower() in ('1', 'true', 'yes', 'ja', 'on') \
+			if isinstance(variant_4c, str) else bool(variant_4c)
 		super().__init__(df=df, symbol=symbol)
 		
 		self.data()
@@ -57,6 +66,18 @@ class Macd(_indicator._Indicator):
 		signal_dir = np.where(self.df['macd'] > self.df['macd_signal'], 0.5, -0.5)
 		self.df['macd_trend'] = diff_dir + signal_dir
 
+	@classmethod
+	def colors_4c(cls, macd):
+		"""MACD 4C colour per bar: above zero lime (rising) / green (falling),
+		below zero maroon (falling) / red (rising), as the TradingView original."""
+		m = np.asarray(macd, dtype=float)
+		prev = np.r_[np.nan, m[:-1]]
+		c = cls.COLORS_4C
+		with np.errstate(invalid='ignore'):
+			out = np.where(m > 0, np.where(m > prev, c['up_rising'], c['up_falling']),
+						   np.where(m < prev, c['down_falling'], c['down_rising']))
+		return np.where(np.isnan(m), 'lightgrey', out).tolist()
+
 	def add_fig(self):
 		"""Add the indicator traces to the given Plotly figure."""
 
@@ -66,22 +87,30 @@ class Macd(_indicator._Indicator):
 		except Exception:
 			pass
 
-		colors = ['green' if val >= 0 
-			else 'red' for val in self.df['macd_diff']]
-		
-		self.fig.add_trace(go.Bar(x=self.df['Date'],
-					y=self.df['macd_diff'],
-					marker_color=colors,
-					showlegend = False,
-					name = f'MACD diff',
-					))
+		if self.variant_4c:
+			self.fig.add_trace(go.Bar(x=self.df['Date'],
+						y=self.df['macd'],
+						marker_color=self.colors_4c(self.df['macd']),
+						showlegend = False,
+						name = 'MACD 4C',
+						))
+		else:
+			colors = ['green' if val >= 0
+				else 'red' for val in self.df['macd_diff']]
 
-		self.fig.add_trace(go.Scatter(x=self.df['Date'],
-					y=self.df['macd'],
-					name = f'MACD',
-					showlegend = False,
-					line=dict(color=self.color_macd, width=2)
-					))
+			self.fig.add_trace(go.Bar(x=self.df['Date'],
+						y=self.df['macd_diff'],
+						marker_color=colors,
+						showlegend = False,
+						name = f'MACD diff',
+						))
+
+			self.fig.add_trace(go.Scatter(x=self.df['Date'],
+						y=self.df['macd'],
+						name = f'MACD',
+						showlegend = False,
+						line=dict(color=self.color_macd, width=2)
+						))
 
 		self.fig.add_trace(go.Scatter(x=self.df['Date'],
 					y=self.df['macd_signal'],
