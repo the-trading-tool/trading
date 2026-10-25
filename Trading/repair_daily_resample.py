@@ -50,6 +50,10 @@ logger = logging.getLogger(__name__)
 
 # A provider answer with this many rows or fewer is a stunted symbol, not a history.
 MIN_PROVIDER_ROWS = 5
+# A weekday is only treated as a phantom when the provider has a real history
+# around it. Delisted symbols (GBTG after the takeover) come back with a few
+# scattered rows; every gap between them is a trading day, not a phantom.
+MIN_HISTORY_ROWS = 250
 # Pause between provider calls, same as StockDataSaver.save_all_intervals.
 SLEEP_S = 0.8
 
@@ -144,7 +148,9 @@ def plan(flagged, provider, weekends):
             same &= (replace[c].values - cur[c].values).__abs__() < 1e-6
         same &= (replace['Volume'].fillna(0).values - cur['Volume'].fillna(0).values).__abs__() < 1
         replace = replace[~same.values]
-        gone = ~have & (days >= provider.index.min())
+        weekend = (days.dayofweek >= 5) & (not weekends)
+        inside = (days >= provider.index.min()) & (days <= provider.index.max())
+        gone = ~have & (weekend | (inside & (len(provider) >= MIN_HISTORY_ROWS)))
         return replace, list(flagged.raw[gone])
     if weekends:
         return pd.DataFrame(), []
