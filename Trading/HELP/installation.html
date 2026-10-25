@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Installationsanleitung – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+h3{color:#444;font-size:.97em;margin:10px 0 4px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+.warn{background:#fff8e1;border-left:4px solid #fbbc04;padding:7px 11px;margin:8px 0;font-size:.9em;border-radius:0 4px 4px 0}
+ul,ol{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6px 10px;font-family:'Consolas','Courier New',monospace;font-size:.87em;display:block;margin:6px 0;white-space:pre-wrap}
+p code,li code,td code,div code{display:inline;padding:1px 5px;margin:0;white-space:nowrap}
+.tag{display:inline-block;background:#e8f0fe;border:1px solid #4285f4;border-radius:3px;padding:0 6px;font-size:.8em;font-family:monospace;color:#174ea6}
+a{color:#1f78d1}
+</style>
+</head>
+<body>
+<h1>Installationsanleitung <small style="font-size:.6em;color:#888">install.ps1 · install.sh · start.bat</small></h1>
+
+<p>Diese Anleitung führt Schritt für Schritt von einem frischen Rechner bis zur laufenden App mit aktuellen Kursdaten und automatischen Hintergrund-Jobs. Die Installation läuft vollständig <b>lokal</b> – es wird kein Server und kein Cloud-Konto benötigt.</p>
+
+<h2>Überblick</h2>
+<table>
+<tr><th>#</th><th>Schritt</th><th>Pflicht?</th><th>Dauer (ca.)</th></tr>
+<tr><td>1</td><td>Python installieren</td><td>✅ ja</td><td>5 Min</td></tr>
+<tr><td>2</td><td>Programmcode herunterladen</td><td>✅ ja</td><td>2 Min</td></tr>
+<tr><td>3</td><td>Installer ausführen (<code>install.ps1</code> / <code>install.sh</code>) – Umgebung, Pakete, Admin-Login</td><td>✅ ja</td><td>5–10 Min</td></tr>
+<tr><td>4</td><td>Ticker-Stammdaten laden (<code>-InitInfo</code> / <code>--init-info</code>)</td><td>✅ ja</td><td>10–20 Min</td></tr>
+<tr><td>5</td><td>App starten (<code>start.bat</code> bzw. <code>streamlit run</code>)</td><td>✅ ja</td><td>1 Min</td></tr>
+<tr><td>6</td><td>Vollständige Kurshistorie + Indikatoren berechnen (<code>-Init</code>)</td><td>empfohlen</td><td>mehrere Stunden</td></tr>
+<tr><td>7</td><td>Hintergrund-Jobs starten (<code>schedserver.py</code>)</td><td>empfohlen</td><td>2 Min</td></tr>
+<tr><td>8</td><td>Optional: Datenprovider-, KI-, Pushover- und Broker-Zugänge</td><td>optional</td><td>je 5 Min</td></tr>
+</table>
+<div class="info">Wer es eilig hat: Schritte 1–5 genügen, damit die App startet. Fehlt beim ersten Start noch die Ticker-Datenbank, übernimmt der <b>Setup-Assistent</b> in der App die Schritte „Ticker-DB anlegen" und „erste Preisdaten laden" (siehe Abschnitt „Setup-Assistent beim ersten Start").</div>
+
+<h2>0. Voraussetzungen</h2>
+<table>
+<tr><th>Bereich</th><th>Windows</th><th>Linux / macOS</th></tr>
+<tr><td>Betriebssystem</td><td>Windows 10 oder 11</td><td>Ubuntu 20.04+, Debian 11+, Fedora 36+ oder vergleichbar; macOS mit Python 3.10+</td></tr>
+<tr><td>Python</td><td><b>3.11, 64-bit</b> (der Installer bricht bei 32-bit ab; 3.12/3.13 werden ebenfalls erkannt)</td><td>3.10 – 3.13</td></tr>
+<tr><td>Internet</td><td colspan="2">zwingend – Pakete und Kursdaten werden online geladen (Standardquelle: Yahoo Finance)</td></tr>
+<tr><td>Speicherplatz</td><td colspan="2">wenige hundert MB für Programm und Pakete; die Kursdatenbanken wachsen mit Umfang und Historie auf mehrere GB</td></tr>
+<tr><td>Rechte</td><td colspan="2">keine Administratorrechte nötig – alles wird im Programmordner und in einer eigenen virtuellen Umgebung (<code>.venv</code>) installiert</td></tr>
+</table>
+
+<h2>1. Python installieren</h2>
+<h3>Windows</h3>
+<ol>
+  <li>Auf <code>https://www.python.org/downloads/release/python-3119/</code> die Datei <b>„Windows installer (64-bit)"</b> (<code>python-3.11.9-amd64.exe</code>) herunterladen – <b>nicht</b> die win32-Version.</li>
+  <li>Installer starten und ganz unten das Häkchen <b>„Add python.exe to PATH"</b> setzen.</li>
+  <li><b>„Install Now"</b> klicken, abwarten, <b>„Close"</b>.</li>
+  <li>Kontrolle in einer neuen PowerShell: <code>py -3.11 --version</code> → <code>Python 3.11.x</code>.</li>
+</ol>
+<h3>Linux</h3>
+<pre># Ubuntu / Debian
+sudo apt update &amp;&amp; sudo apt install -y python3.11 python3.11-venv python3-pip git
+
+# Fedora / RHEL
+sudo dnf install -y python3.11 git
+
+# Kontrolle
+python3.11 --version</pre>
+<div class="info">Für TA-Lib braucht Linux zusätzlich die C-Bibliothek (<code>libta-lib-dev</code> bzw. <code>ta-lib-devel</code>). Ohne sie läuft die App trotzdem, einige Indikatoren fehlen dann. Unter Windows lädt der Installer ein vorkompiliertes Paket.</div>
+
+<h2>2. Programmcode herunterladen</h2>
+<h3>Variante A – mit Git (empfohlen, erleichtert Updates)</h3>
+<pre>git clone https://github.com/the-trading-tool/trading
+cd trading/Trading</pre>
+<h3>Variante B – als ZIP</h3>
+<ol>
+  <li><code>https://github.com/the-trading-tool/trading</code> öffnen → grüner Button <b>„Code"</b> → <b>„Download ZIP"</b>.</li>
+  <li>ZIP entpacken, z.&nbsp;B. nach <code>C:\Trading</code>.</li>
+  <li>In den Unterordner <b>Trading</b> wechseln – dort liegt <code>asset_analyzer.py</code>. Alle folgenden Befehle laufen in <b>diesem</b> Ordner.</li>
+</ol>
+<div class="warn">Der Installer prüft, ob <code>asset_analyzer.py</code> im aktuellen Ordner liegt, und bricht sonst mit „Bitte den Installer aus dem Trading-Verzeichnis heraus starten" ab.</div>
+
+<h2>3. Installer ausführen</h2>
+<h3>Windows (PowerShell)</h3>
+<ol>
+  <li>Im Ordner <b>Trading</b> mit <b>Shift + Rechtsklick</b> auf eine freie Stelle → <b>„PowerShell-Fenster hier öffnen"</b> (bzw. „In Terminal öffnen").</li>
+  <li>Skriptausführung für diese Sitzung erlauben:
+<pre>Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process</pre></li>
+  <li>Installer starten:
+<pre>.\install.ps1</pre></li>
+</ol>
+<h3>Linux / macOS (Terminal)</h3>
+<pre>chmod +x install.sh
+./install.sh</pre>
+
+<h3>Was der Installer erledigt</h3>
+<table>
+<tr><th>Phase</th><th>Inhalt</th></tr>
+<tr><td>1A</td><td>Python suchen (Windows: <code>py -3.11</code>, sonst <code>python3.11</code>/<code>python3</code>/<code>python</code>) und 64-bit prüfen</td></tr>
+<tr><td>1B</td><td>Virtuelle Umgebung <code>.venv</code> anlegen (bleibt bei erneutem Lauf erhalten)</td></tr>
+<tr><td>1C</td><td><code>pip</code> aktualisieren, TA-Lib und alle Pakete aus <code>requirements.txt</code> installieren, NLTK-Sentimentdaten (<code>vader_lexicon</code>) laden</td></tr>
+<tr><td>1D</td><td>Ordner <code>database/</code> und <code>logs/</code> anlegen</td></tr>
+<tr><td>1E</td><td>Verschlüsselungsschlüssel <code>database/secret.key</code> für gespeicherte API-Zugänge erzeugen</td></tr>
+<tr><td>1F</td><td>Standard-Hintergrund-Jobs in <code>database/scheduler.db</code> eintragen – nur wenn dort noch keine Jobs stehen</td></tr>
+<tr><td>2</td><td>Admin-Benutzer abfragen und <code>config.yaml</code> (Login) anlegen – nur wenn sie fehlt</td></tr>
+<tr><td>3</td><td>mit <code>-Seed</code>/<code>-InitInfo</code>/<code>-Init</code>: Ticker-Datenbank <code>yf_tickers.db</code> befüllen (<code>seed_db.py</code>)</td></tr>
+<tr><td>4A</td><td>mit <code>-InitInfo</code>/<code>-Init</code>: Stammdaten nach <code>asset_info.db</code> laden (<code>get_asset_info.py</code>)</td></tr>
+<tr><td>4B</td><td>mit <code>-Init</code>: komplette Kurshistorie laden (<code>get_asset_data.py</code>, nach Rückfrage)</td></tr>
+<tr><td>4C</td><td>mit <code>-Init</code>: Indikatoren und Scores berechnen (<code>asset_perf2.py init</code>)</td></tr>
+</table>
+<div class="info">Der Installer ist <b>wiederholbar</b>: bestehende <code>.venv</code>, <code>config.yaml</code>, <code>secret.key</code> und Scheduler-Jobs werden übersprungen. Vor dem Überschreiben vorhandener Datenbanken fragt er nach (<code>j/N</code>).</div>
+
+<h2>4. Admin-Benutzer anlegen</h2>
+<p>In Phase 2 fragt der Installer den ersten Benutzer ab:</p>
+<pre>Admin-Benutzername (Standard: admin):     ← Enter übernimmt „admin"
+E-Mail-Adresse (Standard: admin@localhost):
+Passwort:                                  ← mind. 8 Zeichen, Eingabe bleibt unsichtbar
+Passwort bestaetigen:</pre>
+<p>Benutzernamen dürfen nur Buchstaben, Ziffern und <code>_</code> enthalten (3–32 Zeichen). Gespeichert wird ausschließlich ein bcrypt-Hash; dazu ein zufälliger Cookie-Schlüssel je Installation.</p>
+<div class="warn"><b>config.yaml niemals weitergeben oder in Git einchecken</b> – sie enthält Passwort-Hashes und den Schlüssel, mit dem Login-Cookies signiert werden.</div>
+
+<h2>5. Ticker-Stammdaten laden (Pflicht)</h2>
+<p>Ohne diesen Schritt kennt die App keine Werte – Auswahllisten und Suche bleiben leer.</p>
+<pre># Windows
+.\install.ps1 -InitInfo
+
+# Linux / macOS
+./install.sh --init-info</pre>
+<p>Das legt die Ticker-Datenbank an und lädt Name, Sektor, Branche und Fundamentaldaten von Yahoo Finance. Einzelne Meldungen wie <code>404 Not Found</code> sind normal – Yahoo kennt nicht jeden Ticker, der Rest wird trotzdem geladen.</p>
+
+<h2>Setup-Assistent beim ersten Start</h2>
+<p>Startet die App, ohne dass <code>yf_tickers.db</code> existiert, erscheint statt der Startseite ein Assistent:</p>
+<table>
+<tr><th>Schritt</th><th>Was passiert</th></tr>
+<tr><td>Willkommen</td><td>Haftungsausschluss lesen und bestätigen</td></tr>
+<tr><td>1 · Ticker-Datenbank</td><td>führt <code>seed_db.py</code> aus (DAX-Familie, S&amp;P 500 u.&nbsp;a.) und zeigt das Protokoll live</td></tr>
+<tr><td>2 · Erste Preisdaten</td><td>lädt einen Monat Tageskurse aller Index-Mitglieder (<code>get_asset_data.py /index_member 1d:1mo</code>); kann übersprungen und später nachgeholt werden</td></tr>
+<tr><td>Fertig</td><td>„App starten" – danach erscheint die normale Oberfläche</td></tr>
+</table>
+<div class="warn">Fehlt beim Start auch <code>config.yaml</code> (Installer nicht gelaufen), legt die App selbst eine an – mit dem Login <b>admin / changeme</b>. Dieses Passwort sofort ändern; ein neuer Hash entsteht mit<br>
+<code>.venv\Scripts\python.exe -c "import bcrypt; print(bcrypt.hashpw(b'NEUESPASSWORT', bcrypt.gensalt()).decode())"</code></div>
+<div class="info">Der Assistent ersetzt nicht Schritt 5: Stammdaten (<code>get_asset_info.py</code>) lädt er nicht. Firmen erscheinen erst in der Auswahl, wenn <code>asset_info.db</code> gefüllt ist.</div>
+
+<h2>6. App starten</h2>
+<table>
+<tr><th>System</th><th>Befehl</th></tr>
+<tr><td>Windows</td><td>Doppelklick auf <code>start.bat</code> im Ordner Trading<br>oder: <code>.venv\Scripts\streamlit.exe run asset_analyzer.py</code></td></tr>
+<tr><td>Windows (Launcher)</td><td><code>.venv\Scripts\python.exe launcher.py</code> – wartet auf den Server und öffnet den Browser selbst (siehe Hilfe „Anwendung starten")</td></tr>
+<tr><td>Linux / macOS</td><td><code>.venv/bin/streamlit run asset_analyzer.py</code></td></tr>
+</table>
+<p>Die App läuft unter <b><code>http://localhost:8080</code></b> (Port aus <code>.streamlit/config.toml</code>). Öffnet sich der Browser nicht von selbst, die Adresse manuell eingeben. Beenden: Terminal-Fenster schließen bzw. <code>Strg + C</code>.</p>
+
+<h2>7. Vollständige Daten laden (empfohlen)</h2>
+<p>Für Charts über mehrere Jahre, Backtests, Strategie-Suche und Signale braucht die App die volle Kurshistorie und die berechneten Indikatoren. Die Daten entstehen in drei Stufen:</p>
+<table>
+<tr><th>Stufe</th><th>Skript</th><th>Datenbank</th><th>Danach sichtbar</th></tr>
+<tr><td>1</td><td><code>get_asset_data.py</code></td><td><code>yf_tickers.db</code>, <code>yf_&lt;TICKER&gt;.db</code></td><td>Märkte und Kurscharts</td></tr>
+<tr><td>2</td><td><code>get_asset_info.py</code></td><td><code>asset_info.db</code></td><td>Firmenauswahl, Volltextsuche, Fundamentaldaten</td></tr>
+<tr><td>3</td><td><code>asset_perf2.py</code></td><td><code>asset_simulation_*.db</code></td><td>Scores, Buy/Sell-Signale, Kennzahlen, Screener</td></tr>
+</table>
+<p>Alles in einem Durchgang:</p>
+<pre># Windows
+.\install.ps1 -Init
+
+# Linux / macOS
+./install.sh --init</pre>
+<p>Oder einzeln (Windows-Pfade; unter Linux <code>.venv/bin/python</code>):</p>
+<pre>.venv\Scripts\python.exe get_asset_data.py /index_member 1m:7d 60m:60d 1d:max 1mo:max
+.venv\Scripts\python.exe get_asset_data.py /index 1m:7d 60m:60d 1d:max 1mo:max
+.venv\Scripts\python.exe asset_perf2.py init /worker:2</pre>
+<div class="warn">Der vollständige Download dauert <b>Stunden</b>. Yahoo begrenzt die Abrufrate – bei <code>HTTP 429</code> einfach später erneut starten, bereits geladene Daten bleiben erhalten. Wochen- und andere Intervalle werden lokal aus Tages-/Stundendaten berechnet und müssen nicht geladen werden.</div>
+
+<h2>8. Hintergrund-Jobs einschalten (empfohlen)</h2>
+<p>Damit Kurse, Indikatoren und Signale täglich aktuell bleiben, hat der Installer in Phase 1F bereits einen Job-Plan in <code>scheduler.db</code> angelegt (Intraday-/Tageskurse je Region, Indikatorberechnung abends, Stammdaten sonntags, Fear-&amp;-Greed-Log, Cache-Vorwärmung, Datenfrische-Prüfung). Ausgeführt werden die Jobs vom Scheduler-Daemon:</p>
+<pre># Windows
+.venv\Scripts\python.exe schedserver.py
+
+# Linux / macOS
+.venv/bin/python schedserver.py</pre>
+<ul>
+  <li>Der Prozess muss dauerhaft laufen – für den Autostart z.&nbsp;B. eine Aufgabe in der Windows-Aufgabenplanung „Bei Anmeldung" bzw. einen systemd-User-Dienst anlegen.</li>
+  <li>Jobs ansehen, aktivieren oder ändern: <b>Admin → Scheduler</b>.</li>
+  <li>Angelegt, aber <b>ausgeschaltet</b> sind Standby (Ruhezustand am Abend), die Aufhol-Läufe (<code>catchup</code>) und die Order-Vorbereitung – bei Bedarf im Scheduler aktivieren.</li>
+  <li>Bewusst <b>gar nicht</b> angelegt sind die order-ausführenden Jobs (Trailing-Stop, Order-Ausführung) – sie brauchen Broker-Zugang und einen Benutzer und werden bei Bedarf selbst angelegt.</li>
+</ul>
+<div class="info">Empfohlene Zeitpläne und Alternativen mit Aufgabenplanung/cron: Hilfe <b>„Setup &amp; Scheduler (Empfehlungen)"</b> und <b>„Scheduler-Daemon (schedserver.py)"</b>.</div>
+
+<h2>9. Optionale Einstellungen</h2>
+<table>
+<tr><th>Thema</th><th>Wo / wie</th></tr>
+<tr><td>Datenverzeichnis verlegen</td><td>Umgebungsvariable <code>TradingDB</code> auf einen Ordner setzen – alle Datenbanken <b>und</b> <code>config.yaml</code> werden dann von App und Skripten dort gesucht. Ausnahme: der Installer legt <code>config.yaml</code> immer im Programmordner an – bei gesetztem <code>TradingDB</code> die Datei in das Datenverzeichnis verschieben.</td></tr>
+<tr><td>Port / Erscheinungsbild</td><td><code>.streamlit/config.toml</code> (<code>[server] port = 8080</code>, Theme-Farben)</td></tr>
+<tr><td>Datenquelle FMP / EODHD</td><td>API-Key als Zugang (KSP-Eintrag <code>fmp</code> bzw. <code>eodhd</code>) speichern und im Einstellungsdialog als Datenprovider wählen – siehe Hilfe „Datenquellen". Für viele automatische Abrufe zuverlässiger als Yahoo.</td></tr>
+<tr><td>KI-Analyse</td><td>Schlüssel für Groq (<code>groq</code>) oder Gemini (<code>gapi</code>) bzw. lokales Ollama hinterlegen – siehe Hilfe „KI-Integration"</td></tr>
+<tr><td>Push-Benachrichtigungen</td><td>Pushover-Zugang hinterlegen – siehe Hilfe „Signal-Benachrichtigung"</td></tr>
+<tr><td>Broker</td><td>Alpaca-Paper-Keys bzw. IBKR TWS/Gateway – siehe Hilfe „Paper / Live Trading"</td></tr>
+<tr><td>Weitere Benutzer</td><td>Admin-Panel bzw. <code>config.yaml</code></td></tr>
+</table>
+<div class="warn"><b>database/secret.key sichern!</b> Damit werden die gespeicherten API-Zugänge verschlüsselt. Geht der Schlüssel verloren, müssen alle Zugänge neu eingegeben werden.</div>
+
+<h2>10. Aktualisieren</h2>
+<pre>git pull
+.venv\Scripts\python.exe -m pip install -r requirements.txt --prefer-binary</pre>
+<p>Danach die App neu starten. Bei ZIP-Installationen das neue ZIP über den alten Ordner entpacken – <code>.venv</code>, <code>database/</code>, <code>config.yaml</code> und <code>logs/</code> bleiben erhalten. Ein erneuter Lauf von <code>install.ps1</code> / <code>install.sh</code> ist ebenfalls gefahrlos.</p>
+<div class="info">Pakete immer mit <code>.venv\Scripts\python.exe -m pip …</code> installieren, nicht mit einem System-Python – sonst landen sie in der falschen Umgebung.</div>
+
+<h2>11. Häufige Probleme</h2>
+<table>
+<tr><th>Meldung / Symptom</th><th>Ursache und Lösung</th></tr>
+<tr><td>„python / py wird nicht erkannt"</td><td>Python ohne PATH-Eintrag installiert → neu installieren mit Häkchen „Add python.exe to PATH"</td></tr>
+<tr><td>„32-bit Python erkannt"</td><td>32-bit-Version deinstallieren, <code>python-3.11.9-amd64.exe</code> installieren</td></tr>
+<tr><td>„running scripts is disabled on this system"</td><td>Vorher <code>Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process</code> ausführen</td></tr>
+<tr><td>„pip install fehlgeschlagen"</td><td>Internetverbindung prüfen; bei fehlendem C-Compiler die Visual C++ Build Tools installieren; Python 3.11 verwenden</td></tr>
+<tr><td>TA-Lib lässt sich nicht installieren</td><td>Linux: <code>libta-lib-dev</code>/<code>ta-lib-devel</code> nachinstallieren. Die App läuft auch ohne TA-Lib.</td></tr>
+<tr><td><code>start.bat</code>: „.venv nicht gefunden" / „config.yaml fehlt"</td><td>Installer noch nicht (vollständig) gelaufen → <code>install.ps1</code> ausführen</td></tr>
+<tr><td>Login klappt nicht</td><td>Benutzername und Passwort aus Schritt 4 verwenden (Groß-/Kleinschreibung). Ohne Installer: <b>admin / changeme</b>.</td></tr>
+<tr><td>Markt auswählbar, aber „No options to select" bei den Firmen</td><td>Stammdaten fehlen → Schritt 5 (<code>get_asset_info.py</code>) ausführen</td></tr>
+<tr><td>Charts da, aber keine Signale / Kennzahlen</td><td><code>asset_perf2.py</code> ist noch nicht gelaufen → Abschnitt 7</td></tr>
+<tr><td>„Port already in use"</td><td>Eine andere Instanz läuft noch → beenden oder Port in <code>.streamlit/config.toml</code> bzw. mit <code>--server.port 8502</code> ändern</td></tr>
+<tr><td>Viele <code>HTTP 429</code> / leere Downloads</td><td>Yahoo-Ratenlimit → später erneut versuchen, weniger parallele Worker (<code>/worker:2</code>) oder FMP/EODHD als Quelle</td></tr>
+</table>
+
+<h2>12. Was liegt wo?</h2>
+<table>
+<tr><th>Pfad</th><th>Inhalt</th></tr>
+<tr><td><code>.venv/</code></td><td>Python-Umgebung mit allen Paketen</td></tr>
+<tr><td><code>config.yaml</code></td><td>Benutzer und Login-Konfiguration (mit <code>TradingDB</code>: im Datenverzeichnis)</td></tr>
+<tr><td><code>database/</code></td><td>alle Datenbanken: <code>yf_tickers.db</code>, <code>yf_&lt;TICKER&gt;.db</code>, <code>asset_info.db</code>, <code>asset_simulation_*.db</code>, <code>config.db</code>, <code>scheduler.db</code>, <code>secret.key</code></td></tr>
+<tr><td><code>logs/</code></td><td>Protokolle der Skripte und Jobs</td></tr>
+<tr><td><code>.streamlit/config.toml</code></td><td>Port und Theme</td></tr>
+<tr><td><code>HELP/</code></td><td>diese Hilfeseiten</td></tr>
+</table>
+
+<div class="info"><b>Scalable-Edition:</b> läuft aus derselben Installation mit eigenem Datenverzeichnis und eigenem Login. Einrichtung über <code>setup_scalable.ps1</code> bzw. <code>setup_scalable.sh</code>, Start über <code>start_scalable.bat</code> – Details in der Hilfe „Scalable".</div>
+</body>
+</html>

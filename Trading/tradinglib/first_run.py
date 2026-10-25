@@ -190,6 +190,21 @@ _STEPS = [
 ]
 
 
+def _render_install_guide(col):
+    """Show the installation guide (HELP/installation*.html) in a collapsed expander.
+
+    The regular help dialog is not reachable while the wizard blocks the app,
+    so the guide is offered here directly.
+    """
+    try:
+        from tradinglib import help_text
+        help_text.set_dark_mode(st.get_option("theme.base") != "light")
+        with col.expander("📖 Installationsanleitung / Installation guide"):
+            st.html(help_text.load_help("installation"))
+    except Exception as exc:
+        logger.warning("Installationsanleitung nicht ladbar: %s", exc)
+
+
 def _step_welcome(col):
     """Render the welcome/disclaimer step of the setup wizard."""
     col.title("🚀 Willkommen bei Silvesto, your portal for growth.")
@@ -374,6 +389,8 @@ def maybe_show_setup() -> bool:
         _step_price_data(col)
     elif step >= 3:
         _step_done(col)
+
+    _render_install_guide(col)
 
     return True  # Wizard aktiv → Aufrufer soll st.stop() aufrufen
 

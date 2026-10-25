@@ -848,6 +848,7 @@ class SystemConfig(tools.Db_tools):
                     ("ISIN-Befüllung (backfill_isin.py)", "backfill_isin"),
                     ("Scheduler-Daemon (schedserver.py)", "schedserver"),
                     ("Anwendung starten (launcher.py)", "launcher"),
+                    ("Installationsanleitung", "installation"),
                     ("Setup & Scheduler (Empfehlungen)", "setup_scheduler"),
                 ])
 
