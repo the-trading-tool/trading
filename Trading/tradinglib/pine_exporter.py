@@ -3017,8 +3017,11 @@ def _t_wml(p: dict) -> str:
 
     if show_week:
         sec_lines += [
-            'wml_wk_hi = request.security(syminfo.tickerid, "W", high[1])',
-            'wml_wk_lo = request.security(syminfo.tickerid, "W", low[1])',
+            # high[1] + lookahead_on = last completed week on every bar, any chart
+            # timeframe. With the default lookahead_off the [1] shifts a second time
+            # on historical bars, so lower timeframes showed the week before last.
+            'wml_wk_hi = request.security(syminfo.tickerid, "W", high[1], lookahead = barmerge.lookahead_on)',
+            'wml_wk_lo = request.security(syminfo.tickerid, "W", low[1], lookahead = barmerge.lookahead_on)',
         ]
         var_lines += [
             'var line _wml_wk_hi_line = na',
@@ -3043,8 +3046,8 @@ def _t_wml(p: dict) -> str:
 
     if show_month:
         sec_lines += [
-            'wml_mo_hi = request.security(syminfo.tickerid, "M", high[1])',
-            'wml_mo_lo = request.security(syminfo.tickerid, "M", low[1])',
+            'wml_mo_hi = request.security(syminfo.tickerid, "M", high[1], lookahead = barmerge.lookahead_on)',
+            'wml_mo_lo = request.security(syminfo.tickerid, "M", low[1], lookahead = barmerge.lookahead_on)',
         ]
         var_lines += [
             'var line _wml_mo_hi_line = na',
