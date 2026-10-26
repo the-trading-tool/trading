@@ -351,14 +351,16 @@ def trend_pct_columns(df: pd.DataFrame, column='Close') -> pd.DataFrame:
         return df
 
     close = pd.to_numeric(df[column], errors='coerce')
-    df['dTrend'] = _trend_pct_vec(close, close.shift(1))
 
     # Period boundaries come from the frame's own dates; a string index (the
     # normal case here, see load_price_data) is converted for the comparison
-    # only and never written back.
+    # only and never written back. dTrend uses calendar days too: on a daily
+    # frame that is exactly close.shift(1), on an intraday frame it compares
+    # the day-to-date close with the previous day's close — what the engine's
+    # daily row holds — instead of the previous intraday bar.
     dates = pd.to_datetime(df['Date'] if 'Date' in df.columns else df.index,
                            errors='coerce')
-    for name, freq in (('wkTrend', 'W'),):
+    for name, freq in (('dTrend', 'D'), ('wkTrend', 'W')):
         try:
             period = dates.dt.to_period(freq) if hasattr(dates, 'dt') \
                 else pd.PeriodIndex(dates, freq=freq)
@@ -370,6 +372,38 @@ def trend_pct_columns(df: pd.DataFrame, column='Close') -> pd.DataFrame:
             df[name] = _trend_pct_vec(close, pd.to_numeric(previous, errors='coerce'))
         except Exception:
             df[name] = 0.0
+    return df
+
+
+_COARSE_FREQ = {'1wk': 'W', '1mo': 'M', '3mo': 'Q'}
+
+
+def trend_pct_onto(df: pd.DataFrame, daily: pd.DataFrame, interval: str,
+                   column='Close') -> pd.DataFrame:
+    """Add dTrend/wkTrend to a weekly/monthly frame from the daily history.
+
+    Both are daily-engine values and cannot be rebuilt from coarse bars alone
+    (a weekly bar has no previous-day close). Each coarse bar gets the value of
+    the LAST daily row inside its own period — what the engine stored on the
+    bar's closing day; the running last bar therefore shows today's value.
+    Matching by period instead of by label keeps this independent of whether
+    the provider labels a bar with its first or its last day.
+    """
+    df = df.copy()
+    freq = _COARSE_FREQ.get(interval)
+    if freq is None or daily is None or daily.empty or column not in daily.columns:
+        return trend_pct_columns(df, column)
+
+    d = trend_pct_columns(daily, column)
+    d_dates = pd.to_datetime(d['Date'] if 'Date' in d.columns else d.index,
+                             errors='coerce')
+    d_period = pd.Series(list(pd.PeriodIndex(d_dates, freq=freq)), index=d.index)
+    c_dates = pd.to_datetime(df['Date'] if 'Date' in df.columns else df.index,
+                             errors='coerce')
+    c_period = pd.Series(list(pd.PeriodIndex(c_dates, freq=freq)), index=df.index)
+    for name in ('dTrend', 'wkTrend'):
+        last = d[name].groupby(d_period).last()
+        df[name] = pd.to_numeric(c_period.map(last), errors='coerce').fillna(0.0)
     return df
 
 
