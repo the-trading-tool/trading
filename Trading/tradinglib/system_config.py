@@ -393,6 +393,20 @@ class SystemConfig(tools.Db_tools):
                 format_func=lambda k: i18n.t(f"cfg.start_page_opt.{k}"),
                 help=i18n.t("cfg.start_page_help"),
             ))
+            # Logo: watermark behind the main area (default) and/or in the sidebar
+            from tradinglib import banner_page as _bp
+            _lm, _lm_size, _lm_opacity = _bp.logo_settings(self)
+            self.set_value('logo_mode', st.selectbox(
+                i18n.t("cfg.logo_mode"), list(_bp.LOGO_MODES), list(_bp.LOGO_MODES).index(_lm),
+                format_func=lambda k: i18n.t(f"cfg.logo_mode_opt.{k}"),
+                help=i18n.t("cfg.logo_mode_help")))
+            _c_size, _c_opacity = st.columns(2)
+            self.set_value('logo_watermark_size', _c_size.number_input(
+                i18n.t("cfg.logo_size"), min_value=10, max_value=90, value=_lm_size, step=5,
+                help=i18n.t("cfg.logo_size_help")))
+            self.set_value('logo_watermark_opacity', _c_opacity.number_input(
+                i18n.t("cfg.logo_opacity"), min_value=1, max_value=50, value=_lm_opacity, step=1,
+                help=i18n.t("cfg.logo_opacity_help")))
             self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
             self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
 

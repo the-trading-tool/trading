@@ -675,12 +675,17 @@ class TradingApp:
         except Exception:
             external_links = {}
 
+        # Logo: watermark behind the main area (default) and/or in the sidebar.
+        _logo_mode, _wm_size, _wm_opacity = bp.logo_settings(self.sys_config)
+        _wm_css = (bp.watermark_css(_wm_size, _wm_opacity)
+                   if _logo_mode in ('watermark', 'both') else '')
         st.sidebar.markdown(
             '<style>'
             '[data-testid="stSidebar"] hr{margin:1rem 0;}'
             '[data-testid="stSidebar"] h2{margin:0.1rem 0;}'
             '[data-testid="stSidebar"] [data-testid="stVerticalBlock"]{gap:0.35rem;}'
             '[data-testid="stSidebar"] div.stButton{margin:0;}'
+            + _wm_css +
             '</style>',
             unsafe_allow_html=True,
         )
@@ -694,8 +699,9 @@ class TradingApp:
         else:
             self.sidebar_header = None
 
-        bp.render_logo(region=st.sidebar, max_width="85%", margin_bottom="1.3rem")
-        st.sidebar.markdown("---")
+        if _logo_mode in ('sidebar', 'both'):
+            bp.render_logo(region=st.sidebar, max_width="85%", margin_bottom="1.3rem")
+            st.sidebar.markdown("---")
 
         # ── Settings & Help ─────────────────────────────────────────────────
         # Moved here from the top search row (main_page.py): both open an

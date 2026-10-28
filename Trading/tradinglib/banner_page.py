@@ -72,6 +72,53 @@ def render_logo(region=st, max_width: str = "220px", margin_bottom: str = "1.5re
     )
 
 
+LOGO_MODES = ('watermark', 'sidebar', 'both', 'none')
+WATERMARK_SIZE_DEFAULT = 40       # % of the viewport height
+WATERMARK_OPACITY_DEFAULT = 6     # %
+
+
+def logo_settings(sys_conf) -> tuple[str, int, int]:
+    """(mode, watermark size in % of the viewport height, opacity in %) from config.
+
+    Default is the watermark only, so the sidebar keeps its space.
+    """
+    mode = str(sys_conf.get_value('logo_mode', 'watermark') or 'watermark')
+    if mode not in LOGO_MODES:
+        mode = 'watermark'
+
+    def _int(key, default, lo, hi):
+        try:
+            return max(lo, min(hi, int(float(sys_conf.get_value(key, default)))))
+        except (TypeError, ValueError):
+            return default
+
+    return (mode, _int('logo_watermark_size', WATERMARK_SIZE_DEFAULT, 10, 90),
+            _int('logo_watermark_opacity', WATERMARK_OPACITY_DEFAULT, 1, 50))
+
+
+def watermark_css(size_vh: int = WATERMARK_SIZE_DEFAULT,
+                  opacity_pct: int = WATERMARK_OPACITY_DEFAULT) -> str:
+    """CSS rule putting the logo as a watermark behind the main area.
+
+    ``stMain`` is Streamlit's scroll container (overflow auto, 100dvh high), so a
+    background on it stays put while the content scrolls and sits centred in the
+    main area, not in the whole window. Content draws over it; charts with an
+    opaque background cover it. The opacity is baked into the SVG because a CSS
+    background image has none of its own.
+    """
+    import base64
+    svg = ARBOR_LOGO_SVG.strip()
+    head_end = svg.index('>') + 1
+    svg = (svg[:head_end] + f'<g opacity="{max(1, min(50, int(opacity_pct))) / 100}">'
+           + svg[head_end:svg.rindex('</svg>')] + '</g></svg>')
+    data = base64.b64encode(svg.encode('utf-8')).decode('ascii')
+    size = max(10, min(90, int(size_vh)))
+    return ('[data-testid="stMain"]{'
+            f'background-image:url("data:image/svg+xml;base64,{data}");'
+            'background-repeat:no-repeat;background-position:center center;'
+            f'background-size:auto {size}vh;}}')
+
+
 def _get_invest(transactions: dict, group_key: str) -> float:
     """Return the investment amount for a strategy group."""
     inner = transactions.get(group_key, {})
