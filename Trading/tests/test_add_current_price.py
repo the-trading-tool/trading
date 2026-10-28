@@ -45,11 +45,13 @@ def _minute(day, close):
 @pytest.fixture
 def maker(monkeypatch):
     """FetchData mit gestellten Intraday-Daten, ohne Netz und ohne DB."""
-    def make(minute_df):
+    def make(minute_df, calendar=('Europe/Berlin', False)):
         f = fd.FetchData.__new__(fd.FetchData)
         f.ftime_str = FT
+        f.tz_info = 'Europe/Berlin'
         f.logger = logging.getLogger('test')
         f.load_price_data = lambda *a, **kw: minute_df
+        f._exchange_calendar = lambda symbol: calendar
         return f
     return make
 
@@ -116,3 +118,62 @@ def test_empty_inputs_are_harmless(maker):
     # Kein Symbol -> unveraendert durchreichen
     out = maker(_minute('2026-08-12', 1.0)).add_current_price(df, symbol='')
     assert out.equals(df)
+
+
+# Exchange-local day (2026-10): minute data arrives in display time
+# (Europe/Berlin). A US post-market candle after midnight Berlin belongs to the
+# US trading day before, not to the next calendar day -- on Fridays the old
+# calendar-day binning wrote a Saturday row into asset_simulation.
+
+US = ('America/New_York', False)
+
+
+def _bars(stamps, close):
+    return pd.DataFrame(
+        {'Open': close, 'High': close, 'Low': close, 'Close': close,
+         'Volume': 5}, index=stamps)
+
+
+FRIDAY_DAYS = ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15',
+               '2026-10-16']
+
+
+def test_us_post_market_after_midnight_berlin_stays_on_friday(maker):
+    """Fri 2026-10-16 19:30 ET = Sat 01:30 Berlin: no Saturday row."""
+    minute = _bars(['2026-10-16 21:59:00', '2026-10-17 01:30:00'], 62.67)
+    df = _daily(FRIDAY_DAYS)
+    out = maker(minute, US).add_current_price(df, symbol='EEM')
+
+    days = pd.to_datetime(out.index)
+    assert (days.dayofweek < 5).all(), 'no weekend candle'
+    assert str(days[-1])[:10] == '2026-10-16'
+    assert len(out) == len(df), 'replaces Friday, does not append'
+    assert float(out['Close'].iloc[-1]) == 62.67
+
+
+def test_us_post_market_after_midnight_berlin_on_a_weekday(maker):
+    """Tue 19:30 ET = Wed 01:30 Berlin: belongs to Tuesday, not Wednesday."""
+    minute = _bars(['2026-10-13 21:59:00', '2026-10-14 01:30:00'], 50.0)
+    df = _daily(FRIDAY_DAYS[:2])
+    out = maker(minute, US).add_current_price(df, symbol='EEM')
+
+    assert str(pd.to_datetime(out.index)[-1])[:10] == '2026-10-13'
+    assert len(out) == 2
+
+
+def test_weekend_only_minutes_leave_the_series_alone(maker):
+    """Futures reopen Sunday evening ET: no Sunday candle for a weekday market."""
+    minute = _bars(['2026-10-19 00:05:00', '2026-10-19 00:06:00'], 70.0)  # Sun 18:05 ET
+    df = _daily(FRIDAY_DAYS)
+    out = maker(minute, US).add_current_price(df, symbol='CL=F')
+
+    assert out.equals(df)
+
+
+def test_crypto_keeps_its_weekend_candle(maker):
+    minute = _bars(['2026-10-17 12:00:00', '2026-10-17 12:01:00'], 100.0)
+    df = _daily(FRIDAY_DAYS)
+    out = maker(minute, ('UTC', True)).add_current_price(df, symbol='BTC-USD')
+
+    assert str(pd.to_datetime(out.index)[-1])[:10] == '2026-10-17'
+    assert len(out) == len(df) + 1

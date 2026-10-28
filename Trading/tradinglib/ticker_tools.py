@@ -26,6 +26,37 @@ from tradinglib.utils import DataUtils
 from tradinglib import market_data as md
 
 
+def exchange_calendar(asset_info_path: str, ticker: str) -> Tuple[str, bool]:
+    """(exchange timezone, trades on weekends) for a ticker.
+
+    Read from asset_info.db; unknown symbols fall back to UTC and a
+    weekday-only calendar unless the symbol looks like a crypto pair.
+    """
+    tz, quote_type = None, None
+    if asset_info_path and os.path.exists(asset_info_path):
+        try:
+            con = sqlite3.connect(f"file:{asset_info_path}?mode=ro", uri=True)
+            try:
+                row = con.execute(
+                    "SELECT exchangeTimezoneName, quoteType FROM asset_info "
+                    "WHERE ticker = ?", (ticker,)).fetchone()
+            finally:
+                con.close()
+            if row:
+                tz, quote_type = row
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "no exchange calendar for %s", ticker, exc_info=True)
+    try:
+        import zoneinfo
+        zoneinfo.ZoneInfo(tz)
+    except Exception:
+        tz = "UTC"
+    weekends = (str(quote_type or "").upper() == "CRYPTOCURRENCY"
+                or bool(re.search(r"-(USD|EUR|USDT|BTC|ETH)$", ticker)))
+    return tz, weekends
+
+
 def calculate_investment(asset_log_vola=0.20, target_avg=2000, ref_vola=0.1):
     """Compute a volatility-scaled investment amount.
 
@@ -690,38 +721,12 @@ class StockDataSaver(TickerTools):
             return 0
 
     def _exchange_calendar(self) -> Tuple[str, bool]:
-        """(exchange timezone, trades on weekends) for this ticker.
-
-        Read from asset_info.db; unknown symbols fall back to UTC and a
-        weekday-only calendar unless the symbol looks like a crypto pair.
-        """
-        tz, quote_type = None, None
+        """(exchange timezone, trades on weekends) for this ticker."""
         try:
             path = self.get_path(self.db_path, "asset_info.db")
         except Exception:
             path = ""
-        if path and os.path.exists(path):
-            try:
-                con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-                try:
-                    row = con.execute(
-                        "SELECT exchangeTimezoneName, quoteType FROM asset_info "
-                        "WHERE ticker = ?", (self.ticker,)).fetchone()
-                finally:
-                    con.close()
-                if row:
-                    tz, quote_type = row
-            except Exception:
-                logging.getLogger(__name__).debug(
-                    "no exchange calendar for %s", self.ticker, exc_info=True)
-        try:
-            import zoneinfo
-            zoneinfo.ZoneInfo(tz)
-        except Exception:
-            tz = "UTC"
-        weekends = (str(quote_type or "").upper() == "CRYPTOCURRENCY"
-                    or bool(re.search(r"-(USD|EUR|USDT|BTC|ETH)$", self.ticker)))
-        return tz, weekends
+        return exchange_calendar(path, self.ticker)
 
     def _backfill_daily_from_hourly(self, min_rows: int = 20) -> int:
         """Fallback für Symbole ohne Yahoo-Tageshistorie: baut Tageskerzen aus

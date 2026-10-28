@@ -784,6 +784,14 @@ class FetchData(tt.TickerTools):
         return df, df_t
 
 
+    def _exchange_calendar(self, symbol):
+        """(exchange timezone, trades on weekends) for symbol, from asset_info.db."""
+        try:
+            path = self.get_path(path=self.database_path, file_name='asset_info.db')
+        except Exception:
+            path = ''
+        return tt.exchange_calendar(path, symbol)
+
     def add_current_price(self, df, symbol='', from_yahoo=False):
         """Append the latest intraday candle as the final row in df.
 
@@ -800,21 +808,30 @@ class FetchData(tt.TickerTools):
                 df_minute = self.load_price_data(symbol, period='1d', interval='1m', aggregate=False)    
 
             try:
-                df_ts = df.index[-1]
-                if isinstance(df_ts, pd.Timestamp) or isinstance(df_ts, datetime):
-                    df_ts = df_ts.strftime(self.ftime_str)
-                df_minute_ts = df_minute.index[-1]
-
-                df_minute.index = pd.to_datetime(df_minute.index)
+                # Bin the minutes by the exchange's own trading day. The index
+                # is display wall time (tz_info) from load_price_data; binning
+                # that by calendar day stamped a US post-market candle after
+                # midnight Berlin onto the next day -- on Fridays a Saturday.
+                tz, weekends = self._exchange_calendar(symbol)
+                idx = pd.to_datetime(df_minute.index)
+                if idx.tz is None:
+                    idx = idx.tz_localize(getattr(self, 'tz_info', None) or 'UTC',
+                                          ambiguous='NaT', nonexistent='shift_forward')
+                df_minute.index = idx.tz_convert(tz).tz_localize(None)
+                df_minute = df_minute[df_minute.index.notna()]
                 df_minute = df_minute.resample('D').agg({
                     'Open': 'first',
                     'High': 'max',
                     'Low': 'min',
                     'Close': 'last',
                     'Volume': 'sum'
-                })
+                }).dropna(subset=['Close'])
+                if not weekends:
+                    df_minute = df_minute[df_minute.index.dayofweek < 5]
+                if df_minute.empty:
+                    return df
                 df_minute.index = df_minute.index.strftime('%Y-%m-%d 00:00:00')
-                day_minute = pd.to_datetime(df_minute_ts).strftime("%Y-%m-%d 00:00:00")
+                day_minute = df_minute.index[-1]
                 existing_days = pd.to_datetime(df.index, errors="coerce").strftime("%Y-%m-%d 00:00:00")
 
                 # Die Intraday-Daten koennen aelter sein als die Tageskerzen. Bei
