@@ -911,7 +911,9 @@ class Headlines(tt.TickerTools):
             return []
         return [
             self._item(t('keydata.div_yield'), self._pct(yld, digits=2)),
-            self._item(t('keydata.div_rate'), rate),
+            # dividendRate is the annual amount per share in the listing currency.
+            self._item(t('keydata.div_rate'),
+                       f"{rate} {self.currency}" if rate and self.currency else rate),
             self._item(t('keydata.payout'), self._pct(self._pct_of('payoutRatio'))),
             self._item(t('keydata.ex_dividend'), self._date('exDividendDate') or self._date('dividendDate')),
             self._item(t('keydata.div_5y_avg'), self._pct(self._info('fiveYearAvgDividendYield'), digits=2)),
