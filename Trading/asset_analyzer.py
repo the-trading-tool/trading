@@ -853,15 +853,12 @@ class TradingApp:
 
         # ── External links ──────────────────────────────────────────────────
         st.sidebar.markdown("---")
-        _ext_placeholder = t('nav.external_links_placeholder')
-        selection = st.sidebar.selectbox(
-            t('nav.external_links'),
-            [_ext_placeholder] + list(external_links.keys()),
-        )
-        if selection != _ext_placeholder:
-            url = external_links[selection]
-            js = f'window.parent.window.open("{url}", "_blank");'
-            st.components.v1.html(f'<script>{js}</script>', height=0)
+        # Opens the chosen page once, then the box resets to the placeholder.
+        from tradinglib import external_links as _ext
+        _ext_url = _ext.link_picker(st.sidebar, external_links, t('nav.external_links'),
+                                    t('nav.external_links_placeholder'))
+        if _ext_url:
+            _ext.open_in_new_tab(_ext_url)
 
         st.sidebar.markdown("---")
 
