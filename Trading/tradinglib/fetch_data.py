@@ -46,7 +46,7 @@ _EXTRA_COLUMN_INDICATORS = {
 _EXTRA_PREFIX_INDICATORS = (('ovtEma', 'ovt'),)
 
 # Map keys that are not indicator modules and must never be instantiated.
-_NOT_AN_INDICATOR = {'ohlc'}
+_NOT_AN_INDICATOR = {'ohlc', 'trend'}
 
 _COLUMN_INDICATOR_CACHE = None
 

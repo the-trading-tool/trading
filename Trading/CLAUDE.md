@@ -1861,3 +1861,24 @@ Ausschlussfilter brauchbar, als Kaufsignal nicht.
 gleichgewichteten Markt. Einschraenkungen: Universum = heutige Indexmitglieder
 (Ueberlebensverzerrung hebt den Vergleichsmassstab), brutto, Ausstiege vereinfacht
 (keine Teilverkaeufe/Nachkaeufe wie bei Minervini).
+
+---
+
+## sup und wkTrend kausal (2026-10-30)
+
+- **`sup_support`/`sup_resistance`**: wieder rollierendes 21-Balken-Tief/-Hoch inkl. aktuellem
+  Balken (Revert von a16220f). Vorher ein Skalar je Ticker-Jahr in den nachgerechneten DBs
+  (2026: Jan-Mai 0-7 % der Zeilen kausal). `_wk`/`_mo` ueber `indicator.support_resistance_htf`,
+  im Tageslauf und in der Nachrechnung aus derselben Funktion (`asset_perf2.sup_htf_series`).
+- **`wkTrend`**: Schluss des Tages gegen den Schluss der letzten **abgeschlossenen** Woche
+  (`asset_perf2.wk_trend_series` = `indicator.trend_pct_columns`, = Chart-Definition). Vorher trug
+  der Montag-datierte Wochenbalken in 99 % der nachgerechneten Zeilen schon den Freitagsschluss.
+  Nachrechnung: `/backfill:trend` (kein Indikatormodul, `NON_INDICATOR_BACKFILL`).
+- Nachrechnung `python asset_perf2.py /backfill:sup,trend /force` je DB (2020-2025 sofort,
+  aktuelles Jahr/_all/ETP nur ausserhalb der Scheduler-Laeufe — die laden die DB in den Speicher
+  und schreiben sie ganz zurueck).
+- **Nicht nachgezogen:** `overallTrend`/`overallValueTrend` enthalten noch den alten
+  `wkTrend`-Baustein; nur `/rescore` wuerde sie aktualisieren und ueberschreibt dabei die
+  Fundamentaldaten der Historie.
+- Folge fuer Backtests: Formeln mit `sup_support` oder `wkTrend` liefern andere (niedrigere)
+  Ergebnisse als vorher; `close<=sup_support.shift(1)` ist kausal nur noch bei neuem 21-Tage-Tief erfuellt.

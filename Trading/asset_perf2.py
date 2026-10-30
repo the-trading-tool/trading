@@ -75,7 +75,15 @@ INDICATOR_BACKFILL_MAP: dict = {
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
     'ohlc':    ['Open', 'High', 'Low'],
+    # Weekly trend, causal: week-to-date close vs. the last COMPLETED week's close
+    # (indicator.trend_pct_columns, also used by the chart). The old value came
+    # from the last weekly bar up to the day -- dated Monday, closing Friday --
+    # so backfilled rows saw the rest of their week.
+    'trend':   ['wkTrend'],
 }
+
+# Map entries that are not indicator modules: their columns are built below.
+NON_INDICATOR_BACKFILL = {'ohlc', 'trend'}
 
 # Indicators that are additionally computed on higher timeframes during
 # backfill. Each entry: (interval, period, column_suffix). The indicator runs
@@ -85,6 +93,42 @@ INDICATOR_BACKFILL_MAP: dict = {
 INDICATOR_BACKFILL_TF: dict = {
     'markov': [('1wk', '6y', '_wk'), ('1mo', '10y', '_mo')],
 }
+
+# Higher-timeframe columns derived causally from the DAILY frame (as of each day,
+# in-progress period included up to that day) instead of forward-filling wk/mo
+# bars, which would leak the rest of the week/month into earlier days.
+# indicator -> [(pandas period freq, suffix)]
+INDICATOR_BACKFILL_FROM_DAILY: dict = {
+    'sup': [('W', '_wk'), ('M', '_mo')],
+}
+
+
+def sup_htf_series(daily: pd.DataFrame) -> dict:
+    """{'sup_support_wk': Series, ...} as of each daily bar (causal), see
+    INDICATOR_BACKFILL_FROM_DAILY. Empty dict when High/Low are missing."""
+    out = {}
+    if daily is None or daily.empty or not {'High', 'Low'} <= set(daily.columns):
+        return out
+    from tradinglib.indicator.indicator import support_resistance_htf
+    for freq, suffix in INDICATOR_BACKFILL_FROM_DAILY['sup']:
+        try:
+            out[f'sup_support{suffix}'], out[f'sup_resistance{suffix}'] = \
+                support_resistance_htf(daily, freq)
+        except Exception as e:
+            logger.warning("sup%s: %s", suffix, e)
+    return out
+
+
+def wk_trend_series(daily: pd.DataFrame) -> pd.Series:
+    """wkTrend as of each daily bar (causal): close vs. last completed week's close.
+
+    Same definition the chart uses (indicator.trend_pct_columns) and the value a
+    single-day run always produced, when the running weekly bar was still open.
+    """
+    from tradinglib.indicator.indicator import trend_pct_columns
+    if daily is None or daily.empty or 'Close' not in daily.columns:
+        return pd.Series(dtype=float)
+    return trend_pct_columns(daily[['Close']])['wkTrend']
 
 
 def _ensure_sim_columns(conn, table: str, columns: list[str]) -> None:
@@ -119,6 +163,8 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
 
     # 2. Run each requested indicator on the full df
     for ind_name in indicator_names:
+        if ind_name in NON_INDICATOR_BACKFILL:
+            continue
         try:
             ft.init_instance(ind_name, df=df_raw, symbol=symbol)
             inst = getattr(ft, ind_name, None)
@@ -150,12 +196,21 @@ def _backfill_symbol(symbol: str, indicator_names: list[str],
                 logger.warning("backfill %s / %s%s: indicator error: %s",
                                symbol, ind_name, suffix, e)
 
+    # 2c. Higher-timeframe variants derived from the daily frame (causal)
+    if 'sup' in indicator_names:
+        for col, series in sup_htf_series(df_raw).items():
+            df_raw[col] = series
+    if 'trend' in indicator_names:
+        df_raw['wkTrend'] = wk_trend_series(df_raw)
+
     # 3. Collect the DB columns we need to update
     target_cols: list[str] = []
     for ind_name in indicator_names:
         base_cols = INDICATOR_BACKFILL_MAP.get(ind_name, [])
         target_cols.extend(base_cols)
         for _, _, suffix in INDICATOR_BACKFILL_TF.get(ind_name, []):
+            target_cols.extend(f'{c}{suffix}' for c in base_cols)
+        for _, suffix in INDICATOR_BACKFILL_FROM_DAILY.get(ind_name, []):
             target_cols.extend(f'{c}{suffix}' for c in base_cols)
     target_cols = [c for c in target_cols if c in df_raw.columns]
     if not target_cols:
@@ -971,7 +1026,8 @@ def get_ticker_value(ticker, key, from_json=False):
 # trend() wurden dadurch obsolet und entfernt.
 
 
-def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=None, ft=None, last_year_high = 0, last_year_low = 0):
+def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=None, ft=None, last_year_high = 0, last_year_low = 0,
+               wk_trend=None):
     """
     
     Args:
@@ -1036,7 +1092,10 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['ath'] = df_monthly['Close'].max() if (df_monthly is not None and not df_monthly.empty and 'Close' in df_monthly.columns) else 0
         pdict['dTrend'] = indicator.trend_pct_df(df)
         pdict['moTrend'] = indicator.trend_pct_df(df_monthly, date=pdict['Date'])
-        pdict['wkTrend'] = indicator.trend_pct_df(df_weekly, date=pdict['Date'])
+        # wk_trend: causal value from wk_trend_series (process_symbol). The weekly
+        # bar fallback is only right for a single-day run with the week still open.
+        pdict['wkTrend'] = (float(wk_trend) if wk_trend is not None and not pd.isna(wk_trend)
+                            else indicator.trend_pct_df(df_weekly, date=pdict['Date']))
         pdict['sharpe'] = indicator.sharpe_ratio(df)
         pdict['sortino'] = indicator.sortino_ratio(df)
         pdict['semiVola'] = indicator.semi_volatility(df)
@@ -1549,14 +1608,26 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
         df_m = DataUtils.ensure_datetime_index(df_m)
         df_w = DataUtils.ensure_datetime_index(df_w)
 
+        # Weekly/monthly support/resistance as of each day, from the daily bars.
+        # The last row of df_w/df_m.loc[:date] is a bar dated at the START of its
+        # week/month, which in a multi-day run already holds the whole period --
+        # Monday's row would have known Friday's low. Same function as /backfill:sup.
+        sup_htf = sup_htf_series(df_r)
+        # Same reason for wkTrend: week-to-date close vs. the last completed week.
+        wk_trend = wk_trend_series(df_r)
+
         for date in df.index:
             if only_dates is not None and date.strftime('%Y-%m-%d') not in only_dates:
                 continue  # already in the DB — nothing to recompute
             res_df_d = df_r.loc[startdate:date]
             res_df_w = df_w.loc[:date] if df_w is not None else pd.DataFrame()
             res_df_m = df_m.loc[:date] if df_m is not None else pd.DataFrame()
-            pdict = fill_pdict(symbol, ticker, res_df_d, res_df_w, res_df_m, year=year, ft=ft, last_year_high=last_year_high, last_year_low=last_year_low)
+            pdict = fill_pdict(symbol, ticker, res_df_d, res_df_w, res_df_m, year=year, ft=ft, last_year_high=last_year_high, last_year_low=last_year_low,
+                               wk_trend=wk_trend.get(date))
             if pdict:
+                for _col, _series in sup_htf.items():
+                    _v = _series.get(date)
+                    pdict[_col] = 0.0 if _v is None or pd.isna(_v) else float(_v)
                 results.append(pdict)
 
         return results
