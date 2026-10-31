@@ -24,15 +24,6 @@ def _lint(script):
             assert code.count('[') == code.count(']'), (n, ln)
 
 
-def test_fundamentalscore_bleibt_abgelehnt_mit_grund():
-    with pytest.raises(pse.StrategyExportError) as e:
-        pse.export_strategy('Value Trend ^2', '(overallValueTrend>=1.1*overallTrend)&(ewo>ewo_ema)', '(rsi>=75)')
-    msg = str(e.value)
-    assert '(overallTrend, overallValueTrend)' in msg
-    assert 'Fundamentaldaten' in msg and 'andere Strategie' in msg
-    assert msg.count('Fundamentaldaten') == 1                # one reason, not repeated per column
-
-
 def test_support_rsi_mehrzeilig_mit_signalfenster():
     buy = '(close<=sup_support*1.02)\n(relvol_ratio > 1)\n(close>Open)\n(macd>macd_signal)'
     s = pse.export_strategy('Support/RSI', buy, '(High>=atc_top_high)\n(rsi>=72)', signal_window=2)

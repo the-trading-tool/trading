@@ -43,7 +43,6 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <table>
 <tr><th>Mode</th><th>Example</th><th>Description</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fill in missing indicator columns from existing OHLCV data – no internet needed</td></tr>
-<tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>Recompute OVT scores without an OHLCV download – uses stored DB columns</td></tr>
 <tr><td><b>fill</b></td><td><code>python asset_perf2.py /fill</code></td><td>Fill in only the missing days instead of recomputing the whole year</td></tr>
 <tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Compact databases (SQLite <code>VACUUM</code>) – reclaims the space deleted rows still occupy</td></tr>
 </table>
@@ -102,6 +101,6 @@ atc     → atc_top_high, atc_bot_low
 scr     → scr_1mo, scr_3mo, scr_eoy, scr_buy, scr_sell</pre>
 
 <div class="info">Daily cron recommendation: run automatically after market close so the app always shows current signals.</div>
-<div class="warn">A full run can take several minutes depending on the number of tickers. <code>/rescore</code> is significantly faster.</div>
+<div class="warn">A full run can take several minutes depending on the number of tickers. <code>/backfill</code> is significantly faster.</div>
 </body>
 </html>

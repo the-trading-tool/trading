@@ -29,7 +29,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td>Börse</td><td>Eingrenzung auf eine bestimmte Börse, oder <code>ANY</code></td></tr>
 <tr><td>Marktkapitalisierung</td><td>Mindest-/Höchstgrenze</td></tr>
 <tr><td>Preisbereich</td><td>Mindest-/Höchstkurs</td></tr>
-<tr><td>Sortieren nach</td><td>Spalte zur Auswahl der Top-Titel, z.&nbsp;B. <code>sortino</code>, <code>overallValueTrend</code></td></tr>
+<tr><td>Sortieren nach</td><td>Spalte zur Auswahl der Top-Titel, z.&nbsp;B. <code>sortino</code>, <code>sharpe</code></td></tr>
 <tr><td>Sektor</td><td>Eingrenzung auf einen GICS-Sektor, oder <code>ANY</code></td></tr>
 <tr><td>Währung</td><td>Eingrenzung auf eine Handelswährung, oder <code>ANY</code></td></tr>
 <tr><td>Daten vom (Jahr)</td><td>Mehrfachauswahl: aktuelles Jahr und/oder Archiv-Jahre (<code>asset_simulation_{jahr}.db</code>, ab 2020)</td></tr>
@@ -42,7 +42,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Investition:</b> Startkapital der Simulation</li>
   <li><b>Kauf-Verzögerung (Tage):</b> Anzahl Tage zwischen Signal und tatsächlichem Einstieg</li>
   <li><b>Gebühr pro Trade (%):</b> wird bei der Gewinnberechnung berücksichtigt</li>
-  <li><b>Assets kaufen wenn / verkaufen wenn:</b> freie Ausdrücke auf Indikator-Spalten (gleiche Syntax wie auf der Asset-Übersicht), z.&nbsp;B. <code>overallValueTrend &gt; 65</code> bzw. <code>ewo &lt; ewo_ema</code></li>
+  <li><b>Assets kaufen wenn / verkaufen wenn:</b> freie Ausdrücke auf Indikator-Spalten (gleiche Syntax wie auf der Asset-Übersicht), z.&nbsp;B. <code>ewo &gt; ewo_ema</code> bzw. <code>ewo &lt; ewo_ema</code></li>
 </ul>
 
 <div class="info"><b>Optimierung:</b> Wird in einem Ausdruck <code>%%varname</code> als Platzhalter verwendet, sucht der integrierte Optimizer automatisch den besten numerischen Wert für diese Variable.</div>
@@ -61,7 +61,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Vollständiger Datensatz:</b> alle simulierten Zeilen, mit 📥 Excel-Export</li>
   <li><b>Portfolio:</b> Verlauf der simulierten Positionen, „Noch im Portfolio"-Liste der aktuell gehaltenen Titel</li>
   <li><b>Kumulierter Gewinn:</b> Chart über alle Trades, mit 📥 Trade-Export</li>
-  <li>Kennzahlen: Gesamtkapital, investierter Betrag, Gesamtwert, Gesamtgewinn (inkl. nicht realisierter Gewinne), Win-Rate, Anzahl Trades, implizite Volatilität, durchschnittlicher Value-Trend</li>
+  <li>Kennzahlen: Gesamtkapital, investierter Betrag, Gesamtwert, Gesamtgewinn (inkl. nicht realisierter Gewinne), Win-Rate, Anzahl Trades, implizite Volatilität</li>
   <li><b>Monatliche Performance-Heatmap</b> und kompakte KPI-Übersicht (analog Dashboard/Multi-Strategien)</li>
   <li><b>Paritäts-Analyse:</b> vergleicht die Strategie mit einem einfachen „einmal kaufen und nach Volatilität rebalancieren"-Ansatz über denselben Zeitraum</li>
 </ul>

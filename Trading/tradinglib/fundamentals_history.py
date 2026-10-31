@@ -28,9 +28,7 @@ instead — ``forwardEps`` and ``bookValue`` are what gets recorded.
 
 Nothing in the app consumes this table yet, and that is deliberate: until it
 spans enough time, a backtest over it would be shorter than the strategies it is
-meant to judge. The existing ``overallValueTrend`` is untouched — live
-strategies depend on its current behaviour (see the ``Sum`` docstring in
-``asset_perf2``).
+meant to judge.
 
 Usage::
 

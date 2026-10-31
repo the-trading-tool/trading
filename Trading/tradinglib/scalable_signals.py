@@ -7,7 +7,7 @@ or sell?
 Signals come from ``portfolio_analysis._live_signal_for_ticker`` — the same live
 FetchData + ``indicator.buy_sell`` path the chart uses. That matters twice over:
 
-  * Buy/sell formulas reference live-only columns (``ovtEma9`` and friends) that
+  * Buy/sell formulas can reference live-only indicator columns that
     ``asset_simulation`` does not carry, so evaluating against the simulation
     tables would silently drop conditions.
   * ``buy_sell`` markers are position-aware — a sell is only emitted while the

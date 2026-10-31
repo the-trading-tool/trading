@@ -48,7 +48,7 @@ Streamlit-basierte lokale Trading-App (noch nicht produktiv).
 | #2 | `fix/db-connection-safety` | `__enter__`/`__exit__` auf `Db_tools`; `try/finally` in `fetch_data.py`, `utils.py`; `with Db_tools` in `search.py`; parameterisierte Queries in `fetch_data.py` |
 | #3 | `fix/code-quality` | SQL-Injection (f-String → `?` params) in `fetch_data.py`, `excel_executor.py`, `multi_transaction.py`; Cache-Begrenzung (512 Einträge) in `market_data.py`; alle `except:` → `except Exception:` in 60 Dateien |
 | #4 | `feature/pine-export-and-portfolio-analysis` | Pine Script v5-Exporter (22 Templates, `pine_exporter.py`); Indikator-`params`-Schema (22 Klassen); ⚙-Config-Dialog in `system_config.py`; `MultiCheckboxSelector` lädt Config-Defaults; Markov-Regime-Indikator; Portfolio-Analyse-Tab auf "Own Transactions"-Seite |
-| (WIP) | `refactor/indicator-naming` | Einheitliches `{prefix}_{name}`-Schema für alle ~30 Indikatoren; DB-Dateien auf `_`-Trenner umgestellt; pdict-Keys, buy/sell-Query-Defaults, pine_exporter, live_ticker, performance_details synchronisiert. `macd_signal` in pdict. `--backfill` + `--rescore` Fast-Modes in `asset_perf2.py`. SQLite WAL-Modus auf `asset_simulation_.db`; `asset_performance_.db` entfernt. Siehe Naming-Tabelle unten. |
+| (WIP) | `refactor/indicator-naming` | Einheitliches `{prefix}_{name}`-Schema für alle ~30 Indikatoren; DB-Dateien auf `_`-Trenner umgestellt; pdict-Keys, buy/sell-Query-Defaults, pine_exporter, live_ticker, performance_details synchronisiert. `macd_signal` in pdict. `--backfill`-Fast-Mode in `asset_perf2.py`. SQLite WAL-Modus auf `asset_simulation_.db`; `asset_performance_.db` entfernt. Siehe Naming-Tabelle unten. |
 | (WIP) | `feature/sector-rotation` | Sector Rotation Dashboard: `tradinglib/sector_rotation.py` (Backend: SectorRotation, RSC/CMF/OBV/RRG-Indikatoren, US+EU+EM-Universen, Industry-Drill-down); `tradinglib/sector_rotation_page.py` (6-Tab-UI: RRG Weekly, RRG Daily, Treemap, Sector Matrix, Industry Drill-down, Best of Sector); `tradinglib/sector_stocks.py` (DB-Query für Top-Stocks je Sektor + RSC vs ETF Anreicherung); Route in `asset_analyzer.py` via `?rotation=true` |
 
 ---
@@ -318,7 +318,7 @@ beide unter dem Lock geschützt.
 
 ---
 
-## asset_perf2.py — Fast-Modes (backfill / rescore)
+## asset_perf2.py — Fast-Mode (backfill)
 
 Nach einem `init`-Lauf können fehlende Indikator-Spalten ohne Neuberechnung befüllt werden:
 
@@ -340,10 +340,6 @@ python asset_perf2.py /backfill:heikin,markov,macd /all
 #   sup     → sup_support, sup_resistance
 #   relvol  → relvol_ratio
 #   atc     → atc_top_high, atc_bot_low
-
-# 2. Scores neu berechnen (verwendet gespeicherte DB-Spalten + asset_info):
-python asset_perf2.py /rescore
-python asset_perf2.py /rescore /year:2024
 ```
 
 **Hinweis:** `macd_signal` ist in allen 8 `asset_simulation_*.db` via `ALTER TABLE ADD COLUMN` ergänzt (Wert=0).
@@ -781,52 +777,20 @@ echte Hintergrund-Jobs ist FMP-Free (250/Tag) praktikabler.
 
 ---
 
-## Neu in dieser Session (2026-07-29) — `ovt`-Indikator (Overall (Value) Trend)
-
-Neuer Oszillator [`tradinglib/indicator/ovt.py`](tradinglib/indicator/ovt.py)
-(Klasse `Ovt`), der die Engine-Scores `overallTrend` (technisch) und
-`overallValueTrend` (Value/Fundamental) — plus `ovtEma{span}` (EMA über
-`overallValueTrend`, gleiche Semantik wie `OvtEmaUpdater`) — **live** als
-Sub-Plot bereitstellt. **Hybrid A+B, ohne Logik-Duplizierung:**
-
-- **B (autoritativ):** liest `overallTrend`/`overallValueTrend` direkt aus
-  `asset_simulation_*.db` per `ticker`+Datum, über mehrere Jahres-DBs
-  (`asset_simulation_.db` = aktuelles Jahr, sonst `_{year}.db`). Verifiziert:
-  **100 % exakter Match** gegen die gespeicherten Werte (AAOI, 145 Zeilen).
-- **A (Fallback):** für Bars *ohne* gespeicherten Wert (aktueller/Intraday-Bar
-  oder nie simulierter Ticker) ruft `data()` **`asset_perf2.score_df` selbst**
-  auf (derselbe vektorisierte Scorer). Nur die live fehlenden Skalare
-  (`vola`/`sharpe`/`sortino`/`logVola`/`wkTrend`/`roa` + `asset_info`-
-  Fundamentals) werden mit denselben Helfern (`indicator.sharpe_ratio`,
-  `log_return`, `trend_pct_df`, `asset_perf2.get_roa`) rekonstruiert.
-  `score_df`/`get_roa` werden **lazy** importiert → kein Zirkularimport (das
-  Modul liegt selbst im `indicator`-Paket).
-
-**Nutzung:** erscheint automatisch in der Oszillator-Auswahl (Auto-Discovery).
-Spalten `overallTrend`/`overallValueTrend`/`ovtEma9` sind **namensgleich zur
-Backtest-Engine** → Buy/Sell-Formeln laufen live *und* im Backtest identisch.
-Kein `INDICATOR_BACKFILL_MAP`-Eintrag nötig (die Spalten existieren in
-`asset_simulation` bereits über `asset_perf2`).
-
-**Einschränkung (bewusst):** Der A-Tail ist eine Näherung — `macd_trend_wk/mo`
-und `moTrend` liegen live nicht vor, `score_df` zählt deren Gewicht bei Wert 0
-→ leichte Dämpfung der *unsimulierten* Randbars. Historie über B ist exakt. Für
-besten Tail ewo/macd/adx/rsi/heikin mit-aktivieren (sonst sieht `score_df` auch
-deren Spalten als 0).
+## Oszillatoren: keine Layout-Annotationen (2026-07-29)
 
 **⚠️ Oszillatoren dürfen keine Layout-Annotationen via `_add_hline_outside`
-setzen.** Bug gefunden: `_add_hline_outside` erzeugt eine Annotation mit
+setzen.** `_add_hline_outside` erzeugt eine Annotation mit
 `xref='paper'`/`x=0.0`. Der **Overlay**-Pfad in `tiny_chart` (Zeile ~344ff.)
 überträgt Annotationen bewusst **ohne** `row/col` und erhält `xref='paper'` —
 darum funktioniert der Helper bei Overlays (`sup`/`gan`/`fib`/`pre`/`pvt`). Der
 **Sub-Plot-Pfad** (Zeile ~674) überträgt sie dagegen mit
 `add_annotation(an, row=1, col=1)`, wodurch Plotly `xref='paper'`→`'x'`
 umschreibt → `x=0.0` wird zur Epoch-Datumskoordinate **1970-01-01** und streckt
-die geteilte `type="date"`-Achse (gesamter Chart 1970→heute, Daten rechts
-zusammengequetscht). `ovt` nutzt deshalb reine `add_hline`-Referenzlinien (nur
-Shapes, die als `x{row} domain` sauber übertragen werden). Latent: der Sub-Plot-
-Annotations-Pfad in `tiny_chart` ist generell fehlerhaft (homed nach `row=1`
-statt `row=row` + xref-Override) — bisher ohne Konsumenten.
+die geteilte `type="date"`-Achse. Oszillatoren nutzen deshalb reine
+`add_hline`-Referenzlinien (nur Shapes, die als `x{row} domain` sauber übertragen
+werden). Latent: der Sub-Plot-Annotations-Pfad in `tiny_chart` ist generell
+fehlerhaft (homed nach `row=1` statt `row=row` + xref-Override).
 
 ---
 
@@ -1877,8 +1841,36 @@ gleichgewichteten Markt. Einschraenkungen: Universum = heutige Indexmitglieder
 - Nachrechnung `python asset_perf2.py /backfill:sup,trend /force` je DB (2020-2025 sofort,
   aktuelles Jahr/_all/ETP nur ausserhalb der Scheduler-Laeufe — die laden die DB in den Speicher
   und schreiben sie ganz zurueck).
-- **Nicht nachgezogen:** `overallTrend`/`overallValueTrend` enthalten noch den alten
-  `wkTrend`-Baustein; nur `/rescore` wuerde sie aktualisieren und ueberschreibt dabei die
-  Fundamentaldaten der Historie.
+- `overallTrend`/`overallValueTrend` wurden nicht nachgezogen und am 2026-10-31 ganz entfernt (siehe unten).
 - Folge fuer Backtests: Formeln mit `sup_support` oder `wkTrend` liefern andere (niedrigere)
   Ergebnisse als vorher; `close<=sup_support.shift(1)` ist kausal nur noch bei neuem 21-Tage-Tief erfuellt.
+
+---
+
+## overallTrend / overallValueTrend / ovt entfernt (2026-10-31)
+
+Anlass: Messung 2020-2026 (Scratch `value_trend_clean.py`, `value_trend_pit.py`). Der Vorsprung
+der Strategie "Value Trend ^2" kam ganz aus Vorausschau-Bausteinen des Scores (Snapshot-
+Fundamentaldaten aus `asset_info`, `predictedHigh`, `macd_trend_wk`). Kausal nachgebaut ist die
+Bedingung `overallValueTrend >= 1.1*overallTrend` auf 91-100 % der Zeilen erfuellt; auch echte
+Quartals-EPS (KGV, EPS-Wachstum point-in-time aus `fundamentals_quarterly`) brachten keinen
+stabilen Vorteil. Auf Wunsch komplett entfernt:
+
+- **Engine** (`asset_perf2.py`): `Sum`, `score_df`, `rescore_db`, `OvtEmaUpdater`, `get_mo_trend`,
+  `get_trend`, die Bewertungsbloecke in `fill_pdict`, Fast-Mode `/rescore` (auch aus `cli.py`).
+  `predictedHigh/Low`, `roa`, `pctTargetHighPrice` werden weiter gespeichert (eigene Spalten).
+- **Indikator** `tradinglib/indicator/ovt.py`, `HELP/ovt_*.html`, Hilfe-Tab "OVT-Indikator",
+  Einstellung `ovt_smoothing`, `help_text.helptext_general`, Test `test_overall_score_semantics.py`.
+- **UI**: Standard-Sortierung ist jetzt `sortino` (Kandidaten, Sektor-Aktien, Marktlage "Beste je
+  Sektor", Performance, All Assets, Strategy Finder). Kennzahlen-Tab ohne Value/Overall-Trend und
+  ohne OVT-Rang im Sektor. Markt-Karte ohne OVT als Farbe/Groesse. Multi Strategies ohne
+  "Gesamttrend". Pine-Export: `_UNSUPPORTED` ist leer, die Spalten gelten als unbekannt.
+- **Daten**: Spalten per `DROP COLUMN` aus allen `asset_simulation_*.db` (+ Altdateien
+  `asset_simulationall.db`, `asset_performance[_].db`). Sicherung nur der Spalten (ticker, Date,
+  Scores) in `database/ovt_columns_backup_20261031.db`.
+- **config.db** (Sicherung `config.db.bak-20261031-ovt`): Score-Bedingung aus den Buy-Formeln von
+  kurt/admin/None entfernt ("Value Trend ^2" kauft jetzt nur nach ATC-Unterband + ewo [+ close>Open]),
+  Kommentarblock in `kurt:multi_transactions` entfernt, 3 Eintraege aus `kurt:sf_formula_history`,
+  `ovt` aus `admin:oszilator`/`kurt:oszilator_no_plot`, `*:ovt_smoothing` geloescht.
+  `SystemConfig.transactions` (Default fuer neue Nutzer) ist jetzt leer.
+- Messwerte in aelteren Abschnitten dieses Dokuments, die die Scores nennen, sind Historie.

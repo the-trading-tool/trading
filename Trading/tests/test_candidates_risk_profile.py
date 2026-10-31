@@ -30,7 +30,7 @@ def _rows():
         'riskScore': [90.0, 90.0, 20.0, 20.0],
         'sector': 'Technology', 'currency': 'USD', 'isin': 'US0000000001',
         'longName': 'Test', 'sup_support': 90.0, 'sup_resistance': 110.0,
-        'relvol_ratio': 1.0, 'overallValueTrend': 50.0,
+        'relvol_ratio': 1.0, 'sortino': 1.5,
     })
 
 

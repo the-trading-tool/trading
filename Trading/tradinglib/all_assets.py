@@ -69,7 +69,7 @@ class AllAssetsView(tt.TickerTools):
         sell_query = self.sys_config.get_value("sell_query",default="(ewo<ewo_ema)")
         tt.tools.attach_db(db.conn, self.get_path(path = 'database', file_name='asset_info.db'), "info_db")
         bq_input = st.text_input(t('assets.filter_label'), buy_query)
-        o_by = "ORDER BY Date DESC, ap.currency, ap.sortino DESC, ap.overallValueTrend DESC Limit 7000;"
+        o_by = "ORDER BY Date DESC, ap.currency, ap.sortino DESC Limit 7000;"
 #        if qv:
 #            o_by = "ORDER BY Date DESC, ap.currency Limit 7000;"
 

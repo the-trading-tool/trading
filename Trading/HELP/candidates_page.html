@@ -97,9 +97,9 @@ und Drawdown, nicht die Durchschnittsrendite.</div>
 <h2>Warum zwei verschiedene Filter?</h2>
 <p>Der <b>Vorfilter</b> ist bewusst <b>nicht</b> Ihre Buy-Formel. Zwei Gründe:</p>
 <ul>
-<li>Die Buy-Formel darf Spalten verwenden, die es nur live gibt — <code>ovtEma9</code> oder
-  <code>atc_mid_zero</code> etwa stehen nicht in <code>asset_simulation</code>. Als SQL
-  gegen die Datenbank gefahren, läuft sie auf einen Fehler.</li>
+<li>Die Buy-Formel darf Spalten verwenden, die es nur live gibt (Indikatoren ohne Spalte in
+  <code>asset_simulation</code>). Als SQL gegen die Datenbank gefahren, läuft sie auf einen
+  Fehler.</li>
 <li>Die Chart-Marker sind <b>positionsabhängig</b>: ein Verkaufssignal gilt nur, wenn man
   hält. Eine reine Spaltenabfrage kann das nicht abbilden.</li>
 </ul>
@@ -108,7 +108,7 @@ Liste, die maßgebliche Prüfung über den Live-Pfad.</p>
 
 <div class="info"><b>Vorfilter-Fehler lesen sich hilfreich:</b> nennt die Meldung eine
 fehlende Spalte, ist das genau die Auskunft — die Spalte gibt es nur live. Verfügbar sind
-alle Spalten aus <code>asset_simulation</code>, etwa <code>overallValueTrend</code>,
+alle Spalten aus <code>asset_simulation</code>, etwa
 <code>ewo</code>, <code>ewo_ema</code>, <code>relvol_ratio</code>, <code>sup_support</code>,
 <code>sup_resistance</code>, <code>adx</code>, <code>rsi</code>, <code>fps_phase</code> sowie
 die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</code>.</div>

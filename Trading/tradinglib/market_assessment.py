@@ -284,8 +284,7 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
                        username: str = "admin") -> list | None:
     """Staerkste Aktie JE Sektor — ein Titel pro Sektor, kein Sektor doppelt.
 
-    Aus den je Sektor fundamental staerksten Aktien (Top nach Overall Value
-    Trend) wird pro Sektor die mit der hoechsten Outperformance ggue. dem
+    Aus den je Sektor staerksten Aktien (Top nach Sortino) wird pro Sektor die mit der hoechsten Outperformance ggue. dem
     eigenen Sektor-ETF (RSC_vs_ETF) genommen. Sortiert wird anschliessend nach
     der Staerke des SEKTORS (Mansfield-RSC), nicht nach der der Aktie: so steht
     oben, was im derzeit fuehrenden Sektor am besten laeuft.
@@ -295,7 +294,7 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
     try:
         from tradinglib import sector_stocks as ss
         df, _ = ss.query_best_per_sector(db_path=db_path,
-                                         rank_col="ap.overallValueTrend",
+                                         rank_col="ap.sortino",
                                          per_sector=per_sector)
         if df is None or df.empty:
             return None
@@ -322,8 +321,6 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
                 "name": r.get("longName") or r.get("ticker", ""),
                 "sector": r.get("sector", ""),
                 "etf": r.get("sector_etf", ""),
-                "ovt": (float(r["overallValueTrend"])
-                        if "overallValueTrend" in r and pd.notna(r["overallValueTrend"]) else None),
                 "rsc": round(rsc, 2),
                 "sector_rsc": (float(r["_sec_rsc"])
                                if pd.notna(r.get("_sec_rsc")) else None),
@@ -333,7 +330,7 @@ def _block_best_stocks(db_path: str, per_sector: int = 3, top_n: int = 5,
 
         # Signal ueber DENSELBEN Live-Pfad wie der Chart (FetchData + buy_sell),
         # nicht aus asset_simulation: die Buy/Sell-Queries referenzieren
-        # Live-Only-Spalten wie ovtEma9, die dort nicht existieren, und die
+        # Live-Only-Spalten (nicht gespeicherte Indikatoren), und die
         # Marker sind positionsabhaengig. Nur so deckt sich das Signal mit dem,
         # was der Nutzer im Asset Viewer sieht.
         try:
@@ -614,7 +611,6 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
             t("ma.best_col_stock"): r["name"],
             t("ma.best_col_sector"): r["sector"],
             t("ma.best_col_sector_rsc"): r.get("sector_rsc"),
-            "OVT": r["ovt"],
             t("ma.best_col_rsc"): r["rsc"],
             t("ma.best_col_beats"): "✓" if r["beats"] else "✗",
             **({t("ma.best_col_signal"): (t(_SIGNAL_KEYS[r["signal"]])
@@ -630,8 +626,6 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
                 t("ma.best_col_sector_rsc"): st.column_config.NumberColumn(
                     t("ma.best_col_sector_rsc"), format="%+.1f %%", width="small",
                     help=t("ma.best_col_sector_rsc_help")),
-                "OVT": st.column_config.ProgressColumn(
-                    "OVT", min_value=0, max_value=80, format="%.0f", width="small"),
                 t("ma.best_col_rsc"): st.column_config.ProgressColumn(
                     t("ma.best_col_rsc"), min_value=-20, max_value=20,
                     format="%+.1f %%", width="small"),

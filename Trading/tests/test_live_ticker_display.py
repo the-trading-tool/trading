@@ -744,10 +744,10 @@ def test_selected_but_not_plotted_oscillators_get_no_row():
     obj = _osc_ticker()
 
     sub_plots, _ = obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}),
-                                       ['ewo', 'macd', 'ovt'],
+                                       ['ewo', 'macd', 'mtt'],
                                        no_plot_oszilators=['macd'])
 
-    assert [name for name, _ in sub_plots] == ['ewo', 'ovt']
+    assert [name for name, _ in sub_plots] == ['ewo', 'mtt']
     assert obj.unavailable_oszilators == []
 
 
@@ -767,9 +767,9 @@ def test_one_broken_oscillator_does_not_drop_the_ones_behind_it():
     obj = _osc_ticker(broken=('relvol',))
 
     sub_plots, _ = obj.build_sub_plots(pd.DataFrame({'Close': [1.0]}),
-                                       ['ewo', 'ovt', 'relvol', 'rsi'])
+                                       ['ewo', 'mtt', 'relvol', 'rsi'])
 
-    assert [name for name, _ in sub_plots] == ['ewo', 'ovt', 'rsi']
+    assert [name for name, _ in sub_plots] == ['ewo', 'mtt', 'rsi']
     assert obj.unavailable_oszilators == ['relvol']
 
 

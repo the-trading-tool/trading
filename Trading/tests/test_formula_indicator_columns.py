@@ -4,9 +4,8 @@ A saved formula runs in the backtest against asset_simulation and in the chart
 against the live frame, under the same column names. The live frame only holds
 an indicator's columns while that indicator is selected — so the formula
 "(trendScore>55)" broke the Asset Viewer with "name 'trendScore' is not
-defined" as soon as the profile oscillator was not ticked (overallValueTrend had
-the same fault before). These tests keep the mapping from column to indicator
-honest.
+defined" as soon as the profile oscillator was not ticked. These tests keep the
+mapping from column to indicator honest.
 """
 import os
 import sys
@@ -35,11 +34,6 @@ def test_each_indicator_is_requested_once_in_reference_order():
     needed = indicators_for_expressions(
         ['(trendScore > 55) & (riskBucket <= 2)', 'riskScore > 40'], selected=[])
     assert needed == ['prof']
-
-
-def test_value_trend_columns_map_to_ovt_including_the_ema_span():
-    assert indicators_for_expressions(['overallValueTrend >= 1.1*overallTrend']) == ['ovt']
-    assert indicators_for_expressions(['overallValueTrend > ovtEma21']) == ['ovt']
 
 
 def test_plain_price_columns_need_no_indicator():

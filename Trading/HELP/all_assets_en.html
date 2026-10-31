@@ -31,12 +31,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 </table>
 
 <h2>Sorting &amp; content</h2>
-<p>The table shows the most recent dataset (<code>Date DESC</code>) per ticker from the respective database (<code>asset_simulation_all.db</code> or <code>asset_simulation_etp.db</code>), sorted by currency, Sortino ratio and <code>overallValueTrend</code>. All computed indicator columns are included.</p>
+<p>The table shows the most recent dataset (<code>Date DESC</code>) per ticker from the respective database (<code>asset_simulation_all.db</code> or <code>asset_simulation_etp.db</code>), sorted by currency and Sortino ratio. All computed indicator columns are included.</p>
 
 <h2>Filter syntax</h2>
 <p>The filter field accepts pandas-/SQL-compatible conditions on the indicator columns, e.g.:</p>
 <ul>
-  <li><code>overallValueTrend &gt; 65</code></li>
+  <li><code>sortino &gt; 1</code></li>
   <li><code>(rsi &gt; 20) AND (rsi &lt; 80) AND (ewo &gt; ewo_ema)</code></li>
   <li><code>macd_diff &gt; 0</code></li>
 </ul>

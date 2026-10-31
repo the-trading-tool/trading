@@ -25,12 +25,12 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 </table>
 
 <h2>Kachelgröße</h2>
-<p>Die Größe jeder Kachel spiegelt den <b>overallValueTrend (OVT)</b>-Score des Assets wider: Je höher der Score, desto größer die Kachel.</p>
+<p>Die Größe jeder Kachel richtet sich nach der gewählten Kennzahl (Marktkapitalisierung, Schulden oder Umsatz).</p>
 
 <h2>Interaktion</h2>
 <ul>
   <li>Klick auf eine Kachel → öffnet die <b>Asset Details</b>-Seite für dieses Wertpapier</li>
-  <li>Hover → zeigt Ticker, Name und aktuellen OVT-Wert als Tooltip</li>
+  <li>Hover → zeigt Ticker, Name und aktuellen Wert als Tooltip</li>
 </ul>
 
 <h2>Steuerung</h2>
@@ -38,7 +38,7 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><th>Einstellung</th><th>Wirkung</th></tr>
 <tr><td><b>Index-Filter</b></td><td>Beschränkt die Anzeige auf einen bestimmten Börsenindex (SPX, GDAXI …)</td></tr>
 <tr><td><b>Zeitraum</b></td><td>Kursveränderung über 1 Tag, 1 Woche oder 1 Monat</td></tr>
-<tr><td><b>Sortierung</b></td><td>Nach OVT-Score, Kursveränderung oder alphabetisch</td></tr>
+<tr><td><b>Sortierung</b></td><td>Nach Kursveränderung oder alphabetisch</td></tr>
 </table>
 
 <div class="info">Die Daten stammen aus der lokalen Datenbank (<code>asset_simulation_.db</code>). Für aktuelle Werte zunächst <code>asset_perf2.py</code> ausführen.</div>

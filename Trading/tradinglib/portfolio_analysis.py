@@ -246,14 +246,13 @@ def _lookup_asset_info(tickers: list, db_path: str = 'database') -> dict:
 
 # Column-name hints → indicator module. A query's referenced columns activate
 # exactly the indicators FetchData must compute for indicator.buy_sell to evaluate
-# it (e.g. ovtEma9 → 'ovt'), so the markers match the chart. Extend as needed.
+# it (e.g. ha_close → 'heikin'), so the markers match the chart. Extend as needed.
 _INDICATOR_COLUMN_HINTS = {
     'atc':    ('atc_',),
     'ewo':    ('ewo',),
     'heikin': ('ha_',),
     'rsi':    ('rsi', 'momentum'),
     'relvol': ('relvol',),
-    'ovt':    ('overalltrend', 'overallvaluetrend', 'ovtema'),
     'macd':   ('macd',),
     'markov': ('markov',),
     'sup':    ('sup_', 'support', 'resistance'),
@@ -384,7 +383,7 @@ def _compute_position_signals(tickers: list, buy_query: str, sell_query: str,
     with the (user-scoped) buy_query/sell_query over 1d/1y, then the position-aware
     indicator.buy_sell markers — so 'Last signal' equals the chart's buy/sell
     markers exactly (a sell is only emitted while a position is open). The required
-    indicators are derived from the query columns so live-only ones (e.g. ovtEma9)
+    indicators are derived from the query columns so live-only ones
     are computed rather than missing.
 
     Returns (signals, warnings):

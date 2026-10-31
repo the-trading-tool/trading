@@ -71,7 +71,6 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>trendScore:</b> distance to the record high, mapped through the calibrated breakpoints. TradingView only knows the loaded history, so on short charts the record high is too low.</li>
   <li><b>Position rules as in the backtest:</b> buys and sells at the close of the signal bar. The stop-loss is fixed at the entry price and triggered by the daily low (filled at the stop, or at the open after a gap). The trailing stop follows the highest close since entry. The minimum hold only blocks the regular sell, never the stops. The cooldown prevents buying back. The budget per position is <code>invest / num_assets</code>, with fractional shares per setting. Values come from the strategy's first index, and missing ones come from the global settings. Indices with different values are listed as a comment, and every value is an input you can change in TradingView.</li>
   <li><b>Not reproducible per symbol:</b> the slot limit, the ranking by <code>order_by</code>, the shared cash and the volatility factor of the position size. It needs the index universe, so it is an input called "size factor" (1 = equal weight).</li>
-  <li><b>Not exportable:</b> <code>overallTrend</code> / <code>overallValueTrend</code>. Both contain fundamental data that TradingView does not have.</li>
 </ul>
 
 <h2>Export workflow</h2>

@@ -184,11 +184,3 @@ def test_signal_export_uebersetzt_shift_als_vorbalken():
     assert 'close*1.015<=str_sup_support[1]' in s
     assert 'close>str_sup_resistance[1]*0.985' in s
     assert 'shift' not in s.split('sig_buy_raw', 1)[1].split('\n', 1)[0]
-
-
-def test_signal_export_fundamentalscore_wird_false_statt_compilerfehler():
-    s = pe.PineExporter([], []).generate_signal_overlay(
-        '(overallValueTrend>=1.1*overallTrend)&(ewo>=ewo_ema)', '(rsi>=75)')
-    assert 'sig_buy_raw  = false' in s
-    assert '// nicht exportierbar (overallTrend, overallValueTrend)' in s
-    assert 'sig_sell_raw = (str_rsi>=75)' in s

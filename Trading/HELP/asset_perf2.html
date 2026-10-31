@@ -43,7 +43,6 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <table>
 <tr><th>Modus</th><th>Beispiel</th><th>Beschreibung</th></tr>
 <tr><td><b>backfill</b></td><td><code>python asset_perf2.py /backfill:heikin,macd,rsi</code></td><td>Fehlende Indikator-Spalten aus vorhandenen OHLCV-Daten nachfüllen – kein Internet nötig</td></tr>
-<tr><td><b>rescore</b></td><td><code>python asset_perf2.py /rescore</code></td><td>OVT-Scores neu berechnen ohne OHLCV-Download – verwendet gespeicherte DB-Spalten</td></tr>
 <tr><td><b>fill</b></td><td><code>python asset_perf2.py /fill</code></td><td>Nur die fehlenden Tage ergänzen statt das ganze Jahr neu zu rechnen</td></tr>
 <tr><td><b>vacuum</b></td><td><code>python asset_perf2.py /vacuum:asset_simulation_*</code></td><td>Datenbanken komprimieren (SQLite <code>VACUUM</code>) – gibt den Platz zurück, den gelöschte Zeilen belegen</td></tr>
 </table>
@@ -105,6 +104,6 @@ atc     → atc_top_high, atc_bot_low
 scr     → scr_1mo, scr_3mo, scr_eoy, scr_buy, scr_sell</pre>
 
 <div class="info">Täglicher Cron-Empfehlung: nach Börsenschluss automatisch ausführen, damit die App immer aktuelle Signale zeigt.</div>
-<div class="warn">Ein vollständiger Lauf kann je nach Tickeranzahl mehrere Minuten dauern. <code>/rescore</code> ist deutlich schneller.</div>
+<div class="warn">Ein vollständiger Lauf kann je nach Tickeranzahl mehrere Minuten dauern. <code>/backfill</code> ist deutlich schneller.</div>
 </body>
 </html>

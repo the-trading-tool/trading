@@ -31,12 +31,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 </table>
 
 <h2>Sortierung &amp; Inhalt</h2>
-<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus der jeweiligen Datenbank (<code>asset_simulation_all.db</code> bzw. <code>asset_simulation_etp.db</code>), sortiert nach Währung, Sortino-Ratio und <code>overallValueTrend</code>. Alle berechneten Indikator-Spalten sind enthalten.</p>
+<p>Die Tabelle zeigt den jeweils aktuellsten Datensatz (<code>Date DESC</code>) je Ticker aus der jeweiligen Datenbank (<code>asset_simulation_all.db</code> bzw. <code>asset_simulation_etp.db</code>), sortiert nach Währung und Sortino-Ratio. Alle berechneten Indikator-Spalten sind enthalten.</p>
 
 <h2>Filter-Syntax</h2>
 <p>Das Filterfeld akzeptiert pandas-/SQL-kompatible Bedingungen auf den Indikator-Spalten, z.&nbsp;B.:</p>
 <ul>
-  <li><code>overallValueTrend &gt; 65</code></li>
+  <li><code>sortino &gt; 1</code></li>
   <li><code>(rsi &gt; 20) AND (rsi &lt; 80) AND (ewo &gt; ewo_ema)</code></li>
   <li><code>macd_diff &gt; 0</code></li>
 </ul>

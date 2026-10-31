@@ -50,14 +50,12 @@ SECTOR_ETF_MAP: dict[str, str] = {
 # ─── Ranking options (display label → SQL column expression) ──────────────────
 
 RANK_OPTIONS: dict[str, str] = {
-    "Overall Value Trend": "ap.overallValueTrend",
     "Sortino Ratio":       "ap.sortino",
     "Sharpe Ratio":        "ap.sharpe",
     "Monthly Trend %":     "ap.moTrend",
     "Weekly Trend %":      "ap.wkTrend",
     "Daily Trend %":       "ap.dTrend",
     "Momentum":            "ap.momentum",
-    "Overall Trend":       "ap.overallTrend",
 }
 
 # Whitelist for SQL injection prevention
@@ -138,7 +136,7 @@ def get_available_sectors(db_path: str = "database") -> list[str]:
 def query_sector_stocks(
     sector: str,
     db_path: str = "database",
-    rank_col: str = "ap.overallValueTrend",
+    rank_col: str = "ap.sortino",
     limit: int = 30,
 ) -> tuple[pd.DataFrame, str]:
     """Query the top *limit* stocks in *sector* ranked by *rank_col*.
@@ -150,8 +148,8 @@ def query_sector_stocks(
         contains a human-readable description of what was tried and why it failed.
     """
     if rank_col not in _RANK_COLUMNS:
-        logger.warning("Invalid rank_col %r — using ap.overallValueTrend", rank_col)
-        rank_col = "ap.overallValueTrend"
+        logger.warning("Invalid rank_col %r — using ap.sortino", rank_col)
+        rank_col = "ap.sortino"
 
     # Build guaranteed-safe SELECT: ap.* captures whatever columns the simulation
     # table actually has (schema varies by DB generation); ai. adds the three
@@ -222,7 +220,7 @@ def query_sector_stocks(
 
 def query_best_per_sector(
     db_path: str = "database",
-    rank_col: str = "ap.overallValueTrend",
+    rank_col: str = "ap.sortino",
     per_sector: int = 3,
     sectors: Optional[list] = None,
 ) -> tuple[pd.DataFrame, str]:
@@ -234,7 +232,7 @@ def query_best_per_sector(
     ``sector`` and ``sector_etf`` column. Empty DataFrame on failure.
     """
     if rank_col not in _RANK_COLUMNS:
-        rank_col = "ap.overallValueTrend"
+        rank_col = "ap.sortino"
     sectors = sectors or list(SECTOR_ETF_MAP.keys())
     ai_expr = ", ".join(_AI_COLS)
     ph = ", ".join("?" for _ in sectors)

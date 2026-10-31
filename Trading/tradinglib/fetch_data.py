@@ -28,22 +28,17 @@ import streamlit as st
 # alike. The live frame only carries an indicator's columns when that indicator
 # is switched on, though, and a formula does not care which oscillators happen to
 # be selected. So a saved buy query failed with "name '…' is not defined" the
-# moment the matching oscillator was not ticked: first with ovt's
-# overallValueTrend, then with trendScore from prof. The indicators such a
-# formula needs are now computed for it, without being drawn.
+# moment the matching oscillator was not ticked (e.g. trendScore from prof).
+# The indicators such a formula needs are now computed for it, without being
+# drawn.
 
 _EXPR_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
-# Columns not covered by asset_perf2.INDICATOR_BACKFILL_MAP. ovt is not in that
-# map because asset_perf2 writes its two scores directly; ovtEma{span} carries
-# the span in its name, hence the prefix entry.
+# Columns not covered by asset_perf2.INDICATOR_BACKFILL_MAP.
 _EXTRA_COLUMN_INDICATORS = {
-    'overallTrend': 'ovt',
-    'overallValueTrend': 'ovt',
     # Cross-sectional, written by minervini.update_rs, read back by mtt.
     'mtt_rs': 'mtt',
 }
-_EXTRA_PREFIX_INDICATORS = (('ovtEma', 'ovt'),)
 
 # Map keys that are not indicator modules and must never be instantiated.
 _NOT_AN_INDICATOR = {'ohlc', 'trend'}
@@ -58,8 +53,7 @@ def _column_indicator_map() -> dict:
         return _COLUMN_INDICATOR_CACHE
     mapping = dict(_EXTRA_COLUMN_INDICATORS)
     try:
-        # Lazy: asset_perf2 is a large script module; ovt.py already imports it
-        # the same way on the chart path.
+        # Lazy: asset_perf2 is a large script module.
         from asset_perf2 import INDICATOR_BACKFILL_MAP
         for name, columns in INDICATOR_BACKFILL_MAP.items():
             if name in _NOT_AN_INDICATOR:
@@ -85,11 +79,6 @@ def indicators_for_expressions(expressions, selected=()) -> list:
     for expression in expressions or ():
         for token in _EXPR_TOKEN.findall(expression or ''):
             name = mapping.get(token)
-            if name is None:
-                for prefix, indicator_name in _EXTRA_PREFIX_INDICATORS:
-                    if token.startswith(prefix):
-                        name = indicator_name
-                        break
             if name and name not in chosen and name not in out:
                 out.append(name)
     return out

@@ -17,7 +17,6 @@ def print_help():
           "  /inverse - select tickers not related to an index,\n"
           "  /silent - suppress notifications,\n"
           "  /worker:N - number of workers to use,\n"
-          "  /rescore - re-compute overallTrend/overallValueTrend from stored DB columns (fast, no yfinance),\n"
           "  /backfill:ind1,ind2 - fill missing indicator columns from local OHLCV (fast, no yfinance),\n"
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
           "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
@@ -64,7 +63,6 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'log_level': 'INFO',
         'log_file': None,
         # fast modes (no yfinance)
-        'rescore': False,
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
         'fill': False,            # asset_perf2: nur fehlende Tage ergaenzen statt /init
@@ -144,8 +142,6 @@ def parse_args(argv=None) -> Dict[str, Any]:
                     result['log_level'] = suf.upper()
             if pref == 'logfile' and suf:
                 result['log_file'] = suf
-            if pref == 'rescore':
-                result['rescore'] = True
             if pref == 'backfill' and suf:
                 # Indicator keys in INDICATOR_BACKFILL_MAP are lowercase →
                 # normalise input so that /backfill:Heikin still matches.

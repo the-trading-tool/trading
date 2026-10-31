@@ -29,7 +29,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td>Exchange</td><td>Restrict to a specific exchange, or <code>ANY</code></td></tr>
 <tr><td>Market cap</td><td>Minimum/maximum limit</td></tr>
 <tr><td>Price range</td><td>Minimum/maximum price</td></tr>
-<tr><td>Sort by</td><td>Column used to select the top names, e.g. <code>sortino</code>, <code>overallValueTrend</code></td></tr>
+<tr><td>Sort by</td><td>Column used to select the top names, e.g. <code>sortino</code>, <code>sharpe</code></td></tr>
 <tr><td>Sector</td><td>Restrict to a GICS sector, or <code>ANY</code></td></tr>
 <tr><td>Currency</td><td>Restrict to a trading currency, or <code>ANY</code></td></tr>
 <tr><td>Data from (year)</td><td>Multi-select: current year and/or archive years (<code>asset_simulation_{year}.db</code>, from 2020)</td></tr>
@@ -42,7 +42,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Investment:</b> starting capital of the simulation</li>
   <li><b>Buy delay (days):</b> number of days between the signal and the actual entry</li>
   <li><b>Fee per trade (%):</b> accounted for in the profit calculation</li>
-  <li><b>Buy assets when / sell when:</b> free expressions over indicator columns (same syntax as on the Asset overview), e.g. <code>overallValueTrend &gt; 65</code> or <code>ewo &lt; ewo_ema</code></li>
+  <li><b>Buy assets when / sell when:</b> free expressions over indicator columns (same syntax as on the Asset overview), e.g. <code>ewo &gt; ewo_ema</code> or <code>ewo &lt; ewo_ema</code></li>
 </ul>
 
 <div class="info"><b>Optimisation:</b> If <code>%%varname</code> is used as a placeholder in an expression, the built-in optimiser automatically searches for the best numeric value for that variable.</div>
@@ -61,7 +61,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Full dataset:</b> all simulated rows, with 📥 Excel export</li>
   <li><b>Portfolio:</b> development of the simulated positions, "Still in portfolio" list of currently held names</li>
   <li><b>Cumulative gain:</b> chart across all trades, with 📥 trade export</li>
-  <li>Metrics: total capital, invested amount, total value, total profit (incl. unrealised gains), win rate, number of trades, implied volatility, average value trend</li>
+  <li>Metrics: total capital, invested amount, total value, total profit (incl. unrealised gains), win rate, number of trades, implied volatility</li>
   <li><b>Monthly performance heatmap</b> and compact KPI overview (analogous to Dashboard/Multi-Strategies)</li>
   <li><b>Parity analysis:</b> compares the strategy with a simple "buy once and rebalance by volatility" approach over the same period</li>
 </ul>

@@ -96,25 +96,13 @@ SIDEBAR_MENU_CONFIG_USER = '_sidebar_menu_config'
 
 class SystemConfig(tools.Db_tools):
     
-#        'SPX': {'buy': '(momentum > rsi_ema) & (overallValueTrend > 53)', 'sell': '(overallValueTrend < 58)', 'num_assets': 7, 'invest': 17000, 'order_by': 'sortino'}, 
-#        'GDAXI': {'buy': '(momentum > rsi_ema)', 'sell': '(overallValueTrend < 58)', 'num_assets': 7, 'invest': 15000, 'order_by': 'sortino'}, 
-#        'MDAXI': {'buy': '(momentum > rsi_ema)', 'sell': '(overallValueTrend < 55)', 'num_assets': 7, 'invest': 10000, 'order_by': 'sortino'}, 
-#        'SDAXI': {'buy': '(overallValueTrend >= 51)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 41)', 'num_assets': 3, 'invest': 8000, 'order_by': 'sortino'}
-#        }
-
     # 3-stufig (Strategie -> Index -> Feld-Dict) -- multi_transaction.py iteriert
     # zwingend "for item in transactions: for id in transactions[item]: ...['buy']"
     # ohne Fallback auf die alte 2-stufige Form (Index direkt als aeusserer Key).
     # banner_page.py erkennt zwar beide Formen automatisch, Multi Strategies nicht.
-    transactions = {
-        'Value Trend Strategy': {
-            'SPX': {'buy': '(overallValueTrend >= 69)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 59)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'},
-            'GDAXI': {'buy': '(overallValueTrend >= 67)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 57)', 'num_assets': 5, 'invest': 15000, 'order_by': 'sortino'},
-            'MDAXI': {'buy': '(overallValueTrend >= 60)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 50)', 'num_assets': 2, 'invest': 7000, 'order_by': 'sortino'},
-            'SDAXI': {'buy': '(overallValueTrend >= 56)', 'sell': '(rsi <= rsi_ema) | (overallValueTrend <= 46)', 'num_assets': 3, 'invest': 10000, 'order_by': 'sortino'},
-        },
-    }
-    
+    # Empty by default: strategies are created per user in config.db.
+    transactions = {}
+
     def __init__(self, db_path="database", db_name="config.db", username='admin', region=st, is_admin=False, bare_mode=False):
         """Open config.db and ensure the config table exists.
 
@@ -306,7 +294,6 @@ class SystemConfig(tools.Db_tools):
         overlays = multi_select.MultiCheckboxSelector.lists[2][1]
         oszilators  = multi_select.MultiCheckboxSelector.lists[3][1]
         b_select = [True, False]
-        s_select =[1,2,3,5]
         sr_select =[0.01,0.1,1,10,100,1000]
         # Entry page on a fresh load (mobile always overrides this with the Asset
         # Viewer). Keys mirror _START_PAGE_ROUTES in asset_analyzer.py.
@@ -316,7 +303,6 @@ class SystemConfig(tools.Db_tools):
 
         idx_b_select = self.get_idx_selected(b_select, 'logging',1)
         idx_rt_select = self.get_idx_selected(b_select, 'rt_prices',1)
-        idx_s_select = self.get_idx_selected(s_select, 'ovt_smoothing',2)
         idx_sr_select = self.get_idx_selected(sr_select, 'sr_scaling',4)
         idx_period = self.get_idx_selected(periods, 'period',3)
         idx_mp_details = self.get_idx_selected(b_select, 'mp_details',1)
@@ -682,7 +668,6 @@ class SystemConfig(tools.Db_tools):
                 with st.expander(i18n.t("cfg.advanced_header"), expanded=False):
                     self.set_value('sr_scaling', st.selectbox(i18n.t("cfg.sr_scaling"), sr_select, idx_sr_select))
                     self.set_value('rt_prices', st.selectbox(i18n.t("cfg.rt_prices"), b_select, idx_rt_select))
-                    self.set_value('ovt_smoothing', st.selectbox(i18n.t("cfg.ovt_smoothing"), s_select, idx_s_select))
 
         if st.button(i18n.t("cfg.save")):
             st.rerun()
@@ -806,7 +791,7 @@ class SystemConfig(tools.Db_tools):
 
         if not self.bare_mode:
 
-            tabs = st.tabs(["Scalable", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte", "OVT-Indikator"])
+            tabs = st.tabs(["Scalable", "Hauptansichten", "Werkzeuge", "Premium", "Administration", "CLI-Skripte"])
 
             with tabs[0]:
                 self._render_scalable_help()
@@ -865,13 +850,6 @@ class SystemConfig(tools.Db_tools):
                     ("Installationsanleitung", "installation"),
                     ("Setup & Scheduler (Empfehlungen)", "setup_scheduler"),
                 ])
-
-            with tabs[6]:
-                lang_tabs = st.tabs(["🇩🇪 Deutsch", "🇬🇧 English"])
-                with lang_tabs[0]:
-                    st.html(help_text.load_help("ovt_de"))
-                with lang_tabs[1]:
-                    st.html(help_text.load_help("ovt_en"))
 
     def _render_scalable_help(self):
         """Focused help dialog for the Scalable edition (no Premium/Admin/CLI tabs)."""

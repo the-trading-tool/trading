@@ -3,7 +3,7 @@
 The two properties that matter for a column stored next to a backtest: it must
 be causal (a bar may never see a later one), and it must not depend on how much
 history happens to be loaded — otherwise the live chart and the simulation
-disagree, which is the failure mode ovt.py has to work around.
+disagree.
 """
 import os
 import sys

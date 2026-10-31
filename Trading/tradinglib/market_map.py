@@ -302,8 +302,6 @@ class DataVisualizer(tt.TickerTools):
             'marketCap':      [0, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
             'enterpriseValue':[-_inf, -10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
             'momentum':       [-_inf,2,5,10,25,65,85,95,_inf],
-            'overallTrend':   [-_inf,-10,15,20,30,50,65,85,_inf],
-            'overallValueTrend':[-_inf,-10,15,20,30,50,65,85,_inf],
             'ebitdaMargins':  [-_inf,-.5,-0.2,-0.1,0.1,0.2,0.3,0.5,_inf],
         }
         
@@ -335,7 +333,7 @@ class DataVisualizer(tt.TickerTools):
                          .apply(tuple, axis=1).value_counts().idxmax())
                 st.caption(f"Tagesveränderung: {_fmt_date(_pair[1])} → {_fmt_date(_pair[0])}")
 
-        bs_values = ['marketCap','totalDebt', 'totalRevenue','overallTrend','overallValueTrend']
+        bs_values = ['marketCap','totalDebt', 'totalRevenue']
         box_size = self.sel_size.selectbox(
                 t('mm.size_by'),
                 options = bs_values,
@@ -431,7 +429,7 @@ class DataVisualizer(tt.TickerTools):
         (formerly part of generate_treemap, now inside the index-view expander)."""
         df_expander = st.expander(t('mm.underlying_data'), expanded=False)
         with df_expander:
-            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend','totalDebt','totalRevenue']]) #, sort_by='ticker')
+            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','totalDebt','totalRevenue']]) #, sort_by='ticker')
             try:
                 if not selection.empty:
                     self.overlay_chart(selection)

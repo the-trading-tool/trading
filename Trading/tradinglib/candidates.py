@@ -11,8 +11,8 @@ Tausende Ticker), die Relativstaerke braucht Kursreihen je Titel, und der
 Live-Signalpfad laeuft erst auf den letzten paar Werten.
 
 Warum der Signalschritt nicht einfach die Buy-Formel in SQL ist: die Formel
-darf Spalten verwenden, die es nur live gibt -- ``atc_mid_zero`` und
-``ovtEma9`` etwa stehen nicht in ``asset_simulation``. Und die Marker sind
+darf Spalten verwenden, die es nur live gibt (Indikatoren ohne Eintrag in
+``asset_simulation``). Und die Marker sind
 positionsabhaengig (ein Verkaufssignal gilt nur, wenn man haelt). Deshalb der
 getrennte, sim-taugliche Vorfilter hier und die massgebliche Signalpruefung
 ueber denselben Pfad, den auch der Chart nimmt.
@@ -33,13 +33,9 @@ logger = logging.getLogger(__name__)
 #
 # Der Vorfilter ist jetzt bewusst **richtungsneutral** und schmal: die Richtung
 # kommt aus dem Trendschritt und dem Level-Test, jeder Schritt traegt genau eine
-# Aussage. Zwei Gruende, warum hier weder Momentum noch ein Punktwert steht:
-#
-#   * Momentum widerspricht dem Ruecksetzer. Gemessen: `macd_trend_wk > 0` liess
-#     von 201 Support-Tests 4 uebrig, zusammen mit `sma50 > sma200` keinen.
-#   * `overallValueTrend` ist ein Punktwert von 0 bis 76 (Median 34), kein
-#     vorzeichenbehafteter Trend. `> 0` ist fast wirkungslos (5468 von 5513),
-#     `< 0` trifft 45 Werte -- als Richtungsschalter beides untauglich.
+# Aussage. Warum hier kein Momentum steht: es widerspricht dem Ruecksetzer.
+# Gemessen: `macd_trend_wk > 0` liess von 201 Support-Tests 4 uebrig, zusammen
+# mit `sma50 > sma200` keinen.
 #
 # Was bleibt, ist eine Qualitaetsschwelle: handelbares Volumen und ein Band
 # zwischen Unterstuetzung und Widerstand, das breit genug ist, damit ein Test
@@ -105,7 +101,7 @@ DEFAULTS = {
     # Mindest-Trendwert (Naehe zum eigenen Rekordhoch, 0..100). 0 = aus. Bei
     # 'short' gespiegelt: dort zaehlt der Abstand zum Hoch, nicht die Naehe.
     'min_trend_score': 0,
-    'rank_col': 'overallValueTrend',
+    'rank_col': 'sortino',
     'pool_n': 60,              # so viele gehen in die Relativstaerke-Messung
     'max_per_sector': 3,       # 0 = ohne Begrenzung
     'top_n': 15,
@@ -115,7 +111,7 @@ DEFAULTS = {
 
 # Spalten, nach denen vorsortiert werden darf. Whitelist, weil der Wert direkt
 # in die ORDER-BY-Stelle geht.
-RANK_COLUMNS = ('overallValueTrend', 'overallTrend', 'sharpe', 'sortino',
+RANK_COLUMNS = ('sortino', 'sharpe',
                 'ewo', 'relvol_ratio', 'fps_rs', 'trendScore', 'riskScore')
 
 _ISIN_RE = r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$'
@@ -667,9 +663,9 @@ def find(username: str, db_path: str = 'database', **kw):
     # Der naechste Schritt laedt Kursreihen je Titel. Ohne diese Kappung liefe er
     # ueber alles, was der Vorfilter durchlaesst -- ein paar tausend Downloads
     # fuer eine Liste, von der am Ende fuenfzehn Zeilen uebrig bleiben.
-    rank_col = opt['rank_col'] if opt['rank_col'] in RANK_COLUMNS else 'overallValueTrend'
+    rank_col = opt['rank_col'] if opt['rank_col'] in RANK_COLUMNS else 'sortino'
     if rank_col not in df.columns:
-        rank_col = 'overallValueTrend'
+        rank_col = 'sortino'
     pool = int(opt['pool_n'] or 0)
     if not df.empty and rank_col in df.columns:
         df['_rank'] = sign * pd.to_numeric(df[rank_col], errors='coerce')

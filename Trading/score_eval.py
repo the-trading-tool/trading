@@ -3,10 +3,9 @@
 Read-only: every database connection is opened with mode=ro, so a measurement
 run cannot change production data.
 
-The default run reproduces the diagnosis the redesign started from — the
-information coefficient of the stored composite scores, how much of it sits in
-the analyst-target column, and what the common "is it trending" gates actually
-deliver against simply holding the universe.
+The default run reports the information coefficient of a few stored columns,
+how much of it sits in the analyst-target column, and what the common "is it
+trending" gates actually deliver against simply holding the universe.
 
 Usage:
     python score_eval.py                          # default battery, last 3 years
@@ -30,8 +29,7 @@ from tradinglib import score_eval as se
 logger = logging.getLogger("score_eval")
 
 # Columns whose ranking power the default run reports.
-DEFAULT_COLUMNS = ['overallValueTrend', 'overallTrend', 'pctTargetHighPrice',
-                   'sharpe', 'logVola', 'relvol_ratio']
+DEFAULT_COLUMNS = ['pctTargetHighPrice', 'sharpe', 'logVola', 'relvol_ratio']
 
 # The column the default run neutralises against: it is a snapshot of today's
 # analyst price targets applied to the whole history, so any skill that

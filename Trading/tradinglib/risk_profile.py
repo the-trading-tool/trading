@@ -13,8 +13,8 @@ Two design decisions worth knowing before changing anything here:
 
 * **Absolute cuts, not percentile ranks.** A cross-sectional rank depends on
   whichever tickers happen to be in the panel that day, so the live chart and
-  the stored simulation would disagree — the exact two-path problem ``ovt.py``
-  has to paper over with its stored/live merge. Every threshold in this module
+  the stored simulation would disagree (a two-path problem that needs a
+  stored/live merge to paper over). Every threshold in this module
   is an absolute number, reproducible from a single ticker's own data.
 * **The stated band is measured, not asserted.** Each profile carries the
   volatility and drawdown it actually delivered over the calibration window,

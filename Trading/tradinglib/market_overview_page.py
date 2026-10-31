@@ -506,9 +506,9 @@ def _compute_for_symbol(
         # buy/sell marker column (buy_close/sell_close/position/crosszero) is in
         # _SKIP_COLS and discarded. Running the buy/sell engine here is therefore
         # pure waste AND unsafe: a saved buy_query referencing a column this
-        # pipeline doesn't compute (e.g. ovt's overallValueTrend, only present
-        # when the ovt oscillator is active) raised a "[BUY-ERROR] name ... is
-        # not defined" box per symbol. Pass empty queries so no signals run.
+        # pipeline doesn't compute (e.g. an indicator column whose oscillator is
+        # not active) raised a "[BUY-ERROR] name ... is not defined" box per
+        # symbol. Pass empty queries so no signals run.
         fd = FetchData(
             database_path='database',
             indicators=indicators,

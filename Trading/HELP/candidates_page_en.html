@@ -96,9 +96,8 @@ average return.</div>
 <h2>Why two different filters?</h2>
 <p>The <b>prefilter</b> is deliberately <b>not</b> your buy formula. Two reasons:</p>
 <ul>
-<li>The buy formula may use columns that exist only live — <code>ovtEma9</code> or
-  <code>atc_mid_zero</code>, for instance, are not in <code>asset_simulation</code>. Run as
-  SQL against the database, it fails.</li>
+<li>The buy formula may use columns that exist only live (indicators without a column in
+  <code>asset_simulation</code>). Run as SQL against the database, it fails.</li>
 <li>The chart markers are <b>position-aware</b>: a sell signal only applies while you hold. A
   plain column query cannot express that.</li>
 </ul>
@@ -107,7 +106,7 @@ on the short list.</p>
 
 <div class="info"><b>Prefilter errors read usefully:</b> if the message names a missing column,
 that is exactly the answer — the column exists only live. Available are all columns of
-<code>asset_simulation</code>, such as <code>overallValueTrend</code>, <code>ewo</code>,
+<code>asset_simulation</code>, such as <code>ewo</code>,
 <code>ewo_ema</code>, <code>relvol_ratio</code>, <code>sup_support</code>,
 <code>sup_resistance</code>, <code>adx</code>, <code>rsi</code>, <code>fps_phase</code>, plus
 the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</code>.</div>

@@ -24,7 +24,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
   <li><code>python seed_db.py</code> – Ticker-Datenbank mit Index-Mitgliedern anlegen</li>
   <li><code>python get_asset_info.py</code> – Fundamentaldaten laden</li>
   <li><code>python get_asset_data.py 1d:2y</code> – historische Tageskurse laden</li>
-  <li><code>python asset_perf2.py</code> – Indikatoren &amp; OVT-Scores berechnen</li>
+  <li><code>python asset_perf2.py</code> – Indikatoren berechnen</li>
   <li><code>streamlit run asset_analyzer.py</code> – App starten</li>
 </ol>
 <div class="info">Details zu jedem Schritt siehe Hilfe „Datenbank initialisieren (seed_db.py)". Die vollständige Einrichtung auf einem neuen Rechner (Python, Installer, Admin-Login) beschreibt die Hilfe „Installationsanleitung".</div>
@@ -34,7 +34,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <tr><th>Zeitpunkt</th><th>Befehl</th><th>Zweck</th></tr>
 <tr><td>Mo–Fr, 18:00 Uhr</td><td><code>python get_asset_data.py 1d:5d</code></td><td>Tageskurse aller Ticker inkrementell aktualisieren (nach Xetra-Schluss, vor NYSE-Schluss)</td></tr>
 <tr><td>Mo–Fr, 22:15 Uhr</td><td><code>python get_asset_data.py 1d:5d /index_member:SPX</code></td><td>US-Werte nach NYSE-Schluss (22:00 MEZ / 16:00 ET) erneut aktualisieren</td></tr>
-<tr><td>Mo–Fr, 22:30 Uhr</td><td><code>python asset_perf2.py</code></td><td>Indikatoren &amp; OVT-Scores neu berechnen</td></tr>
+<tr><td>Mo–Fr, 22:30 Uhr</td><td><code>python asset_perf2.py</code></td><td>Indikatoren neu berechnen</td></tr>
 <tr><td>Mo–Fr, 22:45 Uhr</td><td><code>python -m tradinglib.signal_notifier</code></td><td>Neue Kauf-/Verkaufssignale per Pushover melden</td></tr>
 <tr><td>Mo–Fr, alle 15 Min, 09:00–22:00 Uhr</td><td><code>python run_agent.py --notify</code></td><td>Trading-Agent: Signale ausführen / Hinweise senden (während der Handelszeiten)</td></tr>
 <tr><td>Mo–Fr, alle 15 Min, 09:00–22:00 Uhr</td><td><code>python check_stoploss.py --notify</code></td><td>ATR-Trailing-Stop für offene Positionen prüfen</td></tr>

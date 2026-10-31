@@ -5,11 +5,6 @@ handelbares TradingView Pine-Script-`strategy()` übersetzen.
 Anders als `pine_exporter.py` (das Visualisierungs-`indicator()` für Overlay-/
 Oszillator-Kombis erzeugt) übersetzt dieses Modul die technischen Buy/Sell-
 Bedingungen der Strategien direkt in `strategy.entry` / `strategy.close`.
-
-Grenzen (bewusst): Bedingungen, die auf den zusammengesetzten Score
-`overallValueTrend` / `overallTrend` zugreifen, werden **abgelehnt** — dieser
-Score mischt Fundamentaldaten (ROA, KGV, Analysten-Kursziele …) aus `asset_info`
-ein, die TradingView nicht (oder nur verzögert/lückenhaft) liefert.
 """
 import re
 
@@ -444,15 +439,9 @@ _COL_DEFS: dict[str, dict] = {
     'atc_low':  {'code': 'atc_low = atc_bot_low',  'deps': ['_atc_low'],  'helpers': []},
 }
 
-# Query-Spalten, die nicht rein technisch abbildbar sind.
-_SCORE_REASON = ('Score enthaelt Fundamentaldaten aus asset_info (ROA, Margen, Kursziele …), '
-                 'die TradingView nicht hat — auch overallTrend: Value-Punkte gegen technische '
-                 'Gewichte (asset_perf2.Sum). Nur den technischen Teil zu exportieren waere eine '
-                 'andere Strategie unter demselben Namen')
-_UNSUPPORTED = {
-    'overallValueTrend': _SCORE_REASON,
-    'overallTrend':      _SCORE_REASON,
-}
+# Query-Spalten, die es gibt, die aber nicht rein technisch abbildbar sind
+# (Spalte -> Begruendung). Derzeit keine.
+_UNSUPPORTED: dict = {}
 
 # Query verwendet Groß-OHLC (High/Low/Open); Pine nutzt Kleinschreibung.
 _CASE_MAP = {'High': 'high', 'Low': 'low', 'Open': 'open', 'Close': 'close'}
@@ -698,7 +687,7 @@ def export_strategy(name: str, buy: str, sell: str, signal_window: int = 1,
     ``sizing_factor_max`` und ``source`` (Herkunft für den Kommentar).
 
     Raises StrategyExportError, wenn eine Bedingung nicht-exportierbare Spalten
-    referenziert (z. B. overallValueTrend).
+    referenziert.
     """
     cols = _referenced_columns(buy) | _referenced_columns(sell)
     unsupported = sorted(c for c in cols if c in _UNSUPPORTED)

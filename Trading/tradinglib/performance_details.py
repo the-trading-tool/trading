@@ -428,12 +428,12 @@ class Performance(tt.TickerTools):
         combined_df = self.fetch_combined_data_with_attach("")
         combined_df = combined_df.fillna(value={'sector': 'Other'})
 
-        if combined_df.empty or 'overallValueTrend' not in combined_df.columns:
+        if combined_df.empty or 'sortino' not in combined_df.columns:
             st.info(t('perf.no_data'))
             return
 
         """
-        selection = self.dataframe_with_selections(combined_df[['Date','ticker','longName','sector','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','overallTrend','overallValueTrend']], region = self.ss_sidebar) #, sort_by='ticker')
+        selection = self.dataframe_with_selections(combined_df[['Date','ticker','longName','sector','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe']], region = self.ss_sidebar) #, sort_by='ticker')
         try:
             if not selection.empty:
                 self.chart(selection)
@@ -441,7 +441,7 @@ class Performance(tt.TickerTools):
             pass
             
         """
-        combined_df = combined_df.sort_values(['overallValueTrend','sortino','ticker'], ascending=[False,False,True])
+        combined_df = combined_df.sort_values(['sortino','ticker'], ascending=[False,True])
         self.select_chart(combined_df, limit=1000, region = st)
         self.export_to_excel(combined_df, button_label=t('perf.download_btn'), file_name='simulation_dataset.xlsx', region=st)
 

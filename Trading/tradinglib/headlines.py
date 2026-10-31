@@ -50,7 +50,7 @@ def _sector_stats(sector):
     """Distribution of key metrics across all equities in *sector* (latest row
     each). Cached per sector so it is computed once, not per ticker render.
 
-    Returns {n, ovt_values, ovt_median, pe_median, margin_median} or None.
+    Returns {n, pe_median, margin_median} or None.
     """
     try:
         import numpy as np
@@ -61,7 +61,7 @@ def _sector_stats(sector):
         try:
             _tools.attach_db(conn, info_path, 'info_db')
             df = pd.read_sql_query(
-                """SELECT s.overallValueTrend AS ovt, ai.trailingPE AS tpe,
+                """SELECT ai.trailingPE AS tpe,
                           ai.forwardPE AS fpe, ai.profitMargins AS margin
                    FROM asset_simulation s
                    JOIN (SELECT ticker, MAX(Date) md FROM asset_simulation
@@ -74,15 +74,12 @@ def _sector_stats(sector):
             conn.close()
         if df is None or df.empty:
             return None
-        ovt = pd.to_numeric(df['ovt'], errors='coerce').dropna()
         pe = pd.to_numeric(df['fpe'], errors='coerce')
         pe = pe.where(pe > 0)
         pe = pe.fillna(pd.to_numeric(df['tpe'], errors='coerce').where(lambda x: x > 0))
         margin = pd.to_numeric(df['margin'], errors='coerce')
         return {
             'n': int(len(df)),
-            'ovt_values': ovt.tolist(),
-            'ovt_median': float(ovt.median()) if len(ovt) else None,
             'pe_median': float(pe.dropna().median()) if pe.notna().any() else None,
             'margin_median': float(margin.dropna().median()) if margin.notna().any() else None,
         }
@@ -210,58 +207,6 @@ class Headlines(tt.TickerTools):
             return {}
         self._sig_src = best_src
         return best
-
-    def _load_score_history(self, symbol, n=30):
-        """Last *n* overallValueTrend / overallTrend values (newest first) from the
-        same DB that provided the signal row — used for the week/month direction."""
-        if not symbol or not self._sig_src:
-            return {}
-        try:
-            path = self.get_path(path='database', file_name=self._sig_src)
-            conn = open_db(path, readonly=True)
-            try:
-                df = pd.read_sql_query(
-                    "SELECT overallValueTrend, overallTrend FROM asset_simulation "
-                    "WHERE ticker = ? ORDER BY Date DESC LIMIT ?",
-                    conn, params=(symbol, n))
-            finally:
-                conn.close()
-            if df is None or df.empty:
-                return {}
-            return {
-                'ovt': pd.to_numeric(df['overallValueTrend'], errors='coerce').tolist(),
-                'overall': pd.to_numeric(df['overallTrend'], errors='coerce').tolist(),
-            }
-        except Exception:
-            return {}
-
-    @staticmethod
-    def _dir_delta(hist):
-        """'W ↑ · M ↓' direction string from a newest-first value list, or None.
-
-        Compares the latest value against ~5 rows (week) and ~21 rows (month) back.
-        """
-        if not hist:
-            return None
-        cur = hist[0]
-        if cur is None or cur != cur:
-            return None
-
-        def arrow(n):
-            if len(hist) > n:
-                p = hist[n]
-                if p is not None and p == p:
-                    d = cur - p
-                    return '↑' if d > 0 else '↓' if d < 0 else '→'
-            return None
-
-        w, m = arrow(5), arrow(21)
-        parts = []
-        if w:
-            parts.append(f"W {w}")
-        if m:
-            parts.append(f"M {m}")
-        return ' · '.join(parts) or None
 
     def _load_daily_closes(self, symbol):
         """Daily Close series from yf_<symbol>.db (for period returns). None on miss."""
@@ -453,7 +398,7 @@ class Headlines(tt.TickerTools):
         digits = self.digits
         headline_row1 = self.screen_region_row1.empty()
         (p_date, p_close, p_currency, p_open, p_low, p_high,
-         p_target, p_rating, p_asset, p_vol) = headline_row1.columns(10, gap='small')
+         p_target, p_rating, p_vol) = headline_row1.columns(9, gap='small')
         headline_row2 = self.screen_region_row2.empty()
         (eps, ptb, div, roa, tpe, beta, l52w, h52w, sor) = headline_row2.columns(9, gap='small')
 
@@ -466,11 +411,6 @@ class Headlines(tt.TickerTools):
                 label="Currency", value=self.currency,
                 help=f'{self.system_currency}={round(self.x_rate, 3)} - '
                      f'price: {round(self.close_price / self.x_rate, digits)}')
-
-        ovt = self._sig_val('overallValueTrend')
-        if ovt is not None:
-            p_asset.metric(label="Value", value=ovt,
-                           help=f"Range: -100 to 100, Index: {self.index_name}")
 
         p_date.metric(label="Price date", value=f"{self.df['Date'].iloc[-1]}",
                       help=f"Index: {self.index_name}")
@@ -575,7 +515,6 @@ class Headlines(tt.TickerTools):
             unsafe_allow_html=True)
 
         # --- Signal (proprietary scores) --------------------------------
-        ovt = self._sig_val('overallValueTrend')
         trend_dwm = None
         parts = [self._sig_val('dTrend'), self._sig_val('wkTrend'), self._sig_val('moTrend')]
         if any(p is not None for p in parts):
@@ -586,10 +525,6 @@ class Headlines(tt.TickerTools):
                       0: 'keydata.regime_sideways'}.get(
             None if regime is None else int(round(regime)))
         regime_name = t(regime_key) if regime_key else None
-        # Week/month direction of OVT and overall trend, derived from sim history.
-        hist = self._load_score_history(symbol)
-        ovt_dir = self._dir_delta(hist.get('ovt'))
-        overall_dir = self._dir_delta(hist.get('overall'))
         # Preis-Kennzahlen: nativer Wert + EUR-Gegenwert (Systemwährung) als
         # graue Sub-Zeile (nur wenn Fremdwährung, sonst None -> keine Sub-Zeile).
         _tp  = self._sig_val('take_profit', self.digits)
@@ -598,10 +533,6 @@ class Headlines(tt.TickerTools):
         _res = self._sig_val('sup_resistance', self.digits)
         _atr = self._sig_val('atr', self.digits)
         signal_items = [
-            self._item(t('keydata.ovt'), ovt, delta=ovt_dir, delta_color='off',
-                       help=t('keydata.ovt_help')),
-            self._item(t('keydata.overall_trend'), self._sig_val('overallTrend'),
-                       delta=overall_dir, delta_color='off'),
             self._item(t('keydata.trend_dwm'), trend_dwm),
             self._item(t('keydata.take_profit'), _tp,
                        delta=self._sys_price(_tp), delta_color='off'),
@@ -784,8 +715,8 @@ class Headlines(tt.TickerTools):
                    base=self._grp(base), cur=cur))
 
     def _sector_items(self, c):
-        """Sector comparison (equities): OVT percentile rank, relative strength
-        vs the sector ETF, and valuation/margin vs the sector median.
+        """Sector comparison (equities): relative strength vs the sector ETF and
+        valuation/margin vs the sector median.
 
         Sector aggregates come from the cached _sector_stats (one computation per
         sector, not per ticker)."""
@@ -795,30 +726,8 @@ class Headlines(tt.TickerTools):
         stats = _sector_stats(sector)
         if not stats or not stats.get('n'):
             return []
-        import numpy as np
-
         etf = SECTOR_ETF_MAP.get(sector)
-        n = stats['n']
         items = [self._item(t('keydata.sector'), sector, help=etf)]
-
-        # A) OVT percentile rank within the sector
-        # Rank 1 = highest score (best). Show the rank directly (unambiguous) and
-        # the share of the sector this asset beats in the tooltip — avoids the
-        # "Top 95 %" phrasing that reads like a top performer when it is not.
-        def _rank_item(label, value, sector_values):
-            if value is None or not sector_values:
-                return None
-            arr = np.asarray(sector_values, dtype=float)
-            m = len(arr)
-            if m == 0:
-                return None
-            rank = int((arr > value).sum()) + 1
-            beats = round((arr < value).mean() * 100)
-            return self._item(label, f"{rank}/{m}",
-                              help=t('keydata.sector_rank_help', beats=beats, sector=sector))
-
-        items.append(_rank_item(t('keydata.sector_rank'),
-                                self._sig_val('overallValueTrend'), stats.get('ovt_values')))
 
         # C) Relative strength vs the sector ETF over 3 months (local-only)
         if etf and self._ret_3m is not None:

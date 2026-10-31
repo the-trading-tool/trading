@@ -120,5 +120,5 @@ class Mtt(_indicator._Indicator):
             x=x, y=self.df['mtt_rs'], name='RS rating', showlegend=False,
             mode='lines', line=dict(color=self.color_rs, width=2)))
 
-        # Plain hlines only (see ovt.py: annotations break the shared date axis).
+        # Plain hlines only (see prof.py: annotations break the shared date axis).
         self.fig.add_hline(y=70, line_width=1, line_dash='dot', line_color='green')

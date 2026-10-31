@@ -39,8 +39,8 @@ from inside this module:
 Typical use (see ``score_eval.py`` in the project root for the CLI)::
 
     from tradinglib import score_eval as se
-    panel = se.load_panel(years=[2023, 2024, 2025], columns=['overallValueTrend'])
-    print(se.format_report(se.evaluate(panel, columns=['overallValueTrend'])))
+    panel = se.load_panel(years=[2023, 2024, 2025], columns=['sharpe'])
+    print(se.format_report(se.evaluate(panel, columns=['sharpe'])))
 """
 
 from __future__ import annotations

@@ -30,12 +30,12 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 </ul>
 <table>
 <tr><th>Feld</th><th>Bedeutung</th></tr>
-<tr><td><code>buy</code></td><td>Kaufbedingung als Ausdruck auf Indikator-Spalten, z.&nbsp;B. <code>overallValueTrend &gt; 65</code></td></tr>
+<tr><td><code>buy</code></td><td>Kaufbedingung als Ausdruck auf Indikator-Spalten, z.&nbsp;B. <code>ewo &gt; ewo_ema</code></td></tr>
 <tr><td><code>sell</code></td><td>Verkaufsbedingung, z.&nbsp;B. <code>ewo &lt; ewo_ema</code></td></tr>
 <tr><td><code>num_assets</code></td><td>maximale Anzahl gleichzeitig gehaltener Titel für diesen Index</td></tr>
 <tr><td><code>invest</code></td><td>Startkapital für diesen Index (in <code>currency</code> bzw. Systemwährung)</td></tr>
 <tr><td><code>currency</code></td><td>Abrechnungswährung; <code>ANY</code> = keine Umrechnung</td></tr>
-<tr><td><code>order_by</code></td><td>Sortierspalte zur Auswahl der Top-Titel (z.&nbsp;B. <code>sortino</code>, <code>overallValueTrend</code>)</td></tr>
+<tr><td><code>order_by</code></td><td>Sortierspalte zur Auswahl der Top-Titel (z.&nbsp;B. <code>sortino</code>, <code>sharpe</code>)</td></tr>
 <tr><td><code>stop_loss</code> <small style="color:#888">optional</small></td><td>Harter Stop-Loss in % nur für diesen Index; überschreibt den globalen Wert <code>stop_loss_pct</code> aus den Einstellungen. Verkauft, sobald das Tages-Low <code>Einstand × (1 − %/100)</code> berührt (0 = aus). Deckt Positionen ab, die sonst nie ein Verkaufssignal bekämen.</td></tr>
 <tr><td><code>trailing_stop</code> <small style="color:#888">optional</small></td><td>Trailing-Stop in % unter dem höchsten Close seit Einstieg (zieht mit dem Kurs mit; 0 = aus).</td></tr>
 <tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Beschränkt diesen Index auf Werte mit gültiger ISIN; überschreibt den globalen Schalter.</td></tr>

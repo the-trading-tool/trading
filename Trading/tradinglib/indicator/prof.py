@@ -177,6 +177,6 @@ class Prof(_indicator._Indicator):
 
         # Plain hlines only: an oscillator sub-plot re-homes layout annotations
         # to row 1 and rewrites xref='paper' to 'x', which turns x=0.0 into
-        # 1970-01-01 and stretches the shared date axis (see ovt.py).
+        # 1970-01-01 and stretches the shared date axis.
         for level, color in ((25, 'firebrick'), (50, 'grey'), (75, 'green')):
             self.fig.add_hline(y=level, line_width=1, line_dash='dot', line_color=color)

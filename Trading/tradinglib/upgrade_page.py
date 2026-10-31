@@ -64,8 +64,7 @@ def render_upgrade_teaser(region=st, route=None, username: str = ''):
             f"- {_t('nav.multi_strategies')}\n"
             f"- {_t('nav.trading')}\n"
             f"- {_t('nav.performance')}\n"
-            f"- {_t('upgrade.unlock_signals')}\n"
-            f"- {_t('upgrade.unlock_scoring')}"
+            f"- {_t('upgrade.unlock_signals')}"
         )
 
     r.divider()

@@ -703,15 +703,13 @@ class SectorRotationPage:
             "revenueGrowth":     "Rev Growth",
             "marketCap":         "Mkt Cap",
             "momentum":          "Momentum",
-            "overallTrend":      "Ovrl Trend",
-            "overallValueTrend": "OVT",
             "Date":              "Date",
             "RSC_vs_ETF":        _rsc_label,
         }
 
         _BASE_COLS   = ["ticker", "longName", "close", "currency"]
         _METRIC_COLS = [
-            "overallValueTrend", "sortino", "sharpe",
+            "sortino", "sharpe",
             "moTrend", "wkTrend", "dTrend",
             "roa", "revenueGrowth", "momentum",
         ]
@@ -747,7 +745,6 @@ class SectorRotationPage:
 
         # ── ProgressColumn configs for numeric metrics ─────────────────────────
         _PROG_RANGES: dict[str, tuple[float, float]] = {
-            "OVT":         (0,    60),
             "Sortino":     (0,     5),
             "Sharpe":      (0,     5),
             "Mo Trend %":  (-20,  20),
@@ -756,7 +753,6 @@ class SectorRotationPage:
             "ROA %":       (0,    30),
             "Rev Growth":  (-0.5,  1.0),
             "Momentum":    (0,    60),
-            "Ovrl Trend":  (0,    60),
         }
         _PROG_RANGES[_rsc_label] = (-20, 20)
 

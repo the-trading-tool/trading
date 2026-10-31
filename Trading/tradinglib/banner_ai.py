@@ -30,7 +30,7 @@ _SIM_SKIP_COLS = {'ticker', 'Date', 'currency'}
 
 # Groups of simulation metrics for the prompt
 _SIM_GROUPS = {
-    'Trend':       ['overallValueTrend', 'overallTrend', 'dTrend', 'wkTrend', 'moTrend',
+    'Trend':       ['dTrend', 'wkTrend', 'moTrend',
                     'trendDirection', 'buySell', 'ewo_trend_day', 'ewo_trend_wk', 'ewo_trend_mo',
                     'macd_trend', 'macd_trend_wk', 'macd_trend_mo'],
     'Momentum':    ['rsi', 'rsi_ema', 'cci', 'momentum', 'momentum_ema', 'momentum_ema_angle',
@@ -184,7 +184,6 @@ class BannerAiGenerator:
             # Raw sortino/sharpe for compatibility with _build_asset_prompt
             'sortino':      sim_row.get('sortino'),
             'sharpe':       sim_row.get('sharpe'),
-            'overallValueTrend': sim_row.get('overallValueTrend'),
 
             # OHLC
             'recent_ohlc':  ohlc_display,

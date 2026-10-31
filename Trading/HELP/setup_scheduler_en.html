@@ -24,7 +24,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
   <li><code>python seed_db.py</code> – create the ticker database with index members</li>
   <li><code>python get_asset_info.py</code> – load fundamentals</li>
   <li><code>python get_asset_data.py 1d:2y</code> – load historical daily prices</li>
-  <li><code>python asset_perf2.py</code> – compute indicators &amp; OVT scores</li>
+  <li><code>python asset_perf2.py</code> – compute indicators</li>
   <li><code>streamlit run asset_analyzer.py</code> – start the app</li>
 </ol>
 <div class="info">For details on each step see the "Initialise database (seed_db.py)" help. The complete setup on a new computer (Python, installer, admin login) is described in the "Installationsanleitung" (installation guide) help.</div>
@@ -34,7 +34,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <tr><th>When</th><th>Command</th><th>Purpose</th></tr>
 <tr><td>Mon–Fri, 18:00</td><td><code>python get_asset_data.py 1d:5d</code></td><td>Incrementally update daily prices of all tickers (after Xetra close, before NYSE close)</td></tr>
 <tr><td>Mon–Fri, 22:15</td><td><code>python get_asset_data.py 1d:5d /index_member:SPX</code></td><td>Update US names again after NYSE close (22:00 CET / 16:00 ET)</td></tr>
-<tr><td>Mon–Fri, 22:30</td><td><code>python asset_perf2.py</code></td><td>Recompute indicators &amp; OVT scores</td></tr>
+<tr><td>Mon–Fri, 22:30</td><td><code>python asset_perf2.py</code></td><td>Recompute indicators</td></tr>
 <tr><td>Mon–Fri, 22:45</td><td><code>python -m tradinglib.signal_notifier</code></td><td>Report new buy/sell signals via Pushover</td></tr>
 <tr><td>Mon–Fri, every 15 min, 09:00–22:00</td><td><code>python run_agent.py --notify</code></td><td>Trading agent: execute signals / send notices (during trading hours)</td></tr>
 <tr><td>Mon–Fri, every 15 min, 09:00–22:00</td><td><code>python check_stoploss.py --notify</code></td><td>Check the ATR trailing stop for open positions</td></tr>

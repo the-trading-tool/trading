@@ -308,9 +308,9 @@ class CandidatesPage:
             s = pd.to_numeric(df[name], errors='coerce')
             return s.round(digits) if digits is not None else s
 
-        strength_col = opt.get('rank_col') or 'overallValueTrend'
+        strength_col = opt.get('rank_col') or 'sortino'
         if strength_col not in df.columns:
-            strength_col = 'overallValueTrend'
+            strength_col = 'sortino'
         view = pd.DataFrame({
             t('cand.col_ticker'): df['ticker'].astype(str),
             t('cand.col_name'): [str(x)[:38] for x in df.get('longName', '')],
@@ -323,8 +323,7 @@ class CandidatesPage:
             t('cand.col_level_gap'): col('level_gap', 2),
             t('cand.col_sector_rsc'): col('sector_rsc', 2),
             t('cand.col_vs_sector'): col('RSC_vs_ETF', 1),
-            # Spaltenkopf folgt der gewaehlten Vorsortierung -- sonst stuende
-            # dort 'Value Trend', waehrend nach Sharpe sortiert wurde.
+            # Spaltenkopf folgt der gewaehlten Vorsortierung.
             _rank_label(strength_col): col(strength_col, 2),
             t('cand.col_price'): col('close', 2),
             t('cand.col_currency'): [str(x) for x in df.get('currency', '')],

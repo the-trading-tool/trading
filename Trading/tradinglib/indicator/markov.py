@@ -31,7 +31,6 @@ class Markov(_indicator._Indicator):
         (markov_stat_bull > 0.50)              → long-run majority is Bull
         (markov_fc1_bull > 0.60)               → Bull most likely at t+1
         (markov_fc3_bear > markov_fc3_bull)    → Bear more likely than Bull at t+3
-        (overallValueTrend >= 69) & (markov_regime == 1)
 
     Forecast columns `markov_fc{h}_{regime}` (h=1..3, regime=bull|bear|side)
     project the current regime forward via the transition matrix

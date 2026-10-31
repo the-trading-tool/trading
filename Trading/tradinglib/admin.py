@@ -1670,9 +1670,7 @@ class Admin():
                         _dc1, _dc2 = st.columns(2)
                         _dc1.metric("Sortino",       round(_sim.get('sortino', 0), 3))
                         _dc2.metric("Sharpe",        round(_sim.get('sharpe', 0), 3))
-                        _dc3, _dc4 = st.columns(2)
-                        _dc3.metric("Trend Score",   _sim.get('overallValueTrend', 'n/a'))
-                        _dc4.metric("Markov Regime", _sim.get('markov_regime', 'n/a'))
+                        st.metric("Markov Regime", _sim.get('markov_regime', 'n/a'))
 
                         with st.expander(t('admin.ai_last_trade', year=''), expanded=True):
                             st.json({k: str(v) for k, v in _tr.items()})
