@@ -43,6 +43,20 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 (ewo &gt; ewo_ema)', 'signal_window': 5</code></td></tr>
 </table>
 
+<h3>Verweis auf eine gespeicherte Strategie</h3>
+<p>Statt Formeln und Einstellungen auszuschreiben, kann ein Index-Eintrag auf eine im Strategy Finder unter 📇 gespeicherte Strategie verweisen:</p>
+<pre><code>'Kanal-Dip': {
+    '^MDAXI': {'strategy': 'Kanal-Dip MACD', 'invest': 20000, 'num_assets': 4},
+},</code></pre>
+<ul>
+  <li>Multi Strategies rechnet einen solchen Eintrag <b>mit dem Rechenkern des Strategy Finders</b>: Formeln, alle Bausteine (Zufall, Auswahl per Ausdruck, Ausstieg nach N Tagen), <b>Gebühr und Kauf-Verzögerung</b>, Positionsgröße, Stops, Fristen und ISIN-Filter kommen aus der gespeicherten Strategie – ergibt trade-genau dasselbe wie der Strategy Finder auf demselben Index.</li>
+  <li>Felder im Eintrag überschreiben die Strategie, typischerweise <code>invest</code> und <code>num_assets</code>. Das Universum ist der Index-Schlüssel des Eintrags (ein Topf je Index, auch bei Bündeln).</li>
+  <li>Den fertigen Eintrag liefert der Strategy Finder: Strategie speichern, dann „🧩 Für Multi Strategies als Verweis“.</li>
+  <li>Ändert sich die gespeicherte Strategie, gilt ab dem nächsten Lauf der neue Stand. Gibt es sie nicht mehr, wird der Eintrag mit Hinweis übersprungen.</li>
+  <li><b>Live</b> (Agent, Signale-Tab, Scalable, Pine-Export) laufen nur Verweise mit Kaufformel, Auswahl „höchster Wert“ und Verkaufsformel; andere sind reine Backtests und werden dort ausgelassen.</li>
+</ul>
+<div class="info">Einträge ohne Verweis rechnen unverändert wie bisher – ohne Gebühr, ohne Kauf-Verzögerung, mit dem bisherigen Signal-Verfahren. Ein Vergleich mit den echten Einträgen vor und nach der Umstellung ergab identische Trades. Die Konfiguration wird seit 2026-11-01 ohne <code>eval</code> gelesen (Python-Literal oder JSON).</div>
+
 <h2>Bedienung</h2>
 <ul>
   <li><b>Daten vom:</b> Auswahl des Simulationsjahres (aktuelles Jahr oder Archiv-DBs <code>asset_simulation_{jahr}.db</code>)</li>

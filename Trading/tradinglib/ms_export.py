@@ -69,6 +69,30 @@ def format_strategy(name: str, index: str, index_entry: dict) -> str:
     return '\n'.join(lines)
 
 
+def reference_block(name: str, indices, invest, num_assets) -> str:
+    """Multi entry that points at the saved strategy *name*: one pot per index."""
+    entries = {idx: {'strategy': name, 'invest': _num(invest), 'num_assets': int(_num(num_assets))}
+               for idx in indices}
+    lines = [f'{name!r}: {{']
+    for idx, e in entries.items():
+        lines.append(f'    {idx!r}: {{' + ', '.join(f'{k!r}: {v!r}' for k, v in e.items()) + '},')
+    lines.append('},')
+    return '\n'.join(lines)
+
+
+def render_reference(container, name: str, indices, invest, num_assets, *, live_ok: bool,
+                     key: str = 'ms_ref') -> None:
+    """Expander with the reference block for a saved strategy."""
+    label = ' + '.join(indices)
+    with container.expander(_t('msx.ref_title', index=label), expanded=False):
+        st.code(reference_block(name, indices, invest, num_assets), language='python')
+        st.caption(_t('msx.ref_how'))
+        if len(list(indices)) > 1:
+            st.caption(_t('msx.ref_bundle'))
+        if not live_ok:
+            st.caption(_t('msx.ref_backtest_only'))
+
+
 def render(container, index: str, index_entry: dict, key: str = 'ms_export') -> None:
     """Expander with the strategy name and the ready-to-paste block."""
     with container.expander(_t('msx.title', index=index), expanded=False):

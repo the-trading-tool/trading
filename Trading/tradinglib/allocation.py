@@ -392,19 +392,28 @@ def format_transactions(transactions: dict, indent: str = '  ') -> str:
 
 
 def load_transactions(username: str = 'kurt', db_path: str = 'database') -> dict:
-    """Read the stored multi_transactions of *username* from config.db (read-only)."""
-    import ast
+    """Read the stored multi_transactions of *username* from config.db (read-only).
+
+    References to saved Strategy Finder strategies are resolved as Multi
+    Strategies does (strategy_spec.expand_references).
+    """
+    from tradinglib import strategy_spec
     conn = _ro(os.path.join(_db_dir(db_path), 'config.db'))
     try:
         row = conn.execute('SELECT value FROM config WHERE key = ?',
                            (f'{username}:multi_transactions',)).fetchone()
+        specs = conn.execute('SELECT value FROM config WHERE key = ?',
+                             (f'{username}:{strategy_spec.STORE_KEY}',)).fetchone()
     finally:
         conn.close()
     if not row:
         raise ValueError(f'Kein Eintrag {username}:multi_transactions in config.db')
-    cfg = ast.literal_eval(row[0])
-    while isinstance(cfg, str):          # doppelt serialisiert vorgefunden
-        cfg = ast.literal_eval(cfg)
+    cfg = strategy_spec.parse_multi_transactions(row[0])   # also doppelt serialisiert
+    if not cfg:
+        raise ValueError(f'{username}:multi_transactions nicht lesbar')
+    if strategy_spec.has_references(cfg):
+        cfg = strategy_spec.expand_references(
+            cfg, strategy_spec.saved_from_value(specs[0] if specs else None))
     return cfg
 
 

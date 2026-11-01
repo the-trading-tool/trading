@@ -43,6 +43,20 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 (ewo &gt; ewo_ema)', 'signal_window': 5</code></td></tr>
 </table>
 
+<h3>Reference to a saved strategy</h3>
+<p>Instead of writing out formulas and settings, an index entry can point at a strategy saved in the Strategy Finder under 📇:</p>
+<pre><code>'Channel dip': {
+    '^MDAXI': {'strategy': 'Kanal-Dip MACD', 'invest': 20000, 'num_assets': 4},
+},</code></pre>
+<ul>
+  <li>Multi Strategies runs such an entry <b>with the Strategy Finder's engine</b>: formulas, all blocks (random, selection by expression, exit after N days), <b>fee and buy delay</b>, position size, stops, periods and ISIN filter come from the saved strategy – giving trade for trade the same as the Strategy Finder on the same index.</li>
+  <li>Fields in the entry override the strategy, typically <code>invest</code> and <code>num_assets</code>. The universe is the entry's index key (one pot per index, bundles included).</li>
+  <li>The Strategy Finder provides the entry: save the strategy, then "🧩 For Multi Strategies as a reference".</li>
+  <li>If the saved strategy changes, the new version applies from the next run. If it no longer exists, the entry is skipped with a note.</li>
+  <li><b>Live</b> (agent, signals tab, Scalable, Pine export) only references with buy formula, "highest value" selection and sell formula run; others are backtest-only and are left out there.</li>
+</ul>
+<div class="info">Entries without a reference compute unchanged – no fee, no buy delay, the previous signal procedure. Comparing the real entries before and after the change gave identical trades. Since 2026-11-01 the configuration is read without <code>eval</code> (Python literal or JSON).</div>
+
 <h2>Usage</h2>
 <ul>
   <li><b>Data from:</b> select the simulation year (current year or archive DBs <code>asset_simulation_{year}.db</code>)</li>

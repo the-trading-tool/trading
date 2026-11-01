@@ -182,6 +182,89 @@ def test_bundle_currency_check():
     assert ss.bundle_currency_check(mixed)[0] is False
 
 
+# ------------------------------------------------------------------ references (Multi)
+
+SAVED = {
+    'Dip': ss.normalize({'name': 'Dip', 'entry': {'buy': '(rsi < 30)', 'delay': 1, 'window': 2},
+                         'exit': {'sell': '(rsi > 70)'}, 'select': {'column': 'sharpe'},
+                         'size': {'num_assets': 5, 'invest': 50000, 'cap': 'factor_capped'},
+                         'costs': {'fee_pct': 0.3, 'stop_loss': 8}}),
+    'Zufall': ss.normalize({'name': 'Zufall', 'entry': {'type': 'random', 'p_pct': 3},
+                            'exit': {'type': 'days', 'days': 30}}),
+}
+
+
+def test_json_with_booleans_parses():
+    assert ss.parse_multi_transactions('{"S": {"^X": {"buy": "a", "enabled": true}}}') == \
+        {'S': {'^X': {'buy': 'a', 'enabled': True}}}
+
+
+def test_entries_without_reference_stay_identical():
+    tx = {'S': {'^GDAXI': dict(ENTRY)}}
+    assert not ss.has_references(tx)
+    assert ss.expand_references(tx, SAVED) == tx
+    assert ss.expand_references(tx, SAVED, live=True) == tx
+
+
+def test_reference_resolves_with_overrides():
+    tx = {'S': {'^MDAXI': {'strategy': 'Dip', 'invest': 20000, 'num_assets': 4}}}
+    e = ss.expand_references(tx, SAVED)['S']['^MDAXI']
+    assert e['buy'] == '(rsi < 30)' and e['sell'] == '(rsi > 70)' and e['order_by'] == 'sharpe'
+    assert e['invest'] == 20000 and e['num_assets'] == 4          # the entry wins
+    assert e['sizing_cap'] == 'factor_capped' and e['stop_loss'] == 8
+    s = e['_spec']
+    assert s['universe']['indices'] == ['^MDAXI'] and s['size']['invest'] == 20000
+    assert s['costs']['fee_pct'] == 0.3 and s['entry']['delay'] == 1
+    live = ss.expand_references(tx, SAVED, live=True)['S']['^MDAXI']
+    assert '_spec' not in live and live['buy'] == '(rsi < 30)' and live['strategy'] == 'Dip'
+
+
+def test_live_leaves_out_what_it_cannot_run():
+    tx = {'A': {'^X': {'strategy': 'Zufall', 'invest': 1000}, '^Y': {'strategy': 'Dip'}},
+          'B': {'^Z': {'strategy': 'Zufall'}},
+          'C': {'^W': {'strategy': 'gibt es nicht'}}}
+    live = ss.expand_references(tx, SAVED, live=True)
+    assert list(live) == ['A'] and list(live['A']) == ['^Y']
+    back = ss.expand_references(tx, SAVED)
+    assert back['A']['^X']['_spec']['entry']['type'] == 'random'
+    assert ss.max_hold_days(back['A']['^X']['_spec']) == 30
+    assert back['C']['^W']['_ref_error'] == 'missing'
+
+
+def test_load_transactions_and_saved_from_value():
+    cfg = _Cfg()
+    cfg.set_value('multi_transactions', repr({'S': {'^X': {'strategy': 'Dip', 'invest': 1}}}))
+    cfg.set_value(ss.STORE_KEY, json.dumps(SAVED))
+    assert ss.load_transactions(cfg, live=True)['S']['^X']['buy'] == '(rsi < 30)'
+    assert ss.saved_from_value(json.dumps(json.dumps(SAVED)))['Dip']['select']['column'] == 'sharpe'
+    empty = _Cfg()
+    assert ss.load_transactions(empty, default={'D': {}}) == {'D': {}}
+
+
+def test_strategy_level_fields_become_index_defaults():
+    """What the trading page's editor stores: shared fields next to the indices."""
+    tx = {'S': {'num_assets': 5, 'invest': 10000, 'order_by': 'sortino', 'enabled': True,
+                '^GDAXI': {'buy': 'a', 'sell': 'b', 'num_assets': 3, 'stop_loss': 8},
+                '^SPX': {'buy': 'c', 'sell': 'd'}},
+          'Flat': {'buy': 'x', 'sell': 'y', 'num_assets': 2},          # old flat form
+          'Plain': {'^X': dict(ENTRY)}}
+    out = ss.apply_strategy_defaults(tx)
+    assert set(out['S']) == {'^GDAXI', '^SPX'}                       # only indices left
+    assert out['S']['^GDAXI']['num_assets'] == 3 and out['S']['^GDAXI']['stop_loss'] == 8
+    assert out['S']['^SPX']['num_assets'] == 5 and out['S']['^SPX']['invest'] == 10000
+    assert 'enabled' not in out['S']['^SPX']
+    assert out['Flat'] == tx['Flat'] and out['Plain'] == tx['Plain']  # untouched
+
+
+def test_reference_block_is_a_literal():
+    import ast as _ast
+    from tradinglib import ms_export
+    text = ms_export.reference_block("Dip 'x'", ['^MDAXI', '^SDAXI'], 20000.0, '4')
+    parsed = _ast.literal_eval('{' + text + '}')
+    assert parsed == {"Dip 'x'": {'^MDAXI': {'strategy': "Dip 'x'", 'invest': 20000, 'num_assets': 4},
+                                  '^SDAXI': {'strategy': "Dip 'x'", 'invest': 20000, 'num_assets': 4}}}
+
+
 # ------------------------------------------------------------------ storage / description
 
 class _Cfg:

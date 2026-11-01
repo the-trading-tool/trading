@@ -835,14 +835,21 @@ def _config_value(username: str, key: str):
 
 
 def _load_transactions(username: str) -> dict:
-    """Read a user's `multi_transactions` from config.db."""
-    import ast
+    """Read a user's `multi_transactions` from config.db.
+
+    Parsed without eval (literal, JSON, doppelt kodiert); references to saved
+    Strategy Finder strategies resolved to their formulas -- entries Pine cannot
+    express (random entry, time exit) are left out like in the live path.
+    """
+    from tradinglib import strategy_spec
     raw = _config_value(username, 'multi_transactions')
     if not raw:
         return {}
-    d = ast.literal_eval(raw)
-    if isinstance(d, str):      # config-DB speichert den dict teils doppelt-kodiert
-        d = ast.literal_eval(d)
+    d = strategy_spec.parse_multi_transactions(raw)
+    if strategy_spec.has_references(d):
+        d = strategy_spec.expand_references(
+            d, strategy_spec.saved_from_value(_config_value(username, strategy_spec.STORE_KEY)),
+            live=True)
     return d
 
 

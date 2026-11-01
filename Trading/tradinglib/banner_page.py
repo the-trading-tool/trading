@@ -611,8 +611,11 @@ div[data-testid="stMetric"] {
 
             # ── Parse transactions ────────────────────────────────────────
             self.total_invest = 0
-            _raw_transactions = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
-            transactions = ast.literal_eval(_raw_transactions) if isinstance(_raw_transactions, str) else _raw_transactions
+            # Same reading as Multi Strategies (which writes the trades shown here):
+            # references to saved strategies resolved, no eval.
+            from tradinglib import strategy_spec
+            transactions = strategy_spec.apply_strategy_defaults(strategy_spec.load_transactions(
+                self.sys_conf, live=False, default=self.sys_conf.transactions))
 
             # Strategy names (outer keys for 3-level) and
             # index map {index_name: max_num_assets across all strategies}

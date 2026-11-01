@@ -344,8 +344,9 @@ def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) 
 def parse_multi_transactions(value) -> dict:
     """The multi_transactions config value as a dict ({} if unreadable).
 
-    The stored value can be a dict, a literal, or a literal inside a string
-    (double-encoded) -- unwrap with literal_eval, never eval.
+    The stored value can be a dict, a Python literal (the settings text area),
+    JSON (the trading page's strategy editor writes json.dumps -- true/false/null
+    are no Python literal), or either inside a string (double-encoded). Never eval.
     """
     v = value
     for _ in range(3):
@@ -353,11 +354,158 @@ def parse_multi_transactions(value) -> dict:
             return v
         if not isinstance(v, str) or not v.strip():
             return {}
+        text = v.strip()
         try:
-            v = ast.literal_eval(v.strip())
+            v = ast.literal_eval(text)
         except (ValueError, SyntaxError):
-            return {}
+            try:
+                v = json.loads(text)
+            except ValueError:
+                return {}
     return v if isinstance(v, dict) else {}
+
+
+# ------------------------------------------------------------------ references
+
+REF_KEY = 'strategy'    # index entry field naming a saved strategy
+
+# Entry fields that override the referenced strategy, and where they go in the spec.
+_ENTRY_FIELDS = {
+    'buy': ('entry', 'buy'), 'sell': ('exit', 'sell'), 'signal_window': ('entry', 'window'),
+    'buy_delay': ('entry', 'delay'), 'order_by': ('select', 'column'),
+    'num_assets': ('size', 'num_assets'), 'invest': ('size', 'invest'),
+    'sizing_cap': ('size', 'cap'), 'sizing_factor_max': ('size', 'factor_max'),
+    'fractional': ('size', 'fractional'), 'fee_pct': ('costs', 'fee_pct'),
+    'trailing_stop': ('costs', 'trailing_stop'), 'stop_loss': ('costs', 'stop_loss'),
+    'min_hold_days': ('costs', 'min_hold_days'), 'cooldown_days': ('costs', 'cooldown_days'),
+    'require_isin': ('universe', 'require_isin'), 'currency': ('universe', 'currency'),
+}
+
+
+def _expand_entry(index: str, entry: dict, saved: dict, live: bool):
+    """One index entry with its strategy reference resolved (see expand_references)."""
+    name = entry.get(REF_KEY)
+    if not name:
+        return entry
+    spec = saved.get(str(name))
+    if spec is None:
+        return None if live else {**entry, '_ref_error': 'missing'}
+    s = normalize(spec)
+    for key, (block, field) in _ENTRY_FIELDS.items():
+        if key in entry:
+            s[block][field] = entry[key]
+    # The Multi entry's index key is the universe (Multi keeps one pot per index).
+    s['universe']['indices'] = [index]
+    s = normalize(s)
+    if live and not is_classic(s):
+        return None
+    out = to_ms_entry(s)
+    if out is None:     # non-classic: Multi's own fields, formulas as the blocks run them
+        out = {'buy': buy_formula(s), 'sell': sell_formula(s),
+               'num_assets': s['size']['num_assets'], 'invest': s['size']['invest'],
+               'order_by': s['select']['column'], 'signal_window': s['entry']['window']}
+    out[REF_KEY] = str(name)
+    if not live:
+        out['_spec'] = s
+    return out
+
+
+def expand_references(transactions: dict, saved: dict, live: bool = False) -> dict:
+    """Resolve ``{'strategy': name, ...}`` index entries against saved strategies.
+
+    Entries without a reference come back unchanged -- existing configurations
+    compute exactly as before. A referenced entry gets the classic fields every
+    reader understands (buy, sell, num_assets, invest, order_by, ...), filled from
+    the saved strategy and overridden by the fields the entry sets itself
+    (typically invest and num_assets).
+
+    live=False (Multi Strategies backtest): the resolved spec rides along as
+    ``_spec``, so Multi can run it with the Strategy Finder's engine; a missing
+    strategy is marked ``_ref_error``.
+    live=True (agent, signals tab, Pine export): only entries the live path can
+    execute -- buy formula, column selection, sell formula. Others (random
+    entry, time exit, missing reference) are left out, and so is a strategy
+    with no index left.
+    """
+    out = {}
+    for strat, idxs in (transactions or {}).items():
+        if not isinstance(idxs, dict):
+            out[strat] = idxs
+            continue
+        new = {}
+        for idx, entry in idxs.items():
+            if isinstance(entry, dict):
+                e = _expand_entry(str(idx), entry, saved, live)
+                if e is not None:
+                    new[idx] = e
+            else:
+                new[idx] = entry
+        if new or not live:
+            out[strat] = new
+    return out
+
+
+def apply_strategy_defaults(transactions: dict) -> dict:
+    """Strategy-level fields as defaults of its index entries, the way the agent reads them.
+
+    The trading page's strategy editor stores shared settings (num_assets,
+    invest, order_by, enabled) next to the index entries. The agent merges them
+    as ``{**strategy_fields, **index_entry}``; readers that walk the index keys
+    (Multi Strategies, dashboard) would take 'num_assets' for an index. Here
+    the fields go into every index entry (the entry's own value wins) and leave
+    the strategy level, so only index entries remain. A strategy with ``buy`` at
+    the top (the old flat form, the strategy is its own index) stays as it is.
+    'enabled' is the editor's switch, not a run setting, and is dropped.
+    """
+    out = {}
+    for strat, v in (transactions or {}).items():
+        if not isinstance(v, dict):
+            out[strat] = v
+            continue
+        idx = {k: e for k, e in v.items() if isinstance(e, dict)}
+        if not idx or 'buy' in v:
+            out[strat] = v
+            continue
+        defaults = {k: e for k, e in v.items() if not isinstance(e, dict) and k != 'enabled'}
+        out[strat] = {k: {**defaults, **e} for k, e in idx.items()}
+    return out
+
+
+def has_references(transactions: dict) -> bool:
+    return any(isinstance(e, dict) and e.get(REF_KEY)
+               for idxs in (transactions or {}).values() if isinstance(idxs, dict)
+               for e in idxs.values())
+
+
+def saved_from_value(value) -> dict:
+    """{name: spec} from a raw ``sf_strategies`` config value (for readers without SystemConfig)."""
+    raw = value
+    for _ in range(3):
+        if isinstance(raw, dict):
+            break
+        if not isinstance(raw, str) or not raw.strip():
+            return {}
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): normalize(v) for k, v in raw.items() if isinstance(v, dict)}
+
+
+def load_transactions(cfg, live: bool = False, default=None) -> dict:
+    """multi_transactions of *cfg*'s user, parsed (no eval) and references resolved.
+
+    *default* is used when nothing readable is stored (the readers' former
+    fallback, SystemConfig.transactions).
+    """
+    tx = parse_multi_transactions(cfg.get_value('multi_transactions', None))
+    if not tx and default is not None:
+        tx = parse_multi_transactions(default)
+    if not has_references(tx):
+        return tx
+    return expand_references(tx, load_all(cfg), live=live)
 
 
 def ms_strategies(value) -> list[tuple[str, str, dict]]:

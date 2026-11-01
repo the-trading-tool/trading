@@ -256,8 +256,9 @@ class BannerAiGenerator:
     def _get_strategy_context(self, stock_index: str) -> dict:
         """Return buy/sell conditions for stock_index from multi_transactions."""
         try:
-            raw = self.sys_conf.get_value('multi_transactions', self.sys_conf.transactions)
-            transactions = ast.literal_eval(raw) if isinstance(raw, str) else raw
+            from tradinglib import strategy_spec
+            transactions = strategy_spec.apply_strategy_defaults(strategy_spec.load_transactions(
+                self.sys_conf, live=False, default=self.sys_conf.transactions))
             # stock_index e.g. "^MDAXI" → key "MDAXI"
             key = stock_index.lstrip('^')
             # 2-level (key IS the index) vs. 3-level (key = strategy, value = {index: {...}})

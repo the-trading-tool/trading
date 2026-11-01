@@ -67,11 +67,13 @@ def strategy_index_queries(username: str = 'admin') -> list:
     names, inner dict keys are index names, and index settings override the
     strategy-level ones.
     """
+    from tradinglib import strategy_spec
     from tradinglib import system_config as sysconf
 
     cfg = sysconf.SystemConfig(username=username)
     try:
-        raw = cfg.get_value('multi_transactions', None)
+        # References to saved Strategy Finder strategies resolved like the agent does.
+        raw = strategy_spec.load_transactions(cfg, live=True)
     finally:
         try:
             cfg.close()
