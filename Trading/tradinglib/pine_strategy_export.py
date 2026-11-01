@@ -625,6 +625,8 @@ def _rules_block(rules: dict) -> tuple[str, str]:
         'factor': f'Vola-Faktor (Ø-Vola des Index / Vola des Titels), im Backtest auf [1/{fmax:g}, {fmax:g}] geklammert',
         'none': 'Vola-Faktor (Ø-Vola des Index / Vola des Titels), ungeklammert',
         'cash': 'Vola-Faktor, gedeckelt auf das freie Kapital',
+        'factor_capped': f'Vola-Faktor auf [1/{fmax:g}, 1] geklammert (hoechstens ein Anteil), '
+                         'gedeckelt auf das freie Kapital',
         'normalized': 'inverse Vola, normiert auf die Tagesauswahl',
         'profile': 'Ziel-Vola des Risikoprofils / Vola des Titels',
     }.get(cap, cap)

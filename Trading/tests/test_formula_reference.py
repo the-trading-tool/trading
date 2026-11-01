@@ -47,6 +47,22 @@ def test_catalog_follows_group_order():
     assert groups == ['price', 'ewo', 'risk']
 
 
+def test_ordered_columns_groups_indicators_and_keeps_everything():
+    cols = ['scr_3mo', 'Date', 'ewo', 'my_b', 'close', 'scr_1mo', 'ticker', 'ewo_ema', 'my_a']
+    out = fr.ordered_columns(cols)
+    assert sorted(out) == sorted(cols)
+    assert out == ['Date', 'ticker', 'close', 'ewo', 'ewo_ema', 'scr_1mo', 'scr_3mo',
+                   'my_a', 'my_b']
+
+
+def test_ordered_columns_takes_a_dataframe_index():
+    # The page passes combined_df.columns; a pandas Index has no truth value.
+    import pandas as pd
+    df = pd.DataFrame(columns=['rsi', 'ticker', 'close'])
+    assert fr.ordered_columns(df.columns) == ['ticker', 'close', 'rsi']
+    assert fr.catalog(df.columns) == [('price', ['close']), ('momentum', ['rsi'])]
+
+
 def test_every_example_has_both_languages():
     for lang in ('de', 'en'):
         d = _locale(lang)

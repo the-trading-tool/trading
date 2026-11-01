@@ -16,7 +16,7 @@ import streamlit as st
 
 from tradinglib.i18n import t as _t
 
-_SIZING_WITH_FACTOR = ('factor',)
+_SIZING_WITH_FACTOR = ('factor', 'factor_capped')
 
 
 def _num(value):

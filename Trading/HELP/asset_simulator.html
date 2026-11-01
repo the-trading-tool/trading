@@ -78,6 +78,29 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     Ebenso nutzbar ist <code>fg_score</code>, der Fear-&amp;-Greed-Wert (0–100) des Index, dem der Titel angehört (S&amp;P 500, Russell 2000, DAX, MDAX, SDAX, Nikkei, FTSE, IBEX, SMI). Furcht (<code>fg_score &lt; 45</code>) war in allen 7 Jahren der bessere Einstieg, auch ohne ausgebombte Breite und dann bei normaler Schwankung; Gier (≥ 75) der schlechtere. Achtung: der Wert besteht 2020–21 aus 3, 2022–24 aus 5 und erst seit 2025 aus 7 Komponenten.</li>
   <li><b>Zufallsvergleich:</b> dieselben Signale, aber an jedem Tag in zufälliger Reihenfolge in die freien Plätze. Liegt der eigene Lauf nicht deutlich darüber (Perzentil unter 75), bringt die Sortierung nichts oder das Ergebnis ist Rauschen</li>
 </ul>
+<h2>🧱 Strategie-Bausteine</h2>
+<p>Standardmäßig arbeitet der Strategy Finder mit Bausteinen. Unter Einstellungen ▸ Strategien &amp; Handel ▸ <b>Strategy Finder</b> lässt sich auf die klassische Seitenleiste zurückschalten. Mit <i>Kaufformel / höchster Wert / Verkaufsformel</i> rechnen beide Modi exakt gleich.</p>
+<ul>
+  <li><b>📇 Strategie</b> (oben): Name, Idee in einem Satz und Status (Idee / Papier / Live). <b>Speichern</b> legt alle Einstellungen ab – Index, Filter, Jahre, Formeln, Bausteine, Plätze, Größe, Gebühr, Stops, Fristen – und, wenn seither nichts geändert wurde, die Kennzahlen des letzten Laufs und die Ampeln des Signal-Checks. <b>Laden</b> setzt alles wieder ein; auch Einträge aus Multi Strategies (🧩) lassen sich laden. Darunter steht die Strategie in Klartext.</li>
+  <li><b>Universum aus mehreren Indizes:</b> Im Feld Index lassen sich mehrere Indizes wählen; ihre Werte konkurrieren dann um dieselben Plätze. Ein Wert in mehreren Indizes zählt einmal. Alle Werte müssen in einer Währung handeln – der Simulator rechnet ohne Umrechnung. Mischt das Bündel Märkte (eine zweite Währung über 5 % der Werte), wird es gesperrt; mit dem Währungsfilter lässt es sich auf eine Währung eingrenzen. Einzelne Ausreißer (z. B. ein Wert mit US-Notierung im MDAX) werden genannt und wie im Einzelindex mitgerechnet. Der Vergleich „Index (halten)“ entfällt beim Bündel; das gleichgewichtete Universum bleibt.</li>
+  <li><b>Einstieg:</b> Kaufformel · <i>immer</i> (jeder Wert ist an jedem Tag Kandidat) · <i>zufällig</i> (ein Anteil der Wert-Tage, mit Startwert – gleicher Startwert, gleiches Ergebnis)</li>
+  <li><b>Auswahl bei freien Plätzen:</b> höchster oder niedrigster Wert der Spalte „Sortieren nach“ · Rechenausdruck aus Spalten desselben Tages (z. B. <code>sortino / vola</code>) · zufällig</li>
+  <li><b>Ausstieg:</b> Verkaufsformel · Formel oder spätestens nach N Kalendertagen · nur nach N Tagen · nie (nur Stops)</li>
+  <li><b>Passender Zufall</b> (in der Belastbarkeit): zufällige Werte mit derselben Signaldichte und derselben mittleren Haltedauer wie die Strategie, sonst gleiche Einstellungen. Der faire Maßstab: Liegt die Strategie nicht klar darüber (Perzentil unter 90), liefern Plätze, Haltedauer und Markt das Ergebnis, nicht die Formel.</li>
+</ul>
+<div class="info">Beim Laden aus Multi Strategies stehen Gebühr und Kauf-Verzögerung auf 0, weil Multi Strategies so rechnet; fehlende Felder kommen aus den globalen Einstellungen. Wie beim Ändern von Hand werden Positionsgröße, Bruchstücke, Fristen, Signalfenster und ISIN-Filter global gespeichert – Multi Strategies liest diese Werte ebenfalls. Nach Multi Strategies übertragbar sind nur Strategien mit Kaufformel, Auswahl „höchster Wert“ und Verkaufsformel.</div>
+
+<h2>🔬 Signal-Check</h2>
+<p>Prüft die Formel selbst, ohne die Platz-Mechanik des Depots. Ein gutes Depot-Ergebnis kann aus der Reihenfolge, in der Signale auf freie Plätze treffen, oder aus wenigen lange gehaltenen Werten stammen – der Signal-Check zeigt, ob die Formel darunter etwas weiß. Beide Teile laufen nur auf Knopfdruck.</p>
+<ul>
+  <li><b>Kaufsignale:</b> Rendite nach jedem neuen Kaufsignal (ab Kauf-Verzögerung) über 21 und 63 Handelstage, abzüglich des gleichgewichteten Markts über dieselben Tage. Ohne Platzbegrenzung, jedes Signal zählt</li>
+  <li><b>Verkaufssignale:</b> dasselbe nach einem Verkaufssignal. Ein gutes Ausstiegssignal hat danach schwächere Wochen (negativ); positiv heißt, es verkauft Gewinner zu früh</li>
+  <li><b>Gegenprobe mit Zufallskäufen:</b> deine Käufe und zufällige Käufe in denselben Werten, beide mit deiner Verkaufsregel geschlossen. Eine Verkaufsregel, die nur in die Stärke verkauft, lässt fast jeden Kauf gut aussehen – der Unterschied ist, was die Kaufregel beiträgt</li>
+  <li><b>Konzentration:</b> Anteil der besten 3 und 5 Trades am Nettogewinn des Laufs</li>
+  <li><b>Andere Märkte:</b> dieselbe Formel mit denselben Einstellungen in anderen Indizes (ohne die Filter für Sektor, Börse, Währung, Größe und Kurs), jeweils gegen deren gleichgewichteten Markt. Große Indizes brauchen bis zu einer Minute</li>
+</ul>
+<div class="info">Die Ampeln sind Faustregeln, die Schwellen stehen unter den Ergebnissen. Signale und Gegenprobe sind ohne Gebühren gerechnet, die anderen Märkte mit. Universum ist jeweils der heutige Indexstand (Überlebensverzerrung).</div>
+
 <div class="info">Der Gesamtgewinn zählt seit 2026-09-21 die realisierten Gewinne früherer Runden eines Titels mit, der am Ende wieder gehalten wird. Vorher fielen sie weg (^GDAXI 2024–25: 50,2 % statt 61,2 %). Ältere Ergebnisse sind deshalb zu niedrig.</div>
 
 <div class="warn">Mehrjahres-Simulationen und große Indizes können – je nach Datenmenge – einige Sekunden bis Minuten dauern. <code>duckdb</code> beschleunigt die Abfragen, ist aber optional.</div>

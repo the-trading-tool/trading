@@ -436,6 +436,14 @@ class SystemConfig(tools.Db_tools):
             self.set_value('signal_window', st.number_input(
                 i18n.t("cfg.signal_window"), min_value=1, max_value=60,
                 value=max(1, _sw_default), step=1, help=i18n.t("cfg.signal_window_help")))
+            # Strategy Finder: building blocks (default) or the classic sidebar.
+            _sfb_opts = ['blocks', 'classic']
+            _sfb_cur = self.get_value('sf_builder', 'blocks')
+            self.set_value('sf_builder', st.selectbox(
+                i18n.t("cfg.sf_builder"), _sfb_opts,
+                index=_sfb_opts.index(_sfb_cur) if _sfb_cur in _sfb_opts else 0,
+                format_func=lambda v: i18n.t(f"cfg.sf_builder_{v}"),
+                help=i18n.t("cfg.sf_builder_help")))
             self.set_value('require_isin', st.selectbox(i18n.t("cfg.require_isin"), b_select, idx_require_isin))
             self.set_value('trailing_stop_enabled', st.selectbox(i18n.t("cfg.trailing_stop_enabled"), b_select, idx_trailing_stop_enabled))
             # Globaler harter Stop-Loss in % unter dem Einstandskurs für die Multi-

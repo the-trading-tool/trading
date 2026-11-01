@@ -130,6 +130,42 @@ def test_faktor_eins_ist_gleichgewichtung(bare_simulator):
     assert _position_value(_sim('factor', factor_max=1.0, make=bare_simulator), 'NG=F') == pytest.approx(20_000, rel=1e-3)
 
 
+# ---------------------------------------------------------- 'factor_capped'
+
+def test_factor_capped_hoechstens_ein_anteil(bare_simulator):
+    """Der ruhige Wert, bei 'factor' 40.000 (2 Anteile), bekommt nur noch einen."""
+    p = _sim('factor_capped', factor_max=2.0, make=bare_simulator)
+    assert _position_value(p, 'ZN=F') == pytest.approx(20_000, rel=1e-3)
+
+
+def test_factor_capped_verkleinert_unruhige_wie_factor(bare_simulator):
+    a = _position_value(_sim('factor', factor_max=1.5, make=bare_simulator), 'NG=F')
+    b = _position_value(_sim('factor_capped', factor_max=1.5, make=bare_simulator), 'NG=F')
+    assert b == pytest.approx(a)
+    assert b < 20_000
+
+
+def test_factor_capped_keine_kasse_unter_null_und_alle_plaetze(bare_simulator):
+    """Der Fall, an dem 'factor' ins Minus rutscht: fuenf ruhige Werte."""
+    p = _sim('factor_capped', factor_max=2.0, make=bare_simulator)
+    p._vola_by_ticker = {f'T{i}': 1.4 for i in range(5)}
+    for i in range(5):
+        p.buy_asset(f'T{i}', 100.0, '2026-01-05 00:00:00')
+    assert p.cash >= 0
+    assert len(p.portfolio) == 5                     # kein Platz bleibt ohne Geld
+
+
+def test_factor_capped_deckelt_auf_das_freie_kapital(bare_simulator):
+    p = _sim('factor_capped', factor_max=2.0, cash=100_000, make=bare_simulator)
+    p.cash = 5_000                                   # nur noch wenig frei
+    assert _position_value(p, 'MID') == pytest.approx(5_000, rel=1e-6)
+    assert p.cash >= 0
+
+
+def test_factor_capped_ist_ein_bekannter_modus():
+    assert 'factor_capped' in PortfolioSimulator.SIZING_CAPS
+
+
 # -------------------------------------------------------------- Robustheit
 
 def test_unbekannter_modus_faellt_auf_none_zurueck(bare_simulator):

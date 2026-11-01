@@ -78,6 +78,29 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
     Also usable is <code>fg_score</code>, the Fear &amp; Greed score (0–100) of the index the name belongs to (S&amp;P 500, Russell 2000, DAX, MDAX, SDAX, Nikkei, FTSE, IBEX, SMI). Fear (<code>fg_score &lt; 45</code>) was the better entry in all 7 years, even without washed-out breadth and then at normal volatility; greed (≥ 75) the worse one. Note: the score has 3 components in 2020–21, 5 in 2022–24 and 7 only since 2025.</li>
   <li><b>Random-order comparison:</b> the same signals, but taken each day in random order into the free slots. If the own run is not clearly above (percentile below 75), the ranking adds nothing or the result is noise</li>
 </ul>
+<h2>🧱 Strategy building blocks</h2>
+<p>By default the Strategy Finder works with building blocks. Settings ▸ Strategies &amp; Trading ▸ <b>Strategy Finder</b> switches back to the classic sidebar. With <i>buy formula / highest value / sell formula</i> both modes compute exactly the same.</p>
+<ul>
+  <li><b>📇 Strategy</b> (top): name, idea in one sentence and status (idea / paper / live). <b>Save</b> stores every setting – index, filters, years, formulas, blocks, slots, size, fee, stops, periods – and, if nothing changed since, the key figures of the last run and the signal-check lights. <b>Load</b> puts everything back; entries from Multi Strategies (🧩) can be loaded too. Below, the strategy in plain words.</li>
+  <li><b>Universe of several indices:</b> the index field takes several indices; their stocks then compete for the same slots. A stock in several indices counts once. All stocks must trade in one currency – the simulator does not convert. A bundle that mixes markets (a second currency above 5 % of the stocks) is blocked; the currency filter narrows it to one currency. Single strays (e.g. a stock with a US listing in the MDAX) are named and computed as in the single index. The "index (hold)" comparison is dropped for a bundle; the equal-weight universe stays.</li>
+  <li><b>Entry:</b> buy formula · <i>always</i> (every stock is a candidate every day) · <i>random</i> (a share of stock-days, with a seed – same seed, same result)</li>
+  <li><b>Selection for free slots:</b> highest or lowest value of the "order by" column · an expression of same-day columns (e.g. <code>sortino / vola</code>) · random</li>
+  <li><b>Exit:</b> sell formula · formula or after N calendar days at the latest · after N days only · never (stops only)</li>
+  <li><b>Matched random</b> (in Robustness): random stocks with the strategy's signal density and median holding period, otherwise the same settings. The fair yardstick: if the strategy is not clearly above it (percentile below 90), slots, holding period and market deliver the result, not the formula.</li>
+</ul>
+<div class="info">Loading from Multi Strategies sets fee and buy delay to 0, because Multi Strategies computes that way; missing fields come from the global settings. As when changed by hand, position size, fractional shares, periods, signal window and ISIN filter are stored globally – Multi Strategies reads these values too. Only strategies with buy formula, "highest value" selection and sell formula carry over to Multi Strategies.</div>
+
+<h2>🔬 Signal check</h2>
+<p>Checks the formula itself, without the portfolio's slot mechanics. A good portfolio result can come from the order in which signals meet free slots, or from a few long-held names – the signal check shows whether the formula knows anything underneath. Both parts run only on a button.</p>
+<ul>
+  <li><b>Buy signals:</b> return after each new buy signal (from the buy delay on) over 21 and 63 trading days, minus the equally weighted market over the same days. No slot limit, every signal counts</li>
+  <li><b>Sell signals:</b> the same after a sell signal. A good exit is followed by weaker weeks (negative); positive means it sells winners too early</li>
+  <li><b>Control with random entries:</b> your entries and random entries in the same names, both closed by your sell rule. A sell rule that only sells into strength makes almost any entry look good – the difference is what the buy rule adds</li>
+  <li><b>Concentration:</b> share of the run's net gain from its best 3 and 5 trades</li>
+  <li><b>Other markets:</b> the same formula and settings in other indices (without the sector, exchange, currency, size and price filters), each against its equally weighted market. Large indices take up to a minute</li>
+</ul>
+<div class="info">The lights are rules of thumb; the thresholds are shown below the results. Signals and control are computed without fees, other markets with. The universe is always today's index membership (survivorship bias).</div>
+
 <div class="info">Since 2026-09-21 the total profit includes realised gains of earlier round trips in a name that is held again at the end. Before, they were dropped (^GDAXI 2024–25: 50.2 % instead of 61.2 %). Older results are therefore too low.</div>
 
 <div class="warn">Multi-year simulations and large indices can take a few seconds to minutes, depending on the data volume. <code>duckdb</code> speeds up the queries but is optional.</div>

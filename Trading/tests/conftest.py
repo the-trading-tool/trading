@@ -40,6 +40,7 @@ def bare_simulator():
         p.fractional_decimals = fractional_decimals
         p.min_hold_days = min_hold_days
         p.cooldown_days = cooldown_days
+        p.max_hold_days = 0
         p._last_sell = {}
         p._avg_vola = avg_vola
         p._vola_by_ticker = dict(volas or {})

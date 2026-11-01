@@ -109,7 +109,8 @@ def catalog(columns) -> list[tuple[str, list[str]]]:
 
     Columns not in *columns* are left out -- the list shows what this run can use.
     """
-    present = [c for c in dict.fromkeys(columns or []) if c not in HIDDEN]
+    present = [c for c in dict.fromkeys(columns if columns is not None else [])
+               if c not in HIDDEN]
     have = set(present)
     out = []
     for group, cols in GROUPS:
@@ -121,6 +122,21 @@ def catalog(columns) -> list[tuple[str, list[str]]]:
     if other:
         out.append(('other', other))
     return out
+
+
+def ordered_columns(columns) -> list[str]:
+    """All of *columns*, re-ordered so each indicator's columns sit side by side.
+
+    Identifiers (Date, ticker, names) keep their place at the front, then the
+    catalog groups in display order, then unknown columns alphabetically -- which
+    still keeps a new indicator's ``prefix_*`` columns together. Nothing is dropped.
+    """
+    # Not `columns or []`: a pandas Index has no truth value.
+    cols = list(dict.fromkeys(columns if columns is not None else []))
+    lead = [c for c in cols if c in HIDDEN]
+    grouped = [c for _g, found in catalog(cols) for c in found]
+    rest = [c for c in cols if c not in set(lead) | set(grouped)]
+    return lead + grouped + rest
 
 
 def describe(column: str) -> str:
