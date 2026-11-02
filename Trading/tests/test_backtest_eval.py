@@ -59,6 +59,35 @@ def test_gleichgewichtet_kappt_datenfehler():
     assert ew.iloc[-1] <= 1250
 
 
+def test_umgekehrte_vola_gewichtet_ruhige_werte_hoeher():
+    # A: +/-1 % im Wechsel, B: +/-4 % im Wechsel -> sigma B = 4 x sigma A -> Gewichte 0,8 / 0,2.
+    n = 8
+    a = [100.0]
+    b = [100.0]
+    for i in range(1, n):
+        a.append(a[-1] * (1.01 if i % 2 else 0.99))
+        b.append(b[-1] * (1.04 if i % 2 else 0.96))
+    a.append(a[-1] * 1.10)          # letzter Tag: A +10 %, B -10 %
+    b.append(b[-1] * 0.90)
+    df, _ = _frame({'A': a, 'B': b})
+    panel = be.close_panel(df)
+    iv = be.inverse_vol(panel, 1000, lookback=4)
+    day = iv.iloc[-1] / iv.iloc[-2] - 1
+    assert day == pytest.approx(0.8 * 0.10 + 0.2 * -0.10, rel=1e-6)
+    ew = be.equal_weight(panel, 1000)
+    assert ew.iloc[-1] / ew.iloc[-2] - 1 == pytest.approx(0.0, abs=1e-12)
+
+
+def test_umgekehrte_vola_ohne_vorausschau_und_anfang_gleichgewichtet():
+    df, _ = _frame({'A': [10, 11, 12, 11, 12, 13, 12], 'B': [10, 9, 11, 10, 12, 9, 13]})
+    panel = be.close_panel(df)
+    full = be.inverse_vol(panel, 1000, lookback=3)
+    cut = be.inverse_vol(panel.iloc[:5], 1000, lookback=3)
+    assert full.iloc[:5].tolist() == pytest.approx(cut.tolist())        # Zukunft aendert nichts
+    # Erste Tage ohne Vola-Historie: wie gleichgewichtet.
+    assert full.iloc[:4].tolist() == pytest.approx(be.equal_weight(panel, 1000).iloc[:4].tolist())
+
+
 def test_stats():
     idx = pd.bdate_range('2024-01-01', periods=3)
     s = be.stats(pd.Series([100.0, 80.0, 120.0], index=idx))

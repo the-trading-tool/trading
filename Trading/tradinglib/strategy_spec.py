@@ -244,25 +244,44 @@ def trading_currencies(df: pd.DataFrame) -> dict:
     return _currency_by_ticker(df).value_counts().to_dict()
 
 
-MAX_FOREIGN_SHARE = 0.05
+PRICE_COLUMNS = ('close', 'Open', 'High', 'Low')
 
 
-def bundle_currency_check(df: pd.DataFrame) -> tuple[bool, str, dict]:
-    """(ok, main currency, {ticker: currency} of the stocks outside it).
+def to_system_currency(df: pd.DataFrame, system_currency: str, rate_fn) -> pd.DataFrame:
+    """Copy of a signalled frame with prices in the system currency, each row by its own currency.
 
-    Not ok when a second currency holds more than MAX_FOREIGN_SHARE of the stocks:
-    then the bundle mixes markets and every position size would be off. A few
-    strays (an index member listed by its US ticker) are reported but allowed --
-    the single-index run computes them the same way today.
+    The conversion Multi Strategies has always applied (one place, so the
+    Strategy Finder computes the same numbers): ``rate_fn(currency)`` is the
+    rate currency -> system currency (TickerTools.get_exchange_rate, today's
+    rate), prices are divided by it; a currency that fails or is unknown counts
+    as 1. Run it after the signals: the formulas compare a stock's columns with
+    each other, all in its listing currency. Without a 'currency' column the
+    frame comes back unchanged.
     """
-    cur = _currency_by_ticker(df)
-    if cur.empty:
-        return True, '', {}
-    counts = cur.value_counts()
-    main = str(counts.index[0])
-    foreign = cur[cur != main]
-    ok = bool(len(counts) == 1 or counts.iloc[1] <= MAX_FOREIGN_SHARE * len(cur))
-    return ok, main, foreign.to_dict()
+    if df is None or df.empty or 'currency' not in df.columns:
+        return df
+    sc = str(system_currency or '')
+    cache: dict = {}
+
+    def _fx(cur):
+        cur = str(cur)
+        if cur not in cache:
+            r = 1.0
+            if cur and cur not in ('0', 'nan', 'None', '', sc):
+                try:
+                    r = float(rate_fn(cur)) or 1.0
+                except Exception:
+                    r = 1.0
+            cache[cur] = r
+        return cache[cur]
+
+    out = df.copy()
+    rate = out['currency'].map(_fx)
+    for col in PRICE_COLUMNS:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors='coerce') / rate
+    out['currency'] = sc
+    return out
 
 
 # ------------------------------------------------------------------ engine glue

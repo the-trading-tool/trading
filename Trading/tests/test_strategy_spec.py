@@ -170,16 +170,32 @@ def test_trading_currencies():
     assert ss.trading_currencies(pd.DataFrame({'ticker': ['A']})) == {}
 
 
-def test_bundle_currency_check():
-    # one stray among many: allowed, named
-    df = pd.DataFrame({'ticker': [f'T{i}' for i in range(40)] + ['QGEN'],
-                       'currency': ['EUR'] * 40 + ['USD']})
-    ok, main, foreign = ss.bundle_currency_check(df)
-    assert ok and main == 'EUR' and foreign == {'QGEN': 'USD'}
-    # two markets: blocked
-    mixed = pd.DataFrame({'ticker': [f'T{i}' for i in range(60)],
-                          'currency': ['USD'] * 50 + ['EUR'] * 10})
-    assert ss.bundle_currency_check(mixed)[0] is False
+def test_to_system_currency_converts_each_row_by_its_currency():
+    df = pd.DataFrame({'ticker': ['A', 'B', 'C', 'D'], 'currency': ['USD', 'EUR', 'JPY', '0'],
+                       'close': [110.0, 50.0, 3000.0, 7.0], 'Open': [100.0, 49.0, 2900.0, 7.0],
+                       'High': [111.0, 51.0, 3100.0, 7.0], 'Low': ['99', 48.0, 2800.0, 7.0],
+                       'sup_support': [90.0, 45.0, 2500.0, 6.0], 'buySell': [1, 0, 1, 0]})
+    calls = []
+    rates = {'USD': 1.1, 'JPY': 160.0}
+
+    def rate(cur):
+        calls.append(cur)
+        return rates[cur]
+    out = ss.to_system_currency(df, 'EUR', rate)
+    assert out['close'].round(6).tolist() == [100.0, 50.0, 18.75, 7.0]
+    assert out['Low'].round(6).tolist() == [90.0, 48.0, 17.5, 7.0]       # TEXT read as number
+    assert out['sup_support'].tolist() == df['sup_support'].tolist()     # indicators untouched
+    assert (out['currency'] == 'EUR').all() and out['buySell'].tolist() == [1, 0, 1, 0]
+    assert sorted(calls) == ['JPY', 'USD']          # one rate per currency, none for EUR/'0'
+    assert df['close'].tolist()[0] == 110.0          # input unchanged
+
+
+def test_to_system_currency_failed_rate_counts_as_one_and_no_column_is_a_no_op():
+    df = pd.DataFrame({'ticker': ['A'], 'currency': ['USD'], 'close': [10.0]})
+    out = ss.to_system_currency(df, 'EUR', lambda cur: 1 / 0)
+    assert out['close'].tolist() == [10.0] and out['currency'].tolist() == ['EUR']
+    plain = pd.DataFrame({'ticker': ['A'], 'close': [10.0]})
+    assert ss.to_system_currency(plain, 'EUR', lambda c: 2.0) is plain
 
 
 # ------------------------------------------------------------------ references (Multi)

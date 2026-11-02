@@ -113,6 +113,31 @@ def equal_weight(panel: pd.DataFrame, initial_cash: float) -> pd.Series:
     return float(initial_cash) * (1.0 + daily).cumprod()
 
 
+INV_VOL_LOOKBACK = 21   # trading days, the window of the simulator's 'vola' column
+
+
+def inverse_vol(panel: pd.DataFrame, initial_cash: float,
+                lookback: int = INV_VOL_LOOKBACK) -> pd.Series:
+    """Equity of a universe weighted by inverse volatility, rebalanced daily.
+
+    Each day a stock's weight is 1 / (std of its daily returns over the
+    previous *lookback* days), normalised to 1 across the stocks that have such
+    a value -- known at the start of the day, so no look-ahead. Calm stocks get
+    more, volatile ones less. Days on which no stock has enough history fall
+    back to equal weight. Returns are clipped like in ``equal_weight``.
+    """
+    if panel.empty:
+        return pd.Series(dtype=float)
+    rets = panel.pct_change(fill_method=None).clip(-0.5, 0.5)
+    sigma = rets.rolling(lookback, min_periods=lookback).std().shift(1)
+    w = (1.0 / sigma.where(sigma > 0)).where(rets.notna())
+    w = w.div(w.sum(axis=1), axis=0)
+    daily = (w * rets).sum(axis=1, min_count=1)
+    daily = daily.fillna(rets.mean(axis=1, skipna=True)).fillna(0.0)
+    daily.iloc[0] = 0.0
+    return float(initial_cash) * (1.0 + daily).cumprod()
+
+
 # --------------------------------------------------------------------- stats
 
 def stats(equity: pd.Series) -> dict:
