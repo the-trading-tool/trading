@@ -31,7 +31,39 @@ def _cached_info_conn(info_path: str):
     return open_db(info_path, readonly=True, check_same_thread=False)
 
 import os
-  
+
+# Treemap tile colours, from very negative (dark red) to very positive
+# (dark green); light shades sit next to the neutral grey step in the middle.
+MAP_COLORS = [
+    '#67000d', '#a50f15', '#d7301f', '#ef6548', '#fca08a',
+    '#5c6370',
+    '#a1d99b', '#5fbf6a', '#2e9e4f', '#14773a', '#00441b',
+]
+
+
+def _fmt_edge(v: float) -> str:
+    """Short label for a bucket edge (thousands separated, no trailing zeros)."""
+    return f'{v:,.0f}' if abs(v) >= 1000 else f'{v:g}'
+
+
+def color_legend_html(edges) -> str:
+    """One-line legend: a colour chip per bucket with its value range."""
+    chips = []
+    for i, color in enumerate(MAP_COLORS):
+        lo, hi = edges[i], edges[i + 1]
+        if lo == float('-inf'):
+            label = f'≤ {_fmt_edge(hi)}'
+        elif hi == float('inf'):
+            label = f'> {_fmt_edge(lo)}'
+        else:
+            label = f'{_fmt_edge(lo)} … {_fmt_edge(hi)}'
+        chips.append(
+            f'<span style="flex:1;min-width:52px;background:{color};padding:2px 4px;'
+            f'text-align:center;white-space:nowrap">{label}</span>')
+    return ('<div style="display:flex;gap:2px;font-size:0.72rem;color:#fff;'
+            'text-shadow:0 0 2px #000;margin:4px 0 2px 0">' + ''.join(chips) + '</div>')
+
+
 class DataVisualizer(tt.TickerTools):
 
     exch_column = 'ANY'
@@ -292,17 +324,19 @@ class DataVisualizer(tt.TickerTools):
         combined_df['enterpriseValue']=combined_df['enterpriseValue'].div(1000000).round(2)
         combined_df['enterpriseValue']=combined_df['enterpriseValue'].fillna(0)
         
+        # Bucket edges per colour metric: eleven steps, the middle one is neutral.
+        # Chosen from the spread of the latest sim rows so that every step is used.
         _inf = float('inf')
         column_names = {
-            'sharpe':         [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
-            'sortino':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
-            'day_change':     [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
-            'wkTrend':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
-            'moTrend':        [-_inf,-2,-0.5,-0.01,0.01,0.5,2,10,_inf],
-            'marketCap':      [0, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
-            'enterpriseValue':[-_inf, -10000, 20000, 50000, 100000, 200000, 500000, 1000000, _inf],
-            'momentum':       [-_inf,2,5,10,25,65,85,95,_inf],
-            'ebitdaMargins':  [-_inf,-.5,-0.2,-0.1,0.1,0.2,0.3,0.5,_inf],
+            'sharpe':         [-_inf,-2,-1.5,-1,-0.5,-0.1,0.1,0.5,1,1.5,2,_inf],
+            'sortino':        [-_inf,-3,-2,-1,-0.5,-0.1,0.1,0.5,1,2,3,_inf],
+            'day_change':     [-_inf,-5,-3,-2,-1,-0.25,0.25,1,2,3,5,_inf],
+            'wkTrend':        [-_inf,-10,-6,-4,-2,-0.5,0.5,2,4,6,10,_inf],
+            'moTrend':        [-_inf,-20,-12,-8,-4,-1,1,4,8,12,20,_inf],
+            'marketCap':      [-_inf,1000,2000,5000,10000,20000,50000,100000,200000,500000,1000000,_inf],
+            'enterpriseValue':[-_inf,1000,2000,5000,10000,20000,50000,100000,200000,500000,1000000,_inf],
+            'momentum':       [-_inf,5,10,20,30,45,55,70,80,90,95,_inf],
+            'ebitdaMargins':  [-_inf,-0.5,-0.2,-0.1,0,0.05,0.1,0.2,0.3,0.4,0.5,_inf],
         }
         
         # Selection
@@ -347,10 +381,10 @@ class DataVisualizer(tt.TickerTools):
 
         st.write(t('mm.market_stats', l=looser_count, w=winner_count, box=box_size, l_pct=round(looser/(winner+looser)*100,0), w_pct=round(winner/(winner+looser)*100,0)))
 
-        color_labels = [ 'darkred', 'red','indianred','gray','lightgreen','lime','green', 'darkgreen']
+        color_labels = MAP_COLORS
         color_group = column_names[self.trend]
 
-        # NaN trend values → 0 so pd.cut assigns the gray bucket instead of NaN
+        # NaN trend values → 0 so pd.cut assigns the neutral bucket instead of NaN
         combined_df[f'{self.trend}'] = combined_df[f'{self.trend}'].fillna(0)
 
         combined_df['colors'] = pd.cut(
@@ -358,6 +392,7 @@ class DataVisualizer(tt.TickerTools):
             bins=color_group,
             labels=color_labels
             )
+        st.markdown(color_legend_html(color_group), unsafe_allow_html=True)
 
         # Build a display price column: prefer live latestClose (day_change mode),
         # fall back to simulation close for rows where latestClose is missing/NaN.
@@ -379,7 +414,7 @@ class DataVisualizer(tt.TickerTools):
             values = box_size,
             color='colors',
             height=700,
-            color_discrete_map ={'(?)':'#262931', 'darkred':'darkred', 'red':'red', 'indianred':'indianred','gray':'gray', 'lightgreen':'lightgreen','lime':'lime','green':'green','darkgreen':'darkgreen'},
+            color_discrete_map={'(?)': '#262931', **{c: c for c in MAP_COLORS}},
             hover_data = {f'{self.trend}':''}, #:.2p
             custom_data=[f'{self.trend}','sector','longName',f'{price_data}']#,'url']
         )
