@@ -34,6 +34,7 @@ import json
 import numpy as np
 import pandas as pd
 
+FX_MODES = ('current', 'historical')
 ENTRY_TYPES = ('formula', 'always', 'random')
 SELECT_TYPES = ('column', 'column_asc', 'expr', 'random')
 EXIT_TYPES = ('formula', 'formula_days', 'days', 'never')
@@ -52,7 +53,9 @@ DEFAULT = {
     # the first of them (labels, the index benchmark, single-index consumers).
     'universe': {'index': '^GDAXI', 'indices': [], 'exchange': 'ANY', 'sector': 'ANY',
                  'currency': 'ANY', 'cap_size': 'ANY', 'price_range': 'ANY', 'years': [],
-                 'require_isin': False},
+                 'require_isin': False,
+                 # conversion into the system currency: today's rate or each day's own
+                 'fx': 'current'},
     # 'windows': buy periods within each year, [['MM-DD', 'MM-DD'], ...]; empty = all year.
     'entry': {'type': 'formula', 'buy': '', 'p_pct': 2.0, 'seed': 1, 'window': 1, 'delay': 1,
               'windows': []},
@@ -73,7 +76,7 @@ _NUM = {('entry', 'p_pct'): float, ('entry', 'seed'): int, ('entry', 'window'): 
         ('costs', 'stop_loss'): float, ('costs', 'min_hold_days'): int,
         ('costs', 'cooldown_days'): int}
 _ENUM = {('entry', 'type'): ENTRY_TYPES, ('select', 'type'): SELECT_TYPES,
-         ('exit', 'type'): EXIT_TYPES}
+         ('exit', 'type'): EXIT_TYPES, ('universe', 'fx'): FX_MODES}
 
 
 def normalize(spec: dict | None) -> dict:
@@ -247,7 +250,8 @@ def trading_currencies(df: pd.DataFrame) -> dict:
 PRICE_COLUMNS = ('close', 'Open', 'High', 'Low')
 
 
-def to_system_currency(df: pd.DataFrame, system_currency: str, rate_fn) -> pd.DataFrame:
+def to_system_currency(df: pd.DataFrame, system_currency: str, rate_fn,
+                       series_fn=None) -> pd.DataFrame:
     """Copy of a signalled frame with prices in the system currency, each row by its own currency.
 
     The conversion Multi Strategies has always applied (one place, so the
@@ -257,10 +261,18 @@ def to_system_currency(df: pd.DataFrame, system_currency: str, rate_fn) -> pd.Da
     as 1. Run it after the signals: the formulas compare a stock's columns with
     each other, all in its listing currency. Without a 'currency' column the
     frame comes back unchanged.
+
+    Historical rates: with *series_fn* (currency -> daily Series "system units
+    per 1 currency", fx_history.per_unit) every row is converted at the rate of
+    its own day (last known rate on days without one, the first known rate
+    before the series starts). A currency without a series falls back to
+    today's rate; such currencies are listed in ``out.attrs['fx_fallback']``.
     """
     if df is None or df.empty or 'currency' not in df.columns:
         return df
     sc = str(system_currency or '')
+    if series_fn is not None:
+        return _to_system_currency_hist(df, sc, rate_fn, series_fn)
     cache: dict = {}
 
     def _fx(cur):
@@ -281,6 +293,41 @@ def to_system_currency(df: pd.DataFrame, system_currency: str, rate_fn) -> pd.Da
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors='coerce') / rate
     out['currency'] = sc
+    return out
+
+
+def _to_system_currency_hist(df: pd.DataFrame, sc: str, rate_fn, series_fn) -> pd.DataFrame:
+    """to_system_currency at each row's own date (see there)."""
+    out = df.copy()
+    cur = out['currency'].astype(str)
+    days = pd.to_datetime(out['Date'], errors='coerce').dt.normalize()
+    factor = pd.Series(1.0, index=out.index)
+    fallback = []
+    for c in cur.unique():
+        rows = cur == c
+        if not c or c in ('0', 'nan', 'None', '', sc):
+            continue
+        try:
+            s = series_fn(c)
+        except Exception:
+            s = None
+        if s is not None and len(s):
+            s = s[~s.index.duplicated(keep='last')].sort_index()
+            d = days[rows]
+            full = s.reindex(s.index.union(d.dropna().unique())).ffill().bfill()
+            factor[rows] = d.map(full).astype(float).fillna(float(s.iloc[-1])).to_numpy()
+            continue
+        fallback.append(c)
+        try:
+            r = float(rate_fn(c)) or 1.0
+        except Exception:
+            r = 1.0
+        factor[rows] = 1.0 / r
+    for col in PRICE_COLUMNS:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors='coerce') * factor
+    out['currency'] = sc
+    out.attrs['fx_fallback'] = sorted(fallback)
     return out
 
 
@@ -416,7 +463,8 @@ def _ms_fields(spec: dict) -> dict:
                            if s['size']['cap'] in ('factor', 'factor_capped') else None),
         fractional=s['size']['fractional'], require_isin=s['universe']['require_isin'],
         min_hold_days=s['costs']['min_hold_days'], cooldown_days=s['costs']['cooldown_days'],
-        currency=s['universe']['currency'], buy_windows=s['entry']['windows'])
+        currency=s['universe']['currency'], buy_windows=s['entry']['windows'],
+        fx=s['universe']['fx'])
 
 
 def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) -> dict:
@@ -435,6 +483,7 @@ def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) 
     spec['universe'].update({'index': index, 'indices': [index], 'exchange': 'ANY', 'sector': 'ANY',
                              'cap_size': 'ANY', 'price_range': 'ANY',
                              'currency': e.get('currency', 'ANY') or 'ANY'})
+    spec['universe']['fx'] = e.get('fx') or 'current'
     if 'require_isin' in e:
         spec['universe']['require_isin'] = str(e['require_isin']).strip().lower() in (
             '1', 'true', 'yes', 'ja')
@@ -491,7 +540,7 @@ _ENTRY_FIELDS = {
     'trailing_stop': ('costs', 'trailing_stop'), 'stop_loss': ('costs', 'stop_loss'),
     'min_hold_days': ('costs', 'min_hold_days'), 'cooldown_days': ('costs', 'cooldown_days'),
     'require_isin': ('universe', 'require_isin'), 'currency': ('universe', 'currency'),
-    'buy_windows': ('entry', 'windows'),
+    'buy_windows': ('entry', 'windows'), 'fx': ('universe', 'fx'),
 }
 
 
@@ -692,8 +741,11 @@ def signature(spec: dict) -> str:
     """Stable text of everything that changes a run (not name, idea, status, report)."""
     s = normalize(spec)
     run = {k: s[k] for k in ('universe', 'entry', 'select', 'exit', 'size', 'costs')}
-    if not run['entry']['windows']:     # all year: same text as before buy windows existed
+    # Defaults added later leave the text as it was, so earlier runs keep matching.
+    if not run['entry']['windows']:
         run['entry'] = {k: v for k, v in run['entry'].items() if k != 'windows'}
+    if run['universe']['fx'] == 'current':
+        run['universe'] = {k: v for k, v in run['universe'].items() if k != 'fx'}
     return json.dumps(run, sort_keys=True, ensure_ascii=False)
 
 
@@ -709,6 +761,8 @@ def describe(spec: dict) -> list[str]:
                if u[k] and u[k] != 'ANY']
     if u['require_isin']:
         filters.append(_t('sbs.f.isin'))
+    if u['fx'] == 'historical':
+        filters.append(_t('sbs.f.fx_hist'))
     years = ', '.join(sorted(u['years'])) if u['years'] else '–'
     lines = [_t('sbs.d.universe', index=' + '.join(u['indices']), years=years,
                 filters=('; ' + ', '.join(filters)) if filters else '')]
