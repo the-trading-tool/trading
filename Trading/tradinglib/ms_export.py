@@ -70,9 +70,13 @@ def format_strategy(name: str, index: str, index_entry: dict) -> str:
 
 
 def reference_block(name: str, indices, invest, num_assets) -> str:
-    """Multi entry that points at the saved strategy *name*: one pot per index."""
-    entries = {idx: {'strategy': name, 'invest': _num(invest), 'num_assets': int(_num(num_assets))}
-               for idx in indices}
+    """Multi entry that points at the saved strategy *name*.
+
+    One entry, one pot: a bundle becomes the key '^GDAXI + ^MDAXI', whose
+    members share capital and slots in Multi Strategies as in the Finder.
+    """
+    key = ' + '.join(indices)
+    entries = {key: {'strategy': name, 'invest': _num(invest), 'num_assets': int(_num(num_assets))}}
     lines = [f'{name!r}: {{']
     for idx, e in entries.items():
         lines.append(f'    {idx!r}: {{' + ', '.join(f'{k!r}: {v!r}' for k, v in e.items()) + '},')

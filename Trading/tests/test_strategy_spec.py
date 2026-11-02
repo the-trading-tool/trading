@@ -261,8 +261,24 @@ def test_reference_block_is_a_literal():
     from tradinglib import ms_export
     text = ms_export.reference_block("Dip 'x'", ['^MDAXI', '^SDAXI'], 20000.0, '4')
     parsed = _ast.literal_eval('{' + text + '}')
-    assert parsed == {"Dip 'x'": {'^MDAXI': {'strategy': "Dip 'x'", 'invest': 20000, 'num_assets': 4},
-                                  '^SDAXI': {'strategy': "Dip 'x'", 'invest': 20000, 'num_assets': 4}}}
+    # a bundle is ONE entry: one pot shared by its members
+    assert parsed == {"Dip 'x'": {'^MDAXI + ^SDAXI': {'strategy': "Dip 'x'", 'invest': 20000,
+                                                      'num_assets': 4}}}
+
+
+def test_index_members():
+    assert ss.index_members('^GDAXI + ^MDAXI') == ['^GDAXI', '^MDAXI']
+    assert ss.index_members('^SPX') == ['^SPX'] and not ss.is_bundle_key('^SPX')
+    assert ss.index_members(' ^A+^B + ^A ') == ['^A', '^B'] and ss.is_bundle_key('^A+^B')
+
+
+def test_bundle_reference_resolves_to_one_pot():
+    tx = {'S': {'^GDAXI + ^MDAXI': {'strategy': 'Dip', 'invest': 100000, 'num_assets': 15}}}
+    e = ss.expand_references(tx, SAVED)['S']['^GDAXI + ^MDAXI']
+    assert e['_spec']['universe']['indices'] == ['^GDAXI', '^MDAXI']
+    assert e['invest'] == 100000 and e['num_assets'] == 15
+    live = ss.expand_references(tx, SAVED, live=True)['S']['^GDAXI + ^MDAXI']
+    assert live['buy'] == '(rsi < 30)' and live['sizing_cap'] == 'factor_capped'
 
 
 # ------------------------------------------------------------------ storage / description

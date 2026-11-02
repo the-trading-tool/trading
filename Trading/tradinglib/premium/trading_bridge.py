@@ -954,34 +954,32 @@ class SignalEvaluator(Tools):
             invest     = float(strategy_config.get('invest', 10000))
 
             # ── Resolve index name ───────────────────────────────────────
-            resolved_index = index_name
-            try:
-                conn = simulator.ticker_conn
-                exact = conn.execute(
-                    "SELECT COUNT(*) FROM indices WHERE name = ?", (index_name,)
-                ).fetchone()[0]
-                if exact == 0:
-                    caret = conn.execute(
-                        "SELECT COUNT(*) FROM indices WHERE name = ?",
-                        (f'^{index_name}',)
+            def _resolve(name):
+                resolved = name
+                try:
+                    conn = simulator.ticker_conn
+                    exact = conn.execute(
+                        "SELECT COUNT(*) FROM indices WHERE name = ?", (name,)
                     ).fetchone()[0]
-                    if caret > 0:
-                        resolved_index = f'^{index_name}'
-                    else:
-                        like = conn.execute(
-                            "SELECT name FROM indices WHERE name LIKE ? LIMIT 1",
-                            (f'%{index_name}',)
-                        ).fetchone()
-                        if like:
-                            resolved_index = like[0]
-            except Exception as exc:
-                logger.debug("Index resolution failed for '%s': %s", index_name, exc)
-
-            if resolved_index != index_name:
-                logger.debug(
-                    "SignalEvaluator: resolved '%s' → '%s'", index_name, resolved_index
-                )
-            simulator.index_column = resolved_index
+                    if exact == 0:
+                        caret = conn.execute(
+                            "SELECT COUNT(*) FROM indices WHERE name = ?",
+                            (f'^{name}',)
+                        ).fetchone()[0]
+                        if caret > 0:
+                            resolved = f'^{name}'
+                        else:
+                            like = conn.execute(
+                                "SELECT name FROM indices WHERE name LIKE ? LIMIT 1",
+                                (f'%{name}',)
+                            ).fetchone()
+                            if like:
+                                resolved = like[0]
+                except Exception as exc:
+                    logger.debug("Index resolution failed for '%s': %s", name, exc)
+                if resolved != name:
+                    logger.debug("SignalEvaluator: resolved '%s' → '%s'", name, resolved)
+                return resolved
 
             # ── Load historical data (q=3, last 400 days) ───────────────
             # 400 days covers all realistic open-position lookback periods
@@ -992,11 +990,27 @@ class SignalEvaluator(Tools):
             q_ext += " AND ap.Date >= date('now', '-400 days')"
             # No ORDER BY here — we sort in Python to match multi_transaction.py
 
-            query = mq.make_query(
-                'asset_simulation', resolved_index, 1,
-                q=3, q_ext=q_ext, conn=simulator.ticker_conn,
-            )
-            combined_df = pd.read_sql_query(query, simulator.ticker_conn)
+            # A bundle key ('^GDAXI + ^MDAXI') loads every member into ONE frame:
+            # one simulation, so the members share capital and num_assets -- the
+            # same pot Multi Strategies runs. A stock in two members counts once.
+            from tradinglib import strategy_spec as _ss
+            _frames = []
+            for _member in _ss.index_members(index_name):
+                _res = _resolve(_member)
+                simulator.index_column = _res
+                _q = mq.make_query(
+                    'asset_simulation', _res, 1,
+                    q=3, q_ext=q_ext, conn=simulator.ticker_conn,
+                )
+                _df = pd.read_sql_query(_q, simulator.ticker_conn)
+                if _df is not None and not _df.empty:
+                    _df['stockIndex'] = _res
+                    _frames.append((_res, _df))
+            resolved_index = (' + '.join(r for r, _ in _frames) if len(_frames) > 1
+                              else (_frames[0][0] if _frames else _resolve(index_name)))
+            simulator.index_column = resolved_index
+            combined_df = (_ss.merge_bundle(_frames)[0] if len(_frames) > 1
+                           else (_frames[0][1] if _frames else pd.DataFrame()))
 
             if combined_df is None or combined_df.empty:
                 note = (
@@ -1011,7 +1025,6 @@ class SignalEvaluator(Tools):
                     f"  (DB used: {sim_db})"
                 )
 
-            combined_df['stockIndex'] = resolved_index
             combined_df = combined_df.drop_duplicates(
                 subset=['Date', 'ticker'], keep='last'
             )

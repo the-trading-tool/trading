@@ -50,7 +50,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 },</code></pre>
 <ul>
   <li>Multi Strategies runs such an entry <b>with the Strategy Finder's engine</b>: formulas, all blocks (random, selection by expression, exit after N days), <b>fee and buy delay</b>, position size, stops, periods and ISIN filter come from the saved strategy – giving trade for trade the same as the Strategy Finder on the same index.</li>
-  <li>Fields in the entry override the strategy, typically <code>invest</code> and <code>num_assets</code>. The universe is the entry's index key (one pot per index, bundles included).</li>
+  <li>Fields in the entry override the strategy, typically <code>invest</code> and <code>num_assets</code>. The universe is the entry's index key.</li>
+  <li><b>Bundle:</b> a key of several indices, e.g. <code>'^GDAXI + ^MDAXI': {'strategy': '…', 'invest': 100000, 'num_assets': 15}</code>, is <b>one pot</b>: the stocks of both indices compete for the same 15 slots and the same 100,000 – in Multi Strategies as well as live (agent, signals tab). A stock in both indices counts once. Two separate entries <code>'^GDAXI'</code> and <code>'^MDAXI'</code> would be two pots. In the buy-and-hold comparison a bundle's capital is spread evenly over its indices.</li>
   <li>The Strategy Finder provides the entry: save the strategy, then "🧩 For Multi Strategies as a reference".</li>
   <li>If the saved strategy changes, the new version applies from the next run. If it no longer exists, the entry is skipped with a note.</li>
   <li><b>Live</b> (agent, signals tab, Scalable, Pine export) only references with buy formula, "highest value" selection and sell formula run; others are backtest-only and are left out there.</li>

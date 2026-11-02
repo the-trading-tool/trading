@@ -130,6 +130,23 @@ def bundle_label(spec: dict) -> str:
     return ' + '.join(normalize(spec)['universe']['indices'])
 
 
+BUNDLE_SEP = '+'
+
+
+def index_members(key) -> list[str]:
+    """Indices of a Multi index key: '^GDAXI + ^MDAXI' -> ['^GDAXI', '^MDAXI'], '^SPX' -> ['^SPX'].
+
+    A key with several members is a bundle: one pot whose capital and slots the
+    members share (Multi Strategies, agent and signals tab alike).
+    """
+    parts = [p.strip() for p in str(key or '').split(BUNDLE_SEP)]
+    return list(dict.fromkeys(p for p in parts if p)) or [str(key or '')]
+
+
+def is_bundle_key(key) -> bool:
+    return len(index_members(key)) > 1
+
+
 def merge_bundle(frames: list[tuple[str, pd.DataFrame]]) -> tuple[pd.DataFrame, int]:
     """Concatenate the members' frames; a stock in several indices counts once.
 
@@ -291,9 +308,18 @@ def median_hold_days(trades: pd.DataFrame, default: int = 21) -> int:
 # ------------------------------------------------------------------ multi strategies
 
 def to_ms_entry(spec: dict) -> dict | None:
-    """The spec as a multi_transactions index entry, or None if Multi cannot express it."""
+    """The spec as a written-out multi_transactions index entry, or None if it has none.
+
+    Written out (formulas instead of a reference) only for one index and the
+    classic blocks; a bundle or other blocks go to Multi as a reference.
+    """
     if not ms_exportable(spec):
         return None
+    return _ms_fields(spec)
+
+
+def _ms_fields(spec: dict) -> dict:
+    """The classic Multi fields of a spec (no check whether Multi could run it written out)."""
     from tradinglib import ms_export
     s = normalize(spec)
     return ms_export.entry(
@@ -394,12 +420,13 @@ def _expand_entry(index: str, entry: dict, saved: dict, live: bool):
     for key, (block, field) in _ENTRY_FIELDS.items():
         if key in entry:
             s[block][field] = entry[key]
-    # The Multi entry's index key is the universe (Multi keeps one pot per index).
-    s['universe']['indices'] = [index]
+    # The Multi entry's index key is the universe: one index, or a bundle
+    # ('^GDAXI + ^MDAXI') whose members share one pot.
+    s['universe']['indices'] = index_members(index)
     s = normalize(s)
     if live and not is_classic(s):
         return None
-    out = to_ms_entry(s)
+    out = _ms_fields(s) if is_classic(s) else None
     if out is None:     # non-classic: Multi's own fields, formulas as the blocks run them
         out = {'buy': buy_formula(s), 'sell': sell_formula(s),
                'num_assets': s['size']['num_assets'], 'invest': s['size']['invest'],

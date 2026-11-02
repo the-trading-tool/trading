@@ -180,11 +180,13 @@ def applicable_pairs(tickers, pairs, memberships) -> list:
     A position whose index carries no strategy simply produces no row — that is
     information too, and the caller reports it rather than hiding it.
     """
+    from tradinglib import strategy_spec
     out = []
     for ticker in tickers:
         indices = set(memberships.get(ticker, []))
         for p in pairs:
-            if p['index'] in indices:
+            # A bundle key ('^GDAXI + ^MDAXI') applies to each of its members.
+            if indices & set(strategy_spec.index_members(p['index'])):
                 out.append({'ticker': ticker, **p})
     return out
 

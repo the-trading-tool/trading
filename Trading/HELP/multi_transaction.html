@@ -50,7 +50,8 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 },</code></pre>
 <ul>
   <li>Multi Strategies rechnet einen solchen Eintrag <b>mit dem Rechenkern des Strategy Finders</b>: Formeln, alle Bausteine (Zufall, Auswahl per Ausdruck, Ausstieg nach N Tagen), <b>Gebühr und Kauf-Verzögerung</b>, Positionsgröße, Stops, Fristen und ISIN-Filter kommen aus der gespeicherten Strategie – ergibt trade-genau dasselbe wie der Strategy Finder auf demselben Index.</li>
-  <li>Felder im Eintrag überschreiben die Strategie, typischerweise <code>invest</code> und <code>num_assets</code>. Das Universum ist der Index-Schlüssel des Eintrags (ein Topf je Index, auch bei Bündeln).</li>
+  <li>Felder im Eintrag überschreiben die Strategie, typischerweise <code>invest</code> und <code>num_assets</code>. Das Universum ist der Index-Schlüssel des Eintrags.</li>
+  <li><b>Bündel:</b> Ein Schlüssel aus mehreren Indizes, z.&nbsp;B. <code>'^GDAXI + ^MDAXI': {'strategy': '…', 'invest': 100000, 'num_assets': 15}</code>, ist <b>ein Topf</b>: Die Werte beider Indizes konkurrieren um dieselben 15 Plätze und dieselben 100.000 € – in Multi Strategies wie live (Agent, Signale-Tab). Ein Wert in beiden Indizes zählt einmal. Zwei getrennte Einträge <code>'^GDAXI'</code> und <code>'^MDAXI'</code> wären dagegen zwei Töpfe. Beim Kaufen-und-Halten-Vergleich wird das Kapital eines Bündels gleichmäßig auf seine Indizes verteilt.</li>
   <li>Den fertigen Eintrag liefert der Strategy Finder: Strategie speichern, dann „🧩 Für Multi Strategies als Verweis“.</li>
   <li>Ändert sich die gespeicherte Strategie, gilt ab dem nächsten Lauf der neue Stand. Gibt es sie nicht mehr, wird der Eintrag mit Hinweis übersprungen.</li>
   <li><b>Live</b> (Agent, Signale-Tab, Scalable, Pine-Export) laufen nur Verweise mit Kaufformel, Auswahl „höchster Wert“ und Verkaufsformel; andere sind reine Backtests und werden dort ausgelassen.</li>
