@@ -1143,8 +1143,11 @@ class BuySellSignalGenerator:
                     ('High', 'high'),   ('Low', 'low'), ('Volume', 'volume')]
 
     def __init__(self, df: pd.DataFrame, buy_condition: str, sell_condition: str,
-                 buy_delay_days: int = 0, signal_window: int = 1):
+                 buy_delay_days: int = 0, signal_window: int = 1, buy_windows=None):
         """Set up the signal generator with buy/sell expressions and an optional entry delay.
+
+        *buy_windows* ([['MM-DD', 'MM-DD'], ...], see strategy_spec.in_windows)
+        keeps only buys whose (delayed) buy bar falls into one of the periods.
 
         OHLCV columns are aliased bidirectionally (Close↔close etc.) so
         expressions work regardless of the capitalisation convention in the
@@ -1172,6 +1175,7 @@ class BuySellSignalGenerator:
         # > 1 erlaubt mehrzeiligen Bedingungen, auf verschiedenen Balken erfuellt
         # zu werden. 1 = bisheriges Verhalten.
         self.signal_window = int(signal_window or 1)
+        self.buy_windows = buy_windows or []
         self.df['buySell'] = 0
 
     def apply_signals(self):
@@ -1212,6 +1216,13 @@ class BuySellSignalGenerator:
                 dpos = pos + self.buy_delay_days
                 if dpos < len(gidx):
                     delayed_signals.append(gidx[dpos])
+
+        # Buy windows: before the open/close pass, so a buy left out opens no position.
+        if self.buy_windows and delayed_signals:
+            from tradinglib import strategy_spec
+            keep = strategy_spec.in_windows(self.df.loc[delayed_signals, 'Date'].to_numpy(),
+                                            self.buy_windows)
+            delayed_signals = list(np.asarray(delayed_signals)[keep])
 
         # Step 2: Set buy markers
         self.df.loc[delayed_signals, 'buySell'] = 1

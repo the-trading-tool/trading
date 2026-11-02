@@ -41,6 +41,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Beschränkt diesen Index auf Werte mit gültiger ISIN; überschreibt den globalen Schalter.</td></tr>
 <tr><td><code>signal_window</code> <small style="color:#888">optional</small></td><td>Nachleucht-Fenster in Balken für <b>mehrzeilige</b> Buy-/Sell-Formeln: eine Bedingung je Zeile, jede darf innerhalb dieser Zahl von Balken erfüllt worden sein. 1 = alle auf demselben Balken (bisheriges Verhalten). Überschreibt die globale Einstellung „Signalfenster“.<br>Beispiel: <code>'buy': '(close &lt;= sup_support*1.015) &amp; (rsi &lt; 40)
 (ewo &gt; ewo_ema)', 'signal_window': 5</code></td></tr>
+<tr><td><code>buy_windows</code> <small style="color:#888">optional</small></td><td>Kaufzeiträume im Jahr: gekauft wird nur an Tagen in diesen Zeiträumen, jedes Jahr wieder; Verkäufe und Stops laufen weiter. Monat-Tag-Paare, ein Zeitraum mit Ende vor dem Anfang läuft über den Jahreswechsel. Fehlt das Feld: ganzjährig.<br>Beispiel: <code>'buy_windows': [['03-15', '08-01'], ['11-01', '12-20']]</code></td></tr>
 </table>
 
 <h3>Verweis auf eine gespeicherte Strategie</h3>
@@ -54,6 +55,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Bündel:</b> Ein Schlüssel aus mehreren Indizes, z.&nbsp;B. <code>'^GDAXI + ^MDAXI': {'strategy': '…', 'invest': 100000, 'num_assets': 15}</code>, ist <b>ein Topf</b>: Die Werte beider Indizes konkurrieren um dieselben 15 Plätze und dieselben 100.000 € – in Multi Strategies wie live (Agent, Signale-Tab). Ein Wert in beiden Indizes zählt einmal. Zwei getrennte Einträge <code>'^GDAXI'</code> und <code>'^MDAXI'</code> wären dagegen zwei Töpfe. Beim Kaufen-und-Halten-Vergleich wird das Kapital eines Bündels gleichmäßig auf seine Indizes verteilt.</li>
   <li>Den fertigen Eintrag liefert der Strategy Finder: Strategie speichern, dann „🧩 Für Multi Strategies als Verweis“.</li>
   <li>Ändert sich die gespeicherte Strategie, gilt ab dem nächsten Lauf der neue Stand. Gibt es sie nicht mehr, wird der Eintrag mit Hinweis übersprungen.</li>
+  <li><b>Kaufzeiträume</b> der gespeicherten Strategie gelten mit; <code>'buy_windows'</code> im Eintrag setzt für diesen Index eigene. Sie gelten in Multi Strategies und live (Agent, Signale-Tab), der Pine-Export kennt sie nicht.</li>
   <li><b>Live</b> (Agent, Signale-Tab, Scalable, Pine-Export) laufen nur Verweise mit Kaufformel, Auswahl „höchster Wert“ und Verkaufsformel; andere sind reine Backtests und werden dort ausgelassen.</li>
 </ul>
 <div class="info">Einträge ohne Verweis rechnen unverändert wie bisher – ohne Gebühr, ohne Kauf-Verzögerung, mit dem bisherigen Signal-Verfahren. Ein Vergleich mit den echten Einträgen vor und nach der Umstellung ergab identische Trades. Die Konfiguration wird seit 2026-11-01 ohne <code>eval</code> gelesen (Python-Literal oder JSON).</div>

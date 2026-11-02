@@ -91,6 +91,21 @@ def upsert(user: str, strategy: str, signature: str, fields: dict, *,
         con.close()
 
 
+def delete(user: str, strategies, *, db_path: str = 'database') -> int:
+    """Remove the recorded runs of *strategies*; returns the number of records removed."""
+    names = [str(s) for s in strategies or []]
+    if not names or not os.path.exists(_path(db_path)):
+        return 0
+    con = _connect(db_path)
+    try:
+        cur = con.execute(f'DELETE FROM reports WHERE user = ? AND strategy IN '
+                          f'({",".join("?" * len(names))})', (user, *names))
+        con.commit()
+        return int(cur.rowcount)
+    finally:
+        con.close()
+
+
 def history(user: str, strategy: str, *, db_path: str = 'database', limit: int = 50) -> list[dict]:
     """Records of one strategy, newest first: payload plus 'ts' and 'sig'."""
     if not os.path.exists(_path(db_path)):

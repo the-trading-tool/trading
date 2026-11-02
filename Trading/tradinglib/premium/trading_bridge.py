@@ -1085,6 +1085,10 @@ class SignalEvaluator(Tools):
             except Exception as exc:
                 buy_mask = pd.Series(False, index=combined_df.index)
                 buy_err = f"buy eval: {exc}"
+            # Buy periods of the entry ('buy_windows'): same rule as Multi Strategies.
+            if strategy_config.get('buy_windows'):
+                buy_mask = buy_mask & _ss.in_windows(combined_df['Date'].to_numpy(),
+                                                     strategy_config['buy_windows'])
             try:
                 sell_mask = tools.compute_signal_mask(combined_df, sell_raw, window=_sw)
             except Exception as exc:

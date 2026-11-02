@@ -12,6 +12,18 @@ DAY1 = dt.datetime(2026, 11, 1, 10, 0)
 DAY2 = dt.datetime(2026, 11, 2, 9, 30)
 
 
+def test_delete_removes_only_the_named_strategies_of_the_user(tmp_path):
+    db = str(tmp_path)
+    assert sr.delete('kurt', ['A'], db_path=db) == 0          # no DB yet: nothing to do
+    for user, strat in (('kurt', 'A'), ('kurt', 'B'), ('kurt', 'C'), ('admin', 'A')):
+        sr.upsert(user, strat, 'sig', {'total': 1.0}, db_path=db, now=DAY1)
+    sr.upsert('kurt', 'A', 'sig2', {'total': 2.0}, db_path=db, now=DAY2)
+    assert sr.delete('kurt', ['A', 'B'], db_path=db) == 3
+    assert sr.history('kurt', 'A', db_path=db) == [] and sr.history('kurt', 'B', db_path=db) == []
+    assert len(sr.history('kurt', 'C', db_path=db)) == 1
+    assert len(sr.history('admin', 'A', db_path=db)) == 1
+
+
 def test_same_settings_same_day_is_one_record(tmp_path):
     db = str(tmp_path)
     sr.upsert('kurt', 'Dip', 'sigA', {'total': 10.0, 'trades': 5}, db_path=db, now=DAY1)

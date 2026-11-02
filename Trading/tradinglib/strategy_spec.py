@@ -53,7 +53,9 @@ DEFAULT = {
     'universe': {'index': '^GDAXI', 'indices': [], 'exchange': 'ANY', 'sector': 'ANY',
                  'currency': 'ANY', 'cap_size': 'ANY', 'price_range': 'ANY', 'years': [],
                  'require_isin': False},
-    'entry': {'type': 'formula', 'buy': '', 'p_pct': 2.0, 'seed': 1, 'window': 1, 'delay': 1},
+    # 'windows': buy periods within each year, [['MM-DD', 'MM-DD'], ...]; empty = all year.
+    'entry': {'type': 'formula', 'buy': '', 'p_pct': 2.0, 'seed': 1, 'window': 1, 'delay': 1,
+              'windows': []},
     'select': {'type': 'column', 'column': 'sortino', 'expr': '', 'seed': 1},
     'exit': {'type': 'formula', 'sell': '', 'days': 21},
     'size': {'num_assets': 5, 'invest': 100000, 'cap': 'none', 'factor_max': 2.0,
@@ -96,6 +98,7 @@ def normalize(spec: dict | None) -> dict:
     out['entry']['window'] = max(out['entry']['window'], 1)
     out['entry']['delay'] = max(out['entry']['delay'], 0)
     out['entry']['p_pct'] = min(max(out['entry']['p_pct'], 0.0), 100.0)
+    out['entry']['windows'] = normalize_windows(out['entry']['windows'])
     out['exit']['days'] = max(out['exit']['days'], 1)
     out['size']['num_assets'] = max(out['size']['num_assets'], 1)
     for b in ('require_isin',):
@@ -108,6 +111,66 @@ def normalize(spec: dict | None) -> dict:
     for f in ('name', 'idea'):
         out[f] = str(out[f] or '').strip()
     return out
+
+
+# ------------------------------------------------------------------ buy windows
+
+def _parse_day(value) -> tuple[int, int] | None:
+    """(month, day) from 'MM-DD' or 'DD.MM.' (Feb 29 allowed), None if invalid."""
+    text = str(value or '').strip().rstrip('.')
+    try:
+        if '.' in text:
+            d, m = (int(p) for p in text.split('.')[:2])
+        else:
+            m, d = (int(p) for p in text.split('-')[-2:])
+        dt.date(2000, m, d)     # leap year: 29 Feb is a valid day
+    except (TypeError, ValueError):
+        return None
+    return m, d
+
+
+def normalize_windows(windows) -> list[list[str]]:
+    """Buy windows as [['MM-DD', 'MM-DD'], ...]; invalid pairs are dropped.
+
+    A window whose end lies before its start runs over the turn of the year
+    (['11-15', '02-10'] = 15 Nov to 10 Feb).
+    """
+    out = []
+    for w in windows or []:
+        if not isinstance(w, (list, tuple)) or len(w) != 2:
+            continue
+        a, b = _parse_day(w[0]), _parse_day(w[1])
+        if a and b:
+            pair = [f'{a[0]:02d}-{a[1]:02d}', f'{b[0]:02d}-{b[1]:02d}']
+            if pair not in out:
+                out.append(pair)
+    return out
+
+
+def in_windows(dates, windows) -> np.ndarray:
+    """Boolean array: which *dates* fall into one of the buy *windows* (bounds included).
+
+    No windows = every date. Unparseable dates are outside as soon as windows are set.
+    """
+    d = pd.to_datetime(pd.Series(dates), errors='coerce')
+    wins = normalize_windows(windows)
+    if not wins:
+        return np.ones(len(d), dtype=bool)
+    md = (d.dt.month * 100 + d.dt.day).to_numpy(dtype=float)     # NaN for NaT
+    mask = np.zeros(len(d), dtype=bool)
+    for start, end in wins:
+        s = int(start.replace('-', ''))
+        e = int(end.replace('-', ''))
+        mask |= ((md >= s) & (md <= e)) if s <= e else ((md >= s) | (md <= e))
+    return mask
+
+
+def windows_label(windows) -> str:
+    """'15.03.–01.08., 01.11.–20.12.' (empty string without windows)."""
+    def _de(mmdd):
+        m, d = mmdd.split('-')
+        return f'{d}.{m}.'
+    return ', '.join(f'{_de(a)}–{_de(b)}' for a, b in normalize_windows(windows))
 
 
 def is_classic(spec: dict) -> bool:
@@ -281,15 +344,18 @@ def order_signals(sig: pd.DataFrame, spec: dict) -> pd.DataFrame:
     return out.sort_values(['Date', SELECT_COL], ascending=[True, False], na_position='last')
 
 
-def random_entry_signals(sig: pd.DataFrame, p: float, seed: int) -> pd.DataFrame:
+def random_entry_signals(sig: pd.DataFrame, p: float, seed: int, windows=None) -> pd.DataFrame:
     """Copy of *sig* whose buySell is 1 on random rows (rate *p*), never -1.
 
     For the matched-random baseline: same signal density as the strategy, exits by
     time only (the caller passes max_hold_days to the simulator). Selection among
-    same-day signals is random too.
+    same-day signals is random too. With buy *windows* random buys fall only
+    inside them, as the strategy's do (*p* is then the rate within the windows).
     """
     out = sig.copy()
     out['buySell'] = (_draws(out, seed) < p).astype(int)
+    if normalize_windows(windows):
+        out.loc[~in_windows(out['Date'].to_numpy(), windows), 'buySell'] = 0
     out[SELECT_COL] = _draws(out, seed + 100003)
     return out.sort_values(['Date', SELECT_COL], ascending=[True, False])
 
@@ -331,7 +397,7 @@ def _ms_fields(spec: dict) -> dict:
                            if s['size']['cap'] in ('factor', 'factor_capped') else None),
         fractional=s['size']['fractional'], require_isin=s['universe']['require_isin'],
         min_hold_days=s['costs']['min_hold_days'], cooldown_days=s['costs']['cooldown_days'],
-        currency=s['universe']['currency'])
+        currency=s['universe']['currency'], buy_windows=s['entry']['windows'])
 
 
 def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) -> dict:
@@ -354,7 +420,8 @@ def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) 
         spec['universe']['require_isin'] = str(e['require_isin']).strip().lower() in (
             '1', 'true', 'yes', 'ja')
     spec['entry'].update({'type': 'formula', 'buy': e.get('buy', ''),
-                          'window': e.get('signal_window', 1), 'delay': 0})
+                          'window': e.get('signal_window', 1), 'delay': 0,
+                          'windows': e.get('buy_windows') or []})
     spec['select'].update({'type': 'column', 'column': e.get('order_by', 'sortino')})
     spec['exit'].update({'type': 'formula', 'sell': e.get('sell', '')})
     spec['size'].update({k: e[src] for k, src in (('num_assets', 'num_assets'),
@@ -405,6 +472,7 @@ _ENTRY_FIELDS = {
     'trailing_stop': ('costs', 'trailing_stop'), 'stop_loss': ('costs', 'stop_loss'),
     'min_hold_days': ('costs', 'min_hold_days'), 'cooldown_days': ('costs', 'cooldown_days'),
     'require_isin': ('universe', 'require_isin'), 'currency': ('universe', 'currency'),
+    'buy_windows': ('entry', 'windows'),
 }
 
 
@@ -431,6 +499,8 @@ def _expand_entry(index: str, entry: dict, saved: dict, live: bool):
         out = {'buy': buy_formula(s), 'sell': sell_formula(s),
                'num_assets': s['size']['num_assets'], 'invest': s['size']['invest'],
                'order_by': s['select']['column'], 'signal_window': s['entry']['window']}
+        if s['entry']['windows']:
+            out['buy_windows'] = s['entry']['windows']
     out[REF_KEY] = str(name)
     if not live:
         out['_spec'] = s
@@ -583,10 +653,28 @@ def delete(cfg, name: str) -> bool:
     return True
 
 
+def delete_many(cfg, names) -> list[str]:
+    """Delete several saved strategies with one write; returns the names actually deleted."""
+    all_ = load_all(cfg)
+    gone = [n for n in dict.fromkeys(str(x) for x in names or []) if n in all_]
+    if gone:
+        for n in gone:
+            del all_[n]
+        cfg.set_value(STORE_KEY, json.dumps(all_, ensure_ascii=False))
+    return gone
+
+
+def referenced_names(transactions_value) -> set[str]:
+    """Names of saved strategies that multi_transactions entries point at."""
+    return {str(e[REF_KEY]) for _, _, e in ms_strategies(transactions_value) if e.get(REF_KEY)}
+
+
 def signature(spec: dict) -> str:
     """Stable text of everything that changes a run (not name, idea, status, report)."""
     s = normalize(spec)
     run = {k: s[k] for k in ('universe', 'entry', 'select', 'exit', 'size', 'costs')}
+    if not run['entry']['windows']:     # all year: same text as before buy windows existed
+        run['entry'] = {k: v for k, v in run['entry'].items() if k != 'windows'}
     return json.dumps(run, sort_keys=True, ensure_ascii=False)
 
 
@@ -612,6 +700,8 @@ def describe(spec: dict) -> list[str]:
     else:
         lines.append(_t(f"sbs.d.entry_{e['type']}", p=f"{e['p_pct']:g}", seed=e['seed'],
                         delay=e['delay']))
+    if e['windows']:
+        lines.append(_t('sbs.d.windows', windows=windows_label(e['windows'])))
     lines.append(_t(f"sbs.d.select_{sel['type']}", column=sel['column'],
                     expr=sel['expr'] or '–', seed=sel['seed']))
     lines.append(_t(f"sbs.d.exit_{x['type']}", sell=' & '.join(

@@ -308,6 +308,25 @@ def test_save_load_delete():
     assert not ss.delete(cfg, 'A')
 
 
+def test_delete_many_writes_once_and_reports_what_went():
+    cfg = _Cfg()
+    for n in ('A', 'B', 'C'):
+        ss.save(cfg, {'name': n})
+    writes = []
+    orig = cfg.set_value
+    cfg.set_value = lambda k, v: (writes.append(k), orig(k, v))
+    assert ss.delete_many(cfg, ['A', 'C', 'X', 'A']) == ['A', 'C']
+    assert set(ss.load_all(cfg)) == {'B'} and writes == [ss.STORE_KEY]
+    assert ss.delete_many(cfg, ['X']) == [] and writes == [ss.STORE_KEY]
+
+
+def test_referenced_names():
+    tx = {'S': {'^GDAXI': {'strategy': 'A', 'invest': 1}, '^MDAXI': {'buy': 'x'}},
+          'T': {'^GDAXI + ^MDAXI': {'strategy': 'B'}}}
+    assert ss.referenced_names(repr(tx)) == {'A', 'B'}
+    assert ss.referenced_names('') == set()
+
+
 def test_signature_ignores_the_description():
     a = ss.normalize({'name': 'A', 'idea': 'x', 'entry': {'buy': 'q'}})
     b = ss.normalize({'name': 'B', 'status': 'live', 'entry': {'buy': 'q'}})

@@ -31,7 +31,7 @@ def _num(value):
 def entry(*, buy: str, sell: str, num_assets, invest, order_by: str, signal_window=1,
           trailing_stop=0, stop_loss=0, sizing_cap: str = 'none', sizing_factor_max=None,
           fractional: bool = False, require_isin: bool = False, min_hold_days=0,
-          cooldown_days=0, currency: str = 'ANY') -> dict:
+          cooldown_days=0, currency: str = 'ANY', buy_windows=None) -> dict:
     """One index entry with the fields Multi Strategies reads, in its usual order."""
     out = {
         'buy': (buy or '').strip(),
@@ -54,6 +54,8 @@ def entry(*, buy: str, sell: str, num_assets, invest, order_by: str, signal_wind
         out['cooldown_days'] = int(_num(cooldown_days))
     if currency and currency != 'ANY':
         out['currency'] = currency
+    if buy_windows:
+        out['buy_windows'] = [list(w) for w in buy_windows]
     return out
 
 

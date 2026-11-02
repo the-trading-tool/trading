@@ -41,6 +41,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><code>require_isin</code> <small style="color:#888">optional</small></td><td>Restricts this index to names with a valid ISIN; overrides the global switch.</td></tr>
 <tr><td><code>signal_window</code> <small style="color:#888">optional</small></td><td>Carry-over window in bars for <b>multi-line</b> buy/sell formulas: one condition per line, each may have been met within that many bars. 1 = all on the same bar (previous behaviour). Overrides the global "Signal window" setting.<br>Example: <code>'buy': '(close &lt;= sup_support*1.015) &amp; (rsi &lt; 40)
 (ewo &gt; ewo_ema)', 'signal_window': 5</code></td></tr>
+<tr><td><code>buy_windows</code> <small style="color:#888">optional</small></td><td>Buy periods within the year: buys only on days within these periods, every year; sells and stops keep running. Month-day pairs; a period whose end lies before its start runs across New Year. Field missing: all year.<br>Example: <code>'buy_windows': [['03-15', '08-01'], ['11-01', '12-20']]</code></td></tr>
 </table>
 
 <h3>Reference to a saved strategy</h3>
@@ -54,6 +55,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
   <li><b>Bundle:</b> a key of several indices, e.g. <code>'^GDAXI + ^MDAXI': {'strategy': '…', 'invest': 100000, 'num_assets': 15}</code>, is <b>one pot</b>: the stocks of both indices compete for the same 15 slots and the same 100,000 – in Multi Strategies as well as live (agent, signals tab). A stock in both indices counts once. Two separate entries <code>'^GDAXI'</code> and <code>'^MDAXI'</code> would be two pots. In the buy-and-hold comparison a bundle's capital is spread evenly over its indices.</li>
   <li>The Strategy Finder provides the entry: save the strategy, then "🧩 For Multi Strategies as a reference".</li>
   <li>If the saved strategy changes, the new version applies from the next run. If it no longer exists, the entry is skipped with a note.</li>
+  <li><b>Buy periods</b> of the saved strategy apply too; <code>'buy_windows'</code> in the entry sets this index's own. They apply in Multi Strategies and live (agent, signals tab); the Pine export does not know them.</li>
   <li><b>Live</b> (agent, signals tab, Scalable, Pine export) only references with buy formula, "highest value" selection and sell formula run; others are backtest-only and are left out there.</li>
 </ul>
 <div class="info">Entries without a reference compute unchanged – no fee, no buy delay, the previous signal procedure. Comparing the real entries before and after the change gave identical trades. Since 2026-11-01 the configuration is read without <code>eval</code> (Python literal or JSON).</div>
