@@ -257,9 +257,15 @@ if __name__ == "__main__":
                 frames = {t: tt.pd.DataFrame() for t in chunk}
             for t, frame in frames.items():
                 got[t][iv] = frame
-        missing = sum(1 for t in chunk if len(got[t]) < len(intervals))
+        missing = [t for t in chunk if len(got[t]) < len(intervals)]
         if missing:
-            logger.info("Batch: %d of %d ticker(s) incomplete, fetching those singly.", missing, len(chunk))
+            # Named, so a ticker that is missing run after run stands out
+            # (data problem) from Yahoo's occasional gaps (different each run).
+            names = ', '.join(f"{t} ({','.join(iv for iv in intervals if iv not in got[t])})"
+                              if len(intervals) > 1 else t for t in missing[:20])
+            more = f" … +{len(missing) - 20}" if len(missing) > 20 else ''
+            logger.info("Batch: %d of %d ticker(s) incomplete: %s%s — fetching those singly.",
+                        len(missing), len(chunk), names, more)
         return got
 
     def _results():
