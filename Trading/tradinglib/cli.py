@@ -17,6 +17,7 @@ def print_help():
           "  /inverse - select tickers not related to an index,\n"
           "  /silent - suppress notifications,\n"
           "  /worker:N - number of workers to use,\n"
+          "  /batch:N - get_asset_data: tickers per Yahoo request (default 50, 1 = one request per ticker),\n"
           "  /backfill:ind1,ind2 - fill missing indicator columns from local OHLCV (fast, no yfinance),\n"
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
           "  /force            - combined with /backfill: re-compute all tickers even if already filled\n"
@@ -58,6 +59,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         'add_current': False,
         'memory': False,
         'worker': 0,
+        'batch': 0,         # get_asset_data: tickers per provider request (0 = default)
         # enable console logging by default for scripts
         'log_to_console': True,
         'log_level': 'INFO',
@@ -127,6 +129,11 @@ def parse_args(argv=None) -> Dict[str, Any]:
                     result['worker'] = int(suf)
                 except Exception:
                     result['worker'] = 1
+            if pref == 'batch' and suf:
+                try:
+                    result['batch'] = max(1, int(suf))
+                except Exception:
+                    result['batch'] = 0
             if pref == 'index':
                 if suf:
                     result['index_name'] = suf

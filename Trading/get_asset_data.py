@@ -8,6 +8,11 @@ import os
 import concurrent.futures
 from datetime import datetime
 
+# Batch download (Yahoo only, see /batch:N)
+BATCH_SIZE = 50          # tickers per provider request
+BATCH_PAUSE = 1.0        # seconds between two request groups
+BATCH_RETRY_PAUSE = 20   # seconds before retrying a group nobody answered
+
 # Beispielhafte Nutzung der Klasse
 if __name__ == "__main__":
 
@@ -177,18 +182,27 @@ if __name__ == "__main__":
         logger.warning("Konnte failed_tickers.json nicht laden – starte mit leerer Liste.")
 
 #    ticker_list = ["AML.L"]
-    def _fetch_one(ticker):
+    def _fetch_one(ticker, prefetched=None):
         """Download all intervals for one ticker in its own StockDataSaver/DB connection.
+
+        prefetched: {interval: frame} already fetched by the batch request.
+        The pauses guard single requests against Yahoo's rate limit, so they
+        only apply while something for this ticker still goes out on its own.
 
         Returns (ticker, failed_intervals) — empty list = all OK, None = total failure.
         """
+        prefetched = prefetched or {}
+        single = any(iv not in prefetched for iv in intervals)
         print(f'Fetching data for {ticker}')
-        time.sleep(0.5)
+        if single:
+            time.sleep(0.5)
         saver = tt.StockDataSaver(ticker)  # ,tz_ready='Europe/Berlin')
         try:
             # force_remote=True ensures we fetch from Yahoo (network) by default and do not loop against local DB
-            failed_intervals = saver.save_all_intervals(intervals=intervals, periods=periods, force_remote=True)
-            time.sleep(1)
+            failed_intervals = saver.save_all_intervals(intervals=intervals, periods=periods, force_remote=True,
+                                                        prefetched=prefetched)
+            if single:
+                time.sleep(1)
             return ticker, failed_intervals
         except Exception:
             logger.exception("Error saving data for %s", ticker)
@@ -205,28 +219,78 @@ if __name__ == "__main__":
     if max_workers > 1:
         logger.info("Using %d parallel download workers.", max_workers)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_fetch_one, t): t for t in ticker_list}
-        for future in concurrent.futures.as_completed(futures):
-            # existing_failed wird nur hier im Main-Thread gepflegt (kein Lock nötig)
-            ticker, failed_intervals = future.result()
-            if failed_intervals is None:
-                # Vollständiger Fehler → alle Intervalle als fehlgeschlagen markieren
-                failed_intervals = intervals
-            if failed_intervals:
-                # Mindestens ein Intervall hat versagt → in Failed-Liste eintragen
-                logger.warning("Fehlgeschlagene Intervalle für %s: %s", ticker, failed_intervals)
-                existing_failed[ticker] = {
-                    'ticker': ticker,
-                    'failed_intervals': failed_intervals,
-                    'last_seen': datetime.now().isoformat(),
-                    'first_seen': existing_failed.get(ticker, {}).get(
-                        'first_seen', datetime.now().isoformat()),
-                }
-            else:
-                print(f"Data for {ticker} saved.")
-                # Ticker hat diesmal funktioniert → aus Failed-Liste entfernen
-                existing_failed.pop(ticker, None)
+    # /batch:N → tickers per Yahoo request. One request per interval and chunk
+    # replaces one request per interval and ticker, and the fixed pauses that
+    # spaced those out (2-4 s per ticker, ~80 % of a run). Only for Yahoo;
+    # /batch:1 restores the old single-ticker path.
+    batch_size = args.get('batch') or BATCH_SIZE
+    use_batch = batch_size > 1 and tt.provider_supports_batch()
+    chunks = ([ticker_list[i:i + batch_size] for i in range(0, len(ticker_list), batch_size)]
+              if use_batch else [ticker_list])
+    if use_batch:
+        logger.info("Batch download: %d ticker(s) in %d request group(s) of up to %d.",
+                    len(ticker_list), len(chunks), batch_size)
+
+    def _prefetch(chunk):
+        """{ticker: {interval: frame}} for one chunk, one provider call per interval."""
+        got = {t: {} for t in chunk}
+        for iv, per in zip(intervals, periods):
+            frames = {}
+            for attempt in range(2):
+                try:
+                    frames = tt.batch_download(chunk, iv, per)
+                except Exception:
+                    logger.warning("Batch download failed for %s (%d tickers)", iv, len(chunk), exc_info=True)
+                    frames = {}
+                # Not a single ticker answered: rate limit, or simply no bars
+                # yet (1m:2d on a Monday before the open). Wait once.
+                if frames or len(chunk) == 1 or attempt == 1:
+                    break
+                logger.warning("Batch %s came back empty for %d tickers, retrying in %ss",
+                               iv, len(chunk), BATCH_RETRY_PAUSE)
+                time.sleep(BATCH_RETRY_PAUSE)
+            if not frames and len(chunk) > 1:
+                # Still nobody: record "no data" for the whole group instead of
+                # asking each ticker again — the single requests would get the
+                # same empty answer, just 2-3 s per ticker later.
+                logger.warning("Batch %s empty again for all %d tickers, marked as no data", iv, len(chunk))
+                frames = {t: tt.pd.DataFrame() for t in chunk}
+            for t, frame in frames.items():
+                got[t][iv] = frame
+        missing = sum(1 for t in chunk if len(got[t]) < len(intervals))
+        if missing:
+            logger.info("Batch: %d of %d ticker(s) incomplete, fetching those singly.", missing, len(chunk))
+        return got
+
+    def _results():
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for n, chunk in enumerate(chunks):
+                prefetched = _prefetch(chunk) if use_batch else {}
+                futures = [executor.submit(_fetch_one, t, prefetched.get(t)) for t in chunk]
+                for future in concurrent.futures.as_completed(futures):
+                    yield future.result()
+                if use_batch and n + 1 < len(chunks):
+                    time.sleep(BATCH_PAUSE)
+
+    for ticker, failed_intervals in _results():
+        # existing_failed wird nur hier im Main-Thread gepflegt (kein Lock nötig)
+        if failed_intervals is None:
+            # Vollständiger Fehler → alle Intervalle als fehlgeschlagen markieren
+            failed_intervals = intervals
+        if failed_intervals:
+            # Mindestens ein Intervall hat versagt → in Failed-Liste eintragen
+            logger.warning("Fehlgeschlagene Intervalle für %s: %s", ticker, failed_intervals)
+            existing_failed[ticker] = {
+                'ticker': ticker,
+                'failed_intervals': failed_intervals,
+                'last_seen': datetime.now().isoformat(),
+                'first_seen': existing_failed.get(ticker, {}).get(
+                    'first_seen', datetime.now().isoformat()),
+            }
+        else:
+            print(f"Data for {ticker} saved.")
+            # Ticker hat diesmal funktioniert → aus Failed-Liste entfernen
+            existing_failed.pop(ticker, None)
 
     # Aktualisierte Failed-Liste speichern
     try:

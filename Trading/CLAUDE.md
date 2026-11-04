@@ -1874,3 +1874,42 @@ stabilen Vorteil. Auf Wunsch komplett entfernt:
   `ovt` aus `admin:oszilator`/`kurt:oszilator_no_plot`, `*:ovt_smoothing` geloescht.
   `SystemConfig.transactions` (Default fuer neue Nutzer) ist jetzt leer.
 - Messwerte in aelteren Abschnitten dieses Dokuments, die die Scores nennen, sind Historie.
+
+---
+
+## Batch-Download in get_asset_data (2026-11-04)
+
+**Gemessen vor dem Umbau** (12 Ticker, Scratch-Kopien): bei den echten Scheduler-Jobs
+(`1m:2d`, `60m:2d 1d:1mo`) waren **79-85 % der Laufzeit feste Pausen** (0,5 s + 1 s je Ticker
+plus 0,8 s je Intervall in `save_all_intervals`), ein Yahoo-Einzelabruf dauert nur ~0,3 s.
+Hochgerechnet lief z. B. `YAHOO_M_DATA_MEMBER_EUROPE` (334 Ticker, alle 5 min geplant)
+~16 min je Lauf. Achtung beim Nachmessen: `time.sleep` NICHT global patchen — yfinance
+wartet intern mit `time.sleep(0.01)` auf seine Threads, eine Attrappe laesst es leerlaufen
+und blaeht die gemessene Netzzeit um das Zehnfache auf.
+
+**Umbau:**
+- `ticker_tools.batch_download(tickers, interval, period)` — ein `md.download` fuer eine
+  Ticker-Gruppe, zerlegt in `{ticker: frame}`. Zeitfenster aus `StockDataSaver.download_window()`
+  (aus `fetch_data_dl` ausgelagert, beide Pfade fragen exakt dasselbe Fenster an), Zuschnitt aus
+  `shape_download()`. Nur im Batch werden reine NaN-Zeilen verworfen (Union-Index anderer Boersen);
+  der Einzelpfad speichert weiter genau, was der Provider liefert.
+- `save_all_intervals(..., prefetched={interval: frame})` — vorgeholte Intervalle ohne eigenen
+  Abruf und ohne 0,8-s-Pause; Split-Erkennung (`_stale_scale`), Daily-Resample-Fallback und
+  Failed-Liste laufen unveraendert.
+- `get_asset_data.py`: `/batch:N` (Default 50, `cli.parse_args`), nur bei Provider `yahoo`
+  (`provider_supports_batch()`). Fehlt ein Ticker in der Antwort → Einzelpfad mit den alten
+  Pausen. Antwortet eine ganze Gruppe nicht → einmal 20 s warten; bleibt sie leer, gilt sie als
+  "keine Daten" (z. B. `1m:2d` Montag vor Boersenoeffnung) statt jeden Ticker einzeln zu fragen.
+  `/batch:1` = alter Pfad.
+
+**Verifiziert** mit dem echten Skript auf zwei DB-Kopien (60 Ticker aus DAX/FTSE/IBEX/SPX/
+N225/HSI + Indizes, FX, Krypto): `60m:2d 1d:1mo` 228 s → 18 s, `1m:2d` 171 s → 25 s. Ueber gut
+1 Mio. verglichene Zeilen keine fehlenden/zusaetzlichen Zeilen, Preise identisch; Abweichungen
+nur beim Volumen heutiger Stundenkerzen — Yahoo korrigiert die zwischen zwei Abrufen, ein
+Einzelabruf danach lieferte dieselben Werte wie der Batch. Gleiche Fehlschlaege in beiden Pfaden
+(SDR.L). Tests: `tests/test_batch_download.py`.
+
+**Nicht gemacht:** Inkrementeller Abruf ab letztem gespeicherten Datum — die Jobs geben ohnehin
+kurze Zeitraeume vor, und `1d:max` muss fuer die Split-Bereinigung voll laden. Ob Yahoo bei
+3.000+ Tickern (ETP-Job) mit 50er-Gruppen drosselt, ist erst im Betrieb zu sehen; dann `/batch:`
+verkleinern.

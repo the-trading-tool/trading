@@ -45,6 +45,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <table>
 <tr><th>Parameter</th><th>Wirkung</th></tr>
 <tr><td><code>/worker:N</code></td><td>N parallele Download-Threads (Default 1 = sequenziell). Empfehlung 2–4 – mehr reizt das Yahoo-Rate-Limit (HTTP&nbsp;429). Jeder Ticker schreibt in seine eigene <code>yf_{TICKER}.db</code>, daher kollisionsfrei.</td></tr>
+<tr><td><code>/batch:N</code></td><td>Ticker je Yahoo-Anfrage (Default 50). Statt einer Anfrage je Ticker und Intervall geht eine Anfrage je Gruppe und Intervall raus; die festen Pausen zwischen Einzelanfragen entfallen. Ticker, die in der Antwort fehlen, werden danach einzeln geladen (wie bisher, mit Pausen). Antwortet eine ganze Gruppe nicht, wird einmal nach 20&nbsp;s wiederholt. <code>/batch:1</code> = alter Einzelpfad. Gilt nur für den Provider Yahoo; FMP/EODHD laden immer einzeln. Gemessen 60 Ticker: <code>60m:2d 1d:1mo</code> 228&nbsp;s &rarr; 18&nbsp;s, <code>1m:2d</code> 171&nbsp;s &rarr; 25&nbsp;s, gespeicherte Kurse identisch.</td></tr>
 </table>
 
 <h2>Gespeicherte Tabellen je Datenbank</h2>

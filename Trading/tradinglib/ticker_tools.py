@@ -564,6 +564,38 @@ class StockDataSaver(TickerTools):
         Normalizes some interval aliases (30m→1h) and derives start_date from the
         maximum history Yahoo supports for each interval.
         """
+        interval, start_date = self.download_window(interval, period)
+        data = md.download(tickers=self.ticker, start=start_date, interval=interval, actions=False, progress=False, auto_adjust=False, prepost=True, force_remote=force_remote)
+        return self.shape_download(data, self.ticker, tz_ready=self.tz_ready)
+
+    @staticmethod
+    def shape_download(data, ticker, tz_ready="", drop_foreign_rows=False):
+        """Cut one ticker's OHLCV frame out of a provider download.
+
+        drop_foreign_rows is for batch downloads: they return the union of all
+        tickers' timestamps, so a ticker gets all-NaN rows on bars only the
+        others had (other exchange, other trading days). The single-ticker
+        path keeps its rows exactly as the provider sent them.
+        """
+        if not tz_ready == "":
+            try:
+                data.index = data.index.tz_convert(tz_ready)
+            except Exception:
+                pass
+        data = data.xs(ticker, axis=1, level='Ticker')
+        data = data.drop(columns=['Adj Close'], axis=1)
+        if drop_foreign_rows:
+            price_cols = [c for c in ('Open', 'High', 'Low', 'Close') if c in data.columns]
+            if price_cols:
+                data = data.dropna(subset=price_cols, how='all')
+        return data
+
+    def download_window(self, interval, period="max"):
+        """(provider interval, start date 'YYYY-MM-DD') for an interval:period request.
+
+        Shared by the single-ticker download and batch_download, so both ask
+        the provider for exactly the same window.
+        """
         interval = interval.lower()
         interval_length = {
             '30m': '1h',
@@ -617,16 +649,7 @@ class StockDataSaver(TickerTools):
 
         date = datetime.now() #.strptime(date_str, self.ftime_str).date()
         start_date = (date + timedelta(days=days)).strftime("%Y-%m-%d")
-        data = md.download(tickers=self.ticker, start=start_date, interval=interval, actions=False, progress=False, auto_adjust=False, prepost=True, force_remote=force_remote)
-        if not self.tz_ready == "":
-            try:
-                data.index = data.index.tz_convert(self.tz_ready)
-            except Exception:
-                pass
-        data = data.xs(self.ticker, axis=1, level='Ticker')
-        data = data.drop(columns=['Adj Close'], axis=1)
-
-        return data
+        return interval, start_date
 
     def create_table(self, interval):
         """Create the OHLCV table for the given interval if it doesn't exist."""
@@ -648,8 +671,14 @@ class StockDataSaver(TickerTools):
         # Use utility bulk saver for better performance
         DataUtils.save_ohlc_to_sql(self.conn, table_name, data, date_format=self.ftime_str)
 
-    def save_all_intervals(self, intervals=['1m','1h','1d','1wk','1mo'], periods=['7d','60d','max','max'], force_remote=False):
+    def save_all_intervals(self, intervals=['1m','1h','1d','1wk','1mo'], periods=['7d','60d','max','max'], force_remote=False,
+                           prefetched=None):
         """Downloads and saves OHLC data for all given intervals.
+
+        prefetched: optional {interval: DataFrame} from batch_download. An
+        interval found there is saved without a request of its own (and without
+        the pause between requests); every other interval is downloaded here as
+        before, so a ticker the batch missed falls back to the single path.
 
         Returns a list of intervals for which the download failed (empty list = all OK).
         """
@@ -669,8 +698,12 @@ class StockDataSaver(TickerTools):
                 is_daily = False
             if is_daily:
                 daily_requested = True
+            batched = (prefetched or {}).get(interval)
             try:
-                data = self.fetch_data_dl(interval, period=period, force_remote=force_remote)
+                if batched is not None:
+                    data = batched
+                else:
+                    data = self.fetch_data_dl(interval, period=period, force_remote=force_remote)
                 if data is None or (hasattr(data, 'empty') and data.empty):
                     _log.warning("No data for %s interval=%s (ticker unknown or delisted)", self.ticker, interval)
                     failed_intervals.append(interval)
@@ -691,7 +724,8 @@ class StockDataSaver(TickerTools):
                 failed_intervals.append(interval)
                 if is_daily:
                     daily_failed = True
-            time.sleep(0.8)
+            if batched is None:
+                time.sleep(0.8)  # pause between single requests (rate limit)
 
         # Fallback: fehlende Tageshistorie aus den (längeren) Stundendaten
         # resampeln, statt sie dauerhaft leer zu lassen. Läuft NUR wenn 1d
@@ -849,4 +883,50 @@ class StockDataSaver(TickerTools):
     def close_connection(self):
         """Close the SQLite connection for this ticker's database."""
         self.conn.close()
+
+
+def provider_supports_batch() -> bool:
+    """True when the active data provider answers many tickers in one call (Yahoo).
+
+    FMP and EODHD keep the single-ticker path with its pauses: their quotas
+    count requests, and their download() is not built for ticker lists.
+    """
+    try:
+        from tradinglib.providers import get_provider
+        return get_provider().name == 'yahoo'
+    except Exception:
+        return False
+
+
+def batch_download(tickers, interval, period="max", force_remote=True):
+    """Download one interval for many tickers in a single provider call.
+
+    Returns {ticker: frame} for every ticker that came back with rows, shaped
+    exactly like StockDataSaver.fetch_data_dl (same window, same columns).
+    Tickers missing from the answer (unknown, delisted, rate-limited) are left
+    out; save_all_intervals then fetches them singly, as before.
+    """
+    tickers = list(dict.fromkeys(tickers))
+    if not tickers:
+        return {}
+    planner = StockDataSaver.__new__(StockDataSaver)  # window math only, no DB
+    provider_interval, start_date = planner.download_window(interval, period)
+    data = md.download(tickers=tickers, start=start_date, interval=provider_interval,
+                       actions=False, progress=False, auto_adjust=False, prepost=True,
+                       force_remote=force_remote)
+    if data is None or data.empty or not isinstance(data.columns, pd.MultiIndex):
+        return {}
+    present = set(data.columns.get_level_values(-1))
+    result = {}
+    for ticker in tickers:
+        if ticker not in present:
+            continue
+        try:
+            frame = StockDataSaver.shape_download(data, ticker, drop_foreign_rows=True)
+        except Exception:
+            logger.debug("batch_download: could not cut %s out of the answer", ticker, exc_info=True)
+            continue
+        if not frame.empty:
+            result[ticker] = frame
+    return result
 

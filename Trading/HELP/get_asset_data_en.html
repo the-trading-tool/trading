@@ -45,6 +45,7 @@ code,pre{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:6
 <table>
 <tr><th>Parameter</th><th>Effect</th></tr>
 <tr><td><code>/worker:N</code></td><td>N parallel download threads (default 1 = sequential). Recommendation 2–4 – more strains the Yahoo rate limit (HTTP 429). Each ticker writes to its own <code>yf_{TICKER}.db</code>, so there are no collisions.</td></tr>
+<tr><td><code>/batch:N</code></td><td>Tickers per Yahoo request (default 50). One request per group and interval replaces one request per ticker and interval; the fixed pauses between single requests are gone. Tickers missing from the answer are then loaded one by one (as before, with pauses). If a whole group gets no answer, it is retried once after 20&nbsp;s. <code>/batch:1</code> = old single-ticker path. Yahoo provider only; FMP/EODHD always load one ticker at a time. Measured on 60 tickers: <code>60m:2d 1d:1mo</code> 228&nbsp;s &rarr; 18&nbsp;s, <code>1m:2d</code> 171&nbsp;s &rarr; 25&nbsp;s, stored prices identical.</td></tr>
 </table>
 
 <h2>Stored tables per database</h2>
