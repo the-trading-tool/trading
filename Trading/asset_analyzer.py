@@ -664,6 +664,7 @@ class TradingApp:
                 chart_config=gt.chart_config,
                 progress_callback=_graphs_progress,
                 start_dates=start_dates,
+                show_signals=True,
             )
             _spin.empty()
 

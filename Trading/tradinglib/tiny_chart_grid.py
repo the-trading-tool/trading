@@ -106,12 +106,15 @@ class ChartsGridRenderer:
     def render(self, *, tickers, tc, period, interval, overlays, oszilators, username, url, chart_config,
                name_df=None, mkt=None, name_lookup_col: str = 'ticker', name_field: str = 'longName',
                region: Optional[object] = None, log_exceptions: bool = False, progress_callback=None,
-               start_dates: Optional[dict] = None):
+               start_dates: Optional[dict] = None, show_signals: bool = False):
         """Render the grid.
 
         start_dates: optional {ticker: date} -- that ticker's chart then shows the
                 prices from this date on (the buy date), with a period long enough
                 to reach it. Tickers without an entry keep the normal view.
+        show_signals: badge above each chart with the latest own buy/sell marker
+                (from the buy/sell formula) and its date, else the Yahoo analysts'
+                recommendation (see chart_signals).
 
         region: optional streamlit-like region object (defaults to global st). The region must provide
                 .empty() and .columns(n) methods.
@@ -144,6 +147,12 @@ class ChartsGridRenderer:
         elif name_df is not None:
             df_source = name_df
 
+        yahoo = {}
+        if show_signals:
+            from tradinglib import chart_signals as cs
+            from tradinglib.i18n import t as _t
+            yahoo = cs.yahoo_signals(tickers)
+
         for p in range(0, items):
             symbol = None
             try:
@@ -174,6 +183,9 @@ class ChartsGridRenderer:
                 i = p % self.columns
                 if i == 0:
                     j += 1
+                if show_signals:
+                    sig = cs.own_signal(getattr(t_chart, 'df', None)) or yahoo.get(symbol)
+                    ic_c[j][i].markdown(cs.badge_html(sig, _t), unsafe_allow_html=True)
                 ic_c[j][i].plotly_chart(
                     t_chart.fig,
                     use_container_width=True,
