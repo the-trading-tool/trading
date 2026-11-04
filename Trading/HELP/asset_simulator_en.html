@@ -59,6 +59,7 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 
 <h2>Result</h2>
 <ul>
+  <li><b>Unadjusted splits:</b> the simulation data store each day's price as it was then and are not adjusted afterwards for a split. When a stock's stored price jumps by at least 3x on one day while the adjusted price series stays calm (e.g. GOSS 1:80 on 10.09.2026: 0.16 → 11.41), the stock is used from its last such break on only – otherwise a position across the break would be valued on two price scales (+636&nbsp;% instead of −91&nbsp;%). The sidebar names the affected stocks. Real crashes show in the adjusted series too and stay in. The same applies in Multi Strategies.</li>
   <li><b>Full dataset:</b> all simulated rows, with 📥 Excel export</li>
   <li><b>Portfolio:</b> development of the simulated positions, "Still in portfolio" list of currently held names</li>
   <li><b>Cumulative gain:</b> chart across all trades, with 📥 trade export</li>

@@ -677,7 +677,10 @@ class StockDataSaver(TickerTools):
                     if is_daily:
                         daily_failed = True
                 else:
+                    rescale = self._stale_scale(data) if is_daily else None
                     self.save_to_db(data, interval)
+                    if rescale:
+                        self._reload_full_history(rescale)
                     # Manche Yahoo-Symbole (z. B. Vola-Indizes wie ^VIXEQ) liefern
                     # auf Tagesbasis KEINE Historie, nur die letzte Kerze
                     # ("period must be one of: 1d, 5d") → ≤ 5 Zeilen = verkümmert.
@@ -712,6 +715,64 @@ class StockDataSaver(TickerTools):
                 _log.debug("daily-from-hourly backfill failed for %s", self.ticker, exc_info=True)
 
         return failed_intervals
+
+    def _stale_scale(self, data):
+        """Split factor between the stored and the freshly downloaded daily closes, or None.
+
+        After a split the provider delivers the whole history adjusted, but a
+        download covers only its window (1mo, 2y): everything older stays on the
+        old scale, and the series gets a seam at the window's start (GOSS: x80).
+        Compared on the days both hold; only a clean split ratio counts.
+        """
+        try:
+            new = data['Close'].copy()
+            new.index = pd.DatetimeIndex(pd.to_datetime(new.index)).tz_localize(None).normalize()
+            old = pd.read_sql_query('SELECT Date, Close FROM day_data', self.conn)
+        except Exception:
+            return None
+        if old.empty:
+            return None
+        old.index = pd.DatetimeIndex(pd.to_datetime(old['Date'], errors='coerce')).normalize()
+        both = pd.concat([pd.to_numeric(new, errors='coerce').rename('n'),
+                          pd.to_numeric(old['Close'], errors='coerce').groupby(level=0).last().rename('o')],
+                         axis=1).dropna()
+        both = both[(both['n'] > 0) & (both['o'] > 0)]
+        if len(both) < 3:
+            return None
+        import math
+        from tradinglib import sim_repair
+        ratio = float((both['n'] / both['o']).median())
+        if abs(math.log(ratio)) < math.log(sim_repair.STALE_FACTOR):
+            return None
+        return sim_repair.clean_ratio(ratio)
+
+    def _reload_full_history(self, factor) -> None:
+        """Replace the daily and monthly history with the provider's full, adjusted one.
+
+        Then the hourly/minute bars are aligned to the new daily scale. The
+        simulation rows are repaired by the daily sim_repair job.
+        """
+        import logging
+        from tradinglib import sim_repair
+        _log = logging.getLogger(__name__)
+        _log.warning('%s: stored history off by x%g (split) -- reloading the full history',
+                     self.ticker, factor)
+        for interval, table in (('1d', 'day_data'), ('1mo', 'month_data')):
+            try:
+                data = self.fetch_data_dl(interval, period='max', force_remote=True)
+                if data is None or data.empty:
+                    continue
+                self.create_table(interval)
+                first = pd.Timestamp(data.index.min()).strftime('%Y-%m-%d')
+                self.cursor.execute(f'DELETE FROM {table} WHERE DATE(Date) >= ?', (first,))
+                self.save_to_db(data, interval)
+                self.conn.commit()
+            except Exception:
+                _log.warning('%s: full %s reload failed', self.ticker, interval, exc_info=True)
+        try:
+            sim_repair.align_price_tables(self.get_path(self.db_path, f'yf_{self.ticker}.db'), apply=True)
+        except Exception:
+            _log.warning('%s: aligning intraday bars failed', self.ticker, exc_info=True)
 
     def _daily_row_count(self) -> int:
         """Number of rows currently stored in day_data (0 if the table is missing)."""

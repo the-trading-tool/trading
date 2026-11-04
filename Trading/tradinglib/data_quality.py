@@ -313,6 +313,93 @@ def scan_price_gaps(tickers, db_path: str = 'database', since: str = '2015-01-01
     return df.sort_values(['date', 'ticker'], ascending=[False, True]) if not df.empty else df
 
 
+# Unadjusted splits inside the SIMULATION data. The sim DBs store each day's close
+# as it was that day and are never re-adjusted, while the price DBs (yf_*.db) are
+# adjusted on reload. After a split the stored close jumps by the split factor
+# (GOSS 1:80 on 2026-09-10: 0.16 -> 11.41). A position held across that day is
+# valued at the wrong scale -- +636 % instead of -91 %.
+SIM_BREAK_FACTOR = 3.0   # day factor of the stored close that makes a candidate
+SIM_BREAK_CALM = 2.0     # the adjusted series must move less than this that day
+
+
+def sim_split_breaks(df: pd.DataFrame, db_path: str = 'database',
+                     factor: float = SIM_BREAK_FACTOR, calm: float = SIM_BREAK_CALM,
+                     load_daily=None) -> pd.DataFrame:
+    """Day-to-day jumps of the stored simulation close that the adjusted price series lacks.
+
+    *df* is a simulation frame (ticker, Date, close). A jump of at least *factor*
+    (up or down) is confirmed against the adjusted daily closes of the local
+    price DB: only if those moved by less than *calm* on the same day is it a
+    break. A real crash shows in both and is kept. Tickers without a price
+    series cannot be confirmed and are left alone. Read only.
+
+    Returns ``ticker, date, sim_before, sim_after, sim_factor, adjusted_move``.
+    """
+    cols = ['ticker', 'date', 'sim_before', 'sim_after', 'sim_factor', 'adjusted_move']
+    if df is None or df.empty or not {'ticker', 'Date', 'close'} <= set(df.columns):
+        return pd.DataFrame(columns=cols)
+    if load_daily is None:
+        from tradinglib import four_ps as fps          # lazy: plain OHLC reader
+        load_daily = lambda tk: fps.load_daily(tk, db_path)  # noqa: E731
+    s = pd.DataFrame({'ticker': df['ticker'].astype(str),
+                      'Date': pd.to_datetime(df['Date'], errors='coerce').dt.normalize(),
+                      'close': pd.to_numeric(df['close'], errors='coerce')}).dropna()
+    s = s[s['close'] > 0].drop_duplicates(['ticker', 'Date'], keep='last')
+    s = s.sort_values(['ticker', 'Date'])
+    s['prev'] = s.groupby('ticker')['close'].shift()
+    s['f'] = s['close'] / s['prev']
+    cand = s[(s['f'] >= factor) | (s['f'] <= 1.0 / factor)]
+    rows, series = [], {}
+    for r in cand.itertuples():
+        if r.ticker not in series:
+            try:
+                d = load_daily(r.ticker)
+                c = pd.to_numeric(d['Close'], errors='coerce') if d is not None and len(d) else None
+                if c is not None:
+                    c.index = pd.to_datetime(c.index, errors='coerce').normalize()
+                    c = c[c > 0].dropna()
+                    c = c[~c.index.duplicated(keep='last')].sort_index()
+                series[r.ticker] = c
+            except Exception:
+                series[r.ticker] = None
+        c = series[r.ticker]
+        if c is None or c.empty:
+            continue
+        before = c.asof(r.Date - pd.Timedelta(days=1))
+        after = c.asof(r.Date)
+        if pd.isna(before) or pd.isna(after) or not before:
+            continue
+        move = float(after / before)
+        if 1.0 / calm < move < calm:
+            rows.append((r.ticker, r.Date, float(r.prev), float(r.close), float(r.f), move))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def drop_before_breaks(df: pd.DataFrame, breaks: pd.DataFrame) -> pd.DataFrame:
+    """*df* without each broken ticker's rows before its last break.
+
+    From the last break on the stored closes are on one scale again, so the
+    stock stays tradable; no position can span the break.
+    """
+    if df is None or df.empty or breaks is None or breaks.empty:
+        return df
+    last = breaks.groupby('ticker')['date'].max()
+    d = pd.to_datetime(df['Date'], errors='coerce').dt.normalize()
+    cut = df['ticker'].astype(str).map(last)
+    return df[cut.isna() | (d >= cut)]
+
+
+def describe_breaks(breaks: pd.DataFrame, limit: int = 12) -> str:
+    """'GOSS 10.09.2026 (x71.3), MVIS 31.07.2026 (x16.6), ...' -- last break per ticker."""
+    if breaks is None or breaks.empty:
+        return ''
+    last = breaks.sort_values('date').groupby('ticker').tail(1).sort_values('ticker')
+    parts = [f"{r.ticker} {pd.Timestamp(r.date):%d.%m.%Y} (×{r.sim_factor:.3g})"
+             for r in last.itertuples()]
+    more = len(parts) - limit
+    return ', '.join(parts[:limit]) + (f' … (+{more})' if more > 0 else '')
+
+
 def _indices_for_tickers(tickers, db_path: str = 'database') -> dict:
     """Ticker -> Liste zugehöriger Index-Namen (aus yf_tickers.db)."""
     out: dict = {}
