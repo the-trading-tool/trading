@@ -1167,7 +1167,18 @@ class TradingApp:
                 elif parms.get('marketmap'):
                     self.set_page_config(t('page.market_map'))
                     with st.spinner(t('page.market_map') + " …"):
-                        visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username)
+                        # Portfolio views follow the rights of the portfolio pages:
+                        # own transactions where the user sees that page, the paper
+                        # account and Multi Strategies only with their feature.
+                        _pf_sources = []
+                        if self.is_admin or appedition.IS_SCALABLE:
+                            _pf_sources.append('own')
+                        if self.is_admin and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                            _pf_sources.append('paper')
+                        if self.is_admin and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                            _pf_sources.append('multi')
+                        visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username,
+                                                       portfolio_sources=_pf_sources)
                         visualizer.render(index_filter=1)
                     self.render_chart(index_columns=visualizer.index_column)
                 elif parms.get('summary'):

@@ -41,6 +41,21 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td><b>Sortierung</b></td><td>Nach Kursveränderung oder alphabetisch</td></tr>
 </table>
 
+<h2>Portfolios</h2>
+<p>Über <b>Ansicht</b> zeigt die Karte statt eines Index die eigenen Bestände (nur mit Zugriff auf die jeweilige Portfolio-Seite):</p>
+<table>
+<tr><th>Ansicht</th><th>Quelle</th></tr>
+<tr><td><b>Eigene Transaktionen</b></td><td>Offene Positionen aus <code>trades.db</code> (Scalable-Import, manuelle Eingabe), bewertet zum letzten Schlusskurs</td></tr>
+<tr><td><b>Paper-Depot</b></td><td>Aktuelle Positionen des Paper-Brokers (Seite Trading)</td></tr>
+<tr><td><b>Multi Strategies</b></td><td>Offene Positionen des laufenden Multi-Strategies-Jahres (<code>trades{Jahr}.db</code>)</td></tr>
+</table>
+<ul>
+  <li><b>Kachelgröße:</b> Positionswert (Stück × Kurs) oder Marktkapitalisierung, beides in Systemwährung umgerechnet</li>
+  <li><b>Farbe:</b> zusätzlich <b>seit Kauf %</b> (Vorgabe); die übrigen Kennzahlen wie bei der Index-Ansicht</li>
+  <li><b>Gruppieren nach:</b> Sektor oder Strategie (wenn die Quelle Strategien kennt). Nach Sektor wird ein Wert, den zwei Strategien halten, zu einer Kachel zusammengefasst.</li>
+  <li>Die Positionen werden einmal je Sitzung geladen; <b>🔄 Neu laden</b> holt sie frisch.</li>
+</ul>
+
 <div class="info">Die Daten stammen aus der lokalen Datenbank (<code>asset_simulation_.db</code>). Für aktuelle Werte zunächst <code>asset_perf2.py</code> ausführen.</div>
 </body>
 </html>

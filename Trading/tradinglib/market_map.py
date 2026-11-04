@@ -5,6 +5,7 @@ from tradinglib import main_page as mp
 from tradinglib import make_query as mq
 from tradinglib import system_config as sysconf
 from tradinglib import tiny_chart as tc
+from tradinglib import portfolio_map as pm
 from tradinglib.utils import DataUtils
 from tradinglib.tools import open_db, attach_db
 
@@ -76,7 +77,8 @@ class DataVisualizer(tt.TickerTools):
         info_path   = t.get_path(path=self.db_path, file_name=self.info_db)
         self.ticker_conn = _cached_ticker_conn(ticker_path, perf_path, info_path)
 
-    def __init__(self, ticker_db, performance_db, info_db, index_column, db_path = 'database', username = ''):
+    def __init__(self, ticker_db, performance_db, info_db, index_column, db_path = 'database', username = '',
+                 portfolio_sources=()):
         """
         Initializes the DataVisualizer class by connecting to the required databases.
 
@@ -85,9 +87,12 @@ class DataVisualizer(tt.TickerTools):
             performance_db (str): Path to the asset performance database.
             info_db (str): Path to the asset information database.
             index_column (str): Column name in yf_tickers table to filter data by index (e.g., 'GDAXI').
+            portfolio_sources: portfolio_map sources this user may see ('own', 'paper', 'multi');
+                each adds a view of its holdings next to the index view.
         """
 
         self.db_path=db_path
+        self.portfolio_sources = [s for s in portfolio_sources if s in pm.SOURCES]
         self.ticker_db = ticker_db
         self.performance_db = performance_db
         self.info_db = info_db 
@@ -282,13 +287,17 @@ class DataVisualizer(tt.TickerTools):
         else:
             st.session_state.pop(session_key, None)
 
-    def generate_treemap(self, combined_df, order_by):
+    def generate_treemap(self, combined_df, order_by, group_col='sector', size_options=None,
+                         default_trend=None):
         """
         Generates an interactive treemap using Plotly.
 
         Args:
             combined_df (pd.DataFrame): Combined DataFrame with required fields for visualization.
-        
+            group_col: column of the middle treemap level (sector, or strategy for portfolios).
+            size_options: tile size choices; default market cap / debt / revenue.
+            default_trend: preselected colour metric; default day_change.
+
         Returns:
             plotly.graph_objects.Figure: Treemap figure.
         """
@@ -338,12 +347,17 @@ class DataVisualizer(tt.TickerTools):
             'momentum':       [-_inf,5,10,20,30,45,55,70,80,90,95,_inf],
             'ebitdaMargins':  [-_inf,-0.5,-0.2,-0.1,0,0.05,0.1,0.2,0.3,0.4,0.5,_inf],
         }
-        
+        if 'gainPct' in combined_df.columns:    # portfolios: gain since the buy
+            column_names['gainPct'] = [-_inf,-20,-10,-5,-2,-0.5,0.5,2,5,10,20,_inf]
+        _labels = {'gainPct': t('mm.trend_gain'), 'positionValue': t('mm.size_value')}
+
         # Selection
+        _opts = list(column_names)
         self.trend = self.sel_tre.selectbox(
                 t('mm.trend_by'),
-                options = column_names,
-                index = 2
+                options = _opts,
+                index = _opts.index(default_trend) if default_trend in _opts else 2,
+                format_func = lambda o: _labels.get(o, o),
             )
 
         if self.trend == 'day_change':
@@ -367,11 +381,12 @@ class DataVisualizer(tt.TickerTools):
                          .apply(tuple, axis=1).value_counts().idxmax())
                 st.caption(f"Tagesveränderung: {_fmt_date(_pair[1])} → {_fmt_date(_pair[0])}")
 
-        bs_values = ['marketCap','totalDebt', 'totalRevenue']
+        bs_values = list(size_options or ['marketCap','totalDebt', 'totalRevenue'])
         box_size = self.sel_size.selectbox(
                 t('mm.size_by'),
                 options = bs_values,
-                index = 0
+                index = 0,
+                format_func = lambda o: _labels.get(o, o),
         )
 
         winner = combined_df.loc[combined_df[f'{self.trend}'] > 0, f'{box_size}'].sum().round(0)
@@ -410,7 +425,7 @@ class DataVisualizer(tt.TickerTools):
             treemap_df[col] = treemap_df[col].astype('str')
         fig = px.treemap(
             treemap_df,
-            path=[px.Constant("all"), 'sector','ticker'],
+            path=[px.Constant("all"), group_col, 'ticker'],
             values = box_size,
             color='colors',
             height=700,
@@ -419,12 +434,15 @@ class DataVisualizer(tt.TickerTools):
             custom_data=[f'{self.trend}','sector','longName',f'{price_data}']#,'url']
         )
 
+        _size_hover = {'marketCap': 'Market Cap(M)',
+                       'positionValue': f'{_labels["positionValue"]} ({self.system_currency})'}
         fig.update_traces(
             hovertemplate="<br>".join([
             "%{label}",
             "%{customdata[2]}",
             "Price: %{customdata[3]:.2f}",
-            "Market Cap(M): %{value}",
+            f"{_size_hover.get(box_size, box_size)}: %{{value:,.0f}}" if box_size == 'positionValue'
+            else f"{_size_hover.get(box_size, box_size)}: %{{value}}",
             "Sector: %{customdata[1]}",
 #            "%{customdata[4]}",
             ])
@@ -623,6 +641,15 @@ class DataVisualizer(tt.TickerTools):
             index_filter (int): Filter for the index column (e.g., GDAXI = 1).
         """
 
+        if self.portfolio_sources:
+            source = st.radio(
+                t('mm.source'), ['index'] + self.portfolio_sources, horizontal=True,
+                format_func=lambda s: t(f'mm.src_{s}'), key='mm_source')
+            if source != 'index':
+                self.index_column = 'ANY'          # no index chart below a portfolio
+                self.render_portfolio(source)
+                return
+
         self.sel = st.empty()
         (self.sel_size, self.sel_idx, self.sel_exch, self.sel_tre, self.sel_msize,self.sel_mprice,self.sel_ordby, self.sel_limit) = self.sel.columns(8)
 
@@ -744,6 +771,75 @@ class DataVisualizer(tt.TickerTools):
         if self.index_column != 'ANY':
             st.markdown("---")
             self._render_markov_breadth(self.index_column)
+
+    def _portfolio_positions(self, source):
+        """Holdings of *source*, kept for the session: the paper broker is a live
+        API call and the own positions price every holding -- a widget change on
+        this page must not repeat that. The reload button refreshes."""
+        cache = st.session_state.setdefault('_mm_portfolio', {})
+        if source not in cache:
+            with st.spinner(t('mm.pf_loading')):
+                df = pm.load(source, username=self.username, db_path=self.db_path,
+                             system_currency=self.system_currency or 'EUR')
+            cache[source] = (pd.Timestamp.now(), df)
+        return cache[source]
+
+    def render_portfolio(self, source):
+        """Market map of the holdings of one portfolio (see portfolio_map)."""
+        (self.sel_size, self.sel_tre, sel_group, sel_reload) = st.columns([1, 1, 1, 1])
+        try:
+            loaded_at, raw = self._portfolio_positions(source)
+        except Exception as e:
+            st.error(t('mm.pf_error', error=e))
+            return
+        if sel_reload.button(t('mm.refresh'), key='mm_pf_reload'):
+            st.session_state.get('_mm_portfolio', {}).pop(source, None)
+            st.rerun()
+        sel_reload.caption(t('mm.pf_stand', time=loaded_at.strftime('%d.%m.%Y %H:%M')))
+        if raw.empty:
+            st.info(t('mm.pf_empty'))
+            return
+
+        groups = ['sector'] + (['strategy'] if raw['strategy'].str.strip().ne('').any() else [])
+        group_col = sel_group.selectbox(t('mm.group_by'), groups,
+                                        format_func=lambda g: t(f'mm.group_{g}'))
+        # A ticker held by two strategies is one tile per strategy when grouped
+        # by strategy, otherwise one tile with the summed position.
+        rows = raw if group_col == 'strategy' else pm.by_ticker(raw)
+        df = pm.enrich(rows, db_path=self.db_path, system_currency=self.system_currency or 'EUR')
+        df['strategy'] = df['strategy'].replace('', '—')
+        df['positionValue'] = df['positionValue'].fillna(0).round(0)
+        df['gainPct'] = df['gainPct'].round(1)
+        df['marketCap'] = df['marketCap'].fillna(0)
+
+        total = df['positionValue'].sum()
+        valued = df[df['gainPct'].notna() & (df['positionValue'] > 0)]
+        avg_gain = ((valued['gainPct'] * valued['positionValue']).sum() / valued['positionValue'].sum()
+                    if not valued.empty else float('nan'))
+        m1, m2, m3 = st.columns(3)
+        m1.metric(t('mm.pf_total'), f'{total:,.0f} {self.system_currency}')
+        m2.metric(t('mm.pf_count'), len(raw))
+        m3.metric(t('mm.pf_gain'), '—' if pd.isna(avg_gain) else f'{avg_gain:+.1f} %')
+
+        fig, treemap_df, price_col = self.generate_treemap(
+            df, None, group_col=group_col, size_options=['positionValue', 'marketCap'],
+            default_trend='gainPct')
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown("---")
+
+        with st.expander(t('mm.pf_view_title', source=t(f'mm.src_{source}')), expanded=True):
+            self._render_index_winner_loser(treemap_df, self.trend, price_col)
+            cols = [c for c in ['ticker', 'longName', 'strategy', 'shares', 'positionValue', 'gainPct',
+                                self.trend, price_col, 'sector', 'sharpe', 'moTrend']
+                    if c in treemap_df.columns]
+            table = (treemap_df[list(dict.fromkeys(cols))]
+                     .sort_values('positionValue', ascending=False)
+                     .rename(columns={price_col: 'close',
+                                      'positionValue': t('mm.col_value', cur=self.system_currency),
+                                      'gainPct': t('mm.trend_gain'),
+                                      'shares': t('mm.col_shares'),
+                                      'strategy': t('mm.group_strategy')}))
+            self._select_ticker_table(table, key_suffix='pf_all')
 
 # Usage example in a Streamlit script (streamlit run <script.py>):
 #visualizer = DataVisualizer("yf_tickers.db", "asset_simulation.db", "asset_info.db", "GDAXI", db_path='C:/Users/Kurt/Development/database')

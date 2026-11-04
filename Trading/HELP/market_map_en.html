@@ -41,6 +41,21 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <tr><td><b>Sorting</b></td><td>By price change or alphabetically</td></tr>
 </table>
 
+<h2>Portfolios</h2>
+<p>With <b>View</b> the map shows your own holdings instead of an index (only with access to the respective portfolio page):</p>
+<table>
+<tr><th>View</th><th>Source</th></tr>
+<tr><td><b>Own transactions</b></td><td>Open positions from <code>trades.db</code> (Scalable import, manual entry), valued at the latest close</td></tr>
+<tr><td><b>Paper account</b></td><td>Current positions of the paper broker (Trading page)</td></tr>
+<tr><td><b>Multi Strategies</b></td><td>Open positions of the current Multi Strategies year (<code>trades{year}.db</code>)</td></tr>
+</table>
+<ul>
+  <li><b>Tile size:</b> position value (shares × price) or market cap, both converted to the system currency</li>
+  <li><b>Colour:</b> additionally <b>since buy %</b> (default); the other metrics as in the index view</li>
+  <li><b>Group by:</b> sector or strategy (when the source knows strategies). By sector, a security held by two strategies becomes one tile.</li>
+  <li>Positions are loaded once per session; <b>🔄 Reload</b> fetches them again.</li>
+</ul>
+
 <div class="info">The data comes from the local database (<code>asset_simulation_.db</code>). Run <code>asset_perf2.py</code> first for up-to-date values.</div>
 </body>
 </html>
