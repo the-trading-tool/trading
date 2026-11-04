@@ -544,8 +544,12 @@ class TradingApp:
 
         monitored_assets = self.sys_config.get_value("monitored_assets",'')
         trade_tickers = None
+        start_dates = None
         if source in ('own', 'paper'):
             open_only = sel_e.checkbox(t('summary.open_only'), True, key='summary_open_only')
+            if sel_e.checkbox(t('summary.since_buy'), False, key='summary_since_buy',
+                              help=t('summary.since_buy_help')):
+                start_dates = ss.own_trade_starts() if source == 'own' else ss.paper_trade_starts()
             fetch = ss.own_trade_tickers if source == 'own' else ss.paper_trade_tickers
             trade_tickers = fetch(open_only=open_only)
             if not trade_tickers:
@@ -659,6 +663,7 @@ class TradingApp:
                 url=self.url,
                 chart_config=gt.chart_config,
                 progress_callback=_graphs_progress,
+                start_dates=start_dates,
             )
             _spin.empty()
 

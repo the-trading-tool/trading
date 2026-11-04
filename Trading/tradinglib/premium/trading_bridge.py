@@ -709,8 +709,11 @@ class OrderLog(Tools):
         Only the columns needed by _tab_compare() are stored; extra columns
         are silently dropped so schema changes in multi_transaction.py don't break this.
         """
+        # buyValue/sellVolume: the comparison values open positions at each
+        # day's close (mark-to-market) and needs the stake and the open flag.
         keep = [c for c in ['sellDate', 'buyDate', 'ticker', 'strategy',
-                             'gain', 'Strategy', 'cumulative_gain']
+                             'gain', 'Strategy', 'cumulative_gain',
+                             'buyValue', 'sellVolume']
                 if c in df.columns]
         if not keep:
             return
@@ -726,7 +729,12 @@ class OrderLog(Tools):
                              "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                              "username TEXT, saved_at TEXT,"
                              "sellDate TEXT, buyDate TEXT, ticker TEXT,"
-                             "strategy TEXT, gain REAL, cumulative_gain REAL)")
+                             "strategy TEXT, gain REAL, cumulative_gain REAL,"
+                             "buyValue REAL, sellVolume REAL)")
+                have = {r[1] for r in conn.execute("PRAGMA table_info(backtest_trades)")}
+                for col in ('buyValue', 'sellVolume'):      # tables from before
+                    if col not in have:
+                        conn.execute(f"ALTER TABLE backtest_trades ADD COLUMN {col} REAL")
                 conn.execute("DELETE FROM backtest_trades WHERE username=?",
                              (username,))
                 store.to_sql('backtest_trades', conn,

@@ -48,7 +48,7 @@ class tiny_chart(gt.GraphTools):
     dt_obs = None
     calc_ly_hl = False
 
-    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None, zoom_base=None):
+    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None, zoom_base=None, zoom_start=None):
 
         if symbol:
             self.username = username
@@ -62,6 +62,9 @@ class tiny_chart(gt.GraphTools):
             # Chart-Grid -- koennen so zoomen, ohne die Trendberechnung zu
             # veraendern.
             self.zoom_base = zoom_base
+            # Optional start of the zoom window (e.g. the buy date): the view runs
+            # from the bar that contains it to the last bar instead of zoom_base bars.
+            self.zoom_start = zoom_start
             self.exchange = exchange
             self.x_rate = x_rate
             self.purchase_price = purchase_price
@@ -827,6 +830,13 @@ class tiny_chart(gt.GraphTools):
                     pips = length
                 end = self.df['Date'].iloc[-1]
                 start = self.df['Date'].iloc[-pips]
+                if getattr(self, 'zoom_start', None) is not None:
+                    # From the bar the start date falls in; a date after the last
+                    # bar (bought today, daily chart) or on the last bar itself
+                    # (a window of zero width) keeps the normal window.
+                    bar = self._x_bar_for(self.zoom_start)
+                    if bar is not None and bar != end:
+                        start = bar
 
                 self.fig.update_xaxes(
                     type="date", 

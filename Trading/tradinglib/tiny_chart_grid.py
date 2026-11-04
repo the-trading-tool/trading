@@ -12,6 +12,41 @@ logger = logging.getLogger(__name__)
 # 21 wie im Asset Viewer, damit beide Ansichten denselben Ausschnitt zeigen.
 ZOOM_BASE = 21
 
+# Chart periods with the calendar days they cover, shortest first.
+_PERIOD_DAYS = (('1mo', 31), ('3mo', 92), ('6mo', 183), ('1y', 366), ('2y', 731),
+                ('5y', 1827), ('10y', 3653), ('max', None))
+# How far back intraday bars reach (Yahoo limits; the local tables are no longer).
+_INTRADAY_DAYS = {'1m': 7, '2m': 59, '5m': 59, '15m': 59, '30m': 59, '90m': 59,
+                  '60m': 729, '1h': 729}
+
+
+def period_since(start, period: str, interval: str, today=None) -> tuple:
+    """(period, interval) whose chart reaches back to *start* (the buy date).
+
+    The configured period stays when it already covers the date; otherwise the
+    shortest longer one. An intraday interval that cannot reach that far back
+    becomes daily bars. *start* unusable -> both unchanged.
+    """
+    import pandas as pd
+    try:
+        start = pd.Timestamp(start)
+    except (TypeError, ValueError):
+        return period, interval
+    if pd.isna(start):
+        return period, interval
+    today = pd.Timestamp(today) if today is not None else pd.Timestamp.now()
+    need = max((today.normalize() - start.normalize()).days, 0) + 1
+    if interval in _INTRADAY_DAYS and need > _INTRADAY_DAYS[interval]:
+        interval = '1d'
+    days = dict(_PERIOD_DAYS)
+    have = days.get(period, 0)
+    if have is None or (have and have >= need):
+        return period, interval
+    for name, span in _PERIOD_DAYS:
+        if span is None or span >= need:
+            return name, interval
+    return 'max', interval
+
 
 class ChartsGridRenderer:
     """Reusable renderer for a grid of tiny charts.
@@ -70,8 +105,13 @@ class ChartsGridRenderer:
 
     def render(self, *, tickers, tc, period, interval, overlays, oszilators, username, url, chart_config,
                name_df=None, mkt=None, name_lookup_col: str = 'ticker', name_field: str = 'longName',
-               region: Optional[object] = None, log_exceptions: bool = False, progress_callback=None):
+               region: Optional[object] = None, log_exceptions: bool = False, progress_callback=None,
+               start_dates: Optional[dict] = None):
         """Render the grid.
+
+        start_dates: optional {ticker: date} -- that ticker's chart then shows the
+                prices from this date on (the buy date), with a period long enough
+                to reach it. Tickers without an entry keep the normal view.
 
         region: optional streamlit-like region object (defaults to global st). The region must provide
                 .empty() and .columns(n) methods.
@@ -122,10 +162,13 @@ class ChartsGridRenderer:
                 # Trendberechnung (indicator.trend) unveraendert, waehrend der
                 # Startausschnitt demselben konfigurierbaren Zoomfaktor folgt
                 # wie der Asset Viewer (dort ist die Basis ebenfalls 21).
-                t_chart = tc.tiny_chart(symbol, name, url=f"{url}", period=period, interval=interval, range_breaks=True,
+                since = (start_dates or {}).get(symbol)
+                p_sym, i_sym = (period_since(since, period, interval) if since is not None
+                                else (period, interval))
+                t_chart = tc.tiny_chart(symbol, name, url=f"{url}", period=p_sym, interval=i_sym, range_breaks=True,
                                          candle_chart=True, add_sub_plots=oszilators, show_trend=False, trend_length=0,
                                          add_overlays=overlays, username=username, zoom=True,
-                                         zoom_base=ZOOM_BASE)
+                                         zoom_base=ZOOM_BASE, zoom_start=since)
 
                 # now add the charts to the right rows / cols
                 i = p % self.columns

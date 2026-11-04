@@ -37,6 +37,27 @@ def _net_open(df: pd.DataFrame, key: str, side: str, qty: str) -> list:
     return [t for t, n in net.items() if t and n > _EPS]
 
 
+def _position_starts(df: pd.DataFrame, key: str, side: str, qty: str, ts: str) -> dict:
+    """Key -> time its current (or, if closed, its last) position was opened.
+
+    That is the buy that lifted the net quantity from zero; earlier round trips
+    of the same ticker do not count. Rows without a usable time are skipped.
+    """
+    if df.empty:
+        return {}
+    d = df.assign(_ts=pd.to_datetime(df[ts], errors='coerce', utc=True).dt.tz_localize(None),
+                  _q=pd.to_numeric(df[qty], errors='coerce').fillna(0),
+                  _s=df[side].astype(str).str.lower().str.strip().map({'buy': 1, 'sell': -1}).fillna(0))
+    d = d.dropna(subset=['_ts']).sort_values('_ts', kind='stable')
+    out, net = {}, {}
+    for k, t, q, s in zip(d[key].astype(str).str.strip(), d['_ts'], d['_q'], d['_s']):
+        before = net.get(k, 0.0)
+        net[k] = before + q * s
+        if s > 0 and before <= _EPS < net[k]:
+            out[k] = t
+    return out
+
+
 def own_trade_tickers(open_only: bool = True) -> list:
     """Tickers from Own Trades; open positions only, or everything ever traded."""
     try:
@@ -53,6 +74,22 @@ def own_trade_tickers(open_only: bool = True) -> list:
     df = df[~df['ticker'].isin(('', 'NONE', 'NAN'))]
     tickers = _net_open(df, 'ticker', 'action', 'shares') if open_only else df['ticker'].unique().tolist()
     return sorted(set(tickers))
+
+
+def own_trade_starts() -> dict:
+    """Ticker -> opening time of its (current or last) Own Trades position."""
+    try:
+        conn = _connect_ro('trades.db')
+        if conn is None:
+            return {}
+        with closing(conn):
+            df = pd.read_sql_query(
+                'SELECT ticker, action, shares, timestamp FROM trades WHERE ticker IS NOT NULL', conn)
+    except Exception as e:
+        logger.debug('own_trade_starts failed: %s', e)
+        return {}
+    df['ticker'] = df['ticker'].astype(str).str.upper().str.strip()
+    return _position_starts(df, 'ticker', 'action', 'shares', 'timestamp')
 
 
 def paper_trade_tickers(open_only: bool = True) -> list:
@@ -86,14 +123,70 @@ def paper_trade_tickers(open_only: bool = True) -> list:
         return sorted(set(orders['ticker']) - {''})
 
     if not fills.empty:
-        sym_map = {}
-        for _, row in orders.iterrows():
-            sym = str(row['broker_symbol'] or '').strip() or row['ticker']
-            sym_map.setdefault(sym, row['ticker'])
+        sym_map = _paper_symbol_map(orders)
         return sorted({sym_map.get(s, s) for s in _net_open(fills, 'symbol', 'side', 'qty')})
 
     filled = orders[orders['status'].astype(str).str.lower() == 'filled']
     return sorted(set(_net_open(filled, 'ticker', 'action', 'qty')))
+
+
+def _paper_symbol_map(orders: pd.DataFrame) -> dict:
+    """Broker symbol -> app ticker, from the order log (first mapping wins)."""
+    sym_map = {}
+    for _, row in orders.iterrows():
+        sym = str(row['broker_symbol'] or '').strip() or row['ticker']
+        sym_map.setdefault(sym, row['ticker'])
+    return sym_map
+
+
+def paper_symbol_map() -> dict:
+    """Broker symbol -> app ticker for Paper Trading ({} without trading.db)."""
+    try:
+        conn = _connect_ro('trading.db')
+        if conn is None:
+            return {}
+        with closing(conn):
+            orders = pd.read_sql_query(
+                "SELECT ticker, broker_symbol FROM broker_orders "
+                "WHERE mode='paper' AND ticker IS NOT NULL", conn)
+    except Exception as e:
+        logger.debug('paper_symbol_map failed: %s', e)
+        return {}
+    orders['ticker'] = orders['ticker'].astype(str).str.strip()
+    return _paper_symbol_map(orders)
+
+
+def paper_trade_starts() -> dict:
+    """Ticker -> opening time (UTC) of its (current or last) Paper Trading position.
+
+    From the synced broker fills like paper_trade_tickers; without them from the
+    filled orders of the order log.
+    """
+    try:
+        conn = _connect_ro('trading.db')
+        if conn is None:
+            return {}
+        with closing(conn):
+            orders = pd.read_sql_query(
+                "SELECT ticker, broker_symbol, action, qty, status, filled_at, submitted_at "
+                "FROM broker_orders WHERE mode='paper' AND ticker IS NOT NULL", conn)
+            try:
+                fills = pd.read_sql_query(
+                    "SELECT symbol, side, qty, transaction_time FROM broker_activities "
+                    "WHERE mode='paper' AND activity_type='FILL'", conn)
+            except Exception:
+                fills = pd.DataFrame(columns=['symbol', 'side', 'qty', 'transaction_time'])
+    except Exception as e:
+        logger.debug('paper_trade_starts failed: %s', e)
+        return {}
+    orders['ticker'] = orders['ticker'].astype(str).str.strip()
+    if not fills.empty:
+        sym_map = _paper_symbol_map(orders)
+        starts = _position_starts(fills, 'symbol', 'side', 'qty', 'transaction_time')
+        return {sym_map.get(s, s): t for s, t in starts.items()}
+    filled = orders[orders['status'].astype(str).str.lower() == 'filled']
+    filled = filled.assign(_ts=filled['filled_at'].fillna(filled['submitted_at']))
+    return _position_starts(filled, 'ticker', 'action', 'qty', '_ts')
 
 
 def multi_strategy_tickers(year: int | None = None) -> list:
