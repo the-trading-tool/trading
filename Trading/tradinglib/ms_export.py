@@ -31,7 +31,8 @@ def _num(value):
 def entry(*, buy: str, sell: str, num_assets, invest, order_by: str, signal_window=1,
           trailing_stop=0, stop_loss=0, sizing_cap: str = 'none', sizing_factor_max=None,
           fractional: bool = False, require_isin: bool = False, min_hold_days=0,
-          cooldown_days=0, currency: str = 'ANY', buy_windows=None, fx: str = 'current') -> dict:
+          cooldown_days=0, currency: str = 'ANY', buy_windows=None, fx: str = 'current',
+          take_profit=0) -> dict:
     """One index entry with the fields Multi Strategies reads, in its usual order."""
     out = {
         'buy': (buy or '').strip(),
@@ -44,6 +45,8 @@ def entry(*, buy: str, sell: str, num_assets, invest, order_by: str, signal_wind
         'stop_loss': _num(stop_loss),
         'sizing_cap': sizing_cap or 'none',
     }
+    if _num(take_profit):       # no global default behind it: missing = off
+        out['take_profit'] = _num(take_profit)
     if out['sizing_cap'] in _SIZING_WITH_FACTOR and sizing_factor_max is not None:
         out['sizing_factor_max'] = _num(sizing_factor_max)
     out['fractional'] = bool(fractional)

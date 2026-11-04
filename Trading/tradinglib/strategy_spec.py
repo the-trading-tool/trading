@@ -63,7 +63,8 @@ DEFAULT = {
     'exit': {'type': 'formula', 'sell': '', 'days': 21},
     'size': {'num_assets': 5, 'invest': 100000, 'cap': 'none', 'factor_max': 2.0,
              'fractional': False},
-    'costs': {'fee_pct': 0.3, 'trailing_stop': 0.0, 'stop_loss': 0.0,
+    # 'take_profit': sell at buy price + x % (0 = off), the mirror of 'stop_loss'.
+    'costs': {'fee_pct': 0.3, 'trailing_stop': 0.0, 'stop_loss': 0.0, 'take_profit': 0.0,
               'min_hold_days': 0, 'cooldown_days': 0},
     'report': {},
     'saved': '',
@@ -73,7 +74,8 @@ _NUM = {('entry', 'p_pct'): float, ('entry', 'seed'): int, ('entry', 'window'): 
         ('entry', 'delay'): int, ('select', 'seed'): int, ('exit', 'days'): int,
         ('size', 'num_assets'): int, ('size', 'invest'): float, ('size', 'factor_max'): float,
         ('costs', 'fee_pct'): float, ('costs', 'trailing_stop'): float,
-        ('costs', 'stop_loss'): float, ('costs', 'min_hold_days'): int,
+        ('costs', 'stop_loss'): float, ('costs', 'take_profit'): float,
+        ('costs', 'min_hold_days'): int,
         ('costs', 'cooldown_days'): int}
 _ENUM = {('entry', 'type'): ENTRY_TYPES, ('select', 'type'): SELECT_TYPES,
          ('exit', 'type'): EXIT_TYPES, ('universe', 'fx'): FX_MODES}
@@ -103,6 +105,7 @@ def normalize(spec: dict | None) -> dict:
     out['entry']['p_pct'] = min(max(out['entry']['p_pct'], 0.0), 100.0)
     out['entry']['windows'] = normalize_windows(out['entry']['windows'])
     out['exit']['days'] = max(out['exit']['days'], 1)
+    out['costs']['take_profit'] = max(out['costs']['take_profit'], 0.0)
     out['size']['num_assets'] = max(out['size']['num_assets'], 1)
     for b in ('require_isin',):
         out['universe'][b] = bool(out['universe'][b])
@@ -464,7 +467,7 @@ def _ms_fields(spec: dict) -> dict:
         fractional=s['size']['fractional'], require_isin=s['universe']['require_isin'],
         min_hold_days=s['costs']['min_hold_days'], cooldown_days=s['costs']['cooldown_days'],
         currency=s['universe']['currency'], buy_windows=s['entry']['windows'],
-        fx=s['universe']['fx'])
+        fx=s['universe']['fx'], take_profit=s['costs']['take_profit'])
 
 
 def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) -> dict:
@@ -497,8 +500,10 @@ def from_ms_entry(name: str, index: str, entry: dict, base: dict | None = None) 
                                                   ('factor_max', 'sizing_factor_max'),
                                                   ('fractional', 'fractional')) if src in e})
     spec['costs'].update({'fee_pct': 0.0})
-    spec['costs'].update({k: e[k] for k in ('trailing_stop', 'stop_loss', 'min_hold_days',
-                                            'cooldown_days') if k in e})
+    spec['costs'].update({k: e[k] for k in ('trailing_stop', 'stop_loss', 'take_profit',
+                                            'min_hold_days', 'cooldown_days') if k in e})
+    if 'take_profit' not in e:          # no global default: missing = off, not the base's
+        spec['costs']['take_profit'] = 0.0
     return normalize(spec)
 
 
@@ -538,6 +543,7 @@ _ENTRY_FIELDS = {
     'sizing_cap': ('size', 'cap'), 'sizing_factor_max': ('size', 'factor_max'),
     'fractional': ('size', 'fractional'), 'fee_pct': ('costs', 'fee_pct'),
     'trailing_stop': ('costs', 'trailing_stop'), 'stop_loss': ('costs', 'stop_loss'),
+    'take_profit': ('costs', 'take_profit'),
     'min_hold_days': ('costs', 'min_hold_days'), 'cooldown_days': ('costs', 'cooldown_days'),
     'require_isin': ('universe', 'require_isin'), 'currency': ('universe', 'currency'),
     'buy_windows': ('entry', 'windows'), 'fx': ('universe', 'fx'),
@@ -746,6 +752,8 @@ def signature(spec: dict) -> str:
         run['entry'] = {k: v for k, v in run['entry'].items() if k != 'windows'}
     if run['universe']['fx'] == 'current':
         run['universe'] = {k: v for k, v in run['universe'].items() if k != 'fx'}
+    if not run['costs']['take_profit']:
+        run['costs'] = {k: v for k, v in run['costs'].items() if k != 'take_profit'}
     return json.dumps(run, sort_keys=True, ensure_ascii=False)
 
 
@@ -785,6 +793,8 @@ def describe(spec: dict) -> list[str]:
         stops.append(_t('sbs.d.stop_loss', pct=f"{c['stop_loss']:g}"))
     if c['trailing_stop']:
         stops.append(_t('sbs.d.trailing', pct=f"{c['trailing_stop']:g}"))
+    if c['take_profit']:
+        stops.append(_t('sbs.d.take_profit', pct=f"{c['take_profit']:g}"))
     if stops:
         lines.append(', '.join(stops))
     lines.append(_t('sbs.d.size', n=z['num_assets'], invest=f"{z['invest']:,.0f}",
