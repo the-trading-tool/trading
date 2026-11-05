@@ -18,6 +18,27 @@ def test_position_start_is_the_buy_that_reopened_it():
     assert out['B'] == pd.Timestamp('2026-02-02 12:00:00')     # partly sold, still open
 
 
+def test_multi_strategy_tickers_and_starts(tmp_path, monkeypatch):
+    import sqlite3
+    monkeypatch.setenv('TradingDB', str(tmp_path))
+    year = pd.Timestamp.today().year
+    con = sqlite3.connect(tmp_path / f'trades{year}.db')
+    con.execute('CREATE TABLE trades (ticker, buyDate, sellVolume)')
+    con.executemany('INSERT INTO trades VALUES (?, ?, ?)', [
+        ('A', f'{year}-02-01 00:00:00', 10),       # closed
+        ('A', f'{year}-05-01 00:00:00', None),     # open
+        ('A', f'{year}-06-01 00:00:00', None),     # open in a second strategy
+        ('B', f'{year}-03-01 00:00:00', 5),        # only closed
+    ])
+    con.commit()
+    con.close()
+    assert ss.multi_strategy_tickers() == ['A']
+    assert ss.multi_strategy_tickers(open_only=False) == ['A', 'B']
+    starts = ss.multi_strategy_starts()
+    assert starts['A'] == pd.Timestamp(f'{year}-05-01')      # earliest open buy
+    assert starts['B'] == pd.Timestamp(f'{year}-03-01')      # last buy of a closed one
+
+
 def test_position_start_reads_utc_fill_times():
     df = pd.DataFrame({'symbol': ['X'], 'side': ['buy'], 'qty': [1],
                        'transaction_time': ['2026-11-04T14:42:45.43Z']})

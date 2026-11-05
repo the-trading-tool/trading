@@ -161,6 +161,7 @@
   "summary.source_monitored": "Monitored",
   "summary.source_own": "Own Trades",
   "summary.source_paper": "Paper Trading",
+  "summary.source_multi": "Multi Strategies",
   "summary.source_market": "Market",
   "summary.open_only": "Open positions only",
   "summary.since_buy": "From buy date only",

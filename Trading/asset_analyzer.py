@@ -535,8 +535,10 @@ class TradingApp:
         sel = st.empty()
         (sel_m, _, sel_e, _, sel_a) = sel.columns([0.4,0.05,0.4,0.05,0.1])
         from tradinglib import summary_sources as ss
+        # Multi Strategies only for those who see that page.
+        _ms_ok = self.is_admin and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE)
         source = sel_m.radio(
-            t('summary.source'), ss.SOURCES, horizontal=True,
+            t('summary.source'), [s for s in ss.SOURCES if s != 'multi' or _ms_ok], horizontal=True,
             format_func=lambda s: t(f'summary.source_{s}'), key='summary_source',
         )
         show_earnings = sel_e.checkbox(t('summary.earnings_calendar'), allow_show_earnings)
@@ -545,12 +547,15 @@ class TradingApp:
         monitored_assets = self.sys_config.get_value("monitored_assets",'')
         trade_tickers = None
         start_dates = None
-        if source in ('own', 'paper'):
+        if source in ('own', 'paper', 'multi'):
             open_only = sel_e.checkbox(t('summary.open_only'), True, key='summary_open_only')
+            starts = {'own': ss.own_trade_starts, 'paper': ss.paper_trade_starts,
+                      'multi': ss.multi_strategy_starts}[source]
             if sel_e.checkbox(t('summary.since_buy'), False, key='summary_since_buy',
                               help=t('summary.since_buy_help')):
-                start_dates = ss.own_trade_starts() if source == 'own' else ss.paper_trade_starts()
-            fetch = ss.own_trade_tickers if source == 'own' else ss.paper_trade_tickers
+                start_dates = starts()
+            fetch = {'own': ss.own_trade_tickers, 'paper': ss.paper_trade_tickers,
+                     'multi': ss.multi_strategy_tickers}[source]
             trade_tickers = fetch(open_only=open_only)
             if not trade_tickers:
                 st.info(t('summary.no_trade_assets'))

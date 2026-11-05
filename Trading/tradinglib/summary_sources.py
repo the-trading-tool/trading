@@ -14,7 +14,7 @@ from tradinglib.tools import Tools
 
 logger = logging.getLogger(__name__)
 
-SOURCES = ('monitored', 'own', 'paper', 'market')
+SOURCES = ('monitored', 'own', 'paper', 'multi', 'market')
 
 _EPS = 1e-4
 
@@ -189,8 +189,11 @@ def paper_trade_starts() -> dict:
     return _position_starts(filled, 'ticker', 'action', 'qty', '_ts')
 
 
-def multi_strategy_tickers(year: int | None = None) -> list:
-    """Open positions of Multi Strategies (trades{year}.db, not yet sold)."""
+_MS_OPEN = "(sellVolume IS NULL OR sellVolume = '' OR sellVolume = 0)"
+
+
+def multi_strategy_tickers(year: int | None = None, open_only: bool = True) -> list:
+    """Multi Strategies (trades{year}.db): open positions, or everything traded that year."""
     from datetime import datetime
     year = year or datetime.now().year
     try:
@@ -199,12 +202,36 @@ def multi_strategy_tickers(year: int | None = None) -> list:
             return []
         with closing(conn):
             df = pd.read_sql_query(
-                "SELECT DISTINCT ticker FROM trades WHERE ticker IS NOT NULL "
-                "AND (sellVolume IS NULL OR sellVolume = '' OR sellVolume = 0)", conn)
+                "SELECT DISTINCT ticker FROM trades WHERE ticker IS NOT NULL"
+                + (f" AND {_MS_OPEN}" if open_only else ''), conn)
     except Exception as e:
         logger.debug('multi_strategy_tickers failed: %s', e)
         return []
     return sorted({str(t).strip() for t in df['ticker'] if str(t).strip()})
+
+
+def multi_strategy_starts(year: int | None = None) -> dict:
+    """Ticker -> buy date of its open Multi Strategies position (the earliest, if
+    several strategies hold it); for tickers without an open one the last buy."""
+    from datetime import datetime
+    year = year or datetime.now().year
+    try:
+        conn = _connect_ro(f'trades{year}.db')
+        if conn is None:
+            return {}
+        with closing(conn):
+            df = pd.read_sql_query(
+                f"SELECT ticker, buyDate, {_MS_OPEN} AS is_open FROM trades "
+                "WHERE ticker IS NOT NULL", conn)
+    except Exception as e:
+        logger.debug('multi_strategy_starts failed: %s', e)
+        return {}
+    df['ticker'] = df['ticker'].astype(str).str.strip()
+    df['buyDate'] = pd.to_datetime(df['buyDate'], errors='coerce')
+    df = df.dropna(subset=['buyDate'])
+    out = df.groupby('ticker')['buyDate'].max().to_dict()            # last buy
+    out.update(df[df['is_open'] == 1].groupby('ticker')['buyDate'].min().to_dict())
+    return out
 
 
 def held_tickers() -> list:
