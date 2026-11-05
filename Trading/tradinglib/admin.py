@@ -211,28 +211,7 @@ def _has_price_data(ticker: str, db_path: str = 'database') -> bool:
         return False
 
 
-def _tab_overlay(label: str) -> str:
-    """Full-viewport loading overlay — must be injected into an st.empty() that lives
-    OUTSIDE any tab/expander context so position:fixed covers the real viewport."""
-    return (
-        '<style>@keyframes _tt_spin{to{transform:rotate(360deg)}}</style>'
-        '<div style="position:fixed;top:0;left:0;right:0;bottom:0;'
-        'width:100vw;height:100vh;background:rgba(10,12,20,0.55);'
-        'z-index:99999;display:flex;align-items:center;justify-content:center;">'
-        '<div style="display:flex;flex-direction:column;align-items:center;'
-        'gap:2rem;padding:3rem 4rem;border-radius:1.5rem;'
-        'background:rgba(255,255,255,0.08);backdrop-filter:blur(12px);'
-        '-webkit-backdrop-filter:blur(12px);">'
-        '<div style="width:80px;height:80px;border-radius:50%;flex-shrink:0;'
-        'border:6px solid rgba(255,255,255,0.15);border-top-color:#5b9cf6;'
-        'animation:_tt_spin 0.85s linear infinite;"></div>'
-        f'<p style="color:#dce4ef;font-size:1.4rem;font-weight:500;margin:0;'
-        f'letter-spacing:0.04em;">'
-        f'<span style="opacity:0.5;font-size:0.8em;font-weight:400;'
-        f'letter-spacing:0.1em;text-transform:uppercase;">Loading: </span>'
-        f'{label} …</p>'
-        '</div></div>'
-    )
+from tradinglib.loading_overlay import tab_overlay as _tab_overlay  # noqa: E402
 
 
 class Admin():

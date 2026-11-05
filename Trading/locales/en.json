@@ -1857,6 +1857,8 @@
   "ota.signal_tf_help": "Which candle basis the signal is computed on. Daily is fastest but its last signal is often months old (measured: median 120 days versus 40 days on 4 hours). Finer timeframes barely change the decisions, but they are more current — and they take longer (daily ≈ 6 s, 4 hours ≈ 13 s, 1 hour ≈ 21 s for 21 positions).",
   "cfg.chart_zoom_factor": "Initial chart zoom (factor)",
   "cfg.chart_zoom_factor_help": "Controls how much history is visible when a chart opens. The window spans trend length × factor candles from the right edge — in the Asset Viewer the trend length is 21, so a factor of 4 shows 84 candles. Lower value = zoomed in further, higher value = more history. Zooming out in the chart remains possible at any time; this only sets the initial view. Default: 4.",
+  "cfg.loading_overlay": "Full-page loading overlay",
+  "cfg.loading_overlay_help": "True: while a page computes, a darkened overlay with a large spinner covers the whole window. False: only Streamlit's small spinner where something is loading — the rest of the page stays readable. Applies from the next action on the page.",
   "live.tick_interval": "Live quote interval",
   "live.tick_interval_help": "How the streamed ticks are aggregated for the live chart. Independent of the history chart's interval/period below. All intervals keep feeding the trend signal; only the selected one is drawn.",
   "live.col_change_help": "Change against the first tick of the loaded session — not the daily change against yesterday's close.",

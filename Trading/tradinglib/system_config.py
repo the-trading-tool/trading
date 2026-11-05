@@ -312,6 +312,7 @@ class SystemConfig(tools.Db_tools):
         idx_show_regime = self.get_idx_selected(b_select, 'show_regime', 1)
         idx_mark_nontrading = self.get_idx_selected(b_select, 'mark_nontrading_times', 0)
         idx_extended_hours = self.get_idx_selected(b_select, 'chart_extended_hours', 1)
+        idx_loading_overlay = self.get_idx_selected(b_select, 'loading_overlay', 0)
         idx_interval = self.get_idx_selected(intervals, 'interval',3)
         idx_start_page = self.get_idx_selected(start_pages, 'start_page', 0)
         self.region.write(i18n.t("cfg.user", username=self.username))
@@ -393,6 +394,11 @@ class SystemConfig(tools.Db_tools):
             self.set_value('logo_watermark_opacity', _c_opacity.number_input(
                 i18n.t("cfg.logo_opacity"), min_value=1, max_value=50, value=_lm_opacity, step=1,
                 help=i18n.t("cfg.logo_opacity_help")))
+            # Full-screen "Loading" overlay over st.spinner (asset_analyzer). Off =
+            # Streamlit's small inline spinner; the page stays readable meanwhile.
+            self.set_value('loading_overlay', st.selectbox(
+                i18n.t("cfg.loading_overlay"), b_select, idx_loading_overlay,
+                help=i18n.t("cfg.loading_overlay_help")))
             self.set_value('tz_info', st.text_input(i18n.t("cfg.timezone"), self.get_value('tz_info', "Europe/Berlin")))
             self.set_value('monitored_assets', st.text_input(i18n.t("cfg.monitored_assets"), self.get_value('monitored_assets', "")))
 
