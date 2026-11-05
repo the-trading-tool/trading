@@ -105,3 +105,38 @@ def test_messages_localised_in_both_languages():
     msgs = fr.problem_messages(problems)
     assert len(msgs) == 2 and '(close < sup_support' in msgs[0] and 'x' in msgs[1]
     assert fr.check('(rsi < 30)', '(rsi > 70)', COLS) == {}
+
+
+def test_quoted_values_are_not_indicators(caplog):
+    """(recommendationKey=='buy') tried to compute indicators 'buy'/'strong_buy' per ticker."""
+    from tradinglib import scalable_signals
+    df = pd.DataFrame({'ticker': ['A'] * 4 + ['B'] * 4,
+                       'Date': list(pd.date_range('2026-01-01', periods=4).strftime('%Y-%m-%d 00:00:00')) * 2,
+                       'close': np.arange(8.0),
+                       'recommendationKey': ['buy'] * 4 + ['hold'] * 4})
+    buy = "(recommendationKey=='buy')|(recommendationKey==\"strong_buy\")"
+    with caplog.at_level('ERROR'):
+        out = tools.Tools().populate_indicators_for_df(df.copy(), [buy, ''])
+    assert not {'buy', 'strong_buy'} & set(out.columns) and 'not found' not in caplog.text
+    sig = BuySellSignalGenerator(out, buy, '(close > 100)').apply_signals()
+    assert sig.groupby('ticker')['buySell'].max().to_dict() == {'A': 1, 'B': 0}
+    assert scalable_signals.missing_columns(buy, {'recommendationKey', 'close'}) == []
+
+
+def test_unknown_names_are_rejected_once_not_per_ticker(caplog):
+    from tradinglib import tf_indicators as tf
+    assert all(tf.is_known_indicator(t) for t in ('ema100', 'rsi7', 'ma20@W', 'ewoEma21', 'atr'))
+    assert not any(tf.is_known_indicator(t) for t in ('rsii', 'buy', 'strong_buy', 'foo_bar'))
+    df = pd.DataFrame({'ticker': ['A'] * 30 + ['B'] * 30,
+                       'Date': list(pd.date_range('2026-01-01', periods=30).strftime('%Y-%m-%d 00:00:00')) * 2,
+                       'close': np.linspace(10, 40, 60)})
+    with caplog.at_level('WARNING'):
+        out = tools.Tools().populate_indicators_for_df(df.copy(), ['(rsii > 50) & (ema5 > close)', ''])
+    assert 'rsii' not in out.columns and 'ema5' in out.columns
+    assert caplog.text.count('neither in the data nor computable') == 1
+    assert 'Error computing' not in caplog.text
+    # what the Finder checks before populating: ema5 is fine, rsii is not
+    known = list(df.columns) + tools.computable_names(['(rsii > 50) & (ema5 > close)', '(fg_score > 70)'], df.columns)
+    assert 'ema5' in known and 'fg_score' in known and 'rsii' not in known
+    assert fr.check('(rsii > 50) & (ema5 > close)', '(fg_score > 70)', known) == {
+        'buy': [{'kind': 'unknown', 'names': ['rsii']}]}

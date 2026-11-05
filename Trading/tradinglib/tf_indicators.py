@@ -287,6 +287,25 @@ def _ensure_plugins_loaded():
         _PLUGIN_REGISTRY.update(_discover_plugins())
 
 
+def is_known_indicator(token: str, default_tf: str = 'D') -> bool:
+    """Whether get_indicator can compute *token* at all (built-in or plugin).
+
+    Mirrors get_indicator's dispatch without computing anything, so a caller can
+    reject an unknown name once instead of failing on it for every ticker.
+    """
+    try:
+        ind, params, _tf, _out = parse_indicator_token(token, default_tf)
+    except Exception:
+        return False
+    if ind in ('ema', 'ma') and 'base_col' in params:
+        return True
+    # Same names _compute_builtin_indicator accepts.
+    if ind.startswith('ma') or ind.startswith('ema') or ind in ('atr', 'rsi', 'macd'):
+        return True
+    _ensure_plugins_loaded()
+    return ind in _PLUGIN_REGISTRY
+
+
 def get_indicator(df: pd.DataFrame,
                   indicator_name: str,
                   timeframe: str = 'D',

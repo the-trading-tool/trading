@@ -230,7 +230,9 @@ class Tools:
         def extract_tokens(expr):
             toks = set()
             for e in expr if isinstance(expr, list) else [expr]:
-                toks.update(TOKEN_RE.findall(e or ''))
+                # Text in quotes is a value, not a column: (recommendationKey=='buy')
+                # tried to compute an indicator 'buy' for every ticker.
+                toks.update(TOKEN_RE.findall(_formula_text(e)))
             return toks
 
         # Market context (mkt_breadth*, fg_score) is joined, not computed. Joined
@@ -255,6 +257,13 @@ class Tools:
         existing_lower = {c.lower() for c in combined_df.columns}
         tokens = [t for t in tokens
                   if t not in combined_df.columns and t.lower() not in existing_lower]
+        # A name that is neither a column nor an indicator fails the same way for
+        # every ticker (one traceback each). Report it once and leave it out; the
+        # formula check then names it as unknown instead of a silent all-NaN column.
+        unknown = sorted(t for t in tokens if not tf.is_known_indicator(t, default_tf))
+        if unknown:
+            logger.warning('Formula names neither in the data nor computable: %s', ', '.join(unknown))
+            tokens = [t for t in tokens if t not in unknown]
         if not tokens:
             return combined_df
 
@@ -807,6 +816,33 @@ def formula_names(expression) -> list:
     for name in _FORMULA_NAME_RE.findall(_formula_text(expression)):
         if name.lower() not in _FORMULA_KEYWORDS and name not in out:
             out.append(name)
+    return out
+
+
+def computable_names(expressions, columns) -> list:
+    """Names in *expressions* that are no column yet but will be there before evaluation.
+
+    Indicators populate_indicators_for_df can compute (ema100, rsi7, ...) and the
+    market context it joins (mkt_breadth*, fg_score). Together with *columns* this
+    is what a formula may use -- known before anything is computed per ticker.
+    """
+    from tradinglib import tf_indicators as tf
+    try:
+        from tradinglib import market_context as _mc
+        joined = set(_mc.BREADTH_COLUMNS) | set(_mc.FG_COLUMNS)
+    except Exception:
+        joined = set()
+    have = set(columns)
+    lower = {str(c).lower() for c in have}
+    out = []
+    for expression in expressions or ():
+        for name in formula_names(expression):
+            if name.startswith(ENTRY_PREFIX):
+                name = name[len(ENTRY_PREFIX):]
+            if name in have or name.lower() in lower or name in out or name in ('tp', 'sl'):
+                continue
+            if name in joined or tf.is_known_indicator(name):
+                out.append(name)
     return out
 
 

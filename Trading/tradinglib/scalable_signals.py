@@ -169,7 +169,8 @@ def missing_columns(query: str, available: set) -> list:
     """
     if not available or not query:
         return []
-    ids = set(re.findall(r'[A-Za-z_]\w*', query)) - _QUERY_KEYWORDS
+    # Quoted text is a value ('buy'), not an identifier.
+    ids = set(re.findall(r'[A-Za-z_]\w*', re.sub(r"'[^']*'|\"[^\"]*\"", ' ', query))) - _QUERY_KEYWORDS
     # Entry-relative names are filled by the signal engine: tp/sl need nothing,
     # entry_<col> needs <col>.
     ids = {i[len('entry_'):] if i.startswith('entry_') else i
