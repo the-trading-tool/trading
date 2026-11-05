@@ -91,6 +91,12 @@ def test_examples_evaluate():
         x = tools.Tools().populate_indicators_for_df(df.copy(), [buy, sell], default_tf='D')
         window = 3 if '\n' in buy else 1
         for expr in (buy, sell):
+            if tools.entry_state_tokens(expr):
+                # Entry values exist only inside the position-aware engine.
+                out = tools.BuySellSignalGenerator(x.copy(), buy, expr,
+                                                   signal_window=window).apply_signals()
+                assert len(out) == len(x), k
+                continue
             mask = tools.compute_signal_mask(x, expr, window=window)
             assert len(mask) == len(x), k
 

@@ -245,6 +245,10 @@ class Tools:
 
         # filter out operators/keywords
         tokens = {t for t in tokens if t.lower() not in ('and','or','not','true','false')}
+        # Entry-relative names are filled by BuySellSignalGenerator, not computed:
+        # tp/sl drop out, entry_<col> needs <col>.
+        tokens = {t[len(ENTRY_PREFIX):] if t.startswith(ENTRY_PREFIX) else t
+                  for t in tokens if t not in ('tp', 'sl')}
         # Build a case-folded set of existing columns so that e.g. 'Close'
         # is recognised as already satisfied by 'close' (simulation DB stores
         # OHLCV in lowercase while live queries may use yfinance capitalisation).
@@ -843,6 +847,66 @@ def _with_market_context(df: pd.DataFrame, *conditions) -> pd.DataFrame:
         return df
 
 
+ENTRY_PREFIX = 'entry_'
+# tp/sl (take_profit/stop_loss of the entry bar) and entry_<column> (any column's
+# value on the entry bar). Not after a '.', so pandas methods never match.
+_ENTRY_STATE_RE = re.compile(r'(?<![\w.])(tp|sl|entry_[A-Za-z_]\w*)(?![\w])')
+
+
+def entry_state_tokens(expression) -> list:
+    """Entry-relative names a sell formula uses: 'tp', 'sl', 'entry_<col>' (first-use order)."""
+    out = []
+    for tok in _ENTRY_STATE_RE.findall(str(expression or '')):
+        if tok not in out:
+            out.append(tok)
+    return out
+
+
+def entry_columns(expression) -> list:
+    """Columns referenced as entry_<col> ('entry_sup_support' -> 'sup_support')."""
+    return [t[len(ENTRY_PREFIX):] for t in entry_state_tokens(expression)
+            if t.startswith(ENTRY_PREFIX)]
+
+
+_ENTRY_SOURCE = {'tp': 'take_profit', 'sl': 'stop_loss'}
+
+
+def _entry_source(df: pd.DataFrame, token: str):
+    """Column of *df* an entry token reads (case-insensitive fallback), or None."""
+    col = _ENTRY_SOURCE.get(token, token[len(ENTRY_PREFIX):])
+    if col in df.columns:
+        return col
+    lower = {str(c).lower(): c for c in df.columns}
+    return lower.get(col.lower())
+
+
+def missing_entry_columns(df: pd.DataFrame, expression) -> list:
+    """entry_<col> names whose source column *df* lacks (tp/sl are never missing)."""
+    return [t[len(ENTRY_PREFIX):] for t in entry_state_tokens(expression)
+            if t.startswith(ENTRY_PREFIX) and _entry_source(df, t) is None]
+
+
+def set_entry_values(g: pd.DataFrame, tokens, entry_pos: int) -> pd.DataFrame:
+    """Write the entry bar's values as columns tp / sl / entry_<col> into *g* (in place).
+
+    *g* is one ticker, time-ordered, positionally indexed by *entry_pos*. Bars up
+    to and including the entry get NaN -- an entry value cannot be met before
+    the position exists, also not via the signal window -- later bars the value
+    of row *entry_pos*. tp/sl without a take_profit/stop_loss column are NaN.
+    Shared by the backtest (BuySellSignalGenerator) and the live agent.
+    """
+    n = len(g)
+    for tok in tokens:
+        src = _entry_source(g, tok)
+        val = np.nan
+        if src is not None:
+            val = pd.to_numeric(pd.Series([g[src].iloc[entry_pos]]), errors='coerce').iloc[0]
+        col = np.full(n, np.nan)
+        col[entry_pos + 1:] = val
+        g[tok] = col
+    return g
+
+
 def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'ticker',
                         window: int = 1) -> pd.Series:
     """Wertet eine Buy/Sell-Bedingung zu einer Bool-Serie aus (auf df.index ausgerichtet).
@@ -1182,7 +1246,8 @@ class BuySellSignalGenerator:
         """Apply buy and sell logic to self.df and return the annotated DataFrame.
 
         Sets buySell column: 1=buy, -1=sell, 0=hold. Handles optional
-        buy_delay_days and stop-loss/take-profit from the tp/sl row columns.
+        buy_delay_days. Sell formulas may use the entry bar's values: tp/sl
+        (take_profit/stop_loss) and entry_<col> for any column.
         """
         try:
             self.df = self.df.sort_values(by=["ticker", "Date"])
@@ -1236,18 +1301,19 @@ class BuySellSignalGenerator:
         # below only reads from it — semantics (open position, tie bars, buy_delay)
         # remain unchanged.
         #
-        # Fallback (per row): as soon as the sell condition references entry-relative
-        # tp/sl, the truth value is position-dependent and cannot be pre-computed
-        # -> the existing per-row logic applies exactly.
-        uses_entry_state = bool(re.search(r'(?<![\w])(tp|sl)(?![\w])', self.sell_condition or ''))
-        sell_mask_global = None
-        if not uses_entry_state:
-            try:
-                sell_mask_global = compute_signal_mask(self.df, self.sell_condition,
-                                                       window=self.signal_window)
-            except Exception:
-                # On any problem fall back completely to the per-row path.
-                sell_mask_global = None
+        # Entry-relative names (tp, sl, entry_<col>) make the truth value depend on
+        # the open position -> evaluated once per position instead (_entry_state_sells).
+        if entry_state_tokens(self.sell_condition):
+            self.df['buySell'] = self._entry_state_sells(self.df['buySell'].to_numpy().copy())
+            if self._added_aliases:
+                self.df = self.df.drop(columns=self._added_aliases, errors='ignore')
+            return self.df
+        try:
+            sell_mask_global = compute_signal_mask(self.df, self.sell_condition,
+                                                   window=self.signal_window)
+        except Exception:
+            # On any problem fall back completely to the per-row path.
+            sell_mask_global = None
 
         # Stateful open/close pass over numpy arrays instead of df.iterrows()/df.at —
         # for ~228k rows (^RUT) the pure Python loop over arrays is many times faster
@@ -1269,7 +1335,7 @@ class BuySellSignalGenerator:
                     # Fast path: just read the pre-computed bool.
                     cond = bool(sell_arr[i])
                 else:
-                    # Fallback: per-row evaluation (e.g. tp/sl referenced).
+                    # Fallback: per-row evaluation when the vectorised mask failed.
                     tp, sl = open_positions[ticker]
                     row = self.df.iloc[i]
                     context = {**row.to_dict(), 'tp': tp, 'sl': sl}
@@ -1303,6 +1369,65 @@ class BuySellSignalGenerator:
         if self._added_aliases:
             self.df = self.df.drop(columns=self._added_aliases, errors='ignore')
         return self.df
+
+    def _entry_state_sells(self, buysell: np.ndarray) -> np.ndarray:
+        """Sell pass for formulas with tp / sl / entry_<col>.
+
+        Per ticker, position by position: the entry bar's values are written as
+        columns (tp, sl, entry_<col>) onto the bars after the entry -- NaN before
+        and on it -- and the sell formula is evaluated on the ticker's whole
+        history with compute_signal_mask, so shift/rolling and the signal window
+        work as everywhere else. The first true bar after the entry is the sell;
+        the next position opens at the next buy marker after it. Same open/close
+        rules as the loop in apply_signals: a sell bar never reopens, buy markers
+        while a position is open stay as they are.
+        """
+        cond = self.sell_condition
+        tokens = entry_state_tokens(cond)
+        missing = missing_entry_columns(self.df, cond)
+        if missing:
+            msg = f"[SELL-ERROR] unknown column for entry_: {', '.join(missing)}"
+            logger.error(msg)
+            try:
+                st.error(msg)
+            except Exception:
+                pass
+            return buysell
+
+        reported = False
+        for _tk, pos in self.df.groupby('ticker', sort=False).indices.items():
+            bs = buysell[pos]
+            if not (bs == 1).any():
+                continue
+            g = self.df.iloc[pos].copy()
+            n = len(pos)
+            start = 0
+            while start < n:
+                opens = np.flatnonzero(bs[start:] == 1)
+                if not len(opens):
+                    break
+                b = start + int(opens[0])
+                set_entry_values(g, tokens, b)
+                try:
+                    mask = compute_signal_mask(g, cond, group_col='ticker',
+                                               window=self.signal_window).to_numpy()
+                except Exception as e:
+                    if not reported:
+                        logger.error("[SELL-ERROR] %s", e)
+                        try:
+                            st.error(f"[SELL-ERROR] {e}")
+                        except Exception:
+                            pass
+                        reported = True
+                    break
+                hits = np.flatnonzero(mask[b + 1:])
+                if not len(hits):
+                    break                       # position stays open
+                s = b + 1 + int(hits[0])
+                bs[s] = -1
+                start = s + 1
+            buysell[pos] = bs
+        return buysell
 
 
 if __name__ == "__main__":

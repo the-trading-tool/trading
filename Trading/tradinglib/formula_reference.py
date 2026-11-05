@@ -90,6 +90,8 @@ EXAMPLES: tuple[tuple[str, str, str], ...] = (
     ('rft', '(rft_signal == 1) & (markov_regime == 1)', '(rft_state < 0) | (rft_ktrend < 0)'),
     ('breadth', '(mkt_breadth50 <= 25) & (close > sma200) & (rsi < 35)', '(rsi >= 65)'),
     ('season', '(scr_1mo >= 30) & (close > sma50)', '(scr_1mo <= -30)'),
+    ('entry_stop', '(close <= sup_support * 1.02) & (close > sma200) & (rsi < 40)',
+     '(close < entry_sup_support * 0.97) | (rsi >= 70)'),
 )
 
 # Identifiers and free text: not useful in a formula.

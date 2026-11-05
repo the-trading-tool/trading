@@ -78,6 +78,8 @@ def indicators_for_expressions(expressions, selected=()) -> list:
     out = []
     for expression in expressions or ():
         for token in _EXPR_TOKEN.findall(expression or ''):
+            if token.startswith('entry_'):
+                token = token[len('entry_'):]        # entry value of the same column
             name = mapping.get(token)
             if name and name not in chosen and name not in out:
                 out.append(name)

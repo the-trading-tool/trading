@@ -98,5 +98,6 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><b>Harter %-Stop + Orphan-Close</b></td><td>beides kombiniert.</td></tr>
 </table>
 <div class="info">Der Kauf-Stop ist broker-seitig (auch ohne laufenden Agenten wirksam); Sell-Netz und Orphan-Close benötigen einen laufenden Agent-Zyklus. Im Dry-Run wird nichts real geschlossen.</div>
+<div class="info">Sell-Bedingungen mit Werten vom Kauftag (<code>entry_close</code>, <code>entry_sup_support</code>, <code>sl</code>, <code>tp</code> …) rechnet der Agent wie der Backtest: mit der Indikatorzeile des Tages, an dem die Position eröffnet wurde (erster Fill nach dem letzten Verkauf, aus dem Order-Log). Bis die Zeile dieses Tages und ein weiterer Tag in der Datenbank stehen, verkauft eine solche Bedingung nicht.</div>
 </body>
 </html>

@@ -42,7 +42,15 @@ def formula_columns(df: pd.DataFrame, *formulas: str) -> list[str]:
     """Columns of *df* a formula refers to, plus what the check itself needs."""
     names = set()
     for f in formulas:
-        names.update(_TOKEN.findall(f or ''))
+        for tok in _TOKEN.findall(f or ''):
+            # Entry-relative names read their source column on the entry bar.
+            if tok.startswith('entry_'):
+                tok = tok[len('entry_'):]
+            elif tok == 'tp':
+                tok = 'take_profit'
+            elif tok == 'sl':
+                tok = 'stop_loss'
+            names.add(tok)
     base = ['ticker', 'Date', 'close', 'stockIndex']
     return [c for c in dict.fromkeys(base + sorted(names)) if c in df.columns]
 

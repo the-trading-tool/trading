@@ -98,5 +98,6 @@ code{background:#f4f6f8;border:1px solid #dde2e8;border-radius:4px;padding:2px 6
 <tr><td><b>Hard %-stop + orphan close</b></td><td>both combined.</td></tr>
 </table>
 <div class="info">The buy-stop is broker-side (works even without a running agent); the sell net and orphan close require a running agent cycle. In dry-run nothing is actually closed.</div>
+<div class="info">Sell conditions with values from the buy day (<code>entry_close</code>, <code>entry_sup_support</code>, <code>sl</code>, <code>tp</code> …) are computed like the backtest: from the indicator row of the day the position was opened (first fill after the last sell, from the order log). Until that day's row and one more day are in the database, such a condition does not sell.</div>
 </body>
 </html>
