@@ -73,9 +73,13 @@ def test_entry_value_not_visible_on_or_before_entry():
     assert _run(df, sell, window=3) == [0, 0, 1, 0, 0]
 
 
-def test_unknown_entry_column_sells_nothing():
+def test_unknown_entry_column_stops_before_evaluating():
+    # Caught by the formula check: nothing is evaluated, not even the buys.
     df = _frame([100, 50, 40], buy=[1, 0, 0])
-    assert _run(df, '(close < entry_nope)') == [1, 0, 0]
+    gen = BuySellSignalGenerator(df.copy(), '(b > 0)', '(close < entry_nope)')
+    out = gen.apply_signals()
+    assert out['buySell'].tolist() == [0, 0, 0]
+    assert gen.formula_errors['sell'] == [{'kind': 'unknown', 'names': ['nope']}]
 
 
 def _old_tp_sl(df, buy, sell):

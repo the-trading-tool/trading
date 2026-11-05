@@ -141,6 +141,40 @@ def ordered_columns(columns) -> list[str]:
     return lead + grouped + rest
 
 
+def check(buy: str, sell: str, columns=None) -> dict:
+    """{'buy'|'sell': problems} for both formulas (tools.formula_problems); {} = fine.
+
+    Without *columns* only the syntax and tp/sl/entry_ in the buy formula are
+    checked -- what can be said while typing, before anything is loaded.
+    """
+    from tradinglib import tools
+    found = {'buy': tools.formula_problems(buy, columns, 'buy'),
+             'sell': tools.formula_problems(sell, columns, 'sell')}
+    return {k: v for k, v in found.items() if v}
+
+
+def problem_messages(problems: dict) -> list[str]:
+    """Localised one-liners for check(): which formula, which condition, what is wrong."""
+    out = []
+    for side, items in (problems or {}).items():
+        label = _t(f'fref.err.{side}')
+        for p in items:
+            if p['kind'] == 'syntax':
+                msg = p['msg']
+                if 'never closed' in msg:
+                    msg = _t('fref.err.unclosed')
+                elif 'unmatched' in msg or 'does not match' in msg:
+                    msg = _t('fref.err.unmatched')
+                out.append(_t('fref.err.syntax', side=label, line=p['line'], msg=msg))
+            elif p['kind'] == 'entry_in_buy':
+                out.append(_t('fref.err.entry_in_buy', names=', '.join(p['names'])))
+            elif p['kind'] == 'unknown':
+                out.append(_t('fref.err.unknown', side=label, names=', '.join(p['names'])))
+            else:
+                out.append(f"{label}: {p.get('msg', '')}")
+    return out
+
+
 def describe(column: str) -> str:
     """Locale description of *column*, or '' when none exists."""
     key = f'fref.c.{column}'

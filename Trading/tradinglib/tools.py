@@ -789,6 +789,81 @@ def split_conditions(expression) -> list:
     return [ln for ln in out if ln]
 
 
+_FORMULA_KEYWORDS = frozenset({'and', 'or', 'not', 'true', 'false', 'in', 'is', 'none'})
+# A name as populate_indicators_for_df reads it (with '@' for timeframes), not
+# after a '.' (pandas method) and not a function call (abs(...)).
+_FORMULA_NAME_RE = re.compile(r'(?<![\w.@])([A-Za-z_][A-Za-z0-9_@]*)(?![A-Za-z0-9_@])(?!\s*\()')
+
+
+def _formula_text(expression) -> str:
+    """Formula with optimizer placeholders (%%x) as 0 and string literals blanked."""
+    text = re.sub(r'%%\w+', '0', str(expression or ''))
+    return re.sub(r"'[^']*'|\"[^\"]*\"", '0', text)
+
+
+def formula_names(expression) -> list:
+    """Column-like names a formula uses (first-use order, keywords excluded)."""
+    out = []
+    for name in _FORMULA_NAME_RE.findall(_formula_text(expression)):
+        if name.lower() not in _FORMULA_KEYWORDS and name not in out:
+            out.append(name)
+    return out
+
+
+def formula_problems(expression, columns=None, role: str = 'buy') -> list:
+    """What is wrong with a buy/sell formula, checked before any row is evaluated.
+
+    Returns a list of dicts: ``{'kind': 'syntax', 'line', 'msg'}`` for a condition
+    that does not parse, ``{'kind': 'entry_in_buy', 'names'}`` for tp/sl/entry_
+    in a buy formula (they exist only while a position is open), and -- with
+    *columns* -- ``{'kind': 'unknown', 'names'}`` for names that are no column
+    (case-insensitive; entry_<col> needs <col>). Empty list = fine.
+
+    Without this check a syntax error surfaced only while evaluating: the sell
+    side then fell back to row-by-row and reported the same error for every row.
+    """
+    import ast
+    problems = []
+    text = re.sub(r'%%\w+', '0', str(expression or ''))
+    for line in split_conditions(text):
+        try:
+            ast.parse(line, mode='eval')
+        except SyntaxError as e:
+            problems.append({'kind': 'syntax', 'line': line, 'msg': e.msg})
+    entry = entry_state_tokens(text)
+    if role == 'buy' and entry:
+        problems.append({'kind': 'entry_in_buy', 'names': entry})
+    if columns is not None:
+        have = set(columns)
+        lower = {str(c).lower() for c in have}
+        unknown = []
+        for name in formula_names(text):
+            if name in entry:
+                if role == 'buy' or name in ('tp', 'sl'):
+                    continue
+                name = name[len(ENTRY_PREFIX):]
+            if name not in have and name.lower() not in lower and name not in unknown:
+                unknown.append(name)
+        if unknown:
+            problems.append({'kind': 'unknown', 'names': unknown})
+    return problems
+
+
+def describe_formula_problems(problems) -> str:
+    """One readable line per problem (English; the Finder localises its own)."""
+    out = []
+    for p in problems or []:
+        if p['kind'] == 'syntax':
+            out.append(f"{p['line']}: {p['msg']}")
+        elif p['kind'] == 'entry_in_buy':
+            out.append(f"only in sell formulas: {', '.join(p['names'])}")
+        elif p['kind'] == 'unknown':
+            out.append(f"unknown column: {', '.join(p['names'])}")
+        else:
+            out.append(str(p.get('msg', '')))
+    return '; '.join(out)
+
+
 def _window_mask(df: pd.DataFrame, lines: list, group_col: str, window: int) -> pd.Series:
     """Alle Bedingungen erfuellt -- aber nicht zwingend auf demselben Balken.
 
@@ -1241,6 +1316,16 @@ class BuySellSignalGenerator:
         self.signal_window = int(signal_window or 1)
         self.buy_windows = buy_windows or []
         self.df['buySell'] = 0
+        # {'buy'|'sell': formula_problems(...)} -- filled by apply_signals; a
+        # non-empty dict means nothing was evaluated (see check_formulas).
+        self.formula_errors: dict = {}
+
+    def check_formulas(self) -> dict:
+        """Syntax and column check of both formulas against this frame (nothing evaluated)."""
+        found = {'buy': formula_problems(self.buy_condition, self.df.columns, 'buy'),
+                 'sell': formula_problems(self.sell_condition, self.df.columns, 'sell')}
+        self.formula_errors = {k: v for k, v in found.items() if v}
+        return self.formula_errors
 
     def apply_signals(self):
         """Apply buy and sell logic to self.df and return the annotated DataFrame.
@@ -1257,6 +1342,21 @@ class BuySellSignalGenerator:
             self.df = self.df.reset_index(drop=True)
         except Exception:
             pass
+
+        # Broken formula: report it once and evaluate nothing -- instead of an
+        # error per row at the end of the run (sell side, row-by-row fallback).
+        if self.check_formulas():
+            msg = ' | '.join(f'{side} formula: {describe_formula_problems(p)}'
+                             for side, p in self.formula_errors.items())
+            logger.error('[FORMULA-ERROR] %s', msg)
+            try:
+                st.error(f'[FORMULA-ERROR] {msg}')
+            except Exception:
+                pass
+            if self._added_aliases:
+                self.df = self.df.drop(columns=self._added_aliases, errors='ignore')
+            return self.df
+
         delayed_signals = []
 
         # Step 1: Evaluate buy condition group-wise (shared layer).
@@ -1347,12 +1447,16 @@ class BuySellSignalGenerator:
                         try:
                             cond = bool(eval(self.sell_condition, {}, context))
                         except Exception as e:
+                            # Report once and stop evaluating: the same formula fails
+                            # on every further row, and the run would end with one
+                            # message per row. Positions then stay open, as before.
                             logger.error("[SELL-ERROR] Row %s, Ticker %s: %s", i, ticker, e)
                             try:
-                                st.error(f"[SELL-ERROR] Row {i}, Ticker {ticker}: {e}")
+                                st.error(f"[SELL-ERROR] Ticker {ticker}: {e}")
                             except Exception:
                                 pass
-                            cond = False
+                            self.formula_errors['sell'] = [{'kind': 'runtime', 'msg': str(e)}]
+                            break
                 if cond:
                     buysell[i] = -1
                     del open_positions[ticker]
