@@ -117,6 +117,9 @@ from tradinglib import loading_overlay
 _tab_overlay = loading_overlay.tab_overlay
 
 
+from tradinglib import route_url  # noqa: E402
+
+
 class PortfolioOptimizer:
     def __init__(self, tickers, investment_per_asset=2000):
         """Set up the optimizer with a ticker list and a per-asset investment budget."""
@@ -897,6 +900,10 @@ class TradingApp:
                 if not parms:
                     parms = self._resolve_entry_route()
                     st.session_state['_nav_params'] = parms
+
+                # Keep the current page in the address bar, so a reload (Android
+                # discards background tabs) returns here, not to the start page.
+                route_url.sync(parms)
 
                 # Edition-Guard: In der Scalable-Edition sind nur ausgewählte Routen
                 # frei; alle übrigen Features sind ein Upgrade. In der 'full'-Edition
