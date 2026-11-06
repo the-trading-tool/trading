@@ -198,7 +198,9 @@ class Atc(_indicator._Indicator):
         if self.symbol and self._is_daily(target):
             try:
                 from tradinglib import four_ps
-                hist = four_ps.load_daily(self.symbol)
+                # Not past the chart's last bar: the drawn channel is the one of
+                # that bar, not of today (as-of date / range slider).
+                hist = four_ps.cap_to_chart(four_ps.load_daily(self.symbol), target)
                 if hist is not None and len(hist) >= len(target) // 2:
                     # Older bars cannot reach any bar of the chart through its
                     # trailing window — cut them, it changes no value.

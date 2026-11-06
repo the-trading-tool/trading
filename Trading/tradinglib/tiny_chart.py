@@ -48,7 +48,7 @@ class tiny_chart(gt.GraphTools):
     dt_obs = None
     calc_ly_hl = False
 
-    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None, zoom_base=None, zoom_start=None):
+    def __init__(self, symbol, longname='', period = '1mo', interval = '60m', scale = True, candle_chart = False, range_breaks = False, ly_high = 0, ly_low = 0, url='', tc_width=500, tc_height=700, ath=False, purchase_price=0, x_rate = 1, show_trend=False, trend_length = 15, add_sub_plots=None, max_periods=254, show_legend=False, add_overlays = None,calc_ly_hl=False, username='', zoom = False, exchange = '', pips_select = False, add_current = False, region=st, no_plot_overlays=None, no_plot_oszilators=None, zoom_factor=None, zoom_base=None, zoom_start=None, end_date=None):
 
         if symbol:
             self.username = username
@@ -65,6 +65,9 @@ class tiny_chart(gt.GraphTools):
             # Optional start of the zoom window (e.g. the buy date): the view runs
             # from the bar that contains it to the last bar instead of zoom_base bars.
             self.zoom_start = zoom_start
+            # 'As of' date: the chart ends on that day and sees nothing later
+            # (see FetchData.fetch_data). None = up to today.
+            self.end_date = end_date
             self.exchange = exchange
             self.x_rate = x_rate
             self.purchase_price = purchase_price
@@ -232,6 +235,8 @@ class tiny_chart(gt.GraphTools):
     def get_last_year_hl(self, symbol):
 
         now = datetime.datetime.now()
+        if getattr(self, 'end_date', None):
+            now = pd.Timestamp(self.end_date)      # 'last year' as of the chart's end
         last_year = now.year - 1
 
         h = 0
@@ -269,7 +274,7 @@ class tiny_chart(gt.GraphTools):
             logger.debug('tiny_chart: Indikatoren aus den Formeln nicht ableitbar',
                          exc_info=True)
         self.fd = ft.FetchData(database_path='database', tz_info=self.tz_info, indicators=indicators, buy_query=self.buy_query, sell_query=self.sell_query, sys_conf=self.sys_conf)
-        (self.df, self.ticker) = self.fd.fetch_data(self.symbol, period=self.period, interval=self.interval, add_current=self.add_current, max_periods=self.max_periods, pips_select=self.pips_select, region=self.region)
+        (self.df, self.ticker) = self.fd.fetch_data(self.symbol, period=self.period, interval=self.interval, add_current=self.add_current, max_periods=self.max_periods, pips_select=self.pips_select, region=self.region, end_date=getattr(self, 'end_date', None))
 
         # Normalize incoming DataFrame: ensure there's a usable 'Date' column
         try:
@@ -688,7 +693,7 @@ class tiny_chart(gt.GraphTools):
                 # throwaway, indicator-free instance instead (also cheaper).
                 _ath_fd = ft.FetchData(database_path='database', tz_info=self.tz_info,
                                        indicators=[], sys_conf=self.sys_conf)
-                (df,_) = _ath_fd.fetch_data(self.symbol, period='max', interval='1mo', add_current=False, max_periods=self.max_periods, region=st)
+                (df,_) = _ath_fd.fetch_data(self.symbol, period='max', interval='1mo', add_current=False, max_periods=self.max_periods, region=st, end_date=getattr(self, 'end_date', None))
                 ath = df['High'].max()
                 self._add_hline_outside(
                     y=ath,

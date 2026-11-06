@@ -108,7 +108,9 @@ class Fps(_indicator._Indicator):
         from tradinglib import four_ps as fps
 
         if self.symbol:
-            hist = fps.load_daily(self.symbol)
+            # Not past the chart's last bar: _project would put later events
+            # onto the last bar (as-of date / range slider).
+            hist = fps.cap_to_chart(fps.load_daily(self.symbol), target)
             if not hist.empty:
                 return hist
         # No local history: only fall back to the chart's own frame when it is

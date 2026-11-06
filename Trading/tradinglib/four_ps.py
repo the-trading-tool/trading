@@ -177,6 +177,34 @@ def load_daily(ticker: str, db_path: str | None = None) -> pd.DataFrame:
     return df[~df.index.isna()].dropna(subset=["Close"]).sort_index()
 
 
+def cap_to_chart(hist, target):
+    """Rows of a reloaded history up to the chart's last bar, including its period.
+
+    Indicators that reload the full local daily history (atc, fps, prof, mtt, scr)
+    otherwise see rows after the chart's last bar -- harmless while that bar is
+    today, a look into the future when the chart ends earlier (Asset Viewer
+    'as of' date, range slider). A bar covers its own period: a daily bar its
+    day, a weekly bar (dated Monday) its week, an intraday bar its day's daily
+    row -- so the cut is ``last bar + one bar spacing`` (at least one day).
+    """
+    if hist is None or len(hist) == 0 or target is None or len(target) == 0:
+        return hist
+    t = pd.DatetimeIndex(pd.to_datetime(pd.Index(target), errors='coerce')).dropna()
+    if len(t) == 0:
+        return hist
+    if t.tz is not None:
+        t = t.tz_localize(None)
+    t = t.sort_values()
+    step = pd.Series(t).diff().median() if len(t) > 1 else pd.NaT
+    if pd.isna(step) or step < pd.Timedelta(days=1):
+        step = pd.Timedelta(days=1)
+    cutoff = t[-1].normalize() + step if step == pd.Timedelta(days=1) else t[-1] + step
+    idx = pd.DatetimeIndex(pd.to_datetime(hist.index, errors='coerce'))
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+    return hist[idx < cutoff]
+
+
 def index_members(index: str, db_path: str | None = None) -> list[str]:
     """Ticker symbols of an index/group from yf_tickers.db."""
     con = sqlite3.connect(_p("yf_tickers.db", db_path))

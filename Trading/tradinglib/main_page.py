@@ -1036,9 +1036,20 @@ class render_mainpage(fetch_data.FetchData):
 
             (interval, period, self.overlays, self.oszilators) = self.sys_conf.get_selectors(interval, period, self.overlays, self.oszilators)
 
-        # Pips slider — placed after the Interval/Period/Overlay/Oszilator
-        # dropdowns and before the tabs (filled later, once tiny_chart runs).
-        slider_row = pp_right.empty()
+        # 'As of' date + pips slider — placed after the Interval/Period/Overlay/
+        # Oszilator dropdowns and before the tabs (the slider is filled later,
+        # once tiny_chart runs). The date is always rendered, empty = up to today,
+        # so the element count stays the same.
+        as_of = None
+        if self.hide_details:
+            slider_row = pp_right.empty()
+        else:
+            _asof_col, _slider_col = pp_right.columns([1, 4], vertical_alignment='bottom')
+            as_of = _asof_col.date_input(
+                t('main.as_of'), value=None, key='asset_viewer_as_of',
+                max_value=dt.date.today(), format='DD.MM.YYYY',
+                help=t('main.as_of_help'))
+            slider_row = _slider_col.empty()
 
         if not self.interval == None:
             interval = self.interval
@@ -1064,6 +1075,21 @@ class render_mainpage(fetch_data.FetchData):
         add_current = False
         if interval == "1d":
             add_current = True
+
+        # 'As of' date: no current price; an intraday interval that does not
+        # reach back that far (Yahoo keeps 1m ~7 days, 30m ~60 days) becomes daily.
+        # Shown in the chart title (no extra element: a changing element count
+        # above the chart would shift it between reruns).
+        _as_of_note = ''
+        if as_of is not None:
+            add_current = False
+            from tradinglib.tiny_chart_grid import period_since
+            _start = pd.Timestamp(as_of) - pd.Timedelta(days=1)
+            _p, _iv = period_since(_start, period, interval)
+            _as_of_note = ' · ' + t('main.as_of_title', date=as_of.strftime('%d.%m.%Y'))
+            if _iv != interval:
+                _as_of_note += ' ' + t('main.as_of_daily', interval=interval)
+                interval = _iv
         
         show_details = self.sys_conf.get_value("mp_details",False)
         if self.tab_details:
@@ -1120,7 +1146,7 @@ class render_mainpage(fetch_data.FetchData):
 #                try:
             self.t_chart = tc.tiny_chart(
                 ticker_selected,
-                longname=f"{ticker_selected_longname} - {interval}/{period}",
+                longname=f"{ticker_selected_longname} - {interval}/{period}{_as_of_note}",
                 interval=interval, 
                 period=period, 
                 url=f'{self.url}', 
@@ -1136,7 +1162,8 @@ class render_mainpage(fetch_data.FetchData):
                 zoom = True,
                 pips_select = True,
                 add_current=add_current,
-                region = slider_row
+                region = slider_row,
+                end_date=as_of,
                 )
             self.df = self.t_chart.df
             self.ticker = self.t_chart.ticker

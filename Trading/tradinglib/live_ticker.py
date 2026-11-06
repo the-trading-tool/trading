@@ -1204,6 +1204,7 @@ class LiveTicker(fetch_data.FetchData):
                     pips_select=True,
                     add_current=(interval == "1d"),
                     region=slider_row,
+                    end_date=None,          # live view: always up to now (no 'as of')
                 )
                 st.plotly_chart(history.fig,
                     use_container_width = True,

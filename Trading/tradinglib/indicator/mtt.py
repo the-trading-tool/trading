@@ -57,7 +57,7 @@ class Mtt(_indicator._Indicator):
         if self.symbol:
             try:
                 from tradinglib import four_ps
-                hist = four_ps.load_daily(self.symbol)
+                hist = four_ps.cap_to_chart(four_ps.load_daily(self.symbol), target)
                 if hist is not None and not hist.empty:
                     return hist['Close']
             except Exception:

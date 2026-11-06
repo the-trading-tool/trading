@@ -56,6 +56,8 @@ class Scr(_indicator._Indicator):
 			from tradinglib.utils import DataUtils
 			hist = FetchData(database_path='database').load_price_data(self.symbol, '10y', '1d')
 			hist = DataUtils.ensure_datetime_index(hist)
+			from tradinglib import four_ps
+			hist = four_ps.cap_to_chart(hist, dates)
 			if hist is not None and not hist.empty and 'Close' in hist.columns:
 				return hist
 		except Exception:

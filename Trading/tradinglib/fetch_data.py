@@ -564,14 +564,62 @@ class FetchData(tt.TickerTools):
         return ohlc
 
 
-    def fetch_data(self, symbol, period='1y', interval='1d', max_periods=360, add_current=False, aggregate=False, pips_select=0, region=st):
+    @staticmethod
+    def _end_cutoff(end_date):
+        """Exclusive upper bound for an 'as of' date: the start of the next day (or None)."""
+        if end_date is None or end_date == '':
+            return None
+        try:
+            ts = pd.Timestamp(end_date)
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(ts):
+            return None
+        return ts.tz_localize(None).normalize() + pd.Timedelta(days=1) if ts.tzinfo else \
+            ts.normalize() + pd.Timedelta(days=1)
+
+    @staticmethod
+    def _cut_at(df, cutoff):
+        """Rows of *df* before *cutoff*; the index may hold strings or be tz-aware."""
+        if cutoff is None or df is None or len(df) == 0:
+            return df
+        idx = pd.to_datetime(pd.Index(df.index), errors='coerce')
+        if getattr(idx, 'tz', None) is not None:
+            idx = idx.tz_localize(None)
+        return df[(idx < cutoff).tolist()]
+
+    @staticmethod
+    def _period_reaching(period, end_date, today=None):
+        """Load period so that a window of *period* still fits before *end_date*."""
+        from tradinglib.tiny_chart_grid import _PERIOD_DAYS
+        days = dict(_PERIOD_DAYS)
+        span = days.get(period)
+        if span is None:                      # 'max' or unknown: load everything
+            return period
+        today = pd.Timestamp(today) if today is not None else pd.Timestamp.now()
+        need = max((today.normalize() - pd.Timestamp(end_date).normalize()).days, 0) + span + 1
+        for name, d in _PERIOD_DAYS:
+            if d is None or d >= need:
+                return name
+        return 'max'
+
+    def fetch_data(self, symbol, period='1y', interval='1d', max_periods=360, add_current=False, aggregate=False, pips_select=0, region=st, end_date=None):
         """Load, merge, and optionally decorate price data with technical indicators.
 
         Data priority: local DB → Yahoo Finance fallback. When indicators is non-empty,
         computes EMA/SMA, daily returns, trend, log return, and all requested indicator
         instances, then applies buy/sell signals. Returns (price_df, ticker_df).
+
+        *end_date* ('as of', a date): only prices up to and including that day.
+        The window of *period* then ends on that day instead of today, the
+        current price is not appended, and everything computed afterwards
+        (indicators, buy/sell markers) sees nothing later.
         """
-                
+        cutoff = self._end_cutoff(end_date)
+        load_period = self._period_reaching(period, end_date) if cutoff is not None else period
+        if cutoff is not None:
+            add_current = False
+
         max_periods = self.calc_max_periods(interval=interval, period=period, max_periods=max_periods)
         # Debug: log computed max_periods which will be used to slice the dataframe
         try:
@@ -581,12 +629,13 @@ class FetchData(tt.TickerTools):
         logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
         df_t = self.load_ticker_data(symbol)
-        df_p = self.load_price_data(symbol, period, interval, aggregate=aggregate)
+        df_p = self.load_price_data(symbol, load_period, interval, aggregate=aggregate)
         df_perf = self.load_performance_data(symbol)
-        
+
         # if data is not in our database then get it from yahoo
         if not self.get_num_rows(df_t) or not self.get_num_rows(df_p):
-            df_p, df_t = self.fetch_yahoo_ticker_data(symbol=symbol, period=period, interval=interval)
+            df_p, df_t = self.fetch_yahoo_ticker_data(symbol=symbol, period=load_period, interval=interval)
+        df_p = self._cut_at(df_p, cutoff)
 
         if add_current and not interval[-1:] == 'm': 
             df = self.add_current_price(df_p, symbol)
@@ -661,7 +710,7 @@ class FetchData(tt.TickerTools):
             try:
                 if interval in indicator._COARSE_FREQ:
                     try:
-                        daily = self.load_price_data(symbol, period, '1d')
+                        daily = self._cut_at(self.load_price_data(symbol, load_period, '1d'), cutoff)
                     except Exception as _e:
                         self.logger.warning("daily history for dTrend/wkTrend failed: %s", _e)
                         daily = None
