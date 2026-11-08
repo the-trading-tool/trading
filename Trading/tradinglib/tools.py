@@ -798,7 +798,28 @@ def split_conditions(expression) -> list:
     return [ln for ln in out if ln]
 
 
-_FORMULA_KEYWORDS = frozenset({'and', 'or', 'not', 'true', 'false', 'in', 'is', 'none'})
+# A line holding nothing but "or" separates alternative groups of conditions.
+_ALTERNATIVE_RE = re.compile(r'^[ \t]*or[ \t]*$', re.IGNORECASE | re.MULTILINE)
+
+
+def split_alternatives(expression) -> list:
+    """Split a formula at lines holding only ``or`` into alternative groups.
+
+    Each group is an ordinary (multi-line) formula: its lines are ANDed and,
+    with a signal window > 1, may be met on different bars. The formula holds
+    on a bar when ANY group holds. Without such a line the formula is one group.
+
+    Why a separator line and not ``|``: a ``|`` inside a line (or at a line
+    edge, see :func:`split_conditions`) joins conditions into ONE line, which
+    then has to be met on a single bar -- the signal window is lost. A line
+    with only ``or`` was a syntax error before, so no existing formula changes
+    meaning. Empty groups (leading, trailing or doubled ``or``) are dropped.
+    """
+    text = str(expression or '').replace('\\n', '\n')
+    return [g.strip() for g in _ALTERNATIVE_RE.split(text) if g.strip()]
+
+
+_FORMULA_KEYWORDS =frozenset({'and', 'or', 'not', 'true', 'false', 'in', 'is', 'none'})
 # A name as populate_indicators_for_df reads it (with '@' for timeframes), not
 # after a '.' (pandas method) and not a function call (abs(...)).
 _FORMULA_NAME_RE = re.compile(r'(?<![\w.@])([A-Za-z_][A-Za-z0-9_@]*)(?![A-Za-z0-9_@])(?!\s*\()')
@@ -861,11 +882,12 @@ def formula_problems(expression, columns=None, role: str = 'buy') -> list:
     import ast
     problems = []
     text = re.sub(r'%%\w+', '0', str(expression or ''))
-    for line in split_conditions(text):
-        try:
-            ast.parse(line, mode='eval')
-        except SyntaxError as e:
-            problems.append({'kind': 'syntax', 'line': line, 'msg': e.msg})
+    for group in split_alternatives(text):
+        for line in split_conditions(group):
+            try:
+                ast.parse(line, mode='eval')
+            except SyntaxError as e:
+                problems.append({'kind': 'syntax', 'line': line, 'msg': e.msg})
     entry = entry_state_tokens(text)
     if role == 'buy' and entry:
         problems.append({'kind': 'entry_in_buy', 'names': entry})
@@ -1046,6 +1068,19 @@ def compute_signal_mask(df: pd.DataFrame, condition: str, group_col: str = 'tick
         return pd.Series(False, index=df.index)
 
     df = _with_market_context(df, condition)
+
+    # Alternative groups (a line holding only "or"): each group is evaluated
+    # on its own -- with the signal window -- and the formula holds when any does.
+    groups = split_alternatives(condition)
+    if len(groups) > 1:
+        hit = np.zeros(len(df), dtype=bool)
+        for group in groups:
+            hit |= compute_signal_mask(df, group, group_col=group_col,
+                                       window=window).fillna(False).astype(bool).to_numpy()
+        return pd.Series(hit, index=df.index)
+    if not groups:
+        return pd.Series(False, index=df.index)
+    condition = groups[0]   # drops a stray leading/trailing "or" line
 
     # Mehrzeilige Bedingung: jede Zeile ist eine eigene Bedingung. Bei Fenster 1
     # bleibt es beim bisherigen Verhalten -- die Zeilen werden schlicht mit '&'

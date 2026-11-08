@@ -185,6 +185,77 @@ def test_window_leuchtet_nicht_in_anderen_ticker():
     assert not any(got[df.ticker == 'Y'])
 
 
+def _or_df():
+    """X: a on bar 0, b on bar 2 (window group); c on bar 5 (alternative)."""
+    return pd.DataFrame({
+        'ticker': ['X'] * 8,
+        'Date': pd.date_range('2026-01-01', periods=8),
+        'a': [1, 0, 0, 0, 0, 0, 0, 0],
+        'b': [0, 0, 1, 0, 0, 0, 0, 0],
+        'c': [0, 0, 0, 0, 0, 1, 0, 0],
+    })
+
+
+def test_or_line_keeps_signal_window_per_group():
+    """'or' on its own line: the first group still uses the window (a and b on
+    different bars), the second group fires on its own -- unlike '|' in a line."""
+    f = "a > 0\nb > 0\nor\nc > 0"
+    got = compute_signal_mask(_or_df(), f, window=3).tolist()
+    assert got == [False, False, True, False, False, True, False, False]
+    # Same formula with '|' at the line edge joins c to line b -> same bar needed
+    joined = compute_signal_mask(_or_df(), "a > 0\nb > 0\n| c > 0", window=3).tolist()
+    assert joined != got
+
+
+def test_or_line_equals_or_of_groups():
+    df = _or_df()
+    f = "a > 0\nb > 0\nOR\nc > 0"
+    want = (compute_signal_mask(df, "a > 0\nb > 0", window=3)
+            | compute_signal_mask(df, "c > 0", window=3))
+    assert compute_signal_mask(df, f, window=3).tolist() == want.tolist()
+
+
+def test_or_line_stray_separator_is_ignored():
+    df = _or_df()
+    assert (compute_signal_mask(df, "or\nc > 0\nor\n", window=1).tolist()
+            == compute_signal_mask(df, "c > 0").tolist())
+    assert not compute_signal_mask(df, "or").any()
+
+
+def test_or_line_literal_backslash_n():
+    """Copied from the Multi Strategies JSON: backslash+n instead of newlines."""
+    df = _or_df()
+    assert (compute_signal_mask(df, r"a > 0\nb > 0\nor\nc > 0", window=3).tolist()
+            == compute_signal_mask(df, "a > 0\nb > 0\nor\nc > 0", window=3).tolist())
+
+
+def test_split_alternatives():
+    from tradinglib.tools import split_alternatives
+    assert split_alternatives("(a)\n(b)\n  or  \n(c)") == ["(a)\n(b)", "(c)"]
+    assert split_alternatives("(a) | (b)") == ["(a) | (b)"]
+    # 'or' inside a line or as part of a name is no separator
+    assert split_alternatives("(a) or (b)\n(orders > 0)") == ["(a) or (b)\n(orders > 0)"]
+    assert split_alternatives("") == [] and split_alternatives(None) == []
+
+
+def test_or_line_passes_formula_check():
+    """A lone 'or' line used to be a syntax error; now it is a separator."""
+    from tradinglib.tools import formula_problems
+    f = "(a > 0)\n(b > 0)\nor\n(c > 0)"
+    assert formula_problems(f, ['a', 'b', 'c']) == []
+    bad = formula_problems("(a > 0)\nor\n(c > 0", ['a', 'c'])
+    assert [p['kind'] for p in bad] == ['syntax']
+
+
+def test_or_line_in_signal_generator_sell():
+    """Backtest path: the sell formula with an 'or' group closes on the alternative."""
+    df = _or_df()
+    df['buy'] = [1, 0, 0, 0, 0, 0, 0, 0]
+    gen = BuySellSignalGenerator(df, "buy > 0", "b > 5\nor\nc > 0")
+    out = gen.apply_signals()
+    assert out['buySell'].tolist() == [1, 0, 0, 0, 0, -1, 0, 0]
+
+
 def test_window_einzeilig_bleibt_einzeilig():
     """Eine einzeilige Bedingung ignoriert das Fenster (nichts nachzuleuchten)."""
     df = _win_df()

@@ -4217,7 +4217,11 @@ class PineExporter:
             return "false"
         if blocked and pse._referenced_columns(query) & blocked['cols']:
             return "false"
-        lines = pse._split_conditions(query) or [query]
+        groups = pse._split_alternatives(query)
+        if len(groups) > 1:
+            return ' or '.join(pse._paren(self._translate_signal(g, extra_map, blocked))
+                               for g in groups)
+        lines = pse._split_conditions(groups[0] if groups else query) or [query]
         parts = []
         for ln in lines:
             t = _translate_query(ln)

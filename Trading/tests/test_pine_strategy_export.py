@@ -305,3 +305,12 @@ def test_obd_im_strategie_export_nutzt_die_chart_einstellungen(monkeypatch):
     assert 'xobd_min_w  = 0.0' in pse.export_strategy('o', '(close > obd_bull_top)', '(rsi < 30)')
     tx = {'S': {'^SPX': {'buy': '(close > obd_bull_top)', 'sell': '(rsi < 30)'}}}
     assert 'xobd_min_w  = 34.0' in pse.export_from_config(tx, username='kurt')['S']['pine']
+
+
+def test_or_line_becomes_pine_or_with_window_per_group():
+    """A line holding only 'or' (tools.split_alternatives) -> Pine 'or' between
+    groups; the signal window stays inside each group."""
+    got = pse._condition("(close>ema9)\n(rsi>=72)\nor\n(close<close[1])", window=3)
+    assert got == ("((math.sum((close>ema9) ? 1 : 0, 3) > 0) and "
+                   "(math.sum((rsi>=72) ? 1 : 0, 3) > 0)) or (close<close[1])")
+    assert pse._condition("(a>1)\nor\n(b>2)", window=1) == "(a>1) or (b>2)"

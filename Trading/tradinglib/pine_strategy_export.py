@@ -549,6 +549,12 @@ def _split_conditions(expr: str) -> list[str]:
         return [ln.strip() for ln in text.splitlines() if ln.strip()]
 
 
+def _split_alternatives(expr: str) -> list[str]:
+    """Alternative groups like the app (tools.split_alternatives): a line holding only 'or'."""
+    from tradinglib.tools import split_alternatives
+    return split_alternatives(expr)
+
+
 def _paren(expr: str) -> str:
     """Wrap in parentheses unless the whole expression already is one group."""
     e = expr.strip()
@@ -569,9 +575,13 @@ def _condition(expr: str, window: int = 1) -> str:
 
     Several lines are ANDed (a newline must not become a bare space: ``(a) (b)``
     is no valid Pine). With ``signal_window`` > 1 each line only has to have been
-    true within the last *window* bars, as tools._window_mask does.
+    true within the last *window* bars, as tools._window_mask does. Groups
+    separated by a line holding only ``or`` are alternatives (Pine ``or``).
     """
-    lines = _split_conditions(expr)
+    groups = _split_alternatives(expr)
+    if len(groups) > 1:
+        return ' or '.join(_paren(_condition(g, window)) for g in groups)
+    lines = _split_conditions(groups[0] if groups else '')
     if not lines:
         return 'false'
     if len(lines) == 1:
