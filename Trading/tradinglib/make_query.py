@@ -42,6 +42,7 @@ def make_query(perf_table='', index='', value=1, q=1, q_ext="", conn=None):
       5   — single asset_info lookup by ticker
       6   — ticker + close + index_name (lightweight)
       7   — ticker + longName + shortName for an index
+      8   — all rows of ONE ticker (``?`` parameter), independent of index membership
 
     When conn is None the function opens and closes its own DB connection.
     Falls back gracefully when the performance table doesn't exist yet.
@@ -169,8 +170,22 @@ def make_query(perf_table='', index='', value=1, q=1, q_ext="", conn=None):
             {q_ext}
             """
 
+    if q == 8:
+        # One ticker, all rows, whatever index it belongs to (also none). The
+        # ticker is a parameter: read_sql_query(query, conn, params=(ticker,)).
+        query = f"""
+            SELECT
+            {fl}
+            , (SELECT i.name FROM stock_indices si JOIN indices i ON si.index_id = i.id
+               WHERE si.stock_id = yt.id ORDER BY i.name LIMIT 1) AS index_name
+            FROM stocks AS yt
+            INNER JOIN performance_db.{perf_table} AS ap ON yt.Ticker = ap.ticker
+            INNER JOIN info_db.asset_info AS ai ON yt.Ticker = ai.ticker
+            WHERE yt.Ticker = ?
+            """
+
     if q == 4:
-        query = f"""    
+        query = f"""
             SELECT     
             *
             FROM indices as yt 

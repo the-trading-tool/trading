@@ -55,7 +55,10 @@ DEFAULT = {
                  'currency': 'ANY', 'cap_size': 'ANY', 'price_range': 'ANY', 'years': [],
                  'require_isin': False,
                  # conversion into the system currency: today's rate or each day's own
-                 'fx': 'current'},
+                 'fx': 'current',
+                 # one ticker instead of the filtered universe ('' = off); the filters
+                 # above are then ignored (they only choose which tickers take part)
+                 'ticker': ''},
     # 'windows': buy periods within each year, [['MM-DD', 'MM-DD'], ...]; empty = all year.
     'entry': {'type': 'formula', 'buy': '', 'p_pct': 2.0, 'seed': 1, 'window': 1, 'delay': 1,
               'windows': []},
@@ -116,6 +119,7 @@ def normalize(spec: dict | None) -> dict:
     out['universe']['index'] = out['universe']['indices'][0]
     for f in ('name', 'idea'):
         out[f] = str(out[f] or '').strip()
+    out['universe']['ticker'] = str(out['universe']['ticker'] or '').strip()
     return out
 
 
@@ -192,7 +196,7 @@ def is_bundle(spec: dict) -> bool:
 
 def ms_exportable(spec: dict) -> bool:
     """Multi Strategies runs one index per pot and only the classic blocks."""
-    return is_classic(spec) and not is_bundle(spec)
+    return is_classic(spec) and not is_bundle(spec) and not normalize(spec)['universe']['ticker']
 
 
 def bundle_label(spec: dict) -> str:
@@ -752,6 +756,8 @@ def signature(spec: dict) -> str:
         run['entry'] = {k: v for k, v in run['entry'].items() if k != 'windows'}
     if run['universe']['fx'] == 'current':
         run['universe'] = {k: v for k, v in run['universe'].items() if k != 'fx'}
+    if not run['universe']['ticker']:
+        run['universe'] = {k: v for k, v in run['universe'].items() if k != 'ticker'}
     if not run['costs']['take_profit']:
         run['costs'] = {k: v for k, v in run['costs'].items() if k != 'take_profit'}
     return json.dumps(run, sort_keys=True, ensure_ascii=False)
@@ -772,8 +778,12 @@ def describe(spec: dict) -> list[str]:
     if u['fx'] == 'historical':
         filters.append(_t('sbs.f.fx_hist'))
     years = ', '.join(sorted(u['years'])) if u['years'] else '–'
-    lines = [_t('sbs.d.universe', index=' + '.join(u['indices']), years=years,
-                filters=('; ' + ', '.join(filters)) if filters else '')]
+    if u['ticker']:
+        fx = ('; ' + _t('sbs.f.fx_hist')) if u['fx'] == 'historical' else ''
+        lines = [_t('sbs.d.universe_ticker', ticker=u['ticker'], years=years, filters=fx)]
+    else:
+        lines = [_t('sbs.d.universe', index=' + '.join(u['indices']), years=years,
+                    filters=('; ' + ', '.join(filters)) if filters else '')]
     if e['type'] == 'formula':
         lines.append(_t('sbs.d.entry_formula', buy=' & '.join(
             ln.strip() for ln in (e['buy'] or '').splitlines() if ln.strip()) or '–',
