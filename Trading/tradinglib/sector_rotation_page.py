@@ -167,6 +167,7 @@ class SectorRotationPage:
             _t('sr.universe'),
             list(UNIVERSES.keys()),
             index=0,
+            key="sr_universe",   # preset by the dashboard's sector tile
             help="US Sectors = SPDR S&P ETFs | EU Sectors = iShares STOXX 600 (XETRA, EUR) | EM Countries = MSCI country ETFs (USD)",
         )
         universe = UNIVERSES[universe_name]

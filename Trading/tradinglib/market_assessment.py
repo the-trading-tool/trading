@@ -475,6 +475,55 @@ def _fg_color(score: float) -> str:
     return "#2E7D32"
 
 
+# ── Links from the KPI tiles to their source pages ────────────────────────────
+# Navigation goes through st.session_state['_nav_params'] like the sidebar
+# (same tab, no reload). Where the target page has a keyed selector, it is
+# preset to the market the tile shows -- only with a value the selector offers,
+# otherwise Streamlit would reject the widget state.
+
+def _preset_fear_greed(index: str) -> dict:
+    try:
+        from tradinglib.fear_greed_page import _INDEX_OPTIONS
+    except Exception:
+        return {}
+    return {"_fg_index": index} if index in _INDEX_OPTIONS else {}
+
+
+def _preset_regime_flow(ticker: str) -> dict:
+    try:
+        from tradinglib.regime_flow_page import load_index_names
+        names = list(load_index_names() or [])
+    except Exception:
+        return {}
+    if ticker not in names:
+        return {}
+    return {"rf_src": t("flow.src_index"), "rf_idx_select": ticker}
+
+
+def _preset_sector(universe: str | None) -> dict:
+    try:
+        from tradinglib.sector_rotation import UNIVERSES
+    except Exception:
+        return {}
+    return {"sr_universe": universe} if universe in UNIVERSES else {}
+
+
+def _go_to(params: dict, preset_fn=None, preset_arg=None) -> None:
+    """Button callback: preset the target page's selectors, then switch route."""
+    if preset_fn is not None:
+        try:
+            for k, v in preset_fn(preset_arg).items():
+                st.session_state[k] = v
+        except Exception as exc:
+            logger.debug("market_assessment: preset failed: %s", exc)
+    st.session_state["_nav_params"] = params
+
+
+def _tile_link(col, label: str, key: str, params: dict, preset_fn=None, preset_arg=None):
+    col.button(f"{label} →", key=f"_ma_go_{key}", type="tertiary",
+               on_click=_go_to, args=(params, preset_fn, preset_arg))
+
+
 def render(region=st, username: str = "admin", db_path: str = "database") -> None:
     """Kompakter Marktlage-Header fürs Dashboard. Robust — bei Fehlern still."""
     try:
@@ -574,6 +623,15 @@ def render(region=st, username: str = "admin", db_path: str = "database") -> Non
                   delta=sub, delta_color="off", help=t("ma.stress_help"))
     else:
         c5.metric(t("ma.stress_label"), t("ma.na"), help=t("ma.stress_help"))
+
+    _tile_link(c1, t("nav.fear_greed"), "fg", {"fear_greed": "true"},
+               _preset_fear_greed, fg_b["index"] if fg_b else _fg_index_for(ticker))
+    _tile_link(c2, t("nav.global_rotation"), "rot", {"global_rotation": "true"})
+    _tile_link(c3, t("nav.correlation"), "corr", {"correlation": "true"})
+    _tile_link(c4, t("nav.sector_rotation"), "sec", {"rotation": "true"},
+               _preset_sector, sec_b.get("universe") if sec_b else _sector_universe_for(ticker))
+    _tile_link(c5, t("nav.summary_tab_flow"), "flow", {"summary": "true", "tab": "flow"},
+               _preset_regime_flow, ticker)
 
     # Synthese-Zeile: Cross-Asset-Extreme + schwächster Sektor
     bits = []
