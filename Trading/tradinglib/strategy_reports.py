@@ -106,6 +106,26 @@ def delete(user: str, strategies, *, db_path: str = 'database') -> int:
         con.close()
 
 
+def rename(user: str, old: str, new: str, *, db_path: str = 'database') -> int:
+    """Move the recorded runs of *old* to *new*; returns the number of records moved.
+
+    Records already under *new* belong to a deleted strategy of that name (a
+    single delete keeps the history) and would be shown as runs of the renamed
+    one -- they are removed first.
+    """
+    if old == new or not os.path.exists(_path(db_path)):
+        return 0
+    con = _connect(db_path)
+    try:
+        con.execute('DELETE FROM reports WHERE user = ? AND strategy = ?', (user, new))
+        cur = con.execute('UPDATE reports SET strategy = ? WHERE user = ? AND strategy = ?',
+                          (new, user, old))
+        con.commit()
+        return int(cur.rowcount)
+    finally:
+        con.close()
+
+
 def history(user: str, strategy: str, *, db_path: str = 'database', limit: int = 50) -> list[dict]:
     """Records of one strategy, newest first: payload plus 'ts' and 'sig'."""
     if not os.path.exists(_path(db_path)):

@@ -336,6 +336,64 @@ def test_delete_many_writes_once_and_reports_what_went():
     assert ss.delete_many(cfg, ['X']) == [] and writes == [ss.STORE_KEY]
 
 
+_TX_TEXT = """{
+# my strategies
+'ATC on DAX': {
+    '^GDAXI + ^MDAXI': {'strategy': 'ATC on DAX', 'invest': 50000, 'num_assets': 6},
+},
+'ATC on SPX': {
+    '^SPX': {"strategy" : 'ATC on DAX', 'invest': 7500},
+},
+'Other': {'^RUT': {'strategy': 'ATC on DAX 2', 'buy': '(rsi < 30)\\n(close > Open)'}},
+}"""
+
+
+def test_rename_moves_strategy_and_references_keeps_text():
+    cfg = _Cfg()
+    for n in ('A', 'ATC on DAX', 'ATC on DAX 2'):
+        ss.save(cfg, {'name': n, 'entry': {'buy': f'buy {n}'}})
+    cfg.set_value('multi_transactions', _TX_TEXT)
+    assert ss.rename(cfg, 'ATC on DAX', "ATC on SPX 'v2'") == 2
+    saved = ss.load_all(cfg)
+    assert list(saved) == ['A', "ATC on SPX 'v2'", 'ATC on DAX 2']      # keeps its place
+    assert saved["ATC on SPX 'v2'"]['name'] == "ATC on SPX 'v2'"
+    assert saved["ATC on SPX 'v2'"]['entry']['buy'] == 'buy ATC on DAX'
+    text = cfg.get_value('multi_transactions')
+    assert '# my strategies' in text and "'ATC on DAX': {" in text      # outer names, comments stay
+    assert ss.referenced_names(text) == {"ATC on SPX 'v2'", 'ATC on DAX 2'}
+    exp = ss.expand_references(ss.parse_multi_transactions(text), saved, live=True)
+    assert exp['ATC on SPX']['^SPX']['buy'] == 'buy ATC on DAX'
+
+
+def test_rename_json_and_dict_values():
+    for value in (json.dumps({'S': {'^X': {'strategy': 'Dip'}}}),
+                  {'S': {'^X': {'strategy': 'Dip'}}}):
+        cfg = _Cfg()
+        ss.save(cfg, {'name': 'Dip'})
+        cfg.set_value('multi_transactions', value)
+        assert ss.rename(cfg, 'Dip', 'Dip "new"') == 1
+        assert ss.referenced_names(cfg.get_value('multi_transactions')) == {'Dip "new"'}
+
+
+def test_rename_refuses_before_writing():
+    cfg = _Cfg()
+    ss.save(cfg, {'name': 'A'})
+    ss.save(cfg, {'name': 'B'})
+    before = dict(cfg.d)
+    with pytest.raises(KeyError):
+        ss.rename(cfg, 'X', 'Y')
+    for bad in ('B', '  '):
+        with pytest.raises(ValueError):
+            ss.rename(cfg, 'A', bad)
+    # a reference the text edit cannot reach (escaped name) -> nothing written
+    cfg.set_value('multi_transactions', "{'S': {'^X': {'strategy': '\\x41'}}}")
+    before = dict(cfg.d)
+    with pytest.raises(ValueError):
+        ss.rename(cfg, 'A', 'C')
+    assert cfg.d == before
+    assert ss.rename(cfg, 'B', 'B') == 0 and cfg.d == before
+
+
 def test_referenced_names():
     tx = {'S': {'^GDAXI': {'strategy': 'A', 'invest': 1}, '^MDAXI': {'buy': 'x'}},
           'T': {'^GDAXI + ^MDAXI': {'strategy': 'B'}}}

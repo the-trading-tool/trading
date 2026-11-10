@@ -30,6 +30,7 @@ import ast
 import copy
 import datetime as dt
 import json
+import re
 
 import numpy as np
 import pandas as pd
@@ -745,6 +746,75 @@ def delete_many(cfg, names) -> list[str]:
 def referenced_names(transactions_value) -> set[str]:
     """Names of saved strategies that multi_transactions entries point at."""
     return {str(e[REF_KEY]) for _, _, e in ms_strategies(transactions_value) if e.get(REF_KEY)}
+
+
+def _swap_refs(transactions: dict, old: str, new: str) -> tuple[dict, int]:
+    """Copy of *transactions* with every reference to *old* pointing at *new*, and their count."""
+    out, n = copy.deepcopy(transactions), 0
+    for idxs in out.values():
+        if not isinstance(idxs, dict):
+            continue
+        for e in idxs.values():
+            if isinstance(e, dict) and e.get(REF_KEY) is not None and str(e[REF_KEY]) == old:
+                e[REF_KEY] = new
+                n += 1
+    return out, n
+
+
+def _quoted(text: str, q: str) -> str:
+    """*text* as a string literal in quote *q* (valid Python and, for '"', JSON)."""
+    return q + text.replace('\\', '\\\\').replace(q, '\\' + q) + q
+
+
+def rename_references(value, old: str, new: str):
+    """multi_transactions *value* with every reference to *old* pointing at *new*.
+
+    Returns (value, count). A text value is edited in place so the user's
+    layout and comments in the settings text area survive: only the quoted
+    name after 'strategy' changes. The result is parsed back and must equal
+    the original with the references swapped, otherwise ValueError -- the
+    caller then writes nothing.
+    """
+    want, n = _swap_refs(parse_multi_transactions(value), old, new)
+    if not n:
+        return value, 0
+    if isinstance(value, dict):
+        return want, n
+    text = str(value)
+    for q in ("'", '"'):
+        pat = re.compile(r'''(["']''' + REF_KEY + r'''["']\s*:\s*)''' + re.escape(_quoted(old, q)))
+        text = pat.sub(lambda m: m.group(1) + _quoted(new, q), text)
+    if parse_multi_transactions(text) != want:
+        raise ValueError('multi_transactions references could not be renamed in place')
+    return text, n
+
+
+def rename(cfg, old: str, new: str) -> int:
+    """Rename a saved strategy and point multi_transactions references at the new name.
+
+    Returns the number of references changed. Everything is checked before the
+    first write: *old* must exist (KeyError), *new* must be non-empty and free,
+    and the references must be renamable (ValueError). The strategy keeps its
+    place in the store. The run history (strategy_reports) is not touched here.
+    """
+    old, new = str(old), str(new or '').strip()
+    all_ = load_all(cfg)
+    if old not in all_:
+        raise KeyError(old)
+    if not new:
+        raise ValueError('name required')
+    if new == old:
+        return 0
+    if new in all_:
+        raise ValueError(f'a strategy named {new!r} exists')
+    raw = cfg.get_value('multi_transactions', None)
+    tx_value, n = rename_references(raw, old, new) if raw else (raw, 0)
+    renamed = {(new if k == old else k): ({**v, 'name': new} if k == old else v)
+               for k, v in all_.items()}
+    cfg.set_value(STORE_KEY, json.dumps(renamed, ensure_ascii=False))
+    if n:
+        cfg.set_value('multi_transactions', tx_value)
+    return n
 
 
 def signature(spec: dict) -> str:

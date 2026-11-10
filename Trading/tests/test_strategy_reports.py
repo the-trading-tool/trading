@@ -24,6 +24,17 @@ def test_delete_removes_only_the_named_strategies_of_the_user(tmp_path):
     assert len(sr.history('admin', 'A', db_path=db)) == 1
 
 
+def test_rename_moves_history_and_drops_orphans_of_the_new_name(tmp_path):
+    db = str(tmp_path)
+    sr.upsert('kurt', 'Old', 'sig1', {'total': 1.0}, db_path=db, now=DAY1)
+    sr.upsert('kurt', 'New', 'sig9', {'total': 9.0}, db_path=db, now=DAY1)   # deleted strategy's runs
+    sr.upsert('anna', 'Old', 'sig1', {'total': 5.0}, db_path=db, now=DAY1)
+    assert sr.rename('kurt', 'Old', 'New', db_path=db) == 1
+    assert [r['total'] for r in sr.history('kurt', 'New', db_path=db)] == [1.0]
+    assert sr.history('kurt', 'Old', db_path=db) == []
+    assert [r['total'] for r in sr.history('anna', 'Old', db_path=db)] == [5.0]
+
+
 def test_same_settings_same_day_is_one_record(tmp_path):
     db = str(tmp_path)
     sr.upsert('kurt', 'Dip', 'sigA', {'total': 10.0, 'trades': 5}, db_path=db, now=DAY1)
