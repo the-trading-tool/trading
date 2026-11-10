@@ -560,18 +560,13 @@ class TradingApp:
             logging.getLogger(__name__).debug("batch report UI failed: %s", _e, exc_info=True)
 
         if show_assets:
-            asset_index = '^GDAXI'
+            # mkt.df is the name source for the chart titles below. (A risk-parity
+            # weighting used to be computed here and never shown -- removed, it
+            # only downloaded prices.)
             try:
-                if not asset_index in tickers:
-                    mkt.get_df(index=selected_ticker,q=6)
-                    par  = pr.Parity(tickers,asset_index)
-                    p_df = par.weights.to_frame(name="weight")
-                    p_df = pandas.merge(p_df, mkt.df[['ticker','shortName','close']], left_on='Ticker', right_on='ticker', how='left')#.drop(['Ticker'], axis=1)
-                    p_df['shares'] = round(p_df['weight']*1000 / p_df['close'],0)
-                    p_df['invest'] = round(p_df['shares']*p_df['close'],0)
-                    mtrans = mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin)
-
-            except Exception as e:
+                if '^GDAXI' not in tickers:
+                    mkt.get_df(index=selected_ticker, q=6)
+            except Exception:
                 pass
 
             _spin = st.empty()
@@ -916,240 +911,252 @@ class TradingApp:
                     self.authenticator.logout('Logout', 'sidebar')
                     st.stop()
 
-                if self.is_admin and parms.get('admin'):
-                    self.set_page_config(t('page.admin'))
-                    with st.spinner(t('page.admin') + " …"):
-                        admin.Admin(username=self.username, scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator=self.authenticator, section=parms.get('section'))
-                elif parms.get('live_chart'):
-                    self.set_page_config(t('page.live_chart'))
-                    with st.spinner(t('page.live_chart') + " …"):
-                        self.live_chart(region=st)
-                elif parms.get('performance'):
-                    self.set_page_config(t('page.performance'))
-                    with st.spinner(t('page.performance') + " …"):
-                        if self.is_admin and parms.get('tab') == 'all_assets':
-                            aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
-                        elif self.is_admin and parms.get('tab') == 'etp_assets':
-                            aa.AllAssetsView(username=self.username, is_admin=self.is_admin,
-                                             db_name='asset_simulation_etp')
-                        else:
-                            perfdetails.Performance(username=self.username).render()
-                elif parms.get('multi'):
-                    self.set_page_config(t('page.strategies'))
-                    with st.spinner(t('page.strategies') + " …"):
-                        if mu is None:
-                            st.error("Strategy Engine nicht verfügbar — bitte Lizenz prüfen.")
-                        else:
-                            mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
-                elif parms.get('own_trades'):
-                    self.set_page_config(t('page.own_transactions'))
-                    try:
-                        from tradinglib.own_trades_analysis import (
-                            render_import_export, render_portfolio_analysis,
-                            render_trade_entry, render_scalable_import,
-                            render_risk_management,
-                        )
-                        system_currency = self.sys_config.get_value('system_currency', 'EUR')
-                        with st.spinner(t('page.own_transactions') + " …"):
-                            tab_scalable, tab_portfolio, tab_entry, tab_risk, tab_trades = st.tabs([
-                                t('own_trades.tab_scalable'),
-                                t('own_trades.tab_portfolio'),
-                                t('own_trades.tab_entry'),
-                                t('own_trades.tab_risk'),
-                                t('own_trades.tab_trades'),
-                            ])
-                            with tab_portfolio:
-                                render_portfolio_analysis(
-                                    region=tab_portfolio,
-                                    db_path='database',
-                                    username=self.username,
-                                    system_currency=system_currency,
-                                )
-                            with tab_entry:
-                                render_trade_entry(
-                                    region=tab_entry,
-                                    db_path='database',
-                                    system_currency=system_currency,
-                                )
-                            with tab_risk:
-                                render_risk_management(
-                                    region=tab_risk,
-                                    db_path='database',
-                                    system_currency=system_currency,
-                                )
-                            with tab_scalable:
-                                render_scalable_import(
-                                    region=tab_scalable,
-                                    db_path='database',
-                                    system_currency=system_currency,
-                                    username=self.username,
-                                )
-                            with tab_trades:
-                                # Trade Import/Export ist fuer alle Nutzer verfuegbar.
-                                # Falls die Strategy Engine (ass) lizenziert ist, wird
-                                # der Simulator mitgegeben fuer erweiterte Funktionen.
-                                _simulator = None
-                                if ass is not None:
-                                    try:
-                                        _simulator = ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username)
-                                    except Exception:
-                                        pass
-                                render_import_export(
-                                    tab_trades,
-                                    simulator=_simulator,
-                                    username=self.username,
-                                    db_path='database',
-                                )
-                    except Exception as e:
-                        st.error(t('error.load_own_trades', error=e))
-                elif parms.get('strategy_finder'):
-                    self.set_page_config(t('page.finder'))
-                    with st.spinner(t('page.finder') + " …"):
-                        if ass is None:
-                            st.error("Strategy Finder nicht verfügbar — bitte Lizenz prüfen.")
-                        else:
-                            ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
-                elif parms.get('trading'):
-                    self.set_page_config(t('page.trading'))
-                    with st.spinner(t('page.trading') + " …"):
-                        if not PAPER_TRADING_AVAILABLE:
-                            st.error("Trading nicht verfügbar — bitte Lizenz prüfen.")
-                        else:
-                            try:
-                                from tradinglib.premium.trading_page import TradingPage
-                                TradingPage(username=self.username, db_path='database').render()
-                            except Exception as e:
-                                st.error(t('error.load_trading', error=e))
-                elif parms.get('rotation_hub'):
-                    self.set_page_config(t('page.rotation_hub'))
-                    with st.spinner(t('page.rotation_hub') + " …"):
-                        try:
-                            from tradinglib.rotation_hub_page import RotationHubPage
-                            RotationHubPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_rotation', error=e))
-                elif parms.get('rotation'):
-                    self.set_page_config(t('page.sector_rotation'))
-                    with st.spinner(t('page.sector_rotation') + " …"):
-                        try:
-                            from tradinglib.sector_rotation_page import SectorRotationPage
-                            SectorRotationPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_rotation', error=e))
-                elif parms.get('market_overview'):
-                    self.set_page_config(t('page.market_overview'))
-                    with st.spinner(t('page.market_overview') + " …"):
-                        try:
-                            from tradinglib.market_overview_page import MarketOverviewPage
-                            MarketOverviewPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_market_overview', error=e))
-                elif parms.get('correlation'):
-                    self.set_page_config(t('page.correlation'))
-                    with st.spinner(t('page.correlation') + " …"):
-                        try:
-                            from tradinglib.correlation_index_page import CorrelationIndexPage
-                            CorrelationIndexPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_correlation', error=e))
-                elif parms.get('fear_greed'):
-                    self.set_page_config(t('page.fear_greed'))
-                    with st.spinner(t('page.fear_greed') + " …"):
-                        try:
-                            from tradinglib.fear_greed_page import FearGreedPage
-                            FearGreedPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_fear_greed', error=e))
-                elif parms.get('global_rotation'):
-                    self.set_page_config(t('page.global_rotation'))
-                    with st.spinner(t('page.global_rotation') + " …"):
-                        try:
-                            from tradinglib.global_rotation_page import GlobalRotationPage
-                            GlobalRotationPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_global_rotation', error=e))
-                elif parms.get('four_ps'):
-                    self.set_page_config(t('page.four_ps'))
-                    with st.spinner(t('page.four_ps') + " …"):
-                        try:
-                            from tradinglib.four_ps_page import FourPsPage
-                            FourPsPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_four_ps', error=e))
-                elif parms.get('risk_profile'):
-                    self.set_page_config(t('page.risk_profile'))
-                    with st.spinner(t('page.risk_profile') + " …"):
-                        try:
-                            from tradinglib.risk_profile_page import RiskProfilePage
-                            RiskProfilePage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_risk_profile', error=e))
-                elif parms.get('candidates'):
-                    self.set_page_config(t('page.candidates'))
-                    with st.spinner(t('page.candidates') + " …"):
-                        try:
-                            from tradinglib.candidates_page import CandidatesPage
-                            CandidatesPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_candidates', error=e))
-                elif parms.get('asset_search'):
-                    self.set_page_config(t('page.asset_search'))
-                    with st.spinner(t('page.asset_search') + " …"):
-                        try:
-                            from tradinglib.asset_search_page import AssetSearchPage
-                            AssetSearchPage(username=self.username).render()
-                        except Exception as e:
-                            st.error(t('error.load_asset_search', error=e))
-                elif parms.get('compound'):
-                    self.set_page_config(t('page.compound_simulation'))
-                    with st.spinner(t('page.compound_simulation') + " …"):
-                        try:
-                            from tradinglib.compound_simulation import render_compound_simulation
-                            render_compound_simulation()
-                        except Exception as e:
-                            st.error(t('error.load_compound_sim', error=e))
-                elif parms.get('marketmap'):
-                    self.set_page_config(t('page.market_map'))
-                    with st.spinner(t('page.market_map') + " …"):
-                        # Portfolio views follow the rights of the portfolio pages:
-                        # own transactions where the user sees that page, the paper
-                        # account and Multi Strategies only with their feature.
-                        _pf_sources = []
-                        if self.is_admin or appedition.IS_SCALABLE:
-                            _pf_sources.append('own')
-                        if self.is_admin and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
-                            _pf_sources.append('paper')
-                        if self.is_admin and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
-                            _pf_sources.append('multi')
-                        visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username,
-                                                       portfolio_sources=_pf_sources)
-                        visualizer.render(index_filter=1)
-                    self.render_chart(index_columns=visualizer.index_column)
-                elif parms.get('summary'):
-                    self.set_page_config(t('page.summary'))
-                    with st.spinner(t('page.summary') + " …"):
-                        if parms.get('tab') == 'flow':
-                            try:
-                                from tradinglib.regime_flow_page import RegimeFlowPage
-                                RegimeFlowPage(username=self.username, sys_config=self.sys_config).render()
-                            except Exception as _rfe:
-                                st.error(f"Regime Flow: {_rfe}")
-                        else:
-                            self.render_summary()
-                elif parms.get('option_calc'):
-                    self.set_page_config(t('page.option_price'))
-                    with st.spinner(t('page.option_price') + " …"):
-                        op.OptionCalculator()
-                elif parms.get('dashboard') or not parms:
-                    self.set_page_config(t('page.dashboard'))
-                    bp.BannerPage(username=self.username, dashboard_mode=True)
+                # Page content lives in one container. On a route change it is first
+                # replaced by an empty element, so nothing of the previous page (e.g. a
+                # button in a column the new page does not fill) stays on screen while
+                # the new page computes. Reruns on the same page reuse the container
+                # as before (no flicker).
+                _page_sig = repr(sorted((str(k), str(v)) for k, v in parms.items()))
+                if st.session_state.get('_page_sig') != _page_sig:
+                    st.session_state['_page_sig'] = _page_sig
+                    _page_box = st.empty().container()
                 else:
-                    self.set_page_config(t('page.asset_details'))
-                    tab_details = False
-                    if parms.get('details','false').lower() == 'true':
-                        tab_details = True
-                    with st.spinner(t('page.asset_details') + " …"):
-                        mp.render_mainpage(region=st, symbol=parms.get('symbol', ''), search_ticker_only=True, username=self.username, is_admin=self.is_admin, interval=parms.get('interval', None), period=parms.get('period', None), multi_trends=False, tab_details=tab_details)
+                    _page_box = st.container()
+                with _page_box:
+                    if self.is_admin and parms.get('admin'):
+                        self.set_page_config(t('page.admin'))
+                        with st.spinner(t('page.admin') + " …"):
+                            admin.Admin(username=self.username, scheduler_db=parms.get('scheduler', 'scheduler.db'), authenticator=self.authenticator, section=parms.get('section'))
+                    elif parms.get('live_chart'):
+                        self.set_page_config(t('page.live_chart'))
+                        with st.spinner(t('page.live_chart') + " …"):
+                            self.live_chart(region=st)
+                    elif parms.get('performance'):
+                        self.set_page_config(t('page.performance'))
+                        with st.spinner(t('page.performance') + " …"):
+                            if self.is_admin and parms.get('tab') == 'all_assets':
+                                aa.AllAssetsView(username=self.username, is_admin=self.is_admin)
+                            elif self.is_admin and parms.get('tab') == 'etp_assets':
+                                aa.AllAssetsView(username=self.username, is_admin=self.is_admin,
+                                                 db_name='asset_simulation_etp')
+                            else:
+                                perfdetails.Performance(username=self.username).render()
+                    elif parms.get('multi'):
+                        self.set_page_config(t('page.strategies'))
+                        with st.spinner(t('page.strategies') + " …"):
+                            if mu is None:
+                                st.error("Strategy Engine nicht verfügbar — bitte Lizenz prüfen.")
+                            else:
+                                mu.MultiTransactionProcessor(username=self.username, is_admin=self.is_admin).render()
+                    elif parms.get('own_trades'):
+                        self.set_page_config(t('page.own_transactions'))
+                        try:
+                            from tradinglib.own_trades_analysis import (
+                                render_import_export, render_portfolio_analysis,
+                                render_trade_entry, render_scalable_import,
+                                render_risk_management,
+                            )
+                            system_currency = self.sys_config.get_value('system_currency', 'EUR')
+                            with st.spinner(t('page.own_transactions') + " …"):
+                                tab_scalable, tab_portfolio, tab_entry, tab_risk, tab_trades = st.tabs([
+                                    t('own_trades.tab_scalable'),
+                                    t('own_trades.tab_portfolio'),
+                                    t('own_trades.tab_entry'),
+                                    t('own_trades.tab_risk'),
+                                    t('own_trades.tab_trades'),
+                                ])
+                                with tab_portfolio:
+                                    render_portfolio_analysis(
+                                        region=tab_portfolio,
+                                        db_path='database',
+                                        username=self.username,
+                                        system_currency=system_currency,
+                                    )
+                                with tab_entry:
+                                    render_trade_entry(
+                                        region=tab_entry,
+                                        db_path='database',
+                                        system_currency=system_currency,
+                                    )
+                                with tab_risk:
+                                    render_risk_management(
+                                        region=tab_risk,
+                                        db_path='database',
+                                        system_currency=system_currency,
+                                    )
+                                with tab_scalable:
+                                    render_scalable_import(
+                                        region=tab_scalable,
+                                        db_path='database',
+                                        system_currency=system_currency,
+                                        username=self.username,
+                                    )
+                                with tab_trades:
+                                    # Trade Import/Export ist fuer alle Nutzer verfuegbar.
+                                    # Falls die Strategy Engine (ass) lizenziert ist, wird
+                                    # der Simulator mitgegeben fuer erweiterte Funktionen.
+                                    _simulator = None
+                                    if ass is not None:
+                                        try:
+                                            _simulator = ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", db_path='database', username=self.username)
+                                        except Exception:
+                                            pass
+                                    render_import_export(
+                                        tab_trades,
+                                        simulator=_simulator,
+                                        username=self.username,
+                                        db_path='database',
+                                    )
+                        except Exception as e:
+                            st.error(t('error.load_own_trades', error=e))
+                    elif parms.get('strategy_finder'):
+                        self.set_page_config(t('page.finder'))
+                        with st.spinner(t('page.finder') + " …"):
+                            if ass is None:
+                                st.error("Strategy Finder nicht verfügbar — bitte Lizenz prüfen.")
+                            else:
+                                ass.AssetSimulator("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username).render(index_filter=1)
+                    elif parms.get('trading'):
+                        self.set_page_config(t('page.trading'))
+                        with st.spinner(t('page.trading') + " …"):
+                            if not PAPER_TRADING_AVAILABLE:
+                                st.error("Trading nicht verfügbar — bitte Lizenz prüfen.")
+                            else:
+                                try:
+                                    from tradinglib.premium.trading_page import TradingPage
+                                    TradingPage(username=self.username, db_path='database').render()
+                                except Exception as e:
+                                    st.error(t('error.load_trading', error=e))
+                    elif parms.get('rotation_hub'):
+                        self.set_page_config(t('page.rotation_hub'))
+                        with st.spinner(t('page.rotation_hub') + " …"):
+                            try:
+                                from tradinglib.rotation_hub_page import RotationHubPage
+                                RotationHubPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_rotation', error=e))
+                    elif parms.get('rotation'):
+                        self.set_page_config(t('page.sector_rotation'))
+                        with st.spinner(t('page.sector_rotation') + " …"):
+                            try:
+                                from tradinglib.sector_rotation_page import SectorRotationPage
+                                SectorRotationPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_rotation', error=e))
+                    elif parms.get('market_overview'):
+                        self.set_page_config(t('page.market_overview'))
+                        with st.spinner(t('page.market_overview') + " …"):
+                            try:
+                                from tradinglib.market_overview_page import MarketOverviewPage
+                                MarketOverviewPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_market_overview', error=e))
+                    elif parms.get('correlation'):
+                        self.set_page_config(t('page.correlation'))
+                        with st.spinner(t('page.correlation') + " …"):
+                            try:
+                                from tradinglib.correlation_index_page import CorrelationIndexPage
+                                CorrelationIndexPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_correlation', error=e))
+                    elif parms.get('fear_greed'):
+                        self.set_page_config(t('page.fear_greed'))
+                        with st.spinner(t('page.fear_greed') + " …"):
+                            try:
+                                from tradinglib.fear_greed_page import FearGreedPage
+                                FearGreedPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_fear_greed', error=e))
+                    elif parms.get('global_rotation'):
+                        self.set_page_config(t('page.global_rotation'))
+                        with st.spinner(t('page.global_rotation') + " …"):
+                            try:
+                                from tradinglib.global_rotation_page import GlobalRotationPage
+                                GlobalRotationPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_global_rotation', error=e))
+                    elif parms.get('four_ps'):
+                        self.set_page_config(t('page.four_ps'))
+                        with st.spinner(t('page.four_ps') + " …"):
+                            try:
+                                from tradinglib.four_ps_page import FourPsPage
+                                FourPsPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_four_ps', error=e))
+                    elif parms.get('risk_profile'):
+                        self.set_page_config(t('page.risk_profile'))
+                        with st.spinner(t('page.risk_profile') + " …"):
+                            try:
+                                from tradinglib.risk_profile_page import RiskProfilePage
+                                RiskProfilePage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_risk_profile', error=e))
+                    elif parms.get('candidates'):
+                        self.set_page_config(t('page.candidates'))
+                        with st.spinner(t('page.candidates') + " …"):
+                            try:
+                                from tradinglib.candidates_page import CandidatesPage
+                                CandidatesPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_candidates', error=e))
+                    elif parms.get('asset_search'):
+                        self.set_page_config(t('page.asset_search'))
+                        with st.spinner(t('page.asset_search') + " …"):
+                            try:
+                                from tradinglib.asset_search_page import AssetSearchPage
+                                AssetSearchPage(username=self.username).render()
+                            except Exception as e:
+                                st.error(t('error.load_asset_search', error=e))
+                    elif parms.get('compound'):
+                        self.set_page_config(t('page.compound_simulation'))
+                        with st.spinner(t('page.compound_simulation') + " …"):
+                            try:
+                                from tradinglib.compound_simulation import render_compound_simulation
+                                render_compound_simulation()
+                            except Exception as e:
+                                st.error(t('error.load_compound_sim', error=e))
+                    elif parms.get('marketmap'):
+                        self.set_page_config(t('page.market_map'))
+                        with st.spinner(t('page.market_map') + " …"):
+                            # Portfolio views follow the rights of the portfolio pages:
+                            # own transactions where the user sees that page, the paper
+                            # account and Multi Strategies only with their feature.
+                            _pf_sources = []
+                            if self.is_admin or appedition.IS_SCALABLE:
+                                _pf_sources.append('own')
+                            if self.is_admin and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                                _pf_sources.append('paper')
+                            if self.is_admin and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                                _pf_sources.append('multi')
+                            visualizer = mm.DataVisualizer("yf_tickers.db", "asset_simulation_.db", "asset_info.db", "GDAXI", db_path='database', username=self.username,
+                                                           portfolio_sources=_pf_sources)
+                            visualizer.render(index_filter=1)
+                        self.render_chart(index_columns=visualizer.index_column)
+                    elif parms.get('summary'):
+                        self.set_page_config(t('page.summary'))
+                        with st.spinner(t('page.summary') + " …"):
+                            if parms.get('tab') == 'flow':
+                                try:
+                                    from tradinglib.regime_flow_page import RegimeFlowPage
+                                    RegimeFlowPage(username=self.username, sys_config=self.sys_config).render()
+                                except Exception as _rfe:
+                                    st.error(f"Regime Flow: {_rfe}")
+                            else:
+                                self.render_summary()
+                    elif parms.get('option_calc'):
+                        self.set_page_config(t('page.option_price'))
+                        with st.spinner(t('page.option_price') + " …"):
+                            op.OptionCalculator()
+                    elif parms.get('dashboard') or not parms:
+                        self.set_page_config(t('page.dashboard'))
+                        bp.BannerPage(username=self.username, dashboard_mode=True)
+                    else:
+                        self.set_page_config(t('page.asset_details'))
+                        tab_details = False
+                        if parms.get('details','false').lower() == 'true':
+                            tab_details = True
+                        with st.spinner(t('page.asset_details') + " …"):
+                            mp.render_mainpage(region=st, symbol=parms.get('symbol', ''), search_ticker_only=True, username=self.username, is_admin=self.is_admin, interval=parms.get('interval', None), period=parms.get('period', None), multi_trends=False, tab_details=tab_details)
 
                 self.authenticator.logout('Logout', 'sidebar')
                 try:
