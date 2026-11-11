@@ -194,12 +194,60 @@ class tiny_chart(gt.GraphTools):
             return dser.iloc[pos]
         return dser.iloc[0]                  # Kauf vor erstem Balken → volle Breite
 
+    def add_trade_markers(self, markers, color='#5E35B1', row=1):
+        """Mark individual trades at their bar and price.
+
+        *markers*: ``[{'since', 'y', 'kind': 'buy'|'sell', 'text'}]``. Buys are
+        filled up-triangles, sells hollow down-triangles, both in the entry-line
+        colour so they read as the same position and not as strategy signals.
+        Trades before the first or after the last bar are left out; pinning them
+        to the edge would show a buy on a day it did not happen.
+        """
+        if not markers:
+            return
+        try:
+            dates = pd.to_datetime(self.df['Date'], format=self.ftime_str, errors='coerce').dropna()
+        except Exception:
+            return
+        if dates.empty:
+            return
+        first, last = dates.iloc[0], dates.iloc[-1]
+        # A buy today at 17:10 lies after the daily bar stamped 00:00, yet inside
+        # it. Accept anything within one bar length of the last bar.
+        step = dates.diff().dropna().min() if len(dates) > 1 else pd.Timedelta(days=1)
+        last_x = self.df['Date'].iloc[-1]
+        for kind, symbol, fill in (('buy', 'triangle-up', color), ('sell', 'triangle-down', 'white')):
+            xs, ys, texts = [], [], []
+            for m in markers:
+                if m.get('kind') != kind:
+                    continue
+                d = pd.to_datetime(m.get('since'), errors='coerce')
+                if d is None or pd.isna(d) or d < first:
+                    continue
+                x = self._x_bar_for(d)
+                if x is None:
+                    if d - last >= step:
+                        continue
+                    x = last_x
+                xs.append(x)
+                ys.append(m['y'])
+                texts.append(m.get('text', ''))
+            if not xs:
+                continue
+            self.fig.add_trace(go.Scatter(
+                x=xs, y=ys, mode='markers',
+                marker=dict(symbol=symbol, size=12, color=fill,
+                            line=dict(color=color if kind == 'sell' else 'white', width=2)),
+                showlegend=False, hoverinfo='text', hovertext=texts,
+            ), row=row, col=1)
+
     def add_entry_line(self, y, since, text, line_color='#5E35B1',
-                       line_dash='solid', line_width=2, row=1):
+                       line_dash='solid', line_width=2, row=1, marker=True):
         """Wie :meth:`_add_hline_outside`, aber die Linie **beginnt am Kaufzeitpunkt**
         ``since`` (Datum/String) statt über die volle Breite zu laufen. Fällt auf
         eine volle Linie zurück, wenn ``since`` nicht auf der Achse platzierbar ist
-        (unbekannt oder hinter dem letzten Balken)."""
+        (unbekannt oder hinter dem letzten Balken). ``marker=False`` laesst den
+        Diamanten am Startpunkt weg (wenn die Kaeufe einzeln markiert werden)."""
         x0 = self._x_bar_for(since)
         if x0 is None:
             self._add_hline_outside(y, text, line_color, line_dash, line_width, row)
@@ -215,12 +263,13 @@ class tiny_chart(gt.GraphTools):
             row=row, col=1,
         )
         # Marker am Kaufpunkt → macht den Startzeitpunkt unmissverständlich.
-        self.fig.add_trace(go.Scatter(
-            x=[x0], y=[y], mode='markers',
-            marker=dict(symbol='diamond', size=9, color=line_color,
-                        line=dict(color='white', width=1)),
-            showlegend=False, hoverinfo='text', hovertext=text,
-        ), row=row, col=1)
+        if marker:
+            self.fig.add_trace(go.Scatter(
+                x=[x0], y=[y], mode='markers',
+                marker=dict(symbol='diamond', size=9, color=line_color,
+                            line=dict(color='white', width=1)),
+                showlegend=False, hoverinfo='text', hovertext=text,
+            ), row=row, col=1)
         yref = 'y' if row == 1 else f'y{row}'
         self.fig.add_annotation(
             x=1.0, y=y, xref='paper', yref=yref,

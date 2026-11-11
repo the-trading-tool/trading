@@ -659,17 +659,23 @@ class render_mainpage(fetch_data.FetchData):
                 _c = _c[~_c.str.lower().isin(('', 'none', 'nan'))]
                 own_cur = _c.iloc[0] if not _c.empty else ''
             if not raw.empty:
+                from tradinglib.portfolio_analysis import fifo_open_lots
                 buy_rows  = raw[raw['action'] == 'buy']
                 sell_rows = raw[raw['action'] == 'sell']
                 net_shares = buy_rows['shares'].sum() - sell_rows['shares'].sum()
-                # Kaufzeitpunkt = frühester Buy → Entry-Linie startet dort.
-                first_buy = str(buy_rows['timestamp'].min()) if not buy_rows.empty else None
-                if net_shares > 0.001:
-                    avg_buy = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
+                # Average of the lots still held (FIFO), as the broker reports it.
+                # Averaging every buy kept sold lots in the price: Infineon showed
+                # 73.69 instead of 67.75 after a partial sale and a second buy.
+                lots = fifo_open_lots(raw)
+                lot_sh = sum(l['shares'] for l in lots)
+                if net_shares > 0.001 and lot_sh > 0:
+                    avg_buy = sum(l['shares'] * l['price'] for l in lots) / lot_sh
                     positions.append({'source': 'Own',
                                       'entry': self._to_quote_currency(avg_buy, own_cur, quote_cur),
                                       'exit': None,
-                                      'open': True, 'count': 1, 'since': first_buy})
+                                      'open': True, 'count': len(lots),
+                                      'since': lots[0]['timestamp'],
+                                      'trade_markers': True})
                 elif not buy_rows.empty and not sell_rows.empty:
                     avg_buy  = (buy_rows['price'] * buy_rows['shares']).sum() / buy_rows['shares'].sum()
                     avg_sell = (sell_rows['price'] * sell_rows['shares']).sum() / sell_rows['shares'].sum()
@@ -677,8 +683,11 @@ class render_mainpage(fetch_data.FetchData):
                                       'entry': self._to_quote_currency(avg_buy, own_cur, quote_cur),
                                       'exit': self._to_quote_currency(avg_sell, own_cur, quote_cur),
                                       'open': False, 'count': 1})
+                # Every own buy/sell as a marker at its booked price, so several
+                # buys stay visible next to the average line.
+                self._add_own_trade_markers(raw, own_cur, quote_cur)
         except Exception:
-            pass
+            logger.debug('own trade markers skipped', exc_info=True)
 
         # ── 2. Strategy Engine (trades{year}.db) ─────────────────────────────
         # Pro STRATEGIE-Name gruppieren, damit die konkrete Strategie (z. B.
@@ -776,9 +785,36 @@ class render_mainpage(fetch_data.FetchData):
                     line_color='#5E35B1',
                     line_dash='solid',
                     line_width=2,
+                    # Own trades carry a marker per buy; the start diamond would
+                    # sit on top of the first one.
+                    marker=not pos.get('trade_markers'),
                 )
 
         return positions
+
+    def _add_own_trade_markers(self, raw: pd.DataFrame, own_cur: str, quote_cur: str) -> None:
+        """Draw each own buy/sell from trades.db at its bar and booked price.
+
+        Prices are converted into the chart currency like the entry line (Scalable
+        books EUR for an LSE listing quoted in pence).
+        """
+        rows = raw[raw['action'].isin(('buy', 'sell'))]
+        if rows.empty:
+            return
+        cur_txt = f' {quote_cur}' if quote_cur else ''
+        markers = []
+        for _, r in rows.iterrows():
+            price = pd.to_numeric(r['price'], errors='coerce')
+            shares = pd.to_numeric(r['shares'], errors='coerce')
+            if pd.isna(price) or price <= 0:
+                continue
+            y = float(self._to_quote_currency(float(price), own_cur, quote_cur))
+            kind = str(r['action'])
+            qty = f'{shares:g}' if pd.notna(shares) else '?'
+            text = t(f'main.own_{kind}_marker', date=str(r['timestamp'])[:16],
+                     shares=qty, price=f'{y:.2f}{cur_txt}')
+            markers.append({'since': r['timestamp'], 'y': y, 'kind': kind, 'text': text})
+        self.t_chart.add_trade_markers(markers)
 
     def _render_quick_trade_buttons(self, buy_slot, sell_slot, ticker, headlines):
         """Render compact buy/sell buttons in the top row's reserved slots.

@@ -59,6 +59,41 @@ def _get_current_price(ticker: str, db_path: str = 'database') -> float:
     return 0.0
 
 
+def fifo_open_lots(trades: pd.DataFrame) -> list:
+    """Buy lots still held after matching the sells first-in-first-out.
+
+    *trades* needs the columns timestamp, action, shares, price (one ticker).
+    Returns ``[{'timestamp', 'shares', 'price'}, ...]`` oldest first. Lot prices
+    stay as booked (no fees), which is how the broker states its average price:
+    Scalable shows 67.745 for Infineon after 9 @ 83.20, sell 5, buy 4 @ 52.29,
+    whereas averaging every buy gives 73.69. Sells beyond the known lots (buys
+    older than the import) are ignored instead of producing negative lots.
+    """
+    lots = []
+    if trades is None or trades.empty:
+        return lots
+    df = trades.copy()
+    df['shares'] = pd.to_numeric(df['shares'], errors='coerce').fillna(0.0)
+    df['price'] = pd.to_numeric(df['price'], errors='coerce')
+    df = df.sort_values('timestamp', kind='stable')
+    for _, r in df.iterrows():
+        action = str(r['action']).lower()
+        qty = float(r['shares'])
+        if qty <= 0:
+            continue
+        if action == 'buy':
+            lots.append({'timestamp': str(r['timestamp']), 'shares': qty,
+                         'price': float(r['price']) if pd.notna(r['price']) else 0.0})
+        elif action == 'sell':
+            while qty > 1e-9 and lots:
+                take = min(qty, lots[0]['shares'])
+                lots[0]['shares'] -= take
+                qty -= take
+                if lots[0]['shares'] <= 1e-9:
+                    lots.pop(0)
+    return lots
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Chart helpers
 # ─────────────────────────────────────────────────────────────────────────────

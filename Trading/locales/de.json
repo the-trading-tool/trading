@@ -412,6 +412,8 @@
   "main.income_header": "**Gewinn & Verlust** für {ticker}",
   "main.balance_header": "**Bilanz** für {ticker}",
   "main.order_buy_help": "{ticker} kaufen (Paper-/Live-Trading)",
+  "main.own_buy_marker": "Eigener Kauf {date}: {shares} × {price}",
+  "main.own_sell_marker": "Eigener Verkauf {date}: {shares} × {price}",
   "main.order_sell_help": "{ticker} verkaufen (Paper-/Live-Trading)",
   "main.order_premium_hint": "Paper-/Live-Trading — nur in der lizensierten Version",
   "main.order_premium_title": "Paper-/Live-Trading nicht verfügbar",

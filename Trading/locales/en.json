@@ -412,6 +412,8 @@
   "main.income_header": "**Income sheet** for {ticker}",
   "main.balance_header": "**Balance sheet** for {ticker}",
   "main.order_buy_help": "Buy {ticker} (paper/live trading)",
+  "main.own_buy_marker": "Own buy {date}: {shares} × {price}",
+  "main.own_sell_marker": "Own sell {date}: {shares} × {price}",
   "main.order_sell_help": "Sell {ticker} (paper/live trading)",
   "main.order_premium_hint": "Paper / Live Trading — licensed version only",
   "main.order_premium_title": "Paper / Live Trading not available",
