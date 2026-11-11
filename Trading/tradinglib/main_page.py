@@ -941,7 +941,8 @@ class render_mainpage(fetch_data.FetchData):
         """Render the full asset detail page: search, chart, headlines, indicators, and sentiment."""
         logger.debug(f'render_mainpage called symbol={self.symbol} username={self.username} is_admin={self.is_admin}')
         try:
-            st.set_page_config(layout="wide")
+            from tradinglib.banner_page import FAVICON_SVG
+            st.set_page_config(layout="wide", page_icon=FAVICON_SVG)
         except Exception:
             pass
 

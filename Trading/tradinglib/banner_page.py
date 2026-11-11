@@ -56,6 +56,24 @@ ARBOR_LOGO_SVG = """
 """
 
 
+# Browser-tab icon: the tree and bar charts of ARBOR_LOGO_SVG without the
+# tagline (unreadable at 16 px), cropped to a square. The light rounded
+# background keeps the grey tree visible on dark tab strips as well.
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="28 35 144 144">
+<rect x="28" y="35" width="144" height="144" rx="26" fill="#f4f4f4"/>
+<rect x="94" y="118" width="12" height="30" fill="#888" rx="2"/>
+<ellipse cx="100" cy="109" rx="36" ry="17" fill="#4a4a4a"/>
+<ellipse cx="100" cy="93" rx="27" ry="16" fill="#3a3a3a"/>
+<ellipse cx="100" cy="79" rx="18" ry="13" fill="#2e2e2e"/>
+<rect x="36" y="122" width="7" height="18" fill="#555" rx="1"/>
+<rect x="47" y="114" width="7" height="26" fill="#666" rx="1"/>
+<rect x="58" y="108" width="7" height="32" fill="#888" rx="1"/>
+<rect x="135" y="114" width="7" height="26" fill="#555" rx="1"/>
+<rect x="146" y="104" width="7" height="36" fill="#666" rx="1"/>
+<rect x="157" y="94" width="7" height="46" fill="#888" rx="1"/>
+</svg>"""
+
+
 def render_logo(region=st, max_width: str = "220px", margin_bottom: str = "1.5rem"):
     """Render the centered Silvesto Private Capital SVG logo into region, scaled to max_width."""
     style = (

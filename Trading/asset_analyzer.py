@@ -266,9 +266,11 @@ class TradingApp:
         """Configure Streamlit page layout, load config.yaml, and initialize the authenticator."""
         self.title = "Silvesto, your portal for growth."
         if 'title' not in st.session_state:
-            st.set_page_config(self.title, initial_sidebar_state='collapsed', layout="wide" )
+            st.set_page_config(self.title, page_icon=bp.FAVICON_SVG,
+                               initial_sidebar_state='collapsed', layout="wide")
         else:
-            st.set_page_config(st.session_state.title, initial_sidebar_state='collapsed',layout="wide" )
+            st.set_page_config(st.session_state.title, page_icon=bp.FAVICON_SVG,
+                               initial_sidebar_state='collapsed', layout="wide")
         self.authentication_status = None
         self.is_admin = False
         self.config = self.load_config()
@@ -376,7 +378,8 @@ class TradingApp:
     def set_page_config(self, title):
         """Attempt to set the Streamlit page config and update the sidebar header title."""
         try:
-            st.set_page_config(title, layout="wide", initial_sidebar_state='collapsed')
+            st.set_page_config(title, page_icon=bp.FAVICON_SVG, layout="wide",
+                               initial_sidebar_state='collapsed')
         except Exception:
             pass
         self.set_page_title(title)
