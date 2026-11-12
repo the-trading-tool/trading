@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Edge Scores: Gesamt-Score – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Gesamt-Score <small style="font-size:.6em;color:#888">total_page.py</small></h1>
+
+<p>Der <b>Gesamt-Score</b> (Markt → Edge Scores, Untermenü links) führt die drei Scorecards
+<b>COT-Positionierung</b>, <b>Makrodaten</b> und <b>Trend &amp; Saisonalität</b> zu einem Wert von
+<b>−10 bis +10</b> je Markt zusammen und leitet daraus die <b>Top Setups</b> für Forex-Paare ab.</p>
+
+<h2>Berechnung</h2>
+<table>
+<tr><th>Komponente</th><th>Spanne</th><th>Normierung</th><th>verfügbar für</th></tr>
+<tr><td>COT-Positionierung</td><td>−3 … +3</td><td>÷ 3</td><td>alle 20 Märkte</td></tr>
+<tr><td>Makrodaten</td><td>−6 … +6</td><td>÷ 6</td><td>8 Hauptwährungen</td></tr>
+<tr><td>Trend &amp; Saisonalität</td><td>−4 … +4</td><td>÷ 4</td><td>alle 20 Märkte</td></tr>
+</table>
+<p>Gesamt = 10 × Mittelwert der vorhandenen, normierten Komponenten (gleichgewichtet). Bias ab ±2,
+stark ab ±5. <b>Einig (✓)</b> = alle vorhandenen Komponenten zeigen in dieselbe Richtung und keine ist
+neutral.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td>Top Setups</td><td>Forex-Paare nach Stärke (Basis − Quote, −20 … +20) mit Richtung und der Differenz je
+  Komponente; standardmäßig nur einige Paare.</td></tr>
+<tr><td>Übersicht</td><td>Alle Märkte gruppiert mit Gesamt, Bias, Einigkeit und den drei Teil-Scores.</td></tr>
+<tr><td>Methodik</td><td>Kurzfassung dieser Hilfe.</td></tr>
+</table>
+
+<div class="warn">Die Teil-Scores haben unterschiedliche Taktung (COT wöchentlich, Makro monatlich bis
+quartalsweise, Trend täglich). Bias-Filter, kein Einstiegssignal,
+nicht per Backtest kalibriert. Keine Anlageberatung.</div>
+</body>
+</html>

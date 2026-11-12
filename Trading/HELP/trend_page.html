@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Edge Scores: Trend &amp; Saisonalität – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Trend &amp; Saisonalität <small style="font-size:.6em;color:#888">trend_page.py</small></h1>
+
+<p>Die Karte <b>Trend &amp; Saisonalität</b> (Markt → Edge Scores, Untermenü links) bewertet die 20 Märkte
+der COT-Scorecard sowie 16 weitere Aktienindizes (DAX, FTSE, Nikkei, KOSPI, Bovespa …) und
+7 weitere Kryptowährungen nach ihrem <b>Kurstrend</b> und dem typischen Verlauf des
+<b>kommenden Monats</b>. Ergebnis: ein <b>Score von −4 bis +4</b> je Markt und ein Bias je Forex-Paar.</p>
+
+<h2>Daten</h2>
+<ul>
+<li>Tagesschlusskurse aus den lokalen Kursdatenbanken der App (<code>yf_&lt;Ticker&gt;.db</code>, nur lesend).</li>
+<li>Fehlt eine Reihe oder ist sie älter als 7 Tage, wird sie direkt von Yahoo geladen – ohne in die
+  Datenbanken zu schreiben (aktuell z. B. NZDUSD und WTI).</li>
+<li>Wechselkurse gegen USD entstehen teils aus dem Kreuzkurs gegen EUR × EURUSD (z. B. JPY, CHF, CAD, AUD).</li>
+<li>Die 10J-Treasury wird über die Rendite <code>^TNX</code> gemessen und die Richtung gedreht (⇅).</li>
+<li>Die weltweiten Indizes und weiteren Kryptos fließen nicht in den Gesamt-Score ein – für sie gibt es keine COT- oder Makrodaten.</li>
+</ul>
+
+<h2>Score je Markt</h2>
+<table>
+<tr><th>Komponente</th><th>Regel</th><th>Punkte</th></tr>
+<tr><td>Langfristtrend</td><td>Schluss über / unter SMA200</td><td>±1</td></tr>
+<tr><td>Trendstruktur</td><td>SMA50 über / unter SMA200</td><td>±1</td></tr>
+<tr><td>Momentum</td><td>Rendite der letzten 63 Handelstage &gt; +1 % / &lt; −1 %</td><td>±1</td></tr>
+<tr><td>Saisonalität</td><td>Folgemonat (30 Kalendertage ab heute) in den letzten 10 Jahren: Trefferquote ≥ 70 % und Ø positiv / ≤ 30 % und Ø negativ (mind. 7 Jahre)</td><td>±1</td></tr>
+</table>
+<p>Die Saisonalität zählt bewusst nur ±1, damit eine Statistik aus 10 Werten einen klaren Trend nicht
+aufhebt. Paar-Score = Basis − Quote (−8 … +8), Bias ab ±3, stark ab ±5.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td>Scorecard</td><td>Kurs, Abstand zum SMA200, 3-Monats-Rendite, Saison-Ø und Trefferquote, Punkte je Komponente.</td></tr>
+<tr><td>Forex-Paare</td><td>Alle 28 Paare nach Stärke, Währungs-Scores als Balken.</td></tr>
+<tr><td>Chart</td><td>Kurs mit SMA50/200, Ø-Jahresverlauf der letzten 10 Jahre mit markierten nächsten 30 Tagen und die Einzeljahre.</td></tr>
+<tr><td>Methodik</td><td>Kurzfassung dieser Hilfe.</td></tr>
+</table>
+
+<div class="warn">Trendregeln sind nachlaufend, 10 Jahre Saisonalität eine kleine Stichprobe. Eigene,
+bewusst einfache Methodik, nicht per Backtest kalibriert. Keine Anlageberatung.</div>
+</body>
+</html>

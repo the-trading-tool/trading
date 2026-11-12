@@ -1913,3 +1913,104 @@ Einzelabruf danach lieferte dieselben Werte wie der Batch. Gleiche Fehlschlaege 
 kurze Zeitraeume vor, und `1d:max` muss fuer die Split-Bereinigung voll laden. Ob Yahoo bei
 3.000+ Tickern (ETP-Job) mit 50er-Gruppen drosselt, ist erst im Betrieb zu sehen; dann `/batch:`
 verkleinern.
+
+## Edge Scores / COT-Scorecard — EdgeFinder-Light, Stufe 1 (2026-11-11)
+
+Eigene Light-Version eines EdgeFinder-artigen Bias-Tools; Stufe 1 = COT-Daten.
+
+- `tradinglib/cot_data.py` — Abruf CFTC Public Reporting API (Socrata, Datensatz `6dca-aqww`
+  "Legacy – Futures only", ohne Key), Speicherung in `database/cot.db` (`cot_weekly`,
+  `cot_meta`), Historie ab 2018, 20 Maerkte (8 FX-Hauptwaehrungen + MXN, Rohstoffe, Indizes,
+  UST10Y, BTC). Kennzahlen je Woche (Non-Commercials): Long %, Δ Long % (Pp), Netto, Δ,
+  COT-Index (52 W). Score −3…+3 = Positionierung (Long %) ±2 + Dynamik (Δ Long %) ±1;
+  Paar-Score = Basis − Quote. `ensure_fresh()` laedt nach, sobald Stichtag+10 Tage erreicht
+  ist (Retry-Sperre 6 h). CLI: `python -m tradinglib.cot_data [/full]`.
+- `tradinglib/edge_scores_page.py` — Sammelseite **Edge Scores** (`?edge=true[&card=KEY]`,
+  Sidebar Markt, Sidebar-Item/Startseite `edge_scores`). Layout wie Strategy Finder
+  (`st.columns([1, 0.1, 4])`): links eigenes Untermenue, rechts die Scorecard. Neue Scorecards
+  nur in `CARDS` eintragen (key, Locale-Key, Icon, Renderer `fn(username, side)`); Renderer
+  `None` = als "geplant" deaktiviert angezeigt (aktuell macro, trend, total). Auswahl in
+  `st.session_state['_edge_card']`, schlaegt den URL-Parameter. Alter Link `?cot=true` -> COT.
+- `tradinglib/cot_page.py` — COT-Scorecard: Tabs Scorecard, Forex-Paare, COT-Historie (Chart wie
+  EdgeFinder), Methodik. `render(side=)` legt den Aktualisieren-Knopf ins Untermenue.
+  Locale-Keys `cot.*`, `edge.*`, Hilfe `HELP/cot_page(_en).html`.
+- Verifiziert: Zahlen identisch mit EdgeFinder-COT-Tabelle (USD 20.10.2026: 32.422/17.378,
+  Δ −174/−2.299, Long 65,10 %, +2,75). EdgeFinder datiert auf den Freitag (Veroeffentlichung),
+  wir zeigen Stichtag (Di) + Veroeffentlicht. Tests: `tests/test_cot_data.py`.
+- **Offen (naechste Stufen):** Makro-Komponente (FRED/ECB: CPI, PMI, Arbeitsmarkt, Zinsen),
+  Trend + Saisonalitaet aus lokalen Kursen, Gesamt-Score je Asset; Scheduler-Job freitags;
+  Schwellen per Backtest kalibrieren (bisher erste Naeherung).
+
+### Edge Scores Stufe 2 — Makro-Scorecard (2026-11-11)
+
+- `tradinglib/macro_data.py` — je Waehrung (USD, EUR, GBP, JPY, CHF, CAD, AUD, NZD) fuenf
+  Indikatoren, alle **ohne API-Key**: Leitzins + Inflation J/J von der **BIS-Originalschnittstelle**
+  (`stats.bis.org/api/v2`, CSV), Arbeitslosenquote ueber **FRED `fredgraph.csv`** (OECD-Reihen),
+  BIP Q/Q und Fruehindikator CLI von **OECD SDMX**, Euroraum-Arbeitslosigkeit/-BIP von **Eurostat**.
+  Speicher `database/macro.db` (`macro_obs`, `macro_meta`, ab 2015); jede Quelle einzeln, Fehler
+  je Quelle in `macro_meta.err_<ind>`. Nachladen hoechstens 1x/Tag (`ensure_fresh`, Retry-Sperre 6 h).
+  CLI `python -m tradinglib.macro_data`.
+- **Fallen beim Quellenaufbau (verifiziert 2026-11-11):** DBnomics-Spiegel der BIS endet 2025-06
+  (veraltet, nicht nutzen). FRED-Reihe Euroraum-Arbeitslosigkeit `LRHUTTTTEZM156S` endet 2023.
+  Euroraum heisst bei Eurostat seit Bulgariens Beitritt **EA21** (`une_rt_m`), EA20 liefert dort nichts;
+  `_EA_CODES` probiert der Reihe nach. OECD-CLI gibt es nicht fuer CHE/NZL, EUR ueber `G4E`.
+  CHF/NZD-Arbeitslosigkeit und AUD-Inflation sind Quartalsreihen (Δ = Vorquartal).
+- Score −6…+6: Leitzins vs. Median ±1 + Zinsaenderung 6 M ±1, Inflationstrend 3 M ±1 (steigend = +,
+  Zinsdifferenz-Logik), Arbeitslosigkeit 3 M ±1 (fallend = +), BIP Q/Q ≥0,5 % / <0 % ±1,
+  CLI >100 steigend / <100 fallend ±1. Paare ueber `cot_data.pair_bias(card, strong=6, bias=3)`.
+- `tradinglib/macro_page.py` — Karte in Edge Scores (Tabs Scorecard, Forex-Paare, Verlauf, Methodik).
+  **st.dataframe-Fallen:** doppelte Spaltennamen ("Δ 3 M" fuer Inflation und Arbeitslosigkeit)
+  ueberschreiben sich im Dict → unsichtbares `\u200b`-Suffix; NaN in gestylten Zahlenspalten
+  erscheint als "None" (na_rep wird ignoriert) → Zellen selbst als Text formatieren, Farben aus den
+  Zahlen. Beides per Test abgesichert (`tests/test_macro_data.py`).
+- Ueberschriften: `edge_scores_page.title()` fuer Untermenue und alle Karten (gleiches Element, kein
+  oberer Margin) — vorher standen h4 und `st.subheader` versetzt.
+
+### Edge Scores Stufe 3 — Trend & Saisonalitaet (2026-11-12)
+
+- `tradinglib/trend_data.py` — dieselben 20 Maerkte/Keys wie COT. Kurse **nur lesend** aus den
+  lokalen `yf_<TICKER>.db` (`$TradingDB`, `mode=ro`); fehlt eine Reihe oder ist sie > 7 Tage alt →
+  `market_data.download(force_remote=True)` (schreibt nichts in die DBs). FX gegen USD aus lokalem
+  Kreuzkurs gegen EUR × EURUSD (JPY/CHF/CAD/AUD/MXN/BTC), NZDUSD und CL=F kommen von Yahoo
+  (lokal nicht vorhanden; WTI faellt auf BZ=F zurueck). `^GSPC` lokal veraltet → `^SPX`.
+  UST10Y ueber `^TNX` mit `SIGN=-1` (steigende Rendite = fallender Anleihekurs).
+- Score −4…+4: Schluss vs SMA200 ±1, SMA50 vs SMA200 ±1, 63-T-Rendite >+1 %/<−1 % ±1,
+  Saisonalitaet Folgemonat (30 Kalendertage, letzte 10 Jahre, mind. 7) ±1 nur bei Trefferquote
+  ≥70 %/≤30 % mit passendem Ø. **Saison bewusst nur ±1** — mit ±2 hob sie bei Silber 11/2026 einen
+  klaren Abwaertstrend (−3) auf "neutral" auf.
+- `tradinglib/trend_page.py` — Karte (Scorecard, Forex-Paare, Chart mit SMA50/200 + Ø-Jahresverlauf,
+  Methodik), Cache je Tag (`st.cache_data`). Tests `tests/test_trend_data.py`.
+
+### ERLEDIGT 2026-11-12: COT-Positionierung relativ statt absolut
+
+Silber war am 03.11. in der COT-Karte "stark bullish" (+3), obwohl Kurs, Markov-Regime und Trend-Karte
+bearish sind. Ursache: Positionierung wird an **absoluten** Long-%-Schwellen (60/52,5/47,5/40) gemessen.
+Spekulanten sind in Edelmetallen strukturell long (Median 2018-2026: Silber 68,9 %, Gold 78,9 %;
+Silber 76 % aller Wochen ≥ 60 %) → fast immer +2, egal ob sie gerade abbauen. Der COT-Index (Silber 6 =
+Netto-Position nahe 52-W-Tief) zeigt das Gegenteil.
+**Umgesetzt:** `long_rank` = Perzentil-Rang des Long-% in den letzten 156 Wochen (mind. 52, inkl.
+aktueller Woche, kausal; `cot_data.rolling_rank`), Punkte ≥80/≥60/≤40/≤20 → +2/+1/−1/−2. Spalte
+"Rang 3J" in der Karte. Ergebnis 03.11.2026: Silber +3 → −1 (Rang 14), Gold +1 → 0, CHF −1 → +3
+(39 % long, fuer den Franken aber Rang 95), EURUSD bleibt staerkstes einiges Setup.
+Nebenbei behoben: `replace(0, pd.NA)` bei konstanter Netto-Position (Spanne 0) liess
+`.astype(float)` crashen → `float("nan")`.
+- **Erweitert 2026-11-12:** `trend_data.EXTRA_MARKETS` — 16 weitere Aktienindizes (Gruppe
+  `indices_world`: DAX, MDAX, Euro Stoxx 50, FTSE, CAC, IBEX, SMI, FTSE MIB, AEX, Nikkei, Hang Seng,
+  ASX 200, KOSPI, Bovespa, TSX, Nifty) und 7 Kryptos (ETH, SOL, XRP, BNB, DOGE, TRX, XMR; Gruppe
+  `crypto`, aus `<C>-EUR` × EURUSD). **Nur in der Trend-Karte**, nicht im Gesamt-Score (keine
+  COT-/Makrodaten). Lokal fehlend → Yahoo: FTSEMIB.MI, ^AEX, ^GSPTSE, ^NSEI. Regel in `price_series`:
+  ist die lokale Reihe bei direkten Kursen zu kurz fuer 10 Saison-Jahre (`^SSMI` lokal erst ab 2023),
+  wird die laengere Yahoo-Reihe genommen; bei Kreuzkursen nicht (Yahoo hat dieselbe Historie).
+  Erstberechnung ~15 s (Yahoo), danach Tages-Cache.
+
+### Edge Scores Stufe 4 — Gesamt-Score (2026-11-12)
+
+- `tradinglib/total_data.py` — `combine(cot, macro, trend)`: je Komponente normiert (COT /3, Makro /6,
+  Trend /4), Gesamt = 10 × Mittel der **vorhandenen** Komponenten (−10…+10, gleichgewichtet), Bias ab
+  ±2, stark ab ±5. Makro nur fuer die 8 Hauptwaehrungen. `agree` = alle vorhandenen Komponenten
+  gleiches Vorzeichen, keine 0 (mind. 2). `pair_setups()` → Paare (−20…+20, strong 10, bias 4) mit
+  Δ je Komponente.
+- `tradinglib/total_page.py` — Tabs Top Setups (Default: nur einige), Uebersicht, Methodik. Nutzt die
+  Caches der Einzelkarten (`cot_page._scorecard_cached`, `macro_page._scorecard_cached`,
+  `trend_page._compute`). Δ-Farbe relativ zur Paar-Richtung (bei Short = negatives Δ gruen).
+- Tests `tests/test_total_data.py`; alle vier Edge-Karten aktiv.

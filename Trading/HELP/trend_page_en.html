@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Edge Scores: Trend &amp; Seasonality – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Trend &amp; Seasonality <small style="font-size:.6em;color:#888">trend_page.py</small></h1>
+
+<p>The <b>Trend &amp; Seasonality</b> card (Market → Edge Scores, sub-menu on the left) rates the 20 markets
+of the COT Scorecard plus 16 further equity indices (DAX, FTSE, Nikkei, KOSPI, Bovespa …) and
+7 further cryptocurrencies by their <b>price trend</b> and the typical behaviour of the
+<b>coming month</b>. Result: a <b>score from −4 to +4</b> per market and a bias per forex pair.</p>
+
+<h2>Data</h2>
+<ul>
+<li>Daily closes from the app's local price databases (<code>yf_&lt;ticker&gt;.db</code>, read-only).</li>
+<li>If a series is missing or older than 7 days it is loaded directly from Yahoo – without writing to
+  the databases (currently e.g. NZDUSD and WTI).</li>
+<li>FX rates vs. USD are partly derived from the cross rate vs. EUR × EURUSD (e.g. JPY, CHF, CAD, AUD).</li>
+<li>The 10y Treasury is measured via its yield <code>^TNX</code> and the direction flipped (⇅).</li>
+<li>The global indices and further cryptos are not part of the total score – there is no COT or macro data for them.</li>
+</ul>
+
+<h2>Score per market</h2>
+<table>
+<tr><th>Component</th><th>Rule</th><th>Points</th></tr>
+<tr><td>Long-term trend</td><td>Close above / below SMA200</td><td>±1</td></tr>
+<tr><td>Trend structure</td><td>SMA50 above / below SMA200</td><td>±1</td></tr>
+<tr><td>Momentum</td><td>Return over the last 63 trading days &gt; +1 % / &lt; −1 %</td><td>±1</td></tr>
+<tr><td>Seasonality</td><td>Coming month (30 calendar days from today) over the last 10 years: hit rate ≥ 70 % and positive average / ≤ 30 % and negative average (at least 7 years)</td><td>±1</td></tr>
+</table>
+<p>Seasonality deliberately counts only ±1 so that a statistic from 10 values does not override a
+clear trend. Pair score = base − quote (−8 … +8), bias from ±3, strong from ±5.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Content</th></tr>
+<tr><td>Scorecard</td><td>Price, distance to SMA200, 3-month return, seasonal average and hit rate, points per component.</td></tr>
+<tr><td>Forex pairs</td><td>All 28 pairs by strength, currency scores as bars.</td></tr>
+<tr><td>Chart</td><td>Price with SMA50/200, average yearly path of the last 10 years with the next 30 days highlighted, and the individual years.</td></tr>
+<tr><td>Methodology</td><td>Short version of this help.</td></tr>
+</table>
+
+<div class="warn">Trend rules lag, and 10 years of seasonality is a small sample. Own, deliberately
+simple method, not backtest-calibrated. Not investment advice.</div>
+</body>
+</html>

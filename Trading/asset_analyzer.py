@@ -90,6 +90,7 @@ _START_PAGE_ROUTES = {
     'marketmap':       {'marketmap': 'true'},
     'rotation':        {'rotation': 'true'},
     'fear_greed':      {'fear_greed': 'true'},
+    'edge_scores':     {'edge': 'true'},
     'global_rotation': {'global_rotation': 'true'},
     'asset_search':    {'asset_search': 'true'},
     'four_ps':         {'four_ps': 'true'},
@@ -706,6 +707,7 @@ class TradingApp:
                 _nav(t('nav.market_overview'), market_overview='true')
                 _nav(t('nav.rotation_hub'), rotation_hub='true')
                 _nav(t('nav.market_map'), marketmap='true')
+                _nav(t('nav.edge_scores'), edge='true')
 
             with st.sidebar.expander(t('nav.group_upgrade'), expanded=False):
                 if STRATEGY_ENGINE_AVAILABLE:
@@ -726,7 +728,7 @@ class TradingApp:
             _sb_items = sysconf.SystemConfig.sidebar_menu_config().get_sidebar_items()
 
             # ── Markt ──────────────────────────────────────────────────────────
-            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'summary', 'market_overview', 'correlation', 'fear_greed', 'global_rotation')):
+            if any(_sb_items.get(k) for k in ('marketmap', 'rotation', 'summary', 'market_overview', 'correlation', 'fear_greed', 'global_rotation', 'edge_scores')):
                 with st.sidebar.expander(t('nav.group_market'), expanded=False):
                     if _sb_items.get('marketmap'):
                         _nav(t('nav.market_map'), marketmap='true')
@@ -736,6 +738,8 @@ class TradingApp:
                         _nav(t('nav.summary_tab_flow'), summary='true', tab='flow')
                     if _sb_items.get('market_overview'):
                         _nav(t('nav.market_overview'), market_overview='true')
+                    if _sb_items.get('edge_scores'):
+                        _nav(t('nav.edge_scores'), edge='true')
 
             # ── Assets & Performance ────────────────────────────────────────────
             if any(_sb_items.get(k) for k in ('asset', 'asset_search', 'candidates', 'risk_profile', 'four_ps', 'summary', 'performance', 'compound')):
@@ -1070,6 +1074,16 @@ class TradingApp:
                                 FearGreedPage(username=self.username).render()
                             except Exception as e:
                                 st.error(t('error.load_fear_greed', error=e))
+                    elif parms.get('edge') or parms.get('cot'):
+                        # ?cot=true = alter Direktlink auf die COT-Scorecard
+                        self.set_page_config(t('page.edge_scores'))
+                        with st.spinner(t('page.edge_scores') + " …"):
+                            try:
+                                from tradinglib.edge_scores_page import EdgeScoresPage
+                                EdgeScoresPage(username=self.username,
+                                               card=parms.get('card') or ('cot' if parms.get('cot') else None)).render()
+                            except Exception as e:
+                                st.error(t('error.load_edge_scores', error=e))
                     elif parms.get('global_rotation'):
                         self.set_page_config(t('page.global_rotation'))
                         with st.spinner(t('page.global_rotation') + " …"):

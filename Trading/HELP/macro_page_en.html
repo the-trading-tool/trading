@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Edge Scores: Macro Scorecard – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Macro Scorecard <small style="font-size:.6em;color:#888">macro_page.py</small></h1>
+
+<p>The <b>Macro Scorecard</b> (Market → Edge Scores, sub-menu on the left) rates the eight major
+currencies by whether their economic data pushes the central bank towards <b>higher</b> or
+<b>lower rates</b> – and thereby supports or weighs on the currency.
+Result: a <b>score from −6 to +6</b> per currency and a <b>bias per forex pair</b>.</p>
+
+<h2>Data sources (free, no API key)</h2>
+<table>
+<tr><th>Indicator</th><th>Source</th><th>Frequency</th></tr>
+<tr><td>Policy rate</td><td>BIS central bank policy rates</td><td>monthly</td></tr>
+<tr><td>Inflation y/y</td><td>BIS consumer prices</td><td>monthly (AUD quarterly)</td></tr>
+<tr><td>Unemployment rate</td><td>FRED (OECD series); euro area: Eurostat</td><td>monthly (CHF, NZD quarterly)</td></tr>
+<tr><td>GDP q/q</td><td>OECD; euro area: Eurostat</td><td>quarterly</td></tr>
+<tr><td>Leading indicator CLI</td><td>OECD; EUR via the four large EU economies</td><td>monthly, not for CHF/NZD</td></tr>
+</table>
+<ul>
+<li>The page refreshes at most once a day when opened (the <b>Refresh</b> button in the sub-menu
+  forces it). CLI/scheduler: <code>python -m tradinglib.macro_data</code>.</li>
+<li>Stored in <code>database/macro.db</code>, history from 2015. If one source fails, the others
+  stay current; the page names the affected source.</li>
+</ul>
+
+<h2>Score per currency</h2>
+<table>
+<tr><th>Component</th><th>Rule</th><th>Points</th></tr>
+<tr><td>Rates</td><td>Policy rate above/below the median of the 8 currencies; plus raised/cut vs. 6 months ago</td><td>±1 each</td></tr>
+<tr><td>Inflation</td><td>y/y rate vs. 3 months ago &gt; +0.2 pp / &lt; −0.2 pp</td><td>±1</td></tr>
+<tr><td>Labour market</td><td>Unemployment rate vs. 3 months ago fell / rose (&gt; 0.1 pp)</td><td>±1</td></tr>
+<tr><td>Growth</td><td>GDP q/q ≥ 0.5 % / &lt; 0 %</td><td>±1</td></tr>
+<tr><td>Leading indicator</td><td>CLI &gt; 100 and rising / &lt; 100 and falling</td><td>±1</td></tr>
+</table>
+<p>For quarterly series the change is measured against the prior quarter. A missing value scores
+0. Pair score = base − quote (−12 … +12), bias from ±3, strong from ±6.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Content</th></tr>
+<tr><td>Scorecard</td><td>Value and change per indicator, coloured by points; expanders with points, data date and source per value.</td></tr>
+<tr><td>Forex pairs</td><td>All 28 pairs sorted by strength, plus the currency scores as bars.</td></tr>
+<tr><td>History</td><td>One indicator over several years for the selected currencies.</td></tr>
+<tr><td>Methodology</td><td>Short version of this help.</td></tr>
+</table>
+
+<div class="warn">The score rates the <b>direction</b> of the data, not the surprise versus forecasts
+(consensus estimates are not freely available). Macro data arrives with weeks to months of delay –
+the score describes the backdrop, not timing. Thresholds are a first approximation, not
+backtest-calibrated. Not investment advice.</div>
+</body>
+</html>

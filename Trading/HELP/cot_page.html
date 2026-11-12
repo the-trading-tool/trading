@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Edge Scores: COT-Scorecard – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: COT-Scorecard <small style="font-size:.6em;color:#888">cot_page.py</small></h1>
+
+<p>Die <b>COT-Scorecard</b> (Markt → Edge Scores, Untermenü links) zeigt, wie die <b>großen Spekulanten</b> (Fonds, CTAs –
+in der CFTC-Statistik „Non-Commercials“) in Währungen, Rohstoffen, Aktienindizes,
+Anleihen und Bitcoin positioniert sind, und verdichtet das zu einem <b>Score von −3 bis +3</b>
+je Markt sowie einem <b>Bias je Forex-Paar</b>.</p>
+
+<h2>Datenquelle</h2>
+<ul>
+<li>CFTC <i>Commitments of Traders</i>, Datensatz „Legacy – Futures only“, über die kostenlose
+  CFTC Public Reporting API (kein API-Key).</li>
+<li>Stichtag ist jeweils <b>Dienstag</b>, veröffentlicht wird am <b>Freitag</b> darauf.</li>
+<li>Die Seite lädt beim Öffnen automatisch nach, sobald ein neuer Report fällig ist.
+  Manuell: Button <b>Aktualisieren</b> oder per CLI/Scheduler
+  <code>python -m tradinglib.cot_data</code> (<code>/full</code> = komplette Historie).</li>
+<li>Speicherort: <code>database/cot.db</code>, Historie ab 2018.</li>
+</ul>
+
+<h2>Score je Markt</h2>
+<table>
+<tr><th>Komponente</th><th>Regel</th><th>Punkte</th></tr>
+<tr><td>Positionierung</td><td>Long-Anteil = Long / (Long + Short) der Non-Commercials, gemessen als
+  <b>Rang in den letzten 3 Jahren</b> dieses Marktes (Spalte „Rang 3J“, 0 = tiefster, 100 = höchster Wert):
+  ≥ 80 / ≥ 60 / ≤ 40 / ≤ 20</td><td>+2 / +1 / −1 / −2</td></tr>
+<tr><td>Dynamik</td><td>Veränderung des Long-Anteils zur Vorwoche: &gt; +1 Pp / &lt; −1 Pp</td><td>+1 / −1</td></tr>
+</table>
+<p><b>Warum relativ?</b> In Gold und Silber sind Spekulanten fast immer mehrheitlich long (Silber
+2018–2026 im Median 69 %), im Yen meist short. Feste Schwellen wie „≥ 60 % long = bullish“ bewerteten
+solche Märkte fast immer gleich – auch während die Spekulanten abbauten (Silber 11/2026). Der Rang
+zeigt, ob die Positionierung für <b>diesen</b> Markt gerade hoch oder niedrig ist.</p>
+<p><b>COT-Index</b> (nicht im Score): Lage der Netto-Position zwischen Minimum und Maximum der
+letzten 52 Wochen (0–100). ≥ 90 bzw. ≤ 10 wird als <b>überfüllt</b> markiert.</p>
+
+<h2>Tabs</h2>
+<table>
+<tr><th>Tab</th><th>Inhalt</th></tr>
+<tr><td>Scorecard</td><td>Letzte Woche je Markt, gruppiert, mit Score, Bias, Long %, Netto-Position, COT-Index.</td></tr>
+<tr><td>Forex-Paare</td><td>Alle 28 Paare der acht Hauptwährungen: Score Basis − Score Quote (−6 … +6), nach Stärke sortiert.</td></tr>
+<tr><td>COT-Historie</td><td>Gestapelte Long/Short-Kontrakte mit Long-%-Linie, Netto-Position mit COT-Index, Wochentabelle.</td></tr>
+<tr><td>Methodik</td><td>Kurzfassung dieser Hilfe in der App.</td></tr>
+</table>
+
+<div class="warn">Wöchentliche Daten mit rund drei Tagen Verzug: Der Score ist ein Bias-Filter für
+Swing-Trades, kein Einstiegssignal. Die Schwellen sind eine erste Näherung und noch nicht per
+Backtest kalibriert. Keine Anlageberatung.</div>
+</body>
+</html>
