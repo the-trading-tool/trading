@@ -50,12 +50,18 @@ def _render_total(username: str, side) -> None:
     TotalPage(username=username).render(side=side)
 
 
+def _render_asset(username: str, side) -> None:
+    from tradinglib.asset_card_page import AssetCardPage
+    AssetCardPage(username=username).render(side=side)
+
+
 # key, Locale-Key, Icon, Renderer (None = geplant)
 CARDS: list[tuple[str, str, str, Callable | None]] = [
     ("cot", "edge.card_cot", "📊", _render_cot),
     ("macro", "edge.card_macro", "🏛️", _render_macro),
     ("trend", "edge.card_trend", "📈", _render_trend),
     ("total", "edge.card_total", "🎯", _render_total),
+    ("asset", "edge.card_asset", "🔎", _render_asset),
 ]
 DEFAULT_CARD = "cot"
 _STATE_KEY = "_edge_card"

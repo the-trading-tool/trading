@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Edge Scores: Asset Scorecard – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Asset Scorecard <small style="font-size:.6em;color:#888">asset_card_page.py</small></h1>
+<p>The <b>asset scorecard</b> (Market → Edge Scores → Asset scorecard) shows <b>one</b> market with all
+building blocks of the Edge Scores on one page: total score with gauge, the three components with their
+individual points, technical context and the history of the total score.</p>
+<h2>Layout</h2>
+<table>
+<tr><th>Section</th><th>Content</th><th>in the score?</th></tr>
+<tr><td>Gauge &amp; scores</td><td>Total −10 … +10 (as in the Total score card), plus trend, COT, macro</td><td>–</td></tr>
+<tr><td>Technical: trend &amp; seasonality</td><td>Price vs SMA200, SMA50/200, 3-month momentum, seasonality next 30 days</td><td>yes (−4 … +4)</td></tr>
+<tr><td>Institutional positioning</td><td>3-year rank of the long share, Δ long share, long/short, net, COT index</td><td>yes (−3 … +3), only markets with a CFTC report</td></tr>
+<tr><td>Macro bias</td><td>Policy rate, inflation, unemployment, GDP, leading indicator</td><td>only the 8 major currencies; otherwise US data as context</td></tr>
+<tr><td>Technical details</td><td>Position vs SMA 20/50/100/200, realised volatility (low/normal/high vs its own last year), avg daily move 7/90 days</td><td>no</td></tr>
+<tr><td>History</td><td>Total score per Friday (26/52/104 weeks)</td><td>–</td></tr>
+</table>
+<h2>History without look-ahead</h2>
+<p>Each weekly point uses only what was known that day: COT from its release (Friday), trend on prices up
+to that day, macro only with values estimated to have been published (policy rate/leading indicator ≈ 42 days,
+inflation/unemployment ≈ 70 days after the start of the month, GDP ≈ 120 days after the start of the quarter).
+Today's point is identical to the individual cards.</p>
+<div class="warn">Not included because there is no free source: crowd/retail sentiment, consensus forecasts
+(“surprise”) and price targets. The scores describe the situation; the thresholds are not yet calibrated by backtest.</div>
+</body>
+</html>

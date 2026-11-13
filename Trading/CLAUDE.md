@@ -2014,3 +2014,19 @@ Nebenbei behoben: `replace(0, pd.NA)` bei konstanter Netto-Position (Spanne 0) l
   Caches der Einzelkarten (`cot_page._scorecard_cached`, `macro_page._scorecard_cached`,
   `trend_page._compute`). Δ-Farbe relativ zur Paar-Richtung (bei Short = negatives Δ gruen).
 - Tests `tests/test_total_data.py`; alle vier Edge-Karten aktiv.
+
+### Edge Scores Stufe 5 — Asset-Scorecard (2026-11-13)
+
+- `tradinglib/asset_card_data.py` + `asset_card_page.py` — Karte `asset` in Edge Scores: ein Markt
+  (alle 43 der Trend-Karte) mit Banner, Tacho (Gesamt −10…+10), Score-Tabelle, Panels Trend & Saison /
+  COT / Makro / Technik-Details und Verlauf des Gesamt-Scores (26/52/104 Wochen, je Freitag).
+- `total_of()` = `total_data.combine` fuer einen Markt (per Test gleich). Makro zaehlt nur fuer die
+  8 Hauptwaehrungen; sonst US-Makro als Kontext (Panel ohne Farben, nicht im Score).
+- **Verlauf kausal:** COT nach `release_date`, Trend auf gekuerzter Reihe, Makro nur mit Werten nach
+  geschaetzter Veroeffentlichung (`PUBLICATION_LAG`: rate/cli 42 T, cpi/unemp 70 T, Q-unemp 160 T,
+  gdp 120 T ab Periodenbeginn). Der heutige Punkt nutzt alle geladenen Makrowerte → identisch mit
+  den Einzelkarten. Makro-Score je Datum wird ueber die Zeilenzahl der bekannten Werte memoisiert
+  (sonst ~14 s je Markt, jetzt ~5 s, plus `st.cache_data`).
+- Technik-Details (SMA 20/50/100/200, Vola 20 T mit Rang im eigenen Jahr, Ø Tagesbewegung 7/90 T)
+  sind Kontext, nicht im Score. Nicht enthalten (keine freie Quelle): Crowd-Sentiment, Konsens/
+  Ueberraschung, Kursziele. Hilfe `HELP/asset_card_page(_en).html`, Tests `tests/test_asset_card_data.py`.
