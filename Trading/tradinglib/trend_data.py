@@ -186,7 +186,10 @@ def trend_metrics(s: pd.Series) -> dict:
         return {}
     sma50, sma200 = s.rolling(50).mean().iloc[-1], s.rolling(200).mean().iloc[-1]
     last = float(s.iloc[-1])
-    r63 = float(s.iloc[-1] / s.iloc[-64] - 1) * 100 if len(s) > 63 else np.nan
+    # 3 Kalendermonate statt 63 Zeilen: Kryptos handeln 7 Tage/Woche, dort waeren
+    # 63 Zeilen nur ~9 Wochen (Bitcoin 11/2026: −11 % statt +9 % ueber 13 Wochen)
+    start = s[s.index <= s.index[-1] - pd.DateOffset(months=3)]
+    r63 = float(s.iloc[-1] / start.iloc[-1] - 1) * 100 if not start.empty else np.nan
     return {"last": last, "date": s.index[-1], "sma50": float(sma50), "sma200": float(sma200),
             "dist200": (last / sma200 - 1) * 100, "r63": r63}
 

@@ -25,8 +25,13 @@ Einzelpunkten, technische Zusatzinfos und den Verlauf des Gesamt-Scores.</p>
 <tr><td>Institutionelle Positionierung</td><td>Rang 3J des Long-Anteils, Δ Long-Anteil, Long/Short, Netto, COT-Index</td><td>ja (−3 … +3), nur Märkte mit CFTC-Report</td></tr>
 <tr><td>Makro-Bias</td><td>Leitzins, Inflation, Arbeitslosigkeit, BIP, Frühindikator</td><td>nur 8 Hauptwährungen; sonst US-Daten als Kontext</td></tr>
 <tr><td>Technik-Details</td><td>Lage zu SMA 20/50/100/200, realisierte Volatilität (niedrig/normal/hoch gegen das eigene letzte Jahr), Ø Tagesbewegung 7/90 Tage</td><td>nein</td></tr>
+<tr><td>Relative Stärke</td><td>Rendite 13 Wochen gegen den Median der Vergleichsgruppe (Aktienindizes, Rohstoffe, Kryptos), Rang in der Gruppe – gleiches Fenster wie die Pair-Matrix der Global Rotation, hier in Landeswährung</td><td>nein</td></tr>
 <tr><td>Verlauf</td><td>Gesamt-Score je Freitag (26/52/104 Wochen)</td><td>–</td></tr>
 </table>
+<h2>Kursbestätigung</h2>
+<p>Zeigt der Trend-Score oder die Lage des Kurses zum SMA200 gegen die Richtung des Gesamt-Scores, ist der Bias <b>neutral</b> (Hinweis „Kurs bestätigt nicht“ im Banner). Beispiel Bitcoin 11/2026: COT +2, Trend +1 (3-Monats-Momentum vom Augusttief aus positiv) → Gesamt +4,6, aber der Kurs liegt unter dem SMA200 und fällt seit zwei Monaten – also neutral statt bullish.</p>
+<h2>Nur eine Komponente</h2>
+<p>Für Welt-Indizes und Kryptos außer Bitcoin gibt es weder COT- noch Makrodaten; der Gesamt-Score ist dann der reine Trend. Damit ein Trend +3 (→ +7,5) nicht so „stark“ wirkt wie drei einige Komponenten, ist der Bias in diesem Fall auf <b>Bullish/Bearish</b> begrenzt (Hinweis „nur Trend“ im Banner). Das gilt auch in der Karte Gesamt-Score.</p>
 <h2>Verlauf ohne Vorausschau</h2>
 <p>Jeder Wochenpunkt nutzt nur, was an dem Tag bekannt war: COT erst ab der Veröffentlichung (Freitag),
 Trend auf den Kursen bis zu dem Tag, Makro nur mit Werten, deren Veröffentlichung geschätzt schon

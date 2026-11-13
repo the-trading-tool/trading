@@ -25,6 +25,7 @@ from tradinglib.i18n import t
 logger = logging.getLogger(__name__)
 
 _STATE_KEY = "_asset_card_key"
+DEFAULT_MARKET = "DAX"
 _BULL, _BEAR = "#43a047", "#e53935"
 _GROUP_ORDER = ["fx", "commodities", "indices", "indices_world", "rates", "crypto"]
 
@@ -139,7 +140,7 @@ class AssetCardPage:
         # changes the widget's identity on every pick, so Streamlit resets it and the
         # new choice only took effect on the second selection.
         if st.session_state.get(_STATE_KEY) not in opts:
-            st.session_state[_STATE_KEY] = opts[0]
+            st.session_state[_STATE_KEY] = DEFAULT_MARKET if DEFAULT_MARKET in opts else opts[0]
         c1, c2 = st.columns([3, 2])
         key = c1.selectbox(t("asset.symbol"), opts, key=_STATE_KEY,
                            format_func=lambda k: f"{t('cot.mkt_' + k)} · {t('cot.group_' + group[k])}")
@@ -174,13 +175,19 @@ class AssetCardPage:
         macro_score = float(macro_tab.at[key, "score"]) if ac.has_macro(key) and key in macro_tab.index else None
         cot_score = None if cot_row is None else float(cot_row["score"])
         total = ac.total_of(cot_score, macro_score, trend["score"])
-        bias = tot.bias_label(total) if total is not None else "neutral"
+        n_comp = ac.n_components(cot_score, macro_score, trend["score"])
+        bias = tot.bias_for(total, n_comp, trend["score"], trend["p_sma200"])
+        unconfirmed = tot.unconfirmed(total, trend["score"], trend["p_sma200"])
 
         st.caption(t("asset.caption", source=src) + (" · " + t("asset.inverted") if sign < 0 else ""))
         left, right = st.columns([2, 3])
         with left:
             st.markdown(f"<div class='ac-banner' style='background:{_BIAS_COLORS[bias]}'>"
-                        f"{html.escape(t('cot.bias_' + bias))}</div>", unsafe_allow_html=True)
+                        f"{html.escape(t('cot.bias_' + bias))}"
+                        + (f"<div style='font-size:.8rem;font-weight:500'>{html.escape(t('asset.only_trend'))}</div>"
+                           if n_comp == 1 else "")
+                        + (f"<div style='font-size:.8rem;font-weight:500'>{html.escape(t('asset.unconfirmed'))}</div>"
+                           if unconfirmed else "") + "</div>", unsafe_allow_html=True)
             st.plotly_chart(_gauge(total), width="stretch", config={"displayModeBar": False})
             comp = [
                 [t("asset.total"), (_f(total, "{:+.1f}"), _BIAS_COLORS[bias]), "−10 … +10"],
@@ -196,7 +203,7 @@ class AssetCardPage:
             st.markdown(self._trend_panel(trend, s, sign), unsafe_allow_html=True)
             st.markdown(self._cot_panel(key, cot_row), unsafe_allow_html=True)
             st.markdown(self._macro_panel(key, macro_tab, macro_lat), unsafe_allow_html=True)
-            st.markdown(self._tech_panel(s, sign), unsafe_allow_html=True)
+            st.markdown(self._tech_panel(s, sign, self._rel_strength(key)), unsafe_allow_html=True)
         with st.expander(t("asset.method_title")):
             st.markdown(t("asset.method_md"))
 
@@ -255,7 +262,18 @@ class AssetCardPage:
                       [t("asset.col_component"), t("asset.col_value"), "Δ", t("asset.col_period"),
                        t("asset.col_signal")], rows)
 
-    def _tech_panel(self, s: pd.Series, sign: int) -> str:
+    def _rel_strength(self, key: str) -> dict | None:
+        if ac.PEER_GROUPS.get(dict(ac.markets()).get(key)) is None:
+            return None
+        from tradinglib.trend_page import _compute, _markets_sig
+        try:
+            _card, series = _compute(dt.date.today().isoformat(), _markets_sig())
+        except Exception:
+            logger.exception("asset card: peer series failed")
+            return None
+        return ac.relative_strength(key, series)
+
+    def _tech_panel(self, s: pd.Series, sign: int, rs: dict | None = None) -> str:
         x = ac.technicals(s, sign)
         if not x:
             return ""
@@ -265,6 +283,11 @@ class AssetCardPage:
             [t("asset.move7"), _f(x["move7"], "{:.2f} %"), ""],
             [t("asset.move90"), _f(x["move90"], "{:.2f} %"), ""],
         ]
+        if rs:
+            rows.append([t("asset.rs_label", weeks=rs["weeks"], group=t(f"asset.peer_{rs['peer']}")),
+                         t("asset.rs_value", ret=f"{rs['ret']:+.1f}", med=f"{rs['median']:+.1f}",
+                           diff=f"{rs['diff']:+.1f}", rank=rs["rank"], n=rs["n"]),
+                         _state(rs["state"])])
         return _panel(t("asset.panel_tech", d=x["date"].strftime("%d.%m.%Y"), last=_price(x["last"])), None,
                       [t("asset.col_component"), t("asset.col_value"), t("asset.col_signal")], rows)
 

@@ -19,8 +19,12 @@ SCALE = {"cot": 3.0, "macro": 6.0, "trend": 4.0}
 COMPONENTS = ["cot", "macro", "trend"]
 
 
-def bias_label(score: float) -> str:
-    """Spanne −10 … +10."""
+def bias_label(score: float, n: int | None = None) -> str:
+    """Spanne −10 … +10. ``n`` = Zahl der vorhandenen Komponenten: bei nur einer
+    (z. B. Welt-Indizes, nur Trend) gibt es hoechstens bull/bear — eine einzelne
+    starke Komponente wuerde sonst so "stark" wirken wie drei einige."""
+    if n == 1:
+        score = max(min(score, 4.9), -4.9)
     if score >= 5:
         return "strong_bull"
     if score >= 2:
@@ -30,6 +34,31 @@ def bias_label(score: float) -> str:
     if score <= -2:
         return "bear"
     return "neutral"
+
+
+def unconfirmed(total: float | None, trend: float | None, p_sma200: float | None = None) -> bool:
+    """Kurs bestaetigt die Richtung des Gesamt-Scores nicht: Trend-Score ODER die Lage
+    zum SMA200 (``p_sma200`` ±1, in Marktrichtung) zeigt dagegen."""
+    if total is None or pd.isna(total) or total == 0:
+        return False
+    return any(v is not None and not pd.isna(v) and v * total < 0 for v in (trend, p_sma200))
+
+
+def bias_for(total: float | None, n: int, trend: float | None, p_sma200: float | None = None) -> str:
+    """Bias eines Marktes mit zwei Bremsen gegen Ueberbewertung:
+
+    * nur eine Komponente → hoechstens bull/bear (:func:`bias_label`),
+    * **Kursbestaetigung**: zeigt der Trend-Score oder die Lage zum SMA200 gegen die
+      Richtung des Gesamt-Scores (z. B. COT bullish, Kurs unter SMA200), ist der Bias
+      neutral — Positionierung und Makro allein machen keinen Markt bullish, solange
+      der Kurs nicht mitgeht. Der SMA200 zaehlt extra, weil ein positives 3-M-Momentum
+      nach einem Tief den Trend-Score ins Plus heben kann, obwohl der Kurs faellt.
+    """
+    if total is None or pd.isna(total):
+        return "neutral"
+    if unconfirmed(total, trend, p_sma200):
+        return "neutral"
+    return bias_label(total, n)
 
 
 def combine(cot: pd.DataFrame, macro: pd.DataFrame, trend: pd.DataFrame,
@@ -43,6 +72,7 @@ def combine(cot: pd.DataFrame, macro: pd.DataFrame, trend: pd.DataFrame,
         "macro": dict(zip(macro.index, macro["score"])) if not macro.empty else {},
         "trend": dict(zip(trend["key"], trend["score"])) if not trend.empty else {},
     }
+    p200 = dict(zip(trend["key"], trend["p_sma200"])) if "p_sma200" in trend else {}
     rows = []
     for key, _code, _label, group, _ccy in markets:
         r = {"key": key, "group": group}
@@ -59,7 +89,7 @@ def combine(cot: pd.DataFrame, macro: pd.DataFrame, trend: pd.DataFrame,
         else:
             total = round(10 * sum(norm) / len(norm), 1)
             signs = {(x > 0) - (x < 0) for x in norm}
-            r.update(total=total, bias=bias_label(total),
+            r.update(total=total, bias=bias_for(total, len(norm), r["trend"], p200.get(key)),
                      agree=len(norm) >= 2 and len(signs) == 1 and 0 not in signs)
         rows.append(r)
     return pd.DataFrame(rows)

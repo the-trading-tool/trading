@@ -31,6 +31,13 @@ PUBLICATION_LAG = {("rate", "M"): 42, ("cpi", "M"): 70, ("unemp", "M"): 70, ("un
                    ("gdp", "Q"): 120, ("cli", "M"): 42, ("cpi", "Q"): 160}
 DEFAULT_LAG = 120
 SMA_WINDOWS = (20, 50, 100, 200)
+RS_WEEKS = 13                 # wie die Pair-Matrix der Global Rotation
+RS_THRESHOLD = 2.0            # Pp Abstand zum Gruppen-Median fuer bullish/bearish
+RS_MIN_PEERS = 4
+# Vergleichsgruppe je Markt-Gruppe; FX (Kurse gegen USD, USD selbst als Index) und
+# Anleihen (ein Markt) haben keine sinnvolle Gruppe.
+PEER_GROUPS = {"indices": "equity", "indices_world": "equity", "commodities": "commodities",
+               "crypto": "crypto"}
 
 
 def markets() -> list[tuple[str, str]]:
@@ -68,6 +75,37 @@ def technicals(s: pd.Series, sign: int = 1) -> dict:
     out["move7"] = float(rets.iloc[-7:].abs().mean() * 100)
     out["move90"] = float(rets.iloc[-90:].abs().mean() * 100)
     return out
+
+
+def period_return(s: pd.Series, weeks: int = RS_WEEKS) -> float | None:
+    """Rendite in % ueber ``weeks`` Wochen (Kalender), bis zum letzten Kurs."""
+    if s is None or len(s) < 2:
+        return None
+    start = s[s.index <= s.index[-1] - pd.Timedelta(weeks=weeks)]
+    return None if start.empty else float(s.iloc[-1] / start.iloc[-1] - 1) * 100
+
+
+def relative_strength(key: str, series: dict[str, pd.Series], weeks: int = RS_WEEKS) -> dict | None:
+    """Rendite des Marktes gegen den Median seiner Vergleichsgruppe (in Landeswaehrung).
+
+    Kontext, nicht im Score. None, wenn der Markt keine Gruppe hat oder zu wenige
+    Vergleichsmaerkte Kurse haben."""
+    group = dict(markets()).get(key)
+    peer = PEER_GROUPS.get(group)
+    if peer is None or key not in series:
+        return None
+    members = [k for k, g in markets() if PEER_GROUPS.get(g) == peer and k in series]
+    rets = {k: period_return(series[k], weeks) for k in members}
+    rets = {k: v for k, v in rets.items() if v is not None}
+    others = [v for k, v in rets.items() if k != key]
+    if key not in rets or len(others) < RS_MIN_PEERS:
+        return None
+    r, med = rets[key], float(np.median(others))
+    diff = r - med
+    rank = 1 + sum(v > r for v in rets.values())
+    state = 1 if diff > RS_THRESHOLD else -1 if diff < -RS_THRESHOLD else 0
+    return {"ret": r, "median": med, "diff": diff, "rank": rank, "n": len(rets),
+            "peer": peer, "weeks": weeks, "state": state}
 
 
 def vol_level(rank: float) -> str:
@@ -130,6 +168,10 @@ def total_of(cot: float | None, macro: float | None, trend: float | None) -> flo
     return None if not norm else round(10 * sum(norm) / len(norm), 1)
 
 
+def n_components(cot: float | None, macro: float | None, trend: float | None) -> int:
+    return sum(v is not None and not pd.isna(v) for v in (cot, macro, trend))
+
+
 def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataFrame | None,
             weeks: int = 52, today: dt.date | None = None) -> pd.DataFrame:
     """Gesamt-Score und Komponenten je Freitag der letzten ``weeks`` Wochen, kausal."""
@@ -148,7 +190,8 @@ def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataF
     for d in days:
         c = cot_at(cot_hist, d)
         cot = None if c is None else float(c["score"])
-        trend = trend_at(s, d, sign)["score"] if s is not None and not s.empty else None
+        tr = trend_at(s, d, sign) if s is not None and not s.empty else {"score": None, "p_sma200": None}
+        trend = tr["score"]
         macro = None
         if use_macro:
             # heute: alles, was geladen ist, ist auch veroeffentlicht -> identisch zur Makro-Karte
@@ -161,5 +204,5 @@ def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataF
                 macro = float(tab.at[key, "score"])
         total = total_of(cot, macro, trend)
         rows.append({"date": pd.Timestamp(d), "cot": cot, "macro": macro, "trend": trend,
-                     "total": total, "bias": tot.bias_label(total) if total is not None else "neutral"})
+                     "total": total, "bias": tot.bias_for(total, n_components(cot, macro, trend), trend, tr["p_sma200"])})
     return pd.DataFrame(rows)

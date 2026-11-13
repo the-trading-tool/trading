@@ -73,3 +73,45 @@ def test_page_locale_keys_exist():
     for lang in ("de", "en"):
         d = json.load(open(f"locales/{lang}.json", encoding="utf-8"))
         assert not sorted(k for k in keys if k not in d), lang
+
+
+def test_single_component_bias_is_capped():
+    assert tot.bias_label(7.5, n=1) == "bull"
+    assert tot.bias_label(-7.5, n=1) == "bear"
+    assert tot.bias_label(7.5, n=2) == "strong_bull"
+    assert tot.bias_label(7.5) == "strong_bull"
+    markets = [("DAX", "", "", "indices_world", None)]
+    df = tot.combine(pd.DataFrame(columns=["key", "score"]), pd.DataFrame(columns=["score"]),
+                     pd.DataFrame({"key": ["DAX"], "score": [3]}), markets=markets)
+    assert df.at[0, "total"] == 7.5 and df.at[0, "bias"] == "bull"
+    assert ac.n_components(None, None, 3) == 1 and ac.n_components(1, None, 3) == 2
+
+
+def test_relative_strength_vs_peer_median(monkeypatch):
+    idx = pd.bdate_range("2026-01-01", "2026-11-13")
+    growth = {"DAX": 1.10, "IBEX": 0.99, "SPX": 0.97, "SMI": 1.05, "N225": 0.92, "KOSPI": 0.85}
+    series = {k: pd.Series(np.linspace(100, 100 * g, len(idx)), index=idx) for k, g in growth.items()}
+    rs = ac.relative_strength("IBEX", series)
+    assert rs["peer"] == "equity" and rs["n"] == 6
+    others = [ac.period_return(series[k]) for k in growth if k != "IBEX"]
+    assert rs["median"] == pytest.approx(float(np.median(others)))
+    assert rs["rank"] == 3                                  # hinter DAX und SMI
+    assert ac.relative_strength("EUR", series) is None      # FX: keine Vergleichsgruppe
+    assert ac.relative_strength("IBEX", {k: series[k] for k in ("IBEX", "DAX")}) is None
+
+
+def test_bias_needs_price_confirmation():
+    # Bitcoin 11/2026: COT +2, Trend −1 → Gesamt +2,1, Kurs faellt → neutral
+    assert tot.bias_for(2.1, 2, -1) == "neutral"
+    assert tot.bias_for(-2.8, 3, -2) == "bear"                 # Trend bestaetigt
+    assert tot.bias_for(2.5, 2, 0) == "bull"                   # neutraler Trend widerspricht nicht
+    assert tot.bias_for(7.5, 1, 3) == "bull"                   # nur Trend → gedeckelt
+    assert tot.bias_for(None, 0, None) == "neutral"
+    # Bitcoin mit 3-M-Momentum: Trend +1, aber Kurs unter SMA200 → weiter neutral
+    assert tot.bias_for(4.6, 2, 1, -1) == "neutral"
+    assert tot.bias_for(4.6, 2, 1, 1) == "bull"
+    assert tot.unconfirmed(-3.0, -2, 1) and not tot.unconfirmed(-3.0, -2, -1)
+    markets = [("BTC", "", "", "crypto", None)]
+    df = tot.combine(pd.DataFrame({"key": ["BTC"], "score": [2]}), pd.DataFrame(columns=["score"]),
+                     pd.DataFrame({"key": ["BTC"], "score": [-1]}), markets=markets)
+    assert df.at[0, "total"] == 2.1 and df.at[0, "bias"] == "neutral"

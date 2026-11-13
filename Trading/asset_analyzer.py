@@ -1075,13 +1075,13 @@ class TradingApp:
                             except Exception as e:
                                 st.error(t('error.load_fear_greed', error=e))
                     elif parms.get('edge') or parms.get('cot'):
-                        # ?cot=true = alter Direktlink auf die COT-Scorecard
+                        # ?cot=true = alter Direktlink; landet wie ?edge=true auf der Start-Karte
                         self.set_page_config(t('page.edge_scores'))
                         with st.spinner(t('page.edge_scores') + " …"):
                             try:
                                 from tradinglib.edge_scores_page import EdgeScoresPage
                                 EdgeScoresPage(username=self.username,
-                                               card=parms.get('card') or ('cot' if parms.get('cot') else None)).render()
+                                               card=parms.get('card')).render()
                             except Exception as e:
                                 st.error(t('error.load_edge_scores', error=e))
                     elif parms.get('global_rotation'):

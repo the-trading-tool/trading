@@ -26,9 +26,18 @@ def test_uptrend_scores_plus_three():
 def test_downtrend_and_flat_momentum():
     s = _series(np.linspace(200, 100, 400))
     assert td.score_trend(td.trend_metrics(s)) == (-1, -1, -1)
-    flat = _series(np.r_[np.linspace(100, 150, 337), np.full(63, 150.0)])
+    flat = _series(np.r_[np.linspace(100, 150, 330), np.full(70, 150.0)])
     p = td.score_trend(td.trend_metrics(flat))
-    assert p[2] == 0                                          # 63 T seitwaerts -> 0
+    assert p[2] == 0                                          # 3 M seitwaerts -> 0
+
+
+def test_momentum_uses_calendar_months_for_seven_day_markets():
+    """Krypto: 7 Tage/Woche -> 63 Zeilen waeren nur 9 Wochen."""
+    idx = pd.date_range("2025-01-01", "2026-11-13", freq="D")
+    vals = np.where(idx <= pd.Timestamp("2026-08-13"), 100.0, 110.0)
+    vals[-63:] = 120.0                                        # die letzten 63 Tage
+    m = td.trend_metrics(pd.Series(vals, index=idx))
+    assert m["r63"] == pytest.approx(20.0)                    # gegen 13.08. (100), nicht gegen 110
 
 
 def test_too_short_history_scores_zero():
