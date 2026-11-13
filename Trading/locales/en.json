@@ -1444,6 +1444,7 @@
   "admin.del_ticker_confirm": "I confirm deletion of **{ticker}**",
   "admin.del_ticker_btn": "Delete ticker",
   "admin.del_ticker_yf_ok": "'{ticker}' removed from yf_tickers.db.",
+  "admin.sim_rows_deleted": "{count} rows deleted from the running year's simulation data ({dbs}); past years are kept.",
   "admin.del_ticker_yf_not_found": "'{ticker}' not found in yf_tickers.db.",
   "admin.del_ticker_info_ok": "Removed from asset_info.db (tables: {tables}).",
   "admin.del_ticker_info_not_found": "'{ticker}' not found in asset_info.db.",

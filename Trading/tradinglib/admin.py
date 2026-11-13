@@ -31,6 +31,57 @@ except Exception:                                    # pragma: no cover - defens
     _MULTISELECT_NEW_OPTIONS = False
 
 
+# Simulation DBs of the running year. A ticker deleted from yf_tickers.db drops
+# out of Finder/Multi anyway (make_query joins `stocks`), but its rows stayed
+# here and kept showing up in screens that read these DBs directly. The past
+# year DBs are left alone on purpose: they are the only record that delisted
+# tickers existed (survivorship-free backtests), and once the price DB is gone
+# their rows cannot be recomputed.
+CURRENT_SIM_DBS = ('asset_simulation_.db', 'asset_simulation_all.db', 'asset_simulation_etp.db')
+
+
+def delete_current_sim_rows(tickers, db_path: str = 'database') -> dict[str, int]:
+    """Delete the tickers' rows from the running year's simulation DBs.
+
+    Returns ``{db file: deleted rows}`` for the files that had rows. A missing
+    file or table is skipped; a locked DB raises (caller reports it).
+    """
+    tickers = [tk for tk in dict.fromkeys(tickers) if tk]
+    out: dict[str, int] = {}
+    if not tickers:
+        return out
+    ph = ','.join('?' * len(tickers))
+    for name in CURRENT_SIM_DBS:
+        path = tools.Tools().get_path(path=db_path, file_name=name)
+        if not path or not os.path.exists(path):
+            continue
+        conn = open_db(path)
+        try:
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' "
+                                "AND name='asset_simulation'").fetchone():
+                continue
+            with conn:
+                n = conn.execute(f"DELETE FROM asset_simulation WHERE ticker IN ({ph})",
+                                 tickers).rowcount
+            if n:
+                out[name] = n
+        finally:
+            conn.close()
+    return out
+
+
+def sim_cleanup_message(tickers, db_path: str = 'database') -> tuple[str | None, str | None]:
+    """Run delete_current_sim_rows; return ``(ok message, error message)``."""
+    try:
+        res = delete_current_sim_rows(tickers, db_path)
+    except Exception as e:
+        logger.exception("Deleting simulation rows of %s failed", tickers)
+        return None, f"asset_simulation: {e}"
+    if not res:
+        return None, None
+    return t('admin.sim_rows_deleted', count=sum(res.values()), dbs=', '.join(res)), None
+
+
 def index_links(db_file: str, ticker: str) -> tuple[int | None, list[str]]:
     """Return ``(stock_id, index names)`` of a ticker, ``(None, [])`` if unknown."""
     with open_db(db_file, readonly=True) as conn:
@@ -667,6 +718,11 @@ class Admin():
                             if removed_tickers:
                                 st.info(t('admin.index_mgmt_tickers_removed',
                                           count=removed_tickers))
+                                _sim_ok, _sim_err = sim_cleanup_message(_only_here, self.db_path)
+                                if _sim_ok:
+                                    st.info(_sim_ok)
+                                if _sim_err:
+                                    st.error(_sim_err)
                             st.info(t('admin.done_reload'))
                         except Exception as _ime:
                             st.error(t('admin.index_mgmt_error', error=_ime))
@@ -808,6 +864,7 @@ class Admin():
                     if st.button(t('admin.del_ticker_btn'),
                                  key="dt_delete_btn", type="primary") and _dt_confirm:
                         _dt_ok, _dt_err = [], []
+                        _dt_sim_gone = False
 
                         if _dt_del_yf:
                             try:
@@ -826,11 +883,18 @@ class Admin():
                                             "(SELECT DISTINCT index_id FROM stock_indices)")
                                         _dt_ok.append(t('admin.del_ticker_yf_ok',
                                                         ticker=_dt_sel))
+                                        _dt_sim_gone = True
                                     else:
                                         _dt_ok.append(t('admin.del_ticker_yf_not_found',
                                                         ticker=_dt_sel))
                             except Exception as _e:
                                 _dt_err.append(f"yf_tickers.db: {_e}")
+                            if _dt_sim_gone:
+                                _sim_ok, _sim_err = sim_cleanup_message([_dt_sel], self.db_path)
+                                if _sim_ok:
+                                    _dt_ok.append(_sim_ok)
+                                if _sim_err:
+                                    _dt_err.append(_sim_err)
 
                         if _dt_del_info:
                             try:
@@ -1039,6 +1103,11 @@ class Admin():
                                     "DELETE FROM indices WHERE id NOT IN "
                                     "(SELECT DISTINCT index_id FROM stock_indices)")
                             _mi_ok.append(t('admin.missing_info_yf_ok', count=len(_mi_selected)))
+                            _sim_ok, _sim_err = sim_cleanup_message(_mi_selected, self.db_path)
+                            if _sim_ok:
+                                _mi_ok.append(_sim_ok)
+                            if _sim_err:
+                                _mi_err.append(_sim_err)
                         except Exception as _e:
                             _mi_err.append(f"yf_tickers.db: {_e}")
 
@@ -1305,6 +1374,11 @@ class Admin():
                                         )
                                         _c.commit()
                                         msgs_ok.append(t('admin.delete_yf_ok', ticker=sel_failed))
+                                        _sim_ok, _sim_err = sim_cleanup_message([sel_failed], self.db_path)
+                                        if _sim_ok:
+                                            msgs_ok.append(_sim_ok)
+                                        if _sim_err:
+                                            msgs_err.append(_sim_err)
                                     else:
                                         msgs_ok.append(t('admin.delete_yf_not_found', ticker=sel_failed))
                                     _c.close()
