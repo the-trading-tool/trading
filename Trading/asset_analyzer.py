@@ -918,17 +918,22 @@ class TradingApp:
                     self.authenticator.logout('Logout', 'sidebar')
                     st.stop()
 
-                # Page content lives in one container. On a route change it is first
-                # replaced by an empty element, so nothing of the previous page (e.g. a
-                # button in a column the new page does not fill) stays on screen while
-                # the new page computes. Reruns on the same page reuse the container
-                # as before (no flicker).
+                # Page content alternates between two fixed slots. On a route change the
+                # page moves to the other slot; the previous page's slot only receives an
+                # empty element, so nothing of it (e.g. a button in a column the new page
+                # does not fill) stays on screen. Reruns on the same page reuse their slot
+                # (no flicker). Emptying and refilling ONE slot does not work: Streamlit's
+                # ForwardMsgQueue composes st.empty() and the following .container() at the
+                # same path into a single add_block, so the browser kept the old children.
                 _page_sig = repr(sorted((str(k), str(v)) for k, v in parms.items()))
+                _slot = st.session_state.get('_page_slot', 0)
                 if st.session_state.get('_page_sig') != _page_sig:
+                    if '_page_sig' in st.session_state:
+                        _slot = 1 - _slot
                     st.session_state['_page_sig'] = _page_sig
-                    _page_box = st.empty().container()
-                else:
-                    _page_box = st.container()
+                    st.session_state['_page_slot'] = _slot
+                _page_slots = (st.empty(), st.empty())
+                _page_box = _page_slots[_slot].container()
                 with _page_box:
                     if self.is_admin and parms.get('admin'):
                         self.set_page_config(t('page.admin'))
