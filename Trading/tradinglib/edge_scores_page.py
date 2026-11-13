@@ -65,7 +65,6 @@ CARDS: list[tuple[str, str, str, Callable | None]] = [
 ]
 DEFAULT_CARD = "asset"
 _STATE_KEY = "_edge_card"
-_RENDERED_KEY = "_edge_card_rendered"
 
 
 def _available() -> list[str]:
@@ -110,16 +109,15 @@ class EdgeScoresPage:
         menu_col, _, main_col = st.columns([1, 0.1, 4])
         self._menu(menu_col, active)
         renderer = next(fn for k, *_r, fn in CARDS if k == active)
-        # Card switch: replace the main column with an empty element first, otherwise the
-        # previous card's elements (e.g. asset scorecard panels below the shorter total
-        # table) stay visible while the new card computes. Same pattern as the page
-        # container in asset_analyzer; reruns on the same card reuse it (no flicker).
+        # One fixed slot per card in the main column. Every slot starts as st.empty(),
+        # only the active one is turned into a container. On a card switch the old
+        # card's slot therefore receives an empty element and its whole content is
+        # dropped. (Emptying and refilling the SAME slot does not work: Streamlit
+        # coalesces both deltas to one path into the second, so the browser kept the
+        # previous card's elements below the new, shorter card.)
         with main_col:
-            if st.session_state.get(_RENDERED_KEY) != active:
-                st.session_state[_RENDERED_KEY] = active
-                box = st.empty().container()
-            else:
-                box = st.container()
+            slots = {k: st.empty() for k, *_r in CARDS}
+        box = slots[active].container()
         with box:
             try:
                 renderer(self.username, menu_col)
