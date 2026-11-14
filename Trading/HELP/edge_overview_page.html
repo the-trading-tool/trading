@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Edge Scores: Übersicht – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Edge Scores: Übersicht <small style="font-size:.6em;color:#888">edge_overview_page.py</small></h1>
+
+<p>Die <b>Übersicht</b> (Markt → Edge Scores → Übersicht) zeigt alle 43 Märkte der Asset-Scorecard als
+Kacheln, gruppiert nach Währungen, Rohstoffen, US-Indizes, weltweiten Indizes, Zinsen und Krypto.</p>
+<h2>Kopfzeile</h2>
+<table>
+<tr><th>Wert</th><th>Bedeutung</th></tr>
+<tr><td>Bullish / Bearish / Neutral</td><td>Anzahl Märkte je Bias. Der Hinweis bei Neutral nennt, wie viele nur
+  deshalb neutral sind, weil der Kurs die Richtung nicht bestätigt.</td></tr>
+<tr><td>Top Forex-Setup</td><td>Stärkstes Paar (Basis − Quote, −20 … +20), bei dem Makro und Trend einig sind.</td></tr>
+</table>
+<h2>Kachel</h2>
+<table>
+<tr><th>Teil</th><th>Inhalt</th></tr>
+<tr><td>Tacho</td><td>Gesamt-Score −10 … +10 (wie Karte Gesamt-Score), Bias-Etikett oben rechts.</td></tr>
+<tr><td>Δ 1 W / 4 W</td><td>Veränderung des Gesamt-Scores gegen vor 1 bzw. 4 Wochen (▲/▼), kausal gerechnet wie der Verlauf der Asset-Scorecard.</td></tr>
+<tr><td>Trend, Makro</td><td>Die zählenden Komponenten. Makro gibt es nur für die acht Hauptwährungen.</td></tr>
+<tr><td>COT (Kontext)</td><td>Zur Einordnung, nicht im Score – ohne messbare Vorhersagekraft 2019–2026.</td></tr>
+<tr><td>Rel. Stärke 13 W</td><td>Rendite gegen den Median der Vergleichsgruppe in Pp und Rang; Kontext.</td></tr>
+<tr><td>⚠ Kurs bestätigt nicht</td><td>Trend-Score oder Lage zum SMA200 zeigt gegen den Gesamt-Score → neutral.</td></tr>
+<tr><td>Linie</td><td>Kurs der letzten 6 Monate (grün gestiegen, rot gefallen).</td></tr>
+<tr><td>Details</td><td>Öffnet die Asset-Scorecard des Marktes.</td></tr>
+</table>
+<p>Filter: Gruppen ein-/ausblenden, nur Märkte mit Bias, sortieren nach Stärke (|Gesamt|) oder Veränderung.</p>
+<div class="warn">Lagebeschreibung, kein Handelssignal; Schwellen nicht per Backtest kalibriert. Keine Anlageberatung.</div>
+</body>
+</html>

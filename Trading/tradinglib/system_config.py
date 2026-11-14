@@ -830,6 +830,7 @@ class SystemConfig(tools.Db_tools):
                     ("Edge Scores: Trend", "trend_page"),
                     ("Edge Scores: Gesamt", "total_page"),
                     ("Edge Scores: Asset-Scorecard", "asset_card_page"),
+                    ("Edge Scores: Übersicht", "edge_overview_page"),
                     ("Regime Flow", "regime_flow_page"),
                     ("Performance", "performance_details"),
                     ("Asset-Übersicht", "all_assets"),

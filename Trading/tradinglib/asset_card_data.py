@@ -207,3 +207,64 @@ def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataF
         rows.append({"date": pd.Timestamp(d), "cot": cot, "macro": macro, "trend": trend,
                      "total": total, "bias": tot.bias_for(total, n_components(cot, macro, trend), trend, tr["p_sma200"])})
     return pd.DataFrame(rows)
+
+
+# ── Uebersicht aller Maerkte ──────────────────────────────────────────────────
+
+def overview(cot: pd.DataFrame, macro: pd.DataFrame, trend: pd.DataFrame,
+             series: dict[str, pd.Series] | None = None) -> pd.DataFrame:
+    """Gesamt-Score fuer alle Maerkte der Asset-Scorecard (COT-Maerkte + Zusatzmaerkte
+    der Trend-Karte) wie :func:`total_data.combine`, dazu Kursbestaetigung und
+    relative Staerke (Kontext). ``trend`` ist die Tabelle von :func:`trend_data.scorecard`."""
+    mk = [(k, "", "", g, None) for k, g in markets()]
+    tr = trend[~trend["missing"]] if "missing" in trend else trend
+    out = tot.combine(cot, macro, tr, markets=mk)
+    p200 = dict(zip(tr["key"], tr["p_sma200"])) if "p_sma200" in tr else {}
+    out["p_sma200"] = [p200.get(k) for k in out["key"]]
+    out["unconfirmed"] = [tot.unconfirmed(x, tv, p) for x, tv, p in
+                          zip(out["total"], out["trend"], out["p_sma200"])]
+    rs = [relative_strength(k, series) if series else None for k in out["key"]]
+    out["rs_diff"] = [r["diff"] if r else None for r in rs]
+    out["rs_rank"] = [r["rank"] if r else None for r in rs]
+    out["rs_n"] = [r["n"] if r else None for r in rs]
+    out["rs_peer"] = [r["peer"] if r else None for r in rs]
+    return out
+
+
+CHANGE_WEEKS = (1, 4)
+
+
+def past_totals(series: dict[str, pd.Series], obs: pd.DataFrame | None, day: dt.date,
+                keys: list[str] | None = None) -> dict[str, float | None]:
+    """Gesamt-Score je Markt zum frueheren Datum ``day``, kausal wie :func:`history`:
+    Trend nur aus Kursen bis ``day``, COT nach Veroeffentlichung, Makro nur mit Werten,
+    die zu dem Tag (geschaetzt) schon veroeffentlicht waren."""
+    tab = macro_at(obs, day) if obs is not None and not obs.empty else pd.DataFrame()
+    out = {}
+    for key in keys or [k for k, _g in markets()]:
+        s = series.get(key)
+        if s is None or s.empty:
+            out[key] = None
+            continue
+        tr = trend_at(s, day, td.SIGN.get(key, 1))
+        c = cot_at(cd.load_history(key), day) if has_cot(key) and "cot" in tot.SCORED else None
+        cot = None if c is None else float(c["score"])
+        macro = float(tab.at[key, "score"]) if has_macro(key) and key in tab.index else None
+        out[key] = total_of(cot, macro, tr["score"])
+    return out
+
+
+def score_changes(current: pd.DataFrame, series: dict[str, pd.Series], obs: pd.DataFrame | None,
+                  today: dt.date, weeks: tuple[int, ...] = CHANGE_WEEKS) -> pd.DataFrame:
+    """Veraenderung des Gesamt-Scores gegen vor ``weeks`` Wochen (Spalten ``chg_<w>w``).
+
+    Der heutige Wert kommt aus ``current`` (= Karte), der fruehere aus
+    :func:`past_totals`. Wie im Verlauf der Asset-Scorecard gilt: heute zaehlen alle
+    geladenen Makrowerte, frueher nur die (geschaetzt) veroeffentlichten."""
+    out = current[["key"]].copy()
+    now = dict(zip(current["key"], current["total"]))
+    for w in weeks:
+        past = past_totals(series, obs, today - dt.timedelta(weeks=w), list(current["key"]))
+        out[f"chg_{w}w"] = [None if now.get(k) is None or pd.isna(now.get(k)) or past.get(k) is None
+                            else round(now[k] - past[k], 1) for k in out["key"]]
+    return out
