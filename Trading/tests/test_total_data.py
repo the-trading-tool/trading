@@ -22,10 +22,22 @@ def test_normalised_mean_and_missing_macro():
                               {"USD": 6, "EUR": -3, "JPY": 3},
                               {"USD": 4, "EUR": -2, "JPY": 2, "GOLD": -4}), markets=MARKETS).set_index("key")
     assert df.at["USD", "total"] == pytest.approx(10.0)
-    assert df.at["EUR", "total"] == pytest.approx(round(10 * (-1 - 0.5 - 0.5) / 3, 1))
-    assert df.at["GOLD", "n"] == 2 and pd.isna(df.at["GOLD", "macro"])
-    assert df.at["GOLD", "total"] == pytest.approx(0.0)          # +1 und −1 heben sich auf
+    assert df.at["EUR", "total"] == pytest.approx(10 * (-0.5 - 0.5) / 2)
+    # COT is context only: shown, but not counted
+    assert df.at["GOLD", "cot"] == 3 and df.at["GOLD", "n"] == 1 and pd.isna(df.at["GOLD", "macro"])
+    assert df.at["GOLD", "total"] == pytest.approx(-10.0) and df.at["GOLD", "bias"] == "bear"
     assert df.at["USD", "bias"] == "strong_bull"
+
+
+def test_cot_does_not_move_the_total():
+    a = tot.combine(*_frames({"USD": 3, "EUR": 3, "JPY": 3, "GOLD": 3},
+                             {"USD": 2, "EUR": -2, "JPY": 0}, {"USD": 1, "EUR": -1, "JPY": 0, "GOLD": 2}),
+                    markets=MARKETS)
+    b = tot.combine(*_frames({"USD": -3, "EUR": -3, "JPY": -3, "GOLD": -3},
+                             {"USD": 2, "EUR": -2, "JPY": 0}, {"USD": 1, "EUR": -1, "JPY": 0, "GOLD": 2}),
+                    markets=MARKETS)
+    pd.testing.assert_series_equal(a["total"], b["total"])
+    pd.testing.assert_series_equal(a["agree"], b["agree"])
 
 
 def test_agreement_requires_same_sign_and_no_zero():
@@ -34,8 +46,8 @@ def test_agreement_requires_same_sign_and_no_zero():
                               {"USD": 1, "EUR": 1, "JPY": 1, "GOLD": 1}), markets=MARKETS).set_index("key")
     assert df.at["USD", "agree"]
     assert not df.at["EUR", "agree"]          # Widerspruch
-    assert not df.at["JPY", "agree"]          # COT neutral
-    assert df.at["GOLD", "agree"]             # zwei Komponenten reichen
+    assert df.at["JPY", "agree"]              # neutrales COT zaehlt nicht
+    assert not df.at["GOLD", "agree"]         # nur eine zaehlende Komponente
 
 
 def test_market_without_any_component():

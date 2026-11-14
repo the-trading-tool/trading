@@ -84,7 +84,8 @@ def test_single_component_bias_is_capped():
     df = tot.combine(pd.DataFrame(columns=["key", "score"]), pd.DataFrame(columns=["score"]),
                      pd.DataFrame({"key": ["DAX"], "score": [3]}), markets=markets)
     assert df.at[0, "total"] == 7.5 and df.at[0, "bias"] == "bull"
-    assert ac.n_components(None, None, 3) == 1 and ac.n_components(1, None, 3) == 2
+    assert ac.n_components(None, None, 3) == 1 and ac.n_components(1, None, 3) == 1
+    assert ac.n_components(1, 2, 3) == 2 and ac.total_of(3, None, 2) == ac.total_of(-3, None, 2) == 5.0
 
 
 def test_relative_strength_vs_peer_median(monkeypatch):
@@ -114,4 +115,4 @@ def test_bias_needs_price_confirmation():
     markets = [("BTC", "", "", "crypto", None)]
     df = tot.combine(pd.DataFrame({"key": ["BTC"], "score": [2]}), pd.DataFrame(columns=["score"]),
                      pd.DataFrame({"key": ["BTC"], "score": [-1]}), markets=markets)
-    assert df.at[0, "total"] == 2.1 and df.at[0, "bias"] == "neutral"
+    assert df.at[0, "total"] == -2.5 and df.at[0, "bias"] == "bear"     # COT zaehlt nicht mehr

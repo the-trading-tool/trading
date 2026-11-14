@@ -6,7 +6,9 @@ Komponenten auf −10 … +10 skaliert. Makro gibt es nur für die acht Hauptwä
 bei allen anderen Märkten (Rohstoffe, Indizes, Anleihen, Bitcoin, MXN) zählen COT
 und Trend allein.
 
-Gleichgewichtet, weil (noch) keine Messung eine andere Gewichtung begründet.
+COT zaehlt seit 2026-11-14 **nicht** mehr (Gewicht 0, nur Kontext): gemessen 2019-2026
+ueber 20 Maerkte mit nicht ueberlappenden 13-Wochen-Fenstern liegt der IC bei −0,03 bzw.
++0,02, je Markt nicht von Zufall zu unterscheiden. Makro und Trend bleiben gleichgewichtet.
 
 "Einig" = alle vorhandenen Komponenten zeigen in dieselbe Richtung (keine 0, kein
 Widerspruch) — oft aussagekräftiger als die Höhe des Scores.
@@ -17,6 +19,9 @@ import pandas as pd
 
 SCALE = {"cot": 3.0, "macro": 6.0, "trend": 4.0}
 COMPONENTS = ["cot", "macro", "trend"]
+# weight 0 = shown as context only, not part of total / n / agreement
+WEIGHT = {"cot": 0.0, "macro": 1.0, "trend": 1.0}
+SCORED = [c for c in COMPONENTS if WEIGHT[c] > 0]
 
 
 def bias_label(score: float, n: int | None = None) -> str:
@@ -81,7 +86,7 @@ def combine(cot: pd.DataFrame, macro: pd.DataFrame, trend: pd.DataFrame,
             v = raw[comp].get(key)
             v = None if v is None or pd.isna(v) else float(v)
             r[comp] = v
-            if v is not None:
+            if v is not None and comp in SCORED:
                 norm.append(v / SCALE[comp])
         r["n"] = len(norm)
         if not norm:
@@ -111,7 +116,7 @@ def pair_setups(total: pd.DataFrame, ccys: list[str]) -> pd.DataFrame:
             for p in pairs["pair"]]
 
     def _agree(row):
-        ds = [row[f"d_{c}"] for c in COMPONENTS if row[f"d_{c}"] is not None and not pd.isna(row[f"d_{c}"])]
+        ds = [row[f"d_{c}"] for c in SCORED if row[f"d_{c}"] is not None and not pd.isna(row[f"d_{c}"])]
         signs = {(d > 0) - (d < 0) for d in ds}
         return len(ds) >= 2 and len(signs) == 1 and 0 not in signs
 

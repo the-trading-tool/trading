@@ -22,11 +22,11 @@ code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
 <h2>Berechnung</h2>
 <table>
 <tr><th>Komponente</th><th>Spanne</th><th>Normierung</th><th>verfügbar für</th></tr>
-<tr><td>COT-Positionierung</td><td>−3 … +3</td><td>÷ 3</td><td>alle 20 Märkte</td></tr>
+<tr><td>COT-Positionierung</td><td>−3 … +3</td><td><b>zählt nicht</b> (nur Kontext)</td><td>alle 20 Märkte</td></tr>
 <tr><td>Makrodaten</td><td>−6 … +6</td><td>÷ 6</td><td>8 Hauptwährungen</td></tr>
 <tr><td>Trend &amp; Saisonalität</td><td>−4 … +4</td><td>÷ 4</td><td>alle 20 Märkte</td></tr>
 </table>
-<p>Gesamt = 10 × Mittelwert der vorhandenen, normierten Komponenten (gleichgewichtet). Bias ab ±2,
+<p>Gesamt = 10 × Mittelwert der vorhandenen, normierten Komponenten (Makro und Trend gleichgewichtet). <b>COT zählt seit 14.11.2026 nicht mehr</b>: gemessen 2019–2026 über 20 Märkte mit nicht überlappenden 13-Wochen-Fenstern sagt der COT-Score die Kursentwicklung nicht vorher (IC −0,03 bzw. +0,02), auch je Markt nicht von Zufall unterscheidbar. Er steht weiter als Spalte zur Einordnung da. Bias ab ±2,
 stark ab ±5. <b>Kursbestätigung:</b> Zeigt der Trend-Score oder die Lage des Kurses zum SMA200 gegen die Richtung des Gesamt-Scores (z. B. COT bullish, Kurs fällt), ist der Bias <b>neutral</b>; bei nur einer Komponente höchstens bullish/bearish. <b>Einig (✓)</b> = alle vorhandenen Komponenten zeigen in dieselbe Richtung und keine ist
 neutral.</p>
 

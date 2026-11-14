@@ -2030,3 +2030,21 @@ Nebenbei behoben: `replace(0, pd.NA)` bei konstanter Netto-Position (Spanne 0) l
 - Technik-Details (SMA 20/50/100/200, Vola 20 T mit Rang im eigenen Jahr, Ø Tagesbewegung 7/90 T)
   sind Kontext, nicht im Score. Nicht enthalten (keine freie Quelle): Crowd-Sentiment, Konsens/
   Ueberraschung, Kursziele. Hilfe `HELP/asset_card_page(_en).html`, Tests `tests/test_asset_card_data.py`.
+
+### COT-Score gemessen: keine Vorhersagekraft (2026-11-13)
+
+Scratch `cot_measure*.py`. 20 COT-Maerkte, 2019-2026, COT-Score ab Veroeffentlichung gegen Kurs der
+folgenden 13 Wochen (in Marktrichtung).
+- **Nicht ueberlappende 13-W-Fenster** (sauberer Test): IC ueber alle Maerkte −0,03 (2019-22) / +0,02
+  (2023-26). Je Markt ~15 unabhaengige Fenster je Zeitraum (Standardfehler des IC ~0,27); nur 4 von 20
+  Maerkten in beiden Zeitraeumen positiv (GOLD, NATGAS, UST10Y, RUT) = Zufallserwartung.
+- **Jahresweise mit ueberlappenden Fenstern** wirkt COT fast ueberall kontraer — Artefakt: dort ist
+  schon die vergangene 13-W-Rendite kontraer (IC −0,3 … −0,6), und die Positionierung folgt dem Kurs
+  (Rang vs vergangene 13 W +0,25). Nach Herausrechnen bleibt nur CAD/Silber konsistent kontraer, nicht belastbar.
+- 1 Woche zusaetzliche Verzoegerung kostet nur ~1 Pp Uebereinstimmung mit dem Kurs → Verzug ist nicht der Grund.
+- Folge: eine Gewichtung je Markt waere Anpassung an Rauschen.
+- **Entscheidung 2026-11-14: COT zaehlt nicht mehr** (`total_data.WEIGHT['cot']=0`, `SCORED` =
+  Makro + Trend). COT bleibt als Spalte/Panel "(Kontext)" sichtbar, geht aber weder in Gesamt noch
+  in `n` noch in "Einig" ein; `asset_card_data.total_of/n_components` folgen `tot.SCORED`.
+  Folge: ausser den 8 Hauptwaehrungen ist der Gesamt-Score der reine Trend → Bias dort auf
+  bull/bear gedeckelt ("nur Trend"). Stand 14.11.: BTC +2,5 neutral (Kurs unter SMA200).

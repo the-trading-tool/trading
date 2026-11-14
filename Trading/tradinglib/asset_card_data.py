@@ -164,12 +164,13 @@ def macro_at(obs: pd.DataFrame, day: dt.date) -> pd.DataFrame:
 def total_of(cot: float | None, macro: float | None, trend: float | None) -> float | None:
     """Gesamt-Score (−10 … +10) wie :func:`total_data.combine` fuer einen Markt."""
     norm = [v / tot.SCALE[c] for c, v in (("cot", cot), ("macro", macro), ("trend", trend))
-            if v is not None and not pd.isna(v)]
+            if c in tot.SCORED and v is not None and not pd.isna(v)]
     return None if not norm else round(10 * sum(norm) / len(norm), 1)
 
 
 def n_components(cot: float | None, macro: float | None, trend: float | None) -> int:
-    return sum(v is not None and not pd.isna(v) for v in (cot, macro, trend))
+    return sum(c in tot.SCORED and v is not None and not pd.isna(v)
+               for c, v in (("cot", cot), ("macro", macro), ("trend", trend)))
 
 
 def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataFrame | None,
