@@ -2080,3 +2080,27 @@ Scratch: `edge_mkt_index.py`, `edge_mkt_stocks.py`.
   Universum = heutige Mitglieder → beguenstigt Mean Reversion.
 - Folge: "nur kaufen, wenn der Index bullish ist" nicht verwenden. Ob die Spalte fuer kontraere
   Formeln gebaut wird, ist offen (Entscheidung Nutzer).
+
+### Kreditaufschlaege (Geldbeschaffungskosten) gemessen: kein Score-Baustein (2026-11-14)
+
+Frage: Gehoert ein Mass fuer Verschuldung/Finanzierungskosten in den Edge-Score?
+- `tradinglib/credit_data.py` — FRED `BAA10Y` (Moody's Baa minus 10J-Treasury, taeglich ab 1986) und
+  `BAMLH0A0HYM2` (HY-OAS; FRED gibt ICE-Reihen nur noch **3 Jahre** heraus → nur Kontext). Speicher
+  `macro.db` Tabellen `credit_daily`/`credit_meta`, `ensure_fresh()` hoechstens 1x/20 h. Merkmale kausal
+  mit 1 Tag Verzug (`known_at`): `rank3y` (Perzentil 756 Handelstage), `chg13` (Pp ueber 63 Tage),
+  `score` −2…+2 (Rang <=20 %/>=80 % ±1, chg13 <=−0,20/>=+0,20 Pp ±1; Schwellen VOR der Messung fixiert).
+  Noch von nichts in der App genutzt; kein Scheduler-Job.
+- Messung (Scratch `credit_measure.py`, `credit_incr.py`, `credit_stocks.py`):
+  - **Rendite:** S&P 500 1987-2026, 13 W nicht ueberlappend: IC Score +0,005 (SE 0,08); je Jahrzehnt
+    −0,15 / **+0,36** (2000-09) / −0,11 / −0,30 → Vorzeichen kippt. 14 Indizes 2015-26 und Titelebene
+    2020-26 (5,2 Mio. Zeilen) wirken kontraer: `credit <= -1` +2,76 Pp/21 T (6/6 Jahre), +5,51 Pp/63 T;
+    `rank3y >= 0,8` nur in 2 Jahren vorhanden (2020, 2026) → wenige Krisen-Episoden, nicht belastbar.
+  - **Risiko:** stark, aber weitgehend redundant zur bisherigen Vola. IC rank3y → Vorwaerts-Vola +0,44,
+    → Drawdown −0,18. Ueber die Vola der letzten 13 W hinaus nur t +2,7 (Vola) / −2,2 (Drawdown),
+    R² 0,16 → 0,20; in ruhigen Phasen (Vola <= Median) kein Zusatzsignal.
+- Folge: **nicht** in Edge-/Gesamt-Score aufgenommen (kein stabiler Renditebeitrag; Risikoinformation
+  liefert `risk_profile`/Vola schon). Allenfalls als Kontextanzeige denkbar.
+- Firmenebene: `fundamentals_quarterly` erfasst seit 2026-11-14 zusaetzlich `ebit` und
+  `interest_expense` (Yahoo `EBIT`, `Interest Expense`/`... Non Operating`; Spalten per ALTER TABLE
+  automatisch nachgeruestet, Befuellung im Sonntagslauf). Yahoo zeigt nur ~5 Quartale → Zinsdeckung
+  frueestens nach mehreren Quartalen messbar; bei Banken/Versicherern sinnlos.

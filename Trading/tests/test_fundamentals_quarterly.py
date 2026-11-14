@@ -119,3 +119,21 @@ def test_vergangener_termin_ohne_eps_datiert_das_quartal():
     assert (q2['report_date'], q2['report_date_source']) == ('2026-08-20', 'earnings_dates')
     assert q2.get('eps_reported') is None and q2['revenue'] == 187.9e9
     assert nxt == '2026-11-19'
+
+
+def test_zinsaufwand_und_ebit_werden_erfasst_und_alte_tabelle_nachgeruestet():
+    cols = [pd.Timestamp('2026-06-30')]
+    st = pd.DataFrame({cols[0]: {'Total Revenue': 5e9, 'EBIT': 8e8, 'Interest Expense Non Operating': 1e8}})
+    rows, _ = fq.parse(st, None, today=date(2026, 10, 18))
+    assert rows[0]['ebit'] == 8e8 and rows[0]['interest_expense'] == 1e8
+    # an existing table from before the new columns gets them added
+    con = sqlite3.connect(':memory:')
+    con.execute(f"CREATE TABLE {fq.TABLE} (ticker TEXT NOT NULL, period_end TEXT NOT NULL, report_date TEXT, "
+                "report_date_source TEXT, eps_reported REAL, eps_estimate REAL, surprise_pct REAL, "
+                "eps_diluted REAL, revenue REAL, net_income REAL, gross_profit REAL, operating_income REAL, "
+                "first_seen TEXT, updated_at TEXT, PRIMARY KEY (ticker, period_end))")
+    con.execute(f"INSERT INTO {fq.TABLE} (ticker, period_end, report_date, report_date_source, revenue) "
+                "VALUES ('X', '2026-06-30', '2026-09-13', 'estimated', 5e9)")
+    assert fq.record(con, 'X', rows) == 0
+    got = con.execute(f"SELECT revenue, ebit, interest_expense FROM {fq.TABLE}").fetchone()
+    assert got == (5e9, 8e8, 1e8)                    # empty new fields filled, old value kept

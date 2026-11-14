@@ -66,9 +66,15 @@ STATEMENT_ROWS = {
     'eps_diluted':      ('Diluted EPS', 'Basic EPS'),
     'gross_profit':     ('Gross Profit',),
     'operating_income': ('Operating Income', 'Total Operating Income As Reported'),
+    # Interest coverage (EBIT / interest expense), added 2026-11-14. Yahoo only shows the
+    # last ~5 quarters, so the series starts with them. Meaningless for banks/insurers,
+    # where interest expense is the business itself.
+    'ebit':             ('EBIT',),
+    'interest_expense': ('Interest Expense', 'Interest Expense Non Operating'),
 }
 VALUE_COLUMNS = ('eps_reported', 'eps_estimate', 'surprise_pct', 'eps_diluted',
-                 'revenue', 'net_income', 'gross_profit', 'operating_income')
+                 'revenue', 'net_income', 'gross_profit', 'operating_income',
+                 'ebit', 'interest_expense')
 
 
 def _db_path(db_path: str = 'database', db_name: str = 'asset_info.db') -> str:
@@ -84,6 +90,11 @@ def ensure_tables(conn) -> None:
         f"ticker TEXT NOT NULL, period_end TEXT NOT NULL, "
         f"report_date TEXT, report_date_source TEXT, {values}, "
         f"first_seen TEXT, updated_at TEXT, PRIMARY KEY (ticker, period_end))")
+    # Columns added to VALUE_COLUMNS later; existing rows stay NULL until refetched.
+    have = {r[1] for r in conn.execute(f"PRAGMA table_info({TABLE})")}
+    for c in VALUE_COLUMNS:
+        if c not in have:
+            conn.execute(f"ALTER TABLE {TABLE} ADD COLUMN {c} REAL")
     conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_ticker_report "
                  f"ON {TABLE} (ticker, report_date)")
     conn.execute(
