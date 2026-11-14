@@ -1,8 +1,9 @@
 """Edge Scores — Uebersicht: alle Maerkte als Kacheln mit Mini-Tacho.
 
 Je Markt eine Kachel mit Gesamt-Score (Tacho −10 … +10), Bias, den Komponenten
-(Trend, Makro, COT nur als Kontext), relativer Staerke und dem Kursverlauf der
-letzten sechs Monate. "Details" oeffnet die Asset-Scorecard des Marktes.
+(Trend, Makro, COT nur als Kontext), relativer Staerke, dem Verlauf des
+Gesamt-Scores (Wochenpunkte aus ``edge_scores.db``, :mod:`edge_history`) und dem
+Kursverlauf der letzten sechs Monate. "Details" oeffnet die Asset-Scorecard des Marktes.
 
 Die Tachos sind kleines Inline-SVG statt Plotly — 43 Plotly-Grafiken wuerden die
 Seite spuerbar bremsen. Gerechnet wird nichts Neues: dieselben Caches wie die
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 GROUP_ORDER = ["fx", "commodities", "indices", "indices_world", "rates", "crypto"]
 _PER_ROW = 4
 _SPARK_DAYS = 126
+SCORE_WEEKS = 26
 # solid colours for the gauge arc (the table colours are translucent backgrounds)
 _ARC = [(-10, -5, "#c62828"), (-5, -2, "#ef6c00"), (-2, 2, "#9e9e9e"), (2, 5, "#7cb342"), (5, 10, "#2e7d32")]
 
@@ -42,6 +44,7 @@ _CSS = """<style>
 .ov-rows td:last-child{text-align:right;font-weight:600}
 .ov-ctx{opacity:.55}
 .ov-chg{font-size:.78rem;text-align:center;margin:-.1rem 0 .2rem}
+.ov-lbl{font-size:.68rem;opacity:.6;margin-top:.2rem;line-height:1}
 .ov-warn{font-size:.74rem;color:#ef6c00;margin-top:.15rem;min-height:1.1rem}
 </style>"""
 
@@ -90,6 +93,28 @@ def spark_svg(s: pd.Series | None, days: int = _SPARK_DAYS) -> str:
             f"<polyline points='{pts}' fill='none' stroke='{col}' stroke-width='1.5'/></svg>")
 
 
+def score_spark_svg(vals: list[float] | None) -> str:
+    """Gesamt-Score je Woche auf fester Skala −10 … +10 mit Nulllinie (Farbe = letzter Wert)."""
+    v = [float(x) for x in (vals or []) if x is not None and not pd.isna(x)]
+    if len(v) < 2:
+        return ""
+    w, h = 200, 30
+
+    def y(x: float) -> float:
+        return h / 2 - max(min(x, 10), -10) / 10 * (h / 2 - 2)
+
+    pts = " ".join(f"{i * w / (len(v) - 1):.1f},{y(x):.1f}" for i, x in enumerate(v))
+    last = v[-1]
+    col = ("#2e7d32" if last >= 5 else "#7cb342" if last >= 2 else "#c62828" if last <= -5
+           else "#ef6c00" if last <= -2 else "#9e9e9e")
+    band = "".join(f"<line x1='0' y1='{y(b):.1f}' x2='{w}' y2='{y(b):.1f}' stroke='currentColor' "
+                   f"stroke-opacity='.18' stroke-dasharray='3,3'/>" for b in (2, -2))
+    return (f"<svg viewBox='0 0 {w} {h}' preserveAspectRatio='none' width='100%' height='{h}' "
+            f"style='display:block'>{band}"
+            f"<line x1='0' y1='{h / 2}' x2='{w}' y2='{h / 2}' stroke='currentColor' stroke-opacity='.35'/>"
+            f"<polyline points='{pts}' fill='none' stroke='{col}' stroke-width='1.8'/></svg>")
+
+
 def _num(v, fmt: str = "{:+.0f}") -> str:
     return "–" if v is None or pd.isna(v) else fmt.format(v)
 
@@ -102,7 +127,7 @@ def _chg(v) -> str:
     return f"<span style='color:{col};font-weight:600'>{arrow} {v:+.1f}</span>"
 
 
-def tile_html(r: dict, series: pd.Series | None) -> str:
+def tile_html(r: dict, series: pd.Series | None, scores: list[float] | None = None) -> str:
     esc = html.escape
     bias = r["bias"]
     pill = (f"<span class='ov-pill' style='background:{_BIAS_COLORS[bias]}'>"
@@ -120,7 +145,18 @@ def tile_html(r: dict, series: pd.Series | None) -> str:
             f"<div class='ov-chg' title='{esc(t('ov.chg_help'))}'>{esc(t('ov.chg_1w'))} {_chg(r.get('chg_1w'))}"
             f" &nbsp; {esc(t('ov.chg_4w'))} {_chg(r.get('chg_4w'))}</div>"
             f"<table class='ov-rows'>{body}</table>"
-            f"<div class='ov-warn'>{warn}</div>{spark_svg(series)}</div>")
+            f"<div class='ov-warn'>{warn}</div>{_spark_block(scores, series)}</div>")
+
+
+def _spark_block(scores: list[float] | None, series: pd.Series | None) -> str:
+    out = ""
+    sc = score_spark_svg(scores)
+    if sc:
+        out += f"<div class='ov-lbl'>{html.escape(t('ov.spark_score', n=len(scores) - 1))}</div>{sc}"
+    px = spark_svg(series)
+    if px:
+        out += f"<div class='ov-lbl'>{html.escape(t('ov.spark_price'))}</div>{px}"
+    return out
 
 
 # ── Daten ─────────────────────────────────────────────────────────────────────
@@ -157,6 +193,36 @@ def _past_totals(day: str, weeks: int, macro_stamp: str, cot_stamp: str, markets
     _card, series = trend_cached(day, markets_sig)
     obs = md.load_obs()
     return ac.past_totals(series, obs, dt.date.fromisoformat(day) - dt.timedelta(weeks=weeks))
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _weekly(stamp: float, since: str) -> dict[str, list[float]]:
+    """Gespeicherte Freitags-Scores je Markt ab ``since`` (``stamp`` = mtime der DB, Cache-Schluessel)."""
+    from tradinglib import edge_history as eh
+    df = eh.load(since=dt.date.fromisoformat(since))
+    if df.empty:
+        return {}
+    return {k: g.sort_values("date")["total"].tolist() for k, g in df.groupby("key")}
+
+
+def score_lines(df: pd.DataFrame, weekly: dict[str, list[float]], weeks: int = SCORE_WEEKS) -> dict:
+    """Je Markt die letzten ``weeks`` Freitage plus den aktuellen Gesamt-Score als letzten Punkt."""
+    return {k: weekly.get(k, [])[-weeks:] + ([cur] if cur is not None and not pd.isna(cur) else [])
+            for k, cur in zip(df["key"], df["total"]) if weekly.get(k)}
+
+
+def _score_history(df: pd.DataFrame) -> dict:
+    import os
+    from tradinglib import edge_history as eh
+    p = eh.db_path()
+    if not os.path.exists(p):
+        return {}
+    try:
+        since = (dt.date.today() - dt.timedelta(weeks=SCORE_WEEKS + 2)).isoformat()
+        return score_lines(df, _weekly(os.path.getmtime(p), since))
+    except Exception:
+        logger.exception("edge overview: score history failed")
+        return {}
 
 
 def _open_asset(key: str) -> None:
@@ -236,12 +302,12 @@ class EdgeOverviewPage:
                 part = part.reindex(pd.to_numeric(part[sort], errors="coerce").abs()
                                     .sort_values(ascending=False, kind="stable", na_position="last").index)
             layout.append((g, part.to_dict("records")))
-        self._grid(layout, series)
+        self._grid(layout, series, _score_history(df))
         with st.expander(t("cot.tab_method")):
             st.markdown(t("ov.method_md"))
 
     @staticmethod
-    def _grid(layout: list[tuple[str, list[dict]]], series: dict) -> None:
+    def _grid(layout: list[tuple[str, list[dict]]], series: dict, scores: dict | None = None) -> None:
         """Kachelraster in einem von zwei festen Plaetzen. Aendert sich die Belegung
         (Filter, Sortierung, neue Daten), wechselt der Platz: der alte bekommt ein leeres
         Element und verliert alles. Im SELBEN Platz blieben sonst Kacheln stehen, die im
@@ -262,6 +328,6 @@ class EdgeOverviewPage:
                     cols = st.columns(_PER_ROW)
                     for col, r in zip(cols, recs[i:i + _PER_ROW]):
                         with col:
-                            st.markdown(tile_html(r, series.get(r["key"])), unsafe_allow_html=True)
+                            st.markdown(tile_html(r, series.get(r["key"]), (scores or {}).get(r["key"])), unsafe_allow_html=True)
                             st.button(t("ov.details"), key=f"_ov_open_{r['key']}", width="stretch",
                                       on_click=_open_asset, args=(r["key"],))

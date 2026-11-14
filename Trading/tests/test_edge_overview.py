@@ -82,3 +82,22 @@ def test_past_totals_are_causal_and_change_sign():
     chg = ac.score_changes(cur, series, None, dt.date(2026, 11, 13), weeks=(2,)).set_index("key")
     assert chg.at["DAX", "chg_2w"] == round(7.5 - ac.past_totals(series, None, dt.date(2026, 10, 30))["DAX"], 1)
     assert chg.at["SMI", "chg_2w"] > 0                                       # war bearish
+
+
+def test_score_spark_fixed_scale_and_colour():
+    assert ov.score_spark_svg(None) == "" and ov.score_spark_svg([3.0]) == ""
+    svg = ov.score_spark_svg([-10.0, 0.0, 10.0])
+    # fixed scale: -10 at the bottom edge (y=28), +10 at the top (y=2), regardless of the data range
+    assert "0.0,28.0" in svg and "200.0,2.0" in svg
+    assert "#2e7d32" in ov.score_spark_svg([0.0, 6.0])
+    assert "#ef6c00" in ov.score_spark_svg([0.0, -2.0])
+    assert "#9e9e9e" in ov.score_spark_svg([0.0, 1.0])
+
+
+def test_score_lines_appends_current_total():
+    df = pd.DataFrame({"key": ["DAX", "GOLD", "SMI"], "total": [4.0, float("nan"), 1.0]})
+    weekly = {"DAX": list(range(30)), "GOLD": [1.0, 2.0]}
+    out = ov.score_lines(df, weekly, weeks=3)
+    assert out["DAX"] == [27, 28, 29, 4.0]
+    assert out["GOLD"] == [1.0, 2.0]          # no current total -> history only
+    assert "SMI" not in out                   # no stored history -> no line
