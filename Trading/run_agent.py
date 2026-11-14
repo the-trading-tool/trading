@@ -190,10 +190,22 @@ def main():
         # ── Pushover notifications ────────────────────────────────────
         if args.notify and executed:
             try:
+                from datetime import datetime as _dt
+                from tradinglib import tools
                 from tradinglib.pushover_notifier import PushoverNotifier
-                notifier = PushoverNotifier(username=args.user)
+                notifier = PushoverNotifier(
+                    storage_file=tools.Tools().get_path(path='', file_name='pushover_agent.json'))
+                today = _dt.now().strftime('%Y-%m-%d')
                 for act in executed:
-                    notifier.send(
+                    # one push per executed order: the order id makes the dedup key unique
+                    try:
+                        price = float(act.get('price') or 0.0)
+                    except (TypeError, ValueError):
+                        price = 0.0
+                    notifier.send_notification(
+                        ticker=f"agent:{act['action']}:{act['ticker']}:{act.get('order_id') or ''}",
+                        price=price,
+                        date=today,
                         title=f"{'🟢 BUY' if act['action'] == 'buy' else '🔴 SELL'} "
                               f"{act['ticker']}",
                         message=(

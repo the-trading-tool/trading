@@ -140,11 +140,18 @@ def main():
         # ── Pushover ──────────────────────────────────────────────────
         if args.notify and triggered:
             try:
+                from tradinglib import tools
                 from tradinglib.pushover_notifier import PushoverNotifier
-                notifier = PushoverNotifier(username=args.user)
+                notifier = PushoverNotifier(
+                    storage_file=tools.Tools().get_path(path='', file_name='pushover_trailstop.json'))
+                today = datetime.now().strftime('%Y-%m-%d')
                 for pos in triggered:
                     closed = pos in executed
-                    notifier.send(
+                    # dedup key per ticker: at most one alert per ticker and day
+                    notifier.send_notification(
+                        ticker=f"trail:{pos['ticker']}",
+                        price=float(pos['current_price']),
+                        date=today,
                         title=f"🛑 Trail Stop: {pos['ticker']}",
                         message=(
                             f"Current: {pos['current_price']:.2f}  "
