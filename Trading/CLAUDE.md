@@ -2062,3 +2062,21 @@ folgenden 13 Wochen (in Marktrichtung).
   `scheduler.db` (id 36, Sicherung `scheduler.db.bak-20261114-104857`) und in `install.ps1`/`install.sh`.
   Erstbefuellung 2026-11-14 gelaufen: 15.652 Zeilen bis 2026-11-13.
 - Noch nicht genutzt von der UI (Uebersicht/Asset-Scorecard rechnen ihren Verlauf weiter live).
+
+### Marktumfeld (Index-Edge-Score) gemessen: als Kauf-Filter schaedlich (2026-11-14)
+
+`tradinglib/edge_market.py` haengt jedem Titel den Edge-Gesamt-Score seines Index an (Freitags-Score
+aus `edge_weekly`, Tag D = letzter Freitag <= D; Index-Prioritaet `INDEX_PRIORITY`, ^SDAXI/^TECDAX
+ohne Edge-Markt). Bisher **nur Messwerkzeug** — keine Spalte in `asset_simulation`, nicht in asset_perf2.
+Scratch: `edge_mkt_index.py`, `edge_mkt_stocks.py`.
+
+- **Indexebene** (20 Indizes, 2019-2026, keine Ueberlebensverzerrung): bullishe Wochen (>= +2,5)
+  13 W +1,93 %, bearishe (<= −2,5) +4,27 %; bull minus alle in 7/8 Jahren negativ. IC 13 W nicht
+  ueberlappend −0,10 (2019-22) / −0,15 (2023-26). Der Score wirkt **kontraer**.
+- **Titelebene** (score_eval, 2020-2026, 4,9 Mio. Zeilen mit Index-Score, Basis 1,12 %/21 T):
+  `edge_market >= 2.5` −0,42 Pp (1/7 Jahre positiv), `>= 5` −0,45; `close>sma200 & Index bullish`
+  −0,22 (2/7). Gegenrichtung `edge_market <= -2.5` +1,09 Pp/21 T, +1,87 Pp/63 T, 6/7 Jahre (2021 −1,8),
+  Drawdown nicht geringer. Vorsicht: Bullenmarkt mit schnellen Erholungen (2020, 2022/23, 2025) +
+  Universum = heutige Mitglieder → beguenstigt Mean Reversion.
+- Folge: "nur kaufen, wenn der Index bullish ist" nicht verwenden. Ob die Spalte fuer kontraere
+  Formeln gebaut wird, ist offen (Entscheidung Nutzer).
