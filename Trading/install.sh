@@ -296,6 +296,7 @@ JOBS = [
     ("22:35", "recalc_correlation.py", "",                                    WD+",saturday",   "CORRELATION_INDEX",           "",      "",            "", 1),
     ("22:15", "get_asset_data.py",     "1d:1mo /select:'WHERE Ticker IN (\"TLT\",\"HYG\",\"LQD\",\"IEF\",\"IBB\",\"IHI\",\"IHF\",\"XPH\")'", WD, "YAHOO_D_DATA_FG_MACRO", "",      "",            "", 1),
     ("22:45", "log_fear_greed.py",     "/quiet",                              WD,               "FEAR_GREED_LOG",              "",      "",            "", 1),
+    ("12:00", "log_edge_scores.py",    "/quiet",                              "saturday,sunday", "EDGE_SCORES_WEEKLY",         "",      "",            "", 1),
     ("1",     "get_asset_data.py",     "60m:2d 1d:1mo /group:CRYPTO,COMMODITIES,METALS,CURRENCIES", "hours",   "YAHOO_H_DATA_GROUP",  "",      "",            "", 1),
     ("15",    "get_asset_data.py",     "1m:2d /group:CRYPTO,COMMODITIES,METALS,CURRENCIES",         "minutes", "YAHOO_M_DATA_GROUP",  "",      "",            "", 1),
     ("18:30", "get_asset_data.py",     "1d:1mo 60m:2d 1m:2d /group:ETP /worker:4", WD,           "YAHOO_D_DATA_ETP",            "",      "",            "", 1),

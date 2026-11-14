@@ -2048,3 +2048,17 @@ folgenden 13 Wochen (in Marktrichtung).
   in `n` noch in "Einig" ein; `asset_card_data.total_of/n_components` folgen `tot.SCORED`.
   Folge: ausser den 8 Hauptwaehrungen ist der Gesamt-Score der reine Trend → Bias dort auf
   bull/bear gedeckelt ("nur Trend"). Stand 14.11.: BTC +2,5 neutral (Kurs unter SMA200).
+
+### Edge Scores: Wochen-Verlauf per Scheduler (2026-11-14)
+
+- `tradinglib/edge_history.py` + Wurzel-Skript `log_edge_scores.py`: Gesamt-Score und Komponenten
+  (cot/macro/trend/total/bias/n) je Markt (alle 43) und **abgeschlossenem Freitag** in
+  `<TradingDB>/edge_scores.db`, Tabelle `edge_weekly` (PK date+key). Kausal wie
+  `asset_card_data.history` (Lauf "heute" = Samstag nach dem Freitag → Makro mit Veroeffentlichungs-Lag).
+- Inkrementell je Markt ab letztem gespeicherten Freitag; leerer Markt → `BACKFILL_WEEKS=364`
+  (ab 11/2019, alle Maerkte ~70-95 s). CLI `/weeks:N`, `/force`, `/key:A,B`, `/quiet`.
+  Lesen: `edge_history.load(keys, since)` (read-only, leer ohne DB).
+- Job `EDGE_SCORES_WEEKLY` Sa+So 12:00 (So = Nachholer, inkrementell), eingetragen in
+  `scheduler.db` (id 36, Sicherung `scheduler.db.bak-20261114-104857`) und in `install.ps1`/`install.sh`.
+  Erstbefuellung 2026-11-14 gelaufen: 15.652 Zeilen bis 2026-11-13.
+- Noch nicht genutzt von der UI (Uebersicht/Asset-Scorecard rechnen ihren Verlauf weiter live).
