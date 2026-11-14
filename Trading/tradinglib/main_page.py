@@ -1274,6 +1274,9 @@ class render_mainpage(fetch_data.FetchData):
                         tab_list.append(t('main.tab_ai'))
                     if seasonality_enabled:
                         tab_list.append(t('main.tab_seasonality'))
+                    # Edge-Score view: market card for Edge markets, otherwise trend /
+                    # relative strength / index environment from local daily prices.
+                    tab_list.append(t('main.tab_scorecard'))
                     if has_info:
                         tab_list.append(t('main.tab_info'))
                     if not income_df.empty:
@@ -1291,6 +1294,7 @@ class render_mainpage(fetch_data.FetchData):
                     tab_fundamentals = next(tab_iter) if fundamentals_enabled else None
                     tab_ai = next(tab_iter) if ai_enabled else None
                     tab_seasonality = next(tab_iter) if seasonality_enabled else None
+                    tab_scorecard = next(tab_iter)
                     tab_info = next(tab_iter) if has_info else None
                     tab_income_sheet = next(tab_iter) if not income_df.empty else None
                     tab_balance_sheet = next(tab_iter) if not balance_df.empty else None
@@ -1459,6 +1463,16 @@ class render_mainpage(fetch_data.FetchData):
                             _spin.markdown(_tab_overlay(t('main.tab_seasonality')), unsafe_allow_html=True)
                             sn.render_seasonality(ticker_selected, ticker_selected_longname, region=tab_seasonality)
                             _spin.empty()
+
+                    with tab_scorecard:
+                        _spin.markdown(_tab_overlay(t('main.tab_scorecard')), unsafe_allow_html=True)
+                        try:
+                            from tradinglib import ticker_scorecard_page as tsp
+                            tsp.render(ticker_selected, fts.index_name, region=tab_scorecard)
+                        except Exception as e:
+                            logger.exception("scorecard tab failed for %s", ticker_selected)
+                            st.error(t('error.load_edge_scores', error=e))
+                        _spin.empty()
 
     #, add_sub_plots=['ewo']
                     if show_details:

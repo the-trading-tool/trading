@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Asset Viewer: Scorecard – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Asset Viewer: Scorecard <small style="font-size:.6em;color:#888">ticker_scorecard_page.py</small></h1>
+<p>Ist der Ticker ein Markt der Edge Scores (Index, Rohstoff-Future, Währung, Krypto), zeigt der Tab die Asset-Scorecard. Für <b>Einzeltitel</b> gibt es drei Komponenten aus lokalen Tageskursen:</p>
+<table><tr><th>Komponente</th><th>Spanne</th><th>Regel</th></tr><tr><td>Trend & Saisonalität</td><td>−4 … +4</td><td>wie die Trend-Karte: Kurs vs SMA200, SMA50 vs SMA200, 3-Monats-Momentum, Saisonalität der nächsten 30 Tage</td></tr><tr><td>Relative Stärke</td><td>−2 … +2</td><td>13-Wochen-Rendite minus Index-Rendite: ±1 ab ±2 Pp, ±2 ab ±10 Pp</td></tr><tr><td>Marktumfeld</td><td>−10 … +10</td><td>Gesamt-Score des Index (für Indizes = Trend)</td></tr></table>
+<p>Gesamt = 10 × Mittel der normierten Komponenten (Trend /4, RS /2, Markt /10). Bias ab ±2, stark ab ±5; dieselben Bremsen wie in den Edge Scores (Kursbestätigung über Trend und SMA200, Deckel bei nur einer Komponente). <b>Die Gleichgewichtung ist nicht gemessen</b> – sie ist eine Lagebeschreibung, kein Handelssignal.</p>
+<p><b>Kontext, nicht im Score:</b> Risikostufe, Trendwert, 4PS-Phase, Markov-Regime und Minervini-RS aus der letzten Zeile der Simulation sowie der Makro-Score der Handelswährung. Für keine dieser Größen ist in unseren Daten ein Renditevorsprung gemessen; Fundamentaldaten fehlen bewusst (keine Historie, Look-ahead).</p>
+<p>Verlauf und Veränderung sind kausal: jeder Wochenpunkt nutzt nur die bis dahin bekannten Kurse.</p>
+</body>
+</html>

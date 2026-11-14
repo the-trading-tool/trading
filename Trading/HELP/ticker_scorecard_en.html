@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Asset Viewer: Scorecard – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.warn{background:#fef7e0;border-left:4px solid #f9ab00;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+code{background:#f1f3f4;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Asset Viewer: Scorecard <small style="font-size:.6em;color:#888">ticker_scorecard_page.py</small></h1>
+<p>If the ticker is an Edge Scores market (index, commodity future, currency, crypto), the tab shows the asset scorecard. For <b>single stocks</b> there are three components from local daily prices:</p>
+<table><tr><th>Component</th><th>Range</th><th>Rule</th></tr><tr><td>Trend & seasonality</td><td>−4 … +4</td><td>as in the trend card: price vs SMA200, SMA50 vs SMA200, 3-month momentum, seasonality of the next 30 days</td></tr><tr><td>Relative strength</td><td>−2 … +2</td><td>13-week return minus index return: ±1 from ±2 pp, ±2 from ±10 pp</td></tr><tr><td>Market environment</td><td>−10 … +10</td><td>total score of the index (for indices = trend)</td></tr></table>
+<p>Total = 10 × mean of the normalised components (trend /4, RS /2, market /10). Bias from ±2, strong from ±5; the same brakes as in the Edge Scores (price confirmation via trend and SMA200, cap with only one component). <b>The equal weighting is not measured</b> – this describes the situation, it is not a trading signal.</p>
+<p><b>Context, not in the score:</b> risk bucket, trend score, 4PS phase, Markov regime and Minervini RS from the latest simulation row, plus the macro score of the listing currency. None of these showed a return edge in our data; fundamentals are left out on purpose (no history, look-ahead).</p>
+<p>History and change are causal: each weekly point uses only prices known by then.</p>
+</body>
+</html>

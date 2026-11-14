@@ -223,6 +223,7 @@ class EdgeOverviewPage:
         sort = f3.selectbox(t("ov.sort"), ["group", "strength", "chg_1w", "chg_4w"], key="_ov_sort",
                             format_func=lambda o: t("ov.sort_" + o))
         st.caption(t("ov.caption", cot=cot_date.strftime("%d.%m.%Y") if cot_date else "–"))
+        layout = []
         for g in [g for g in groups if g in sel]:
             part = df[df["group"] == g]
             if only:
@@ -234,14 +235,33 @@ class EdgeOverviewPage:
             elif sort in ("chg_1w", "chg_4w"):
                 part = part.reindex(pd.to_numeric(part[sort], errors="coerce").abs()
                                     .sort_values(ascending=False, kind="stable", na_position="last").index)
-            st.markdown(f"**{t('cot.group_' + g)}**")
-            recs = part.to_dict("records")
-            for i in range(0, len(recs), _PER_ROW):
-                cols = st.columns(_PER_ROW)
-                for col, r in zip(cols, recs[i:i + _PER_ROW]):
-                    with col:
-                        st.markdown(tile_html(r, series.get(r["key"])), unsafe_allow_html=True)
-                        st.button(t("ov.details"), key=f"_ov_open_{r['key']}", width="stretch",
-                                  on_click=_open_asset, args=(r["key"],))
+            layout.append((g, part.to_dict("records")))
+        self._grid(layout, series)
         with st.expander(t("cot.tab_method")):
             st.markdown(t("ov.method_md"))
+
+    @staticmethod
+    def _grid(layout: list[tuple[str, list[dict]]], series: dict) -> None:
+        """Kachelraster in einem von zwei festen Plaetzen. Aendert sich die Belegung
+        (Filter, Sortierung, neue Daten), wechselt der Platz: der alte bekommt ein leeres
+        Element und verliert alles. Im SELBEN Platz blieben sonst Kacheln stehen, die im
+        neuen Raster keinen Nachfolger haben (Streamlit fasst Leeren und Neubefuellen
+        desselben Pfads zusammen) - z. B. eine Index-Kachel unter den Rohstoffen."""
+        sig = repr([(g, [r["key"] for r in recs]) for g, recs in layout])
+        slot = st.session_state.get("_ov_slot", 0)
+        if st.session_state.get("_ov_sig") != sig:
+            if "_ov_sig" in st.session_state:
+                slot = 1 - slot
+            st.session_state["_ov_sig"] = sig
+            st.session_state["_ov_slot"] = slot
+        slots = (st.empty(), st.empty())
+        with slots[slot].container():
+            for g, recs in layout:
+                st.markdown(f"**{t('cot.group_' + g)}**")
+                for i in range(0, len(recs), _PER_ROW):
+                    cols = st.columns(_PER_ROW)
+                    for col, r in zip(cols, recs[i:i + _PER_ROW]):
+                        with col:
+                            st.markdown(tile_html(r, series.get(r["key"])), unsafe_allow_html=True)
+                            st.button(t("ov.details"), key=f"_ov_open_{r['key']}", width="stretch",
+                                      on_click=_open_asset, args=(r["key"],))

@@ -157,6 +157,11 @@ class AssetCardPage:
         title(t("page.asset_card"))
         st.markdown(_CSS, unsafe_allow_html=True)
         key, weeks = self._select(side)
+        self.render_market(key, weeks)
+
+    def render_market(self, key: str, weeks: int = 52) -> None:
+        """Scorecard eines festen Marktes (ohne Auswahl) — auch fuer den Asset Viewer."""
+        st.markdown(_CSS, unsafe_allow_html=True)
         cd.ensure_fresh()
         md.ensure_fresh()
         cot_date = cd.latest_report_date()
