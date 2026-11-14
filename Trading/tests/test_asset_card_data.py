@@ -116,3 +116,27 @@ def test_bias_needs_price_confirmation():
     df = tot.combine(pd.DataFrame({"key": ["BTC"], "score": [2]}), pd.DataFrame(columns=["score"]),
                      pd.DataFrame({"key": ["BTC"], "score": [-1]}), markets=markets)
     assert df.at[0, "total"] == -2.5 and df.at[0, "bias"] == "bear"     # COT zaehlt nicht mehr
+
+
+def test_history_with_store_uses_stored_points_and_computes_the_rest():
+    import datetime as _dt
+    import numpy as _np
+    import pandas as _pd
+    from tradinglib import asset_card_data as _ac
+    idx = _pd.bdate_range("2024-01-01", "2026-11-14")
+    s = _pd.Series(_np.geomspace(100, 200, len(idx)), index=idx)
+    today = _dt.date(2026, 11, 14)                     # Saturday
+    live = _ac.history("SPX", s, None, None, weeks=6, today=today)
+    days = _ac.history_days(6, today)
+    # store the first four Fridays with a marker value, the last Friday is missing
+    stored = _pd.DataFrame({"date": [_pd.Timestamp(d) for d in days[:4]], "key": "SPX",
+                            "cot": None, "macro": None, "trend": 1.0, "total": 9.9, "bias": "bull"})
+    out, n = _ac.history_with_store("SPX", s, None, None, stored, weeks=6, today=today)
+    assert n == 4 and len(out) == len(live) == len(days)
+    assert list(out["date"]) == list(live["date"])
+    assert (out["total"].iloc[:4] == 9.9).all()
+    # missing Friday and today come from the live computation
+    assert out["total"].iloc[4:].tolist() == live["total"].iloc[4:].tolist()
+    # other markets in the store are ignored; an empty store equals the live history
+    out2, n2 = _ac.history_with_store("SPX", s, None, None, stored.assign(key="DAX"), weeks=6, today=today)
+    assert n2 == 0 and out2["total"].tolist() == live["total"].tolist()

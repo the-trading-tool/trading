@@ -37,6 +37,7 @@ individual points, technical context and the history of the total score.</p>
 to that day, macro only with values estimated to have been published (policy rate/leading indicator ≈ 42 days,
 inflation/unemployment ≈ 70 days after the start of the month, GDP ≈ 120 days after the start of the quarter).
 Today's point is identical to the individual cards.</p>
+<p>Weekly points are read from the stored history (<code>edge_scores.db</code>, job EDGE_SCORES_WEEKLY, Sat/Sun 12:00), which applies the same rules. Only today's point and weeks still missing there are computed live; the caption shows the counts.</p>
 <div class="warn">Not included because there is no free source: crowd/retail sentiment, consensus forecasts
 (“surprise”) and price targets. The scores describe the situation; the thresholds are not yet calibrated by backtest.</div>
 </body>

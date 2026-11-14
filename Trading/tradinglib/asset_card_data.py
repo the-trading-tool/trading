@@ -177,10 +177,49 @@ def history(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataF
             weeks: int = 52, today: dt.date | None = None) -> pd.DataFrame:
     """Gesamt-Score und Komponenten je Freitag der letzten ``weeks`` Wochen, kausal."""
     today = today or dt.date.today()
+    return history_points(key, s, cot_hist, obs, history_days(weeks, today), today)
+
+
+def history_days(weeks: int, today: dt.date) -> list[dt.date]:
+    """Die letzten ``weeks`` Freitage bis ``today`` plus ``today`` selbst (falls kein Freitag)."""
     last_fri = today - dt.timedelta(days=(today.weekday() - 4) % 7)
     days = [last_fri - dt.timedelta(weeks=i) for i in range(weeks - 1, -1, -1)]
     if days[-1] != today:
         days.append(today)
+    return days
+
+
+def history_with_store(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataFrame | None,
+                       stored: pd.DataFrame | None, weeks: int = 52,
+                       today: dt.date | None = None) -> tuple[pd.DataFrame, int]:
+    """Wie :func:`history`, aber gespeicherte Wochenpunkte (``edge_weekly``) werden uebernommen;
+    live gerechnet wird nur, was fehlt (mindestens der heutige Punkt). Liefert (Verlauf, Anzahl
+    gespeicherter Punkte)."""
+    today = today or dt.date.today()
+    days = history_days(weeks, today)
+    have = {}
+    if stored is not None and not stored.empty:
+        st_ = stored[(stored["key"] == key) & stored["total"].notna()]
+        have = {d.date(): r for d, r in zip(pd.to_datetime(st_["date"]), st_.to_dict("records"))}
+    # today is never taken from the store: stored Fridays are completed weeks only
+    use = [d for d in days if d in have and d < today]
+    missing = [d for d in days if d not in use]
+    rows = [{"date": pd.Timestamp(d), **{c: have[d].get(c) for c in ("cot", "macro", "trend", "total", "bias")}}
+            for d in use]
+    live = history_points(key, s, cot_hist, obs, missing, today) if missing else pd.DataFrame()
+    out = pd.concat([pd.DataFrame(rows), live], ignore_index=True) if rows else live
+    if not out.empty:
+        out = out.sort_values("date").reset_index(drop=True)
+        for c in ("cot", "macro", "trend", "total"):
+            out[c] = pd.to_numeric(out[c], errors="coerce")
+    return out, len(use)
+
+
+def history_points(key: str, s: pd.Series, cot_hist: pd.DataFrame | None, obs: pd.DataFrame | None,
+                   days: list[dt.date], today: dt.date) -> pd.DataFrame:
+    """Kausale Punkte fuer beliebige Tage ``days`` (aufsteigend)."""
+    if not days:
+        return pd.DataFrame()
     sign = td.SIGN.get(key, 1)
     use_macro = has_macro(key) and obs is not None and not obs.empty
     rows, macro_memo = [], {}

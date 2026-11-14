@@ -87,14 +87,34 @@ _CSS = """<style>
 # ── Daten (gecacht) ───────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
-def _asset_data(key: str, day: str, cot_stamp: str, macro_stamp: str, weeks: int):
-    """Kursreihe, COT-Historie, Makrodaten und Verlauf eines Marktes."""
+def _asset_data(key: str, day: str, cot_stamp: str, macro_stamp: str, weeks: int, store_stamp: float = 0.0):
+    """Kursreihe, COT-Historie, Makrodaten und Verlauf eines Marktes.
+
+    Der Verlauf kommt aus dem gespeicherten Wochenverlauf (``edge_scores.db``), soweit vorhanden;
+    nur fehlende Wochen und der heutige Punkt werden live gerechnet. ``store_stamp`` (mtime der DB)
+    ist nur Cache-Schluessel."""
+    from tradinglib import edge_history as eh
     today = dt.date.fromisoformat(day)
     s, src = td.price_series(key, today)
     cot_hist = cd.load_history(key) if ac.has_cot(key) else pd.DataFrame()
     obs = md.load_obs()
-    hist = ac.history(key, s, cot_hist, obs if ac.has_macro(key) else None, weeks=weeks, today=today)
-    return s, src, cot_hist, obs, hist
+    try:
+        stored = eh.load(keys=[key], since=today - dt.timedelta(weeks=weeks + 1))
+    except Exception:
+        logger.exception("asset card: stored history for %s failed", key)
+        stored = pd.DataFrame()
+    hist, n_stored = ac.history_with_store(key, s, cot_hist, obs if ac.has_macro(key) else None, stored,
+                                           weeks=weeks, today=today)
+    return s, src, cot_hist, obs, hist, n_stored
+
+
+def _store_stamp() -> float:
+    import os
+    from tradinglib import edge_history as eh
+    try:
+        return os.path.getmtime(eh.db_path())
+    except OSError:
+        return 0.0
 
 
 def _gauge(total: float | None) -> go.Figure:
@@ -166,9 +186,9 @@ class AssetCardPage:
         md.ensure_fresh()
         cot_date = cd.latest_report_date()
         with st.spinner(t("asset.loading")):
-            s, src, cot_hist, obs, hist = _asset_data(
+            s, src, cot_hist, obs, hist, n_stored = _asset_data(
                 key, dt.date.today().isoformat(), cot_date.isoformat() if cot_date else "",
-                md.get_meta("last_success") or "", weeks)
+                md.get_meta("last_success") or "", weeks, _store_stamp())
         if s.empty:
             st.warning(t("trend.missing", markets=t(f"cot.mkt_{key}")))
             return
@@ -203,7 +223,8 @@ class AssetCardPage:
             st.markdown(_panel(t("asset.scores"), None, [], comp), unsafe_allow_html=True)
             st.markdown(f"**{t('asset.history_title')}**")
             st.plotly_chart(_history_chart(hist), width="stretch", config={"displayModeBar": False})
-            st.caption(t("asset.history_hint"))
+            st.caption(t("asset.history_hint") + " " + t("asset.history_source", stored=n_stored,
+                                                               live=max(len(hist) - n_stored, 0)))
         with right:
             st.markdown(self._trend_panel(trend, s, sign), unsafe_allow_html=True)
             st.markdown(self._cot_panel(key, cot_row), unsafe_allow_html=True)
