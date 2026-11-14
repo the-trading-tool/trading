@@ -3149,5 +3149,10 @@
   "tsc.ctx_macro": "Macro score {ccy}",
   "tsc.method_md": "If the ticker is an Edge Scores market (index, commodity future, currency, crypto), the tab shows the asset scorecard. For **single stocks** there are three components from local daily prices:\n\n| Component | Range | Rule |\n|---|---|---|\n| Trend & seasonality | −4 … +4 | as in the trend card: price vs SMA200, SMA50 vs SMA200, 3-month momentum, seasonality of the next 30 days |\n| Relative strength | −2 … +2 | 13-week return minus index return: ±1 from ±2 pp, ±2 from ±10 pp |\n| Market environment | −10 … +10 | total score of the index (for indices = trend) |\n\nTotal = 10 × mean of the normalised components (trend /4, RS /2, market /10). Bias from ±2, strong from ±5; the same brakes as in the Edge Scores (price confirmation via trend and SMA200, cap with only one component). **The equal weighting is not measured** – this describes the situation, it is not a trading signal.\n\n**Context, not in the score:** risk bucket, trend score, 4PS phase, Markov regime and Minervini RS from the latest simulation row, plus the macro score of the listing currency. None of these showed a return edge in our data; fundamentals are left out on purpose (no history, look-ahead).\n\nHistory and change are causal: each weekly point uses only prices known by then.",
   "ov.spark_score": "Score · {n} weeks + today",
-  "ov.spark_price": "Price · 6 months"
+  "ov.spark_price": "Price · 6 months",
+  "asset.history_source": "{stored} weekly points from the stored history (weekly job), {live} computed live.",
+  "summary.show_score": "Show Edge score per asset",
+  "summary.score_label": "Edge score",
+  "summary.score_chg": "4 w",
+  "summary.score_help": "Scorecard total (−10 … +10) as in the Asset Viewer's “Scorecard” tab: single stocks = trend, relative strength vs index and market environment; indices, commodities, currencies, crypto = Edge score (trend + macro). Next to it the change vs 4 weeks ago (causal). Describes the situation, not a trading signal – no return edge has been measured."
 }

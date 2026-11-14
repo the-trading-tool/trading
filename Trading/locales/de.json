@@ -3149,5 +3149,10 @@
   "tsc.ctx_macro": "Makro-Score {ccy}",
   "tsc.method_md": "Ist der Ticker ein Markt der Edge Scores (Index, Rohstoff-Future, Währung, Krypto), zeigt der Tab die Asset-Scorecard. Für **Einzeltitel** gibt es drei Komponenten aus lokalen Tageskursen:\n\n| Komponente | Spanne | Regel |\n|---|---|---|\n| Trend & Saisonalität | −4 … +4 | wie die Trend-Karte: Kurs vs SMA200, SMA50 vs SMA200, 3-Monats-Momentum, Saisonalität der nächsten 30 Tage |\n| Relative Stärke | −2 … +2 | 13-Wochen-Rendite minus Index-Rendite: ±1 ab ±2 Pp, ±2 ab ±10 Pp |\n| Marktumfeld | −10 … +10 | Gesamt-Score des Index (für Indizes = Trend) |\n\nGesamt = 10 × Mittel der normierten Komponenten (Trend /4, RS /2, Markt /10). Bias ab ±2, stark ab ±5; dieselben Bremsen wie in den Edge Scores (Kursbestätigung über Trend und SMA200, Deckel bei nur einer Komponente). **Die Gleichgewichtung ist nicht gemessen** – sie ist eine Lagebeschreibung, kein Handelssignal.\n\n**Kontext, nicht im Score:** Risikostufe, Trendwert, 4PS-Phase, Markov-Regime und Minervini-RS aus der letzten Zeile der Simulation sowie der Makro-Score der Handelswährung. Für keine dieser Größen ist in unseren Daten ein Renditevorsprung gemessen; Fundamentaldaten fehlen bewusst (keine Historie, Look-ahead).\n\nVerlauf und Veränderung sind kausal: jeder Wochenpunkt nutzt nur die bis dahin bekannten Kurse.",
   "ov.spark_score": "Score · {n} Wochen + heute",
-  "ov.spark_price": "Kurs · 6 Monate"
+  "ov.spark_price": "Kurs · 6 Monate",
+  "asset.history_source": "{stored} Wochenpunkte aus dem gespeicherten Verlauf (Wochen-Job), {live} live gerechnet.",
+  "summary.show_score": "Edge-Score je Asset anzeigen",
+  "summary.score_label": "Edge-Score",
+  "summary.score_chg": "4 W",
+  "summary.score_help": "Gesamt-Score der Scorecard (−10 … +10) wie im Asset Viewer, Tab „Scorecard“: Einzeltitel = Trend, relative Stärke zum Index und Marktumfeld; Indizes, Rohstoffe, Währungen, Krypto = Edge-Score (Trend + Makro). Dahinter die Veränderung gegen vor 4 Wochen (kausal). Lagebeschreibung, kein Handelssignal – ein Renditevorsprung ist nicht gemessen."
 }

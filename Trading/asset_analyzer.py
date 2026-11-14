@@ -551,6 +551,9 @@ class TradingApp:
                     pass
         renderer = ChartsGridRenderer()
         (interval, period, overlays, oszilators) = renderer.get_selectors(self.sys_config)
+        no_plot_overlays, no_plot_oszilators = renderer.no_plot_overlays, renderer.no_plot_oszilators
+        show_score = st.checkbox(t('summary.show_score'), True, key='summary_show_score',
+                                 help=t('summary.score_help'))
 
         # Batch HTML-Reports für die (Monitored-)Assets — sequenziell, resumebar
         # nach AI-Limits. Nur mit strategy_engine-Lizenz (wie der Einzel-Asset-KI-Tab).
@@ -598,6 +601,9 @@ class TradingApp:
                 progress_callback=_graphs_progress,
                 start_dates=start_dates,
                 show_signals=True,
+                no_plot_overlays=no_plot_overlays,
+                no_plot_oszilators=no_plot_oszilators,
+                show_score=show_score,
             )
             _spin.empty()
 

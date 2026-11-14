@@ -48,6 +48,43 @@ def period_since(start, period: str, interval: str, today=None) -> tuple:
     return 'max', interval
 
 
+def no_plot_from_config(sys_config, overlays, oszilators) -> tuple:
+    """Selected indicators the user set to "compute, don't plot" (config ``*_no_plot``)."""
+    def _set(key):
+        try:
+            raw = sys_config.get_value(key, [])
+        except Exception:
+            raw = []
+        return {str(n).lower() for n in raw} if isinstance(raw, list) else set()
+    ov, oz = _set('overlay_no_plot'), _set('oszilator_no_plot')
+    return ([n for n in overlays or [] if str(n).lower() in ov],
+            [n for n in oszilators or [] if str(n).lower() in oz])
+
+
+_SCORE_COLORS = {"strong_bull": "#2e7d32", "bull": "#7cb342", "neutral": "#757575",
+                 "bear": "#ef6c00", "strong_bear": "#c62828"}
+
+
+def score_badge_html(sc: Optional[dict], t) -> str:
+    """One-line badge: Edge score total, bias and change over the last 4 weeks."""
+    if not sc or sc.get("total") is None:
+        return ""
+    import html as _html
+    bias = sc.get("bias") or "neutral"
+    chg = sc.get("chg")
+    chg_txt = ""
+    if chg is not None:
+        col = "#43a047" if chg > 0 else "#e53935" if chg < 0 else "inherit"
+        arrow = "▲" if chg > 0 else "▼" if chg < 0 else "■"
+        chg_txt = (f' <span style="color:{col};font-weight:600">{arrow} {chg:+.1f}</span>'
+                   f' <span style="opacity:0.7">{_html.escape(t("summary.score_chg"))}</span>')
+    return (f'<div style="font-size:0.8rem;margin:2px 0" title="{_html.escape(t("summary.score_help"))}">'
+            f'<span style="opacity:0.8">{_html.escape(t("summary.score_label"))}</span> '
+            f'<span style="background:{_SCORE_COLORS.get(bias, "#757575")};color:#fff;padding:1px 8px;'
+            f'border-radius:3px;font-weight:600">{sc["total"]:+.1f} · '
+            f'{_html.escape(t("cot.bias_" + bias))}</span>{chg_txt}</div>')
+
+
 class ChartsGridRenderer:
     """Reusable renderer for a grid of tiny charts.
 
@@ -70,6 +107,9 @@ class ChartsGridRenderer:
     def __init__(self, columns: int = 2):
         """Set the number of chart columns in the grid."""
         self.columns = columns
+        # indicators selected but set to "compute, don't plot" (filled by get_selectors)
+        self.no_plot_overlays: list = []
+        self.no_plot_oszilators: list = []
 
     def get_selectors(self, sys_config, list_data=None):
         """Show multi-selectors UI and return normalized selectors.
@@ -94,6 +134,12 @@ class ChartsGridRenderer:
         period = multi_selector.get_selected_options('Period')[:1]
         overlays = multi_selector.get_selected_options('Overlay')
         oszilators = multi_selector.get_selected_options('Oszilator')
+        try:
+            plot = {'Overlay': set(multi_selector.get_plot_options('Overlay')),
+                    'Oszilator': set(multi_selector.get_plot_options('Oszilator'))}
+        except Exception:
+            plot = None
+        from_selector = bool(overlays or oszilators) and plot is not None
 
         try:
             interval, period, overlays, oszilators = sys_config.get_selectors(interval, period, overlays, oszilators)
@@ -101,12 +147,22 @@ class ChartsGridRenderer:
             # fallback: return the raw selections
             pass
 
+        # Same view as the Asset Viewer: indicators with "Plot" unticked are computed
+        # (buy/sell formulas need them) but not drawn.
+        if from_selector:
+            self.no_plot_overlays = [n for n in overlays if n not in plot['Overlay']]
+            self.no_plot_oszilators = [n for n in oszilators if n not in plot['Oszilator']]
+        else:
+            self.no_plot_overlays, self.no_plot_oszilators = no_plot_from_config(sys_config, overlays, oszilators)
+
         return (interval, period, overlays, oszilators)
 
     def render(self, *, tickers, tc, period, interval, overlays, oszilators, username, url, chart_config,
                name_df=None, mkt=None, name_lookup_col: str = 'ticker', name_field: str = 'longName',
                region: Optional[object] = None, log_exceptions: bool = False, progress_callback=None,
-               start_dates: Optional[dict] = None, show_signals: bool = False):
+               start_dates: Optional[dict] = None, show_signals: bool = False,
+               no_plot_overlays: Optional[list] = None, no_plot_oszilators: Optional[list] = None,
+               show_score: bool = False):
         """Render the grid.
 
         start_dates: optional {ticker: date} -- that ticker's chart then shows the
@@ -120,7 +176,14 @@ class ChartsGridRenderer:
                 .empty() and .columns(n) methods.
         log_exceptions: if True, print exceptions with the symbol name to aid debugging (matches prior behavior).
         progress_callback: optional callable(done, total) invoked after each ticker has been processed.
+        no_plot_overlays / no_plot_oszilators: computed but not drawn (default: what
+                get_selectors read from the selector, i.e. the Asset Viewer's "Plot" ticks).
+        show_score: badge with the Edge scorecard total, bias and 4-week change per ticker.
         """
+        if no_plot_overlays is None:
+            no_plot_overlays = self.no_plot_overlays
+        if no_plot_oszilators is None:
+            no_plot_oszilators = self.no_plot_oszilators
         if region is None:
             region = st
 
@@ -152,6 +215,14 @@ class ChartsGridRenderer:
             from tradinglib import chart_signals as cs
             from tradinglib.i18n import t as _t
             yahoo = cs.yahoo_signals(tickers)
+        scores = {}
+        if show_score:
+            from tradinglib.i18n import t as _t
+            try:
+                from tradinglib import ticker_scorecard as tsc
+                scores = tsc.quick_scores(tickers)
+            except Exception:
+                logger.exception("chart grid: scores failed")
 
         for p in range(0, items):
             symbol = None
@@ -177,15 +248,22 @@ class ChartsGridRenderer:
                 t_chart = tc.tiny_chart(symbol, name, url=f"{url}", period=p_sym, interval=i_sym, range_breaks=True,
                                          candle_chart=True, add_sub_plots=oszilators, show_trend=False, trend_length=0,
                                          add_overlays=overlays, username=username, zoom=True,
+                                         no_plot_overlays=no_plot_overlays,
+                                         no_plot_oszilators=no_plot_oszilators,
                                          zoom_base=ZOOM_BASE, zoom_start=since)
 
                 # now add the charts to the right rows / cols
                 i = p % self.columns
                 if i == 0:
                     j += 1
+                badges = ""
                 if show_signals:
                     sig = cs.own_signal(getattr(t_chart, 'df', None)) or yahoo.get(symbol)
-                    ic_c[j][i].markdown(cs.badge_html(sig, _t), unsafe_allow_html=True)
+                    badges += cs.badge_html(sig, _t)
+                if show_score:
+                    badges += score_badge_html(scores.get(symbol), _t)
+                if badges:
+                    ic_c[j][i].markdown(badges, unsafe_allow_html=True)
                 ic_c[j][i].plotly_chart(
                     t_chart.fig,
                     use_container_width=True,
