@@ -397,6 +397,13 @@ def seed(conn: sqlite3.Connection):
                 skipped += 1
 
     conn.commit()
+    # Membership history: installed after the seed so the starting lists count
+    # as "member since before tracking", not as entries dated today.
+    try:
+        from tradinglib import index_history
+        index_history.ensure_schema(conn)
+    except Exception as exc:
+        print(f"   WARN: Indexhistorie nicht angelegt: {exc}")
     return inserted, skipped
 
 

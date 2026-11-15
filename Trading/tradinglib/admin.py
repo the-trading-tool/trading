@@ -617,6 +617,16 @@ class Admin():
                             for _m in _ferr:
                                 st.error(_m)
 
+        from tradinglib.premium_availability import INDEX_SYNC_AVAILABLE
+        if INDEX_SYNC_AVAILABLE:
+            with st.expander(t('admin.fn_sync_expander'), expanded=False):
+                try:
+                    from tradinglib.premium import index_sync_fn
+                    index_sync_fn.render(self.db_path)
+                except Exception as _fe:
+                    logger.exception("finanzen.net index sync failed")
+                    st.error(str(_fe))
+
         index_mgmt_expander = st.expander(t('admin.index_mgmt_expander'), expanded=False)
         with index_mgmt_expander:
             _spin.markdown(_tab_overlay(t('admin.index_mgmt_expander')), unsafe_allow_html=True)

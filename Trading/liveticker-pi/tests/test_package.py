@@ -184,8 +184,9 @@ def test_settings_parse_clock_and_flags(tmp_path):
 # --- scraping ----------------------------------------------------------------
 
 class _FakeDriver:
-    def __init__(self, rows_by_xpath):
+    def __init__(self, rows_by_xpath, headers_by_xpath=None):
         self.rows_by_xpath = rows_by_xpath
+        self.headers_by_xpath = headers_by_xpath or {}
 
     def execute_script(self, script, *args):
         from liveticker import scraper as s
@@ -193,6 +194,8 @@ class _FakeDriver:
             return self.rows_by_xpath.get(args[0])
         if script == s._HAS_TABLE_JS:
             return bool(self.rows_by_xpath.get(args[0]))
+        if script == s._HEADER_JS:
+            return self.headers_by_xpath.get(args[0])
         return None
 
     def implicitly_wait(self, seconds):
@@ -202,16 +205,16 @@ class _FakeDriver:
         return []
 
 
-def _scraper(rows_by_xpath):
+def _scraper(rows_by_xpath, layout='indices', headers_by_xpath=None):
     obj = Scraper.__new__(Scraper)
-    obj.layout = TABLE_LAYOUTS['indices']
+    obj.layout = TABLE_LAYOUTS[layout]
     obj.call_timeout = 5
     obj.source_timezone = ''
     obj.recovery_step = 0
     from concurrent.futures import ThreadPoolExecutor
     obj._pool = ThreadPoolExecutor(max_workers=1)
     obj.browser = types.SimpleNamespace(
-        d=_FakeDriver(rows_by_xpath), def_to=5,
+        d=_FakeDriver(rows_by_xpath, headers_by_xpath), def_to=5,
         By=types.SimpleNamespace(XPATH='xpath', CSS_SELECTOR='css', TAG_NAME='tag'))
     return obj
 
@@ -243,6 +246,21 @@ def test_scrape_reports_a_missing_table():
                                                 "headline": "Indikation auf Indizes"}})
     assert quotes == {}
     assert issues == ["table missing: Indikation auf Indizes"]
+
+
+def test_members_read_bid_by_header_not_previous_close():
+    """finanzen.net 11/2026: Vortag | Bid | Ask - the old fixed column 3 was Vortag."""
+    xpath = TABLE_LAYOUTS['members']['tbody_xpath'].format(headline="Name")
+    header = ["", "Name", "Hebelprodukte", "Vortag", "Bid", "Ask", "%", "+/-", "Zeit", "Handeln"]
+    rows = [["", "adidas", "5 10", "175,75", "177,30", "177,40", "+0,94%", "+1,65", "17:38:00", "K V"]]
+    scraper = _scraper({xpath: rows}, layout='members', headers_by_xpath={xpath: header})
+    quotes, issues = scraper.scrape({"ADS.DE": {"name": "adidas", "headline": "Name"}})
+    assert quotes["ADS.DE"]["price"] == pytest.approx(177.30) and issues == []
+
+    no_bid = [h for h in header if h != "Bid"]
+    scraper = _scraper({xpath: rows}, layout='members', headers_by_xpath={xpath: no_bid})
+    quotes, issues = scraper.scrape({"ADS.DE": {"name": "adidas", "headline": "Name"}})
+    assert quotes == {} and issues == ["columns not found: Name"]
 
 
 # --- click policy ------------------------------------------------------------

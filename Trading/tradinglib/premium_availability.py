@@ -28,3 +28,6 @@ PAPER_TRADING_AVAILABLE: bool = _has("trading_page.py", "trading_bridge.py")
 
 # Seasonality (yearly trend overlay)
 SEASONALITY_AVAILABLE: bool = _has("seasonality.py")
+
+# Index membership sync from finanzen.net (admin)
+INDEX_SYNC_AVAILABLE: bool = _has("index_sync_fn.py")

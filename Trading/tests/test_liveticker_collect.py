@@ -119,8 +119,9 @@ class _FakeDriver:
     that was executed so the tests can assert what the collector tried.
     """
 
-    def __init__(self, rows_by_xpath, overlay_report=None):
+    def __init__(self, rows_by_xpath, overlay_report=None, headers_by_xpath=None):
         self.rows_by_xpath = rows_by_xpath
+        self.headers_by_xpath = headers_by_xpath or {}
         self.overlay_report = overlay_report or {}
         self.executed = []
         self.clicked = []
@@ -129,6 +130,8 @@ class _FakeDriver:
         self.executed.append(script)
         if script == lt._TABLE_JS:
             return self.rows_by_xpath.get(args[0])
+        if script == lt._HEADER_JS:
+            return self.headers_by_xpath.get(args[0])
         if script == lt._HAS_TABLE_JS:
             return bool(self.rows_by_xpath.get(args[0]))
         if script == lt._OVERLAY_JS:
@@ -152,13 +155,13 @@ class _FakeDriver:
         return []
 
 
-def _web_fetch(rows_by_xpath, layout='indices', overlay_report=None):
+def _web_fetch(rows_by_xpath, layout='indices', overlay_report=None, headers_by_xpath=None):
     fetch = lt.WebFetch.__new__(lt.WebFetch)
     fetch.layout = lt.TABLE_LAYOUTS[layout]
     fetch.call_timeout = 5
     fetch.recovery_step = 0
     fetch._pool = ThreadPoolExecutor(max_workers=1)
-    fetch.wt = types.SimpleNamespace(d=_FakeDriver(rows_by_xpath, overlay_report),
+    fetch.wt = types.SimpleNamespace(d=_FakeDriver(rows_by_xpath, overlay_report, headers_by_xpath),
                                      By=types.SimpleNamespace(XPATH='xpath',
                                                               CSS_SELECTOR='css',
                                                               TAG_NAME='tag'),
@@ -209,6 +212,64 @@ def test_scrape_skips_unparsable_cells():
 
     assert quotes == {}
     assert any("unparsable price" in issue for issue in issues)
+
+
+# finanzen.net DAX member table after the 11/2026 relayout (cells as innerText).
+_MEMBER_HEADER = ["", "Name", "Werbung Hebelprodukte von Hebel Call Hebel Put", "Vortag",
+                  "Bid", "Ask", "%", "+/-", "Zeit", "Werbung Handeln"]
+_MEMBER_ROWS = [
+    ["", "DAX", "15 30 >30", "26.771,88", "26.818,25", "", "+0,17%", "+46,37", "17:45:01", ""],
+    ["", "adidas", "5 10 >10", "175,75", "177,30", "177,40", "+0,94%", "+1,65", "17:38:00", "K V"],
+]
+_MEMBERS = {"ADS.DE": {"name": "adidas", "headline": "Name"}}
+
+
+def _member_xpath():
+    return lt.TABLE_LAYOUTS['members']['tbody_xpath'].format(headline="Name")
+
+
+def test_resolve_columns_by_header_text():
+    pos, missing = lt.resolve_columns(_MEMBER_HEADER, lt.TABLE_LAYOUTS['members']['columns'])
+    assert missing == [] and pos == {'name': 1, 'price': 4, 'time': 8}
+
+
+def test_members_read_bid_not_previous_close():
+    x = _member_xpath()
+    fetch = _web_fetch({x: _MEMBER_ROWS}, layout='members', headers_by_xpath={x: _MEMBER_HEADER})
+    quotes, issues = fetch.scrape(_MEMBERS)
+    assert quotes["ADS.DE"] == {"price": pytest.approx(177.30), "time": "17:38:00"}
+    assert issues == []
+
+
+def test_members_follow_a_moved_column():
+    """A relayout that moves Bid elsewhere is followed, not misread."""
+    x = _member_xpath()
+    header = ["", "Name", "Bid", "Vortag", "Zeit"]
+    rows = [["", "adidas", "177,30", "175,75", "17:38:00"]]
+    fetch = _web_fetch({x: rows}, layout='members', headers_by_xpath={x: header})
+    quotes, _ = fetch.scrape(_MEMBERS)
+    assert quotes["ADS.DE"]["price"] == pytest.approx(177.30)
+
+
+def test_members_missing_price_header_fails_loudly():
+    x = _member_xpath()
+    header = [h for h in _MEMBER_HEADER if h != "Bid"]
+    fetch = _web_fetch({x: _MEMBER_ROWS}, layout='members', headers_by_xpath={x: header})
+    quotes, issues = fetch.scrape(_MEMBERS)
+    assert quotes == {} and issues == ["columns not found: Name"]
+
+
+def test_members_without_header_use_fixed_positions():
+    x = _member_xpath()
+    fetch = _web_fetch({x: _MEMBER_ROWS}, layout='members')
+    quotes, _ = fetch.scrape(_MEMBERS)
+    assert quotes["ADS.DE"]["price"] == pytest.approx(177.30)
+
+
+def test_dax_member_list_current():
+    assert len(lt.DAX_MEMBERS) == 40
+    assert {"G1A.DE", "G24.DE", "HOT.DE"} <= set(lt.DAX_MEMBERS)
+    assert not {"P911.DE", "PAH3.DE", "SRT3.DE"} & set(lt.DAX_MEMBERS)
 
 
 def _readable_page(overlay_report=None):

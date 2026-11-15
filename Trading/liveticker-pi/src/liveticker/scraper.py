@@ -42,8 +42,14 @@ TABLE_LAYOUTS = {
     },
     'members': {
         'tbody_xpath': '//th[contains(text(),"{headline}")]/../../../../table/tbody',
+        # Header since the 11/2026 relayout:
+        #   | Name | Hebelprodukte | Vortag | Bid | Ask | % | +/- | Zeit | Handeln |
+        # Columns are located by header text; the positions are only the
+        # fallback for a header that cannot be read at all.
+        'columns': {'name': ('name',), 'price': ('bid', 'geld', 'kurs', 'letzter'),
+                    'time': ('zeit', 'uhrzeit')},
         'name_col': 1,
-        'price_col': 3,
+        'price_col': 4,
         'time_col': 8,
         'probe_headline': 'Name',
     },
@@ -102,6 +108,34 @@ const tb = document.evaluate(arguments[0], document, null,
 if (!tb) { return null; }
 return Array.from(tb.rows).map(r => Array.from(r.cells).map(c => (c.innerText || '').trim()));
 """
+
+_HEADER_JS = """
+const tb = document.evaluate(arguments[0], document, null,
+                             XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+const table = tb && tb.closest('table');
+if (!table || !table.tHead || !table.tHead.rows.length) { return null; }
+const row = table.tHead.rows[table.tHead.rows.length - 1];
+return Array.from(row.cells).map(c => (c.innerText || '').trim());
+"""
+
+
+def resolve_columns(header, wanted):
+    """Map {'name': (...), 'price': (...), 'time': (...)} to cell positions.
+
+    A header cell matches when its text (whitespace collapsed, casefolded)
+    equals one of the candidates. Returns (positions, missing); positions is
+    None as soon as one role has no matching header.
+    """
+    cells = [' '.join(str(c or '').split()).casefold() for c in header]
+    positions, missing = {}, []
+    for role, candidates in wanted.items():
+        idx = next((i for i, c in enumerate(cells) if c in candidates), None)
+        if idx is None:
+            missing.append(role)
+        else:
+            positions[role] = idx
+    return (None if missing else positions), missing
+
 
 _HAS_TABLE_JS = """
 const tb = document.evaluate(arguments[0], document, null,
@@ -650,6 +684,29 @@ class Scraper:
             logger.debug("table read failed for %s", headline, exc_info=True)
         return rows
 
+    def table_columns(self, headline):
+        """(name, price, time) positions for the table below `headline`.
+
+        Resolved by header text when the layout has a ``columns`` map, so a
+        relayout either keeps working or fails loudly instead of reading a
+        neighbouring column. An unreadable header falls back to the fixed
+        positions; a readable header without a wanted column returns None.
+        """
+        fixed = (self.layout['name_col'], self.layout['price_col'], self.layout['time_col'])
+        wanted = self.layout.get('columns')
+        if not wanted:
+            return fixed
+        xpath = self.layout['tbody_xpath'].format(headline=headline)
+        header = self.js(_HEADER_JS, xpath, default=None, label='read_header')
+        if not header:
+            return fixed
+        positions, missing = resolve_columns(header, wanted)
+        if positions is None:
+            logger.warning("table %r: no header for %s (header: %s)",
+                           headline, ', '.join(missing), ' | '.join(map(str, header)))
+            return None
+        return positions['name'], positions['price'], positions['time']
+
     def scrape(self, symbols):
         """Scrape every symbol in `symbols` ({sym: {name, headline}}).
 
@@ -657,9 +714,6 @@ class Scraper:
         "time": "HH:MM:SS"} and issues is a list of human-readable problems.
         """
         quotes, issues = {}, []
-        name_col = self.layout['name_col']
-        price_col = self.layout['price_col']
-        time_col = self.layout['time_col']
 
         headlines = sorted({meta["headline"] for meta in symbols.values()})
         for headline in headlines:
@@ -667,6 +721,11 @@ class Scraper:
             if not rows:
                 issues.append(f"table missing: {headline}")
                 continue
+            cols = self.table_columns(headline)
+            if cols is None:
+                issues.append(f"columns not found: {headline}")
+                continue
+            name_col, price_col, time_col = cols
 
             # Index the table once by its name column. Keys are casefolded: the
             # site writes "TecDAX" where the config says "TecDax".

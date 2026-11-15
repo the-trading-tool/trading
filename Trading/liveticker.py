@@ -117,21 +117,21 @@ DAX_MEMBERS = {
                 "EOAN.DE":{"name":"E.ON","headline":"Name"},
                 "FME.DE":{"name":"Fresenius Medical Care (FMC) St.","headline":"Name"},
                 "FRE.DE":{"name":"Fresenius","headline":"Name"},
+                "G1A.DE":{"name":"GEA","headline":"Name"},
                 "HNR1.DE":{"name":"Hannover Rück","headline":"Name"},
                 "HEI.DE":{"name":"Heidelberg Materials","headline":"Name"},
                 "HEN.DE":{"name":"Henkel vz.","headline":"Name"},
+                "HOT.DE":{"name":"HOCHTIEF","headline":"Name"},
                 "IFX.DE":{"name":"Infineon","headline":"Name"},
                 "MBG.DE":{"name":"Mercedes-Benz Group (ex Daimler)","headline":"Name"},
                 "MRK.DE":{"name":"Merck","headline":"Name"},
                 "MTX.DE":{"name":"MTU Aero Engines","headline":"Name"},
                 "MUV2.DE":{"name":"Münchener Rückversicherungs-Gesellschaft","headline":"Name"},
-                "P911.DE":{"name":"Porsche","headline":"Name"},
-                "PAH3.DE":{"name":"Porsche Automobil vz.","headline":"Name"},
                 "QIA.DE":{"name":"QIAGEN","headline":"Name"},
                 "RHM.DE":{"name":"Rheinmetall","headline":"Name"},
                 "RWE.DE":{"name":"RWE","headline":"Name"},
                 "SAP.DE":{"name":"SAP","headline":"Name"},
-                "SRT3.DE":{"name":"Sartorius vz.","headline":"Name"},
+                "G24.DE":{"name":"Scout24","headline":"Name"},
                 "SIE.DE":{"name":"Siemens","headline":"Name"},
                 "ENR.DE":{"name":"Siemens Energy","headline":"Name"},
                 "SHL.DE":{"name":"Siemens Healthineers","headline":"Name"},
@@ -154,8 +154,15 @@ TABLE_LAYOUTS = {
     },
     'members': {
         'tbody_xpath': '//th[contains(text(),"{headline}")]/../../../../table/tbody',
+        # Header since the 11/2026 relayout:
+        #   | Name | Hebelprodukte | Vortag | Bid | Ask | % | +/- | Zeit | Handeln |
+        # A fixed price_col 3 then read the previous close ("Vortag"). The columns
+        # are therefore located by their header text; the positions below are
+        # only the fallback for a header that cannot be read at all.
+        'columns': {'name': ('name',), 'price': ('bid', 'geld', 'kurs', 'letzter'),
+                    'time': ('zeit', 'uhrzeit')},
         'name_col': 1,
-        'price_col': 3,
+        'price_col': 4,
         'time_col': 8,
         'probe_headline': 'Name',
     },
@@ -168,6 +175,35 @@ const tb = document.evaluate(arguments[0], document, null,
 if (!tb) { return null; }
 return Array.from(tb.rows).map(r => Array.from(r.cells).map(c => (c.innerText || '').trim()));
 """
+
+# Header cells of the table that holds the tbody (last header row), or null.
+_HEADER_JS = """
+const tb = document.evaluate(arguments[0], document, null,
+                             XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+const table = tb && tb.closest('table');
+if (!table || !table.tHead || !table.tHead.rows.length) { return null; }
+const row = table.tHead.rows[table.tHead.rows.length - 1];
+return Array.from(row.cells).map(c => (c.innerText || '').trim());
+"""
+
+
+def resolve_columns(header, wanted):
+    """Map {'name': (...), 'price': (...), 'time': (...)} to cell positions.
+
+    A header cell matches when its text (whitespace collapsed, casefolded)
+    equals one of the candidates. Returns (positions, missing) — positions is
+    None as soon as one role has no matching header.
+    """
+    cells = [' '.join(str(c or '').split()).casefold() for c in header]
+    positions, missing = {}, []
+    for role, candidates in wanted.items():
+        idx = next((i for i, c in enumerate(cells) if c in candidates), None)
+        if idx is None:
+            missing.append(role)
+        else:
+            positions[role] = idx
+    return (None if missing else positions), missing
+
 
 # Cheap "is the content there at all" probe.
 _HAS_TABLE_JS = """
@@ -1134,6 +1170,32 @@ class WebFetch:
             logger.debug("table read failed for %s", headline, exc_info=True)
         return rows
 
+    def table_columns(self, headline):
+        """(name, price, time) cell positions for the table below `headline`.
+
+        Layouts with a ``columns`` map are resolved by header text, so a site
+        relayout either keeps working or fails loudly — it can no longer make
+        the collector read a neighbouring column (the 11/2026 relayout turned
+        the fixed price column into the previous close). A header that cannot
+        be read at all falls back to the fixed positions; a header that is
+        readable but lacks a wanted column returns None.
+        """
+        fixed = (self.layout['name_col'], self.layout['price_col'], self.layout['time_col'])
+        wanted = self.layout.get('columns')
+        if not wanted:
+            return fixed
+        xpath = self.layout['tbody_xpath'].format(headline=headline)
+        header = self.js(_HEADER_JS, xpath, default=None, label='read_header')
+        if not header:
+            logger.debug("no header readable for %s, using fixed columns", headline)
+            return fixed
+        positions, missing = resolve_columns(header, wanted)
+        if positions is None:
+            logger.warning("table %r: no header for %s (header: %s)",
+                           headline, ', '.join(missing), ' | '.join(map(str, header)))
+            return None
+        return positions['name'], positions['price'], positions['time']
+
     def scrape(self, symbols):
         """Scrape every symbol in `symbols` ({sym: {name, headline}}).
 
@@ -1141,9 +1203,6 @@ class WebFetch:
         "time": "HH:MM:SS"} and issues is a list of human-readable problems.
         """
         quotes, issues = {}, []
-        name_col = self.layout['name_col']
-        price_col = self.layout['price_col']
-        time_col = self.layout['time_col']
 
         headlines = sorted({meta["headline"] for meta in symbols.values()})
         for headline in headlines:
@@ -1151,6 +1210,11 @@ class WebFetch:
             if not rows:
                 issues.append(f"table missing: {headline}")
                 continue
+            cols = self.table_columns(headline)
+            if cols is None:
+                issues.append(f"columns not found: {headline}")
+                continue
+            name_col, price_col, time_col = cols
 
             # Index the table once by its name column instead of re-scanning it
             # for every symbol (was O(symbols x rows) with an exception per miss).

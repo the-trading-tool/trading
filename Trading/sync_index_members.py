@@ -278,6 +278,9 @@ def sync(index_name, apply=False, check=True):
             print("\nTrockenlauf — nichts geaendert. Mit /apply ausfuehren.")
             return to_add, to_remove
 
+        from tradinglib import index_history
+        index_history.ensure_schema(conn)
+        mark = index_history.run_marker(conn)
         cur = conn.cursor()
         cur.execute('INSERT OR IGNORE INTO indices (name) VALUES (?)', (index_name,))
         index_id = cur.execute('SELECT id FROM indices WHERE name = ?',
@@ -313,6 +316,8 @@ def sync(index_name, apply=False, check=True):
                             'WHERE stock_id = ? AND index_id = ?',
                             (row[0], index_id))
         conn.commit()
+        src = SOURCES[index_name]
+        index_history.tag_changes(conn, mark, 'file' if src.get('file') else 'wikipedia')
 
         print(f"\n  aufgenommen : {len(added)}")
         if skipped:
