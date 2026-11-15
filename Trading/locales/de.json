@@ -180,6 +180,7 @@
   "summary.show_assets": "Assets anzeigen",
   "summary.select_market": "Markt auswählen:",
   "summary.members": "Mitglieder",
+  "summary.members_expander": "Mitglieder & Gewichtung ({n})",
   "summary.batch_header": "📄 KI-Reports je Asset (HTML)",
   "summary.batch_hint": "Erzeugt nacheinander für alle {n} gewählten Assets je einen HTML-Report (Trend, Kennzahlen, Info, Saisonalität, Signale, Marktkontext, KI-Analyse). Bei einem KI-Limit pausiert der Lauf und kann später an derselben Stelle fortgesetzt werden.",
   "summary.batch_include_ai": "KI-Analyse einbeziehen",

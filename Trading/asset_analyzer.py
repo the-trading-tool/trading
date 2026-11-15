@@ -510,26 +510,31 @@ class TradingApp:
         else:
             default_tickers = monitored_assets
 
-        ti = st.text_input(t('summary.members'), default_tickers)
-        tickers = [tck.strip() for tck in ti.split(',') if tck.strip()]
+        # Members and weighting share one collapsed expander; the label carries the
+        # count of the default list (the input inside may change it on this run).
+        _n_default = len([x for x in default_tickers.split(',') if x.strip()])
+        with st.expander(t('summary.members_expander', n=_n_default), expanded=False):
+            ti = st.text_input(t('summary.members'), default_tickers)
+            tickers = [tck.strip() for tck in ti.split(',') if tck.strip()]
+
+            if tickers:
+                # Create optimizer and set whether network access is allowed from system config
+                optimizer = PortfolioOptimizer(tickers, investment_per_asset=2000)
+                try:
+                    allow_net = self.sys_config.get_value('allow_network', True)
+                    optimizer.set_allow_network(allow_net)
+                except Exception:
+                    # keep default if sys_config unavailable
+                    pass
+                try:
+                    df_results = optimizer.fetch_and_calculate(period="1mo")
+                    st.dataframe(df_results)
+                except ValueError:
+                    st.warning(t('summary.no_price_data'))
 
         if not tickers:
             st.warning(t('summary.empty_group'))
             return
-
-        # Create optimizer and set whether network access is allowed from system config
-        optimizer = PortfolioOptimizer(tickers, investment_per_asset=2000)
-        try:
-            allow_net = self.sys_config.get_value('allow_network', True)
-            optimizer.set_allow_network(allow_net)
-        except Exception:
-            # keep default if sys_config unavailable
-            pass
-        try:
-            df_results = optimizer.fetch_and_calculate(period="1mo")
-            st.dataframe(df_results)
-        except ValueError:
-            st.warning(t('summary.no_price_data'))
         tst = """
         optimizer.plot_portfolio()
         st.plotly_chart(

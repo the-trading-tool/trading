@@ -180,6 +180,7 @@
   "summary.show_assets": "Show assets",
   "summary.select_market": "Select market:",
   "summary.members": "Members",
+  "summary.members_expander": "Members & weighting ({n})",
   "summary.batch_header": "📄 AI reports per asset (HTML)",
   "summary.batch_hint": "Sequentially generates one HTML report for each of the {n} selected assets (trend, key data, info, seasonality, signals, market context, AI analysis). If an AI limit is hit, the run pauses and can be resumed later from exactly where it stopped.",
   "summary.batch_include_ai": "Include AI analysis",
