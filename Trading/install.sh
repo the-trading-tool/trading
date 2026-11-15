@@ -263,7 +263,7 @@ if c.fetchone()[0] > 0:
     sys.exit(0)
 
 WD  = "monday,tuesday,wednesday,thursday,friday"          # Handelstage Mo-Fr
-EU  = "^GDAXI,^MDAXI,^SDAXI,^SSMI,^IBEX,^FTSE,^STOXX50E"
+EU  = "^GDAXI,^MDAXI,^SDAXI,^SSMI,^IBEX,^FTSE,^STOXX50E,^ATX,^FCHI"
 # ^IXIC/^NYA sind hier bewusst nicht mehr enthalten: fuer beide gab es nie eine
 # echte Mitgliederliste (15 bzw. 16 zufaellige Werte statt ~3000/~1900), sie
 # wurden in Auswertungen aber wie ein Index behandelt. Breadth ueber den
