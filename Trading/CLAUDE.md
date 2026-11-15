@@ -2104,3 +2104,40 @@ Frage: Gehoert ein Mass fuer Verschuldung/Finanzierungskosten in den Edge-Score?
   `interest_expense` (Yahoo `EBIT`, `Interest Expense`/`... Non Operating`; Spalten per ALTER TABLE
   automatisch nachgeruestet, Befuellung im Sonntagslauf). Yahoo zeigt nur ~5 Quartale → Zinsdeckung
   frueestens nach mehreren Quartalen messbar; bei Banken/Versicherern sinnlos.
+
+### Turtle-Systeme im Strategy Finder gemessen (DAX, 2026-11-14)
+
+Kein eigener Baustein noetig — als Formeln (rolling/shift laufen im Evaluator je Ticker):
+S1 `close > High.rolling(20).max().shift(1)` / `(close < Low.rolling(10).min().shift(1)) | (close < sl)`,
+S2 55/20 analog. `sl` = `stop_loss` am Kauftag = close − 2·ATR(14) → Turtle-2N-Stop (Pruefung zum Schluss).
+Nicht abbildbar: Pyramidisieren, Short, S1-Skip-Regel, Intraday-Einstieg.
+Messung headless mit der Finder-Engine (Scratch `turtle_dax.py`): ^GDAXI-Mitglieder (40, heutiger
+Stand), 2020-01..2026-11, 15.000 EUR, 5 Plaetze, 0,1 % je Seite, Sortierung sortino, Signalfenster 1,
+keine Halte-/Sperrfrist; Zufallsvergleich = gleiche Kaufdichte + Median-Haltedauer, 20 Laeufe.
+
+| Variante | gesamt | normalized | Trades | Treffer | PF | Haltedauer | > Zufall | Jahre > DAX |
+|---|---|---|---|---|---|---|---|---|
+| S1 20/10 + 2N | +130 % | +103 % | 281 | 39 % | 1,60 | 29 T | 100 % (Median +57) | 4/7 |
+| S1 ohne 2N-Stop | +134 % | +122 % | 268 | 40 % | 1,65 | 32 T | 100 % (Median +69) | 4/7 |
+| S2 55/20 + 2N | +97 % | +106 % | 153 | 40 % | 1,59 | 48 T | 75 % | 3/7 |
+| S2 + close>sma200 | +110 % | +97 % | 156 | 42 % | 1,78 | 49 T | 70 % | 3/7 |
+
+DAX Buy&Hold +99,8 %. S1 haelt dem Zufallsvergleich stand, S2 nicht. Staerke in Abwaerts-/Seitwaerts-
+jahren (2020 +42 vs +2,5; 2022 +3 vs −13), schwach in ruhigen Aufwaertsjahren (2023 +5 vs +19; 2026
+−9 vs +9). Der 2N-Stop kostet leicht. Grenzen: Ueberlebensverzerrung (heutige 40 Mitglieder, DAX erst
+seit 2021 mit 40), nur 20 Zufallslaeufe, Jahreszeilen = je Jahr frisch gestartet.
+
+Nachtrag Chandelier-Stopp (gleiche Einstellungen; `CH = close < High.rolling(22).max().shift(1) - 3*atr`,
+Naeherung, da "Hoch seit Einstieg" in Formeln nicht verfuegbar):
+
+| Variante | gesamt | normalized | Trades | Treffer | PF | Haltedauer | > Zufall | Jahre > DAX |
+|---|---|---|---|---|---|---|---|---|
+| S1 Kanal + 2N + CH | +101 % | +85 % | 323 | 38 % | 1,46 | 26 T | 95 % | 3/7 |
+| S1 2N + CH statt Kanal | +150 % | +119 % | 273 | 42 % | 1,78 | 32 T | 100 % | 3/7 |
+| S2 Kanal + 2N + CH | +66 % | +73 % | 262 | 36 % | 1,31 | 28 T | 65 % | 4/7 |
+| S2 2N + CH statt Kanal | +68 % | +76 % | 261 | 36 % | 1,33 | 28 T | 65 % | 4/7 |
+
+Chandelier ZUSAETZLICH zum Kanal schadet bei beiden Systemen (frueherer Ausstieg). Als ERSATZ des
+10-Tage-Kanals ist S1 gesamt am besten, aber nur 3/7 Jahre ueber dem DAX (2023 −5 vs +19), Vorsprung
+kommt aus 2025/26 → bei sechs probierten Ausstiegen nicht belastbar besser als die Original-Regel.
+Bei S2 verkuerzt CH die Haltedauer von 48 auf 28 Tage und nimmt dem System seinen Charakter.
