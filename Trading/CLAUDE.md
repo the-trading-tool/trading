@@ -2141,3 +2141,24 @@ Chandelier ZUSAETZLICH zum Kanal schadet bei beiden Systemen (frueherer Ausstieg
 10-Tage-Kanals ist S1 gesamt am besten, aber nur 3/7 Jahre ueber dem DAX (2023 −5 vs +19), Vorsprung
 kommt aus 2025/26 → bei sechs probierten Ausstiegen nicht belastbar besser als die Original-Regel.
 Bei S2 verkuerzt CH die Haltedauer von 48 auf 28 Tage und nimmt dem System seinen Charakter.
+
+### Edge-Score als Oszillator im Asset Viewer (2026-11-15)
+
+- Indikator `tradinglib/indicator/edge.py` (Klasse `Edge`, Oszillator, automatisch entdeckt):
+  `edge_total` (−10…+10), `edge_trend` (−4…+4), `edge_rs` (−2…+2, Einzeltitel), `edge_market`
+  (Index-Score, Einzeltitel), `edge_macro` (nur 8 Hauptwaehrungen). Gezeichnet: Gesamt als
+  Stufenlinie mit gruen/roter Flaeche, Linien bei ±2/±5 (Bias-Schwellen); Parameter
+  `show_components` blendet die Komponenten skaliert auf −10…+10 ein.
+- Rechenkern `tradinglib/edge_daily.py`: dieselben Regeln wie Scorecard-Tab/Edge Scores
+  (`card_at`, `history_points`), aber **je Handelstag**. `trend_at` kostet ~15 ms/Tag →
+  Kennzahlen (SMA50/200, 3-M-Rendite, 10-J-Saison, 13-W-Rendite) vektorisiert, Punkte ueber die
+  unveraenderten `score_trend`/`score_season`. `tests/test_edge_daily.py` vergleicht Tag fuer Tag
+  mit `trend_at`/`card_at`/`history_points` + Kausalitaet. 2-Jahres-Chart 0,02–1 s (Makro-Maerkte
+  am langsamsten), Cache je (Ticker, Zeitraum, Tag).
+- Kausal: Tag d sieht nur Kurse bis d; Makro mit Veroeffentlichungsverzug ausser am heutigen Tag.
+  Volle lokale Tageshistorie, Zeitraum am letzten Chartbalken gekappt ('Stand per').
+  Intraday-/Wochenbalken bekommen den Wert ihres Datums (ffill, wie `prof`).
+- Abweichung zum Scorecard-Tab am Wochenende ist gewollt: der Tab rechnet auf das Kalenderdatum
+  (Saisonfenster ab Sonntag), der Oszillator auf den letzten Handelstag (SAP.DE 15.11.: 10,0 vs 9,2).
+- **Nur live:** keine Spalten in `asset_simulation`, nicht in `_EXTRA_COLUMN_INDICATORS` →
+  `edge_total` in Buy/Sell-Formeln geht im Chart (Oszillator aktiv), nicht im Strategy Finder.
