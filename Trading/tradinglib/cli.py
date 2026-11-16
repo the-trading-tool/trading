@@ -177,6 +177,10 @@ def parse_args(argv=None) -> Dict[str, Any]:
                 result['build'] = True
             if pref == 'update':
                 result['update'] = suf or True
+            if pref == 'extras':
+                result['extras'] = True  # get_asset_info: only the quality-score extras
+            if pref == 'show' and suf:
+                result['show'] = suf     # quality_score: one ticker in detail
 
     return result
 

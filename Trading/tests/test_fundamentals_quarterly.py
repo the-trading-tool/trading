@@ -137,3 +137,15 @@ def test_zinsaufwand_und_ebit_werden_erfasst_und_alte_tabelle_nachgeruestet():
     assert fq.record(con, 'X', rows) == 0
     got = con.execute(f"SELECT revenue, ebit, interest_expense FROM {fq.TABLE}").fetchone()
     assert got == (5e9, 8e8, 1e8)                    # empty new fields filled, old value kept
+
+
+def test_cashflow_statement_is_merged_without_name_clashes():
+    """Both statements carry 'Net Income'; the cash flow rows must not shadow the income ones."""
+    st = _statement(['2026-06-30'], [15e9], [10.9])
+    cf = pd.DataFrame({pd.Timestamp('2026-06-30'): {
+        'Operating Cash Flow': 4e9, 'Capital Expenditure': -1e9, 'Free Cash Flow': 3e9,
+        'Stock Based Compensation': 2e8, 'Net Income From Continuing Operations': 9e9}})
+    rows, _ = fq.parse(st, None, today=date(2026, 10, 18), cashflow=cf)
+    r = rows[0]
+    assert r['net_income'] == 1.5e9                                    # from the income statement
+    assert (r['operating_cashflow'], r['capex'], r['free_cashflow'], r['sbc']) == (4e9, -1e9, 3e9, 2e8)

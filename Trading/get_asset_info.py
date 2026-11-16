@@ -145,6 +145,52 @@ def get_data_yf(symbol, period='1d', interval='1m'):
 
     return df, ticker
 
+def equity_extras(ticker):
+    """Quality-score inputs Yahoo keeps outside ``.info`` (equities only).
+
+    * ``cashflowSheet``: annual cash flow statement as JSON (like incomeSheet),
+      about five fiscal years -- free cash flow history, capex, stock-based
+      compensation.
+    * ``capitalExpenditures`` / ``stockBasedCompensation``: the latest annual
+      values as plain columns, so fundamentals_history can track them.
+    * ``revenueGrowthEst`` / ``revenueGrowthEstNext`` / ``revenueEstAnalysts``:
+      analyst revenue consensus for the current and next fiscal year.
+
+    Two extra requests per equity. Each part fails on its own and leaves its
+    keys out; within a batch that means NULL for this run (bulk_upsert_dicts
+    writes the superset of all keys), the next run fills it again.
+    """
+    out = {}
+    try:
+        cf = market_data.ticker_cashflow(ticker, use_cache=False)
+        if cf is not None and not cf.empty:
+            out['cashflowSheet'] = cf.to_json(orient="split")
+            latest = cf.columns[0]
+            for key, row in (('capitalExpenditures', 'Capital Expenditure'),
+                             ('stockBasedCompensation', 'Stock Based Compensation')):
+                if row in cf.index:
+                    value = pd.to_numeric(cf.at[row, latest], errors='coerce')
+                    if pd.notna(value):
+                        out[key] = float(value)
+    except Exception:
+        logger.debug("equity_extras: cash flow failed for %s", ticker, exc_info=True)
+    try:
+        est = market_data.ticker_revenue_estimate(ticker)
+        if est is not None and not est.empty:
+            for key, period in (('revenueGrowthEst', '0y'), ('revenueGrowthEstNext', '+1y')):
+                if period in est.index and 'growth' in est.columns:
+                    value = pd.to_numeric(est.at[period, 'growth'], errors='coerce')
+                    if pd.notna(value):
+                        out[key] = float(value)
+            if '0y' in est.index and 'numberOfAnalysts' in est.columns:
+                value = pd.to_numeric(est.at['0y', 'numberOfAnalysts'], errors='coerce')
+                if pd.notna(value):
+                    out['revenueEstAnalysts'] = float(value)
+    except Exception:
+        logger.debug("equity_extras: revenue estimate failed for %s", ticker, exc_info=True)
+    return out
+
+
 def fetch_info_for(ticker):
     """Hole info/financials/balance_sheet für einen Ticker und baue die row_map.
 
@@ -187,6 +233,8 @@ def fetch_info_for(ticker):
             except Exception:
                 value = None
             row_map[column_name] = value
+        if info.get('quoteType') == 'EQUITY':
+            row_map.update(equity_extras(ticker))
         if ticker in _QUARTERLY_DUE and info.get('quoteType') == 'EQUITY':
             from tradinglib import fundamentals_quarterly
             quarterly = fundamentals_quarterly.fetch(ticker)
@@ -207,6 +255,60 @@ if __name__ == '__main__':
     logging_config.configure_logging(to_console=args.get('log_to_console', True),
                                      level=args.get('log_level', 'INFO'),
                                      logfile=args.get('log_file', None))
+
+    if args.get('extras'):
+        # Only the quality-score extras (cash flow statement, revenue consensus)
+        # for equities that do not have them yet, then the score. For filling the
+        # new fields without waiting for the Sunday run.
+        import concurrent.futures
+        workers = args.get('worker') or 1
+        have = {r[1] for r in conn.execute("PRAGMA table_info(asset_info)")}
+        missing = ("cashflowSheet IS NULL OR cashflowSheet = ''" if 'cashflowSheet' in have
+                   else "1=1")
+        todo = [r[0] for r in conn.execute(
+            f"SELECT ticker FROM asset_info WHERE quoteType = 'EQUITY' AND ({missing}) "
+            "ORDER BY ticker")]
+        todo = asset_status.filter_active(todo, context='get_asset_info /extras')
+        logger.info("get_asset_info /extras: %d equities, %d workers", len(todo), workers)
+        rows = []
+        # Yahoo throttles silently: on 2026-11-16 four workers ran into "Too Many
+        # Requests" after ~2,700 equities and every later call came back empty.
+        # So: a second between tickers per worker, and stop once a long run of
+        # equities in a row returns nothing -- the rest waits for the next run.
+        max_empty = 150
+        empty_run = 0
+
+        def _one(t):
+            time.sleep(1.0)
+            return t, equity_extras(t)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+            for n, (t, extra) in enumerate(ex.map(_one, todo), 1):
+                if extra:
+                    rows.append({'ticker': t, **extra})
+                    empty_run = 0
+                else:
+                    empty_run += 1
+                    if empty_run >= max_empty:
+                        logger.warning("get_asset_info /extras: %d empty answers in a row "
+                                       "(rate limit?) -- stopping after %d of %d",
+                                       empty_run, n, len(todo))
+                        ex.shutdown(wait=False, cancel_futures=True)
+                        break
+                if len(rows) >= 250:
+                    DataUtils.bulk_upsert_dicts(conn, 'asset_info', rows)
+                    conn.commit()
+                    rows = []
+                if n % 500 == 0:
+                    logger.info("get_asset_info /extras: %d / %d", n, len(todo))
+        if rows:
+            DataUtils.bulk_upsert_dicts(conn, 'asset_info', rows)
+            conn.commit()
+        from tradinglib import quality_score
+        logger.info("get_asset_info /extras: quality score for %d equities",
+                    quality_score.update(conn))
+        conn.close()
+        raise SystemExit(0)
 
     group = args.get('group') or []        # nur diese Gruppen, z.B. /group:ETP
     max_workers = args.get('worker') or 1   # parallele Info-Downloads
@@ -276,6 +378,17 @@ if __name__ == '__main__':
                     for t, (rows, nxt) in quarterly.items())
         logger.info("get_asset_info: quarterly results checked for %d equities, "
                     "%d new quarters", len(quarterly), new_q)
+
+    # Quality score from the master data (tradinglib/quality_score.py). It reads
+    # all equities in asset_info, not just this batch, so the sector ranks stay
+    # comparable after a /group or /repair run too.
+    if len(batch) > 0:
+        try:
+            from tradinglib import quality_score
+            n_q = quality_score.update(conn)
+            logger.info("get_asset_info: quality score for %d equities", n_q)
+        except Exception:
+            logger.warning("get_asset_info: quality score failed", exc_info=True)
 
     # FTS-Suchtabelle neu aufbauen, damit neue Ticker sofort volltextsuchbar sind
     # (ersetzt den manuellen Admin-Klick "Update index"). Fehler hier dürfen den

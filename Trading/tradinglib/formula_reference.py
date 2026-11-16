@@ -44,6 +44,7 @@ GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ('mtt', ('mtt_pass', 'mtt_score', 'mtt_rs', 'mtt_rs_raw', 'mtt_sma150', 'mtt_slope200',
              'mtt_high52', 'mtt_low52')),
     ('scr', ('scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell')),
+    ('earnings', ('eps_surprise', 'eps_surprise_prev', 'eps_days')),
     ('misc', ('hor_val', 'hor_threshold', 'fvg', 'qtrend_entry_price')),
     ('risk', ('vola', 'logVola', 'semiVola', 'atr', 'logRet', 'sharpe', 'sortino', 'riskScore',
               'riskBucket', 'stop_loss', 'take_profit', 'buySell')),
@@ -90,6 +91,8 @@ EXAMPLES: tuple[tuple[str, str, str], ...] = (
     ('rft', '(rft_signal == 1) & (markov_regime == 1)', '(rft_state < 0) | (rft_ktrend < 0)'),
     ('breadth', '(mkt_breadth50 <= 25) & (close > sma200) & (rsi < 35)', '(rsi >= 65)'),
     ('season', '(scr_1mo >= 30) & (close > sma50)', '(scr_1mo <= -30)'),
+    ('surprise', '(eps_days >= 1) & (eps_days <= 5) & (eps_surprise >= 20) & (close > sma50)',
+     '(eps_days >= 63) | (close < sma50)'),
     ('entry_stop', '(close <= sup_support * 1.02) & (close > sma200) & (rsi < 40)',
      '(close < entry_sup_support * 0.97) | (rsi >= 70)'),
 )

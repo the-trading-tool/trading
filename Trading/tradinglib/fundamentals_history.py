@@ -79,6 +79,14 @@ TRACKED_FIELDS = (
     # not on price.
     'sharesShort', 'shortPercentOfFloat', 'shortRatio', 'dateShortInterest',
     'floatShares',
+    # Quality-score inputs (tradinglib/quality_score.py, added 2026-11-16).
+    # Liquidity and cash conversion straight from the info snapshot; capex and
+    # stock-based compensation from the latest annual cash flow statement; the
+    # revenue consensus (growth for the current / next fiscal year) from
+    # Ticker.revenue_estimate. Recorded so the score becomes measurable later.
+    'currentRatio', 'quickRatio', 'operatingCashflow', 'netIncomeToCommon',
+    'capitalExpenditures', 'stockBasedCompensation',
+    'revenueGrowthEst', 'revenueGrowthEstNext', 'revenueEstAnalysts',
 )
 
 # A figure counts as changed when it moves by more than this, relative to its

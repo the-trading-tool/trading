@@ -48,6 +48,12 @@ per name, and the live signal path computes one name at a time.</p>
 <tr><td><b>ISIN present</b></td>
   <td>Optional, a rough proxy for orderable.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Quality</b></td>
+  <td>Optional. <b>Exclude red flags</b> removes stocks with high leverage, weak interest
+  cover, cash burn, losses without operating cash flow or two missed earnings estimates in a
+  row; stocks without a score (ETFs, indices) stay. <b>Top % only</b> keeps the best segment
+  by sector-relative rank. Mirrored for short (tier-1 names out, or the bottom %).</td>
+  <td><code>quality_scores</code> (asset_info.db)</td></tr>
 <tr><td><b>Risk profile</b></td>
   <td>Cuts down to the names that fit the selected profile (ATR relative to price).
   Deliberately placed <i>before</i> the trend filter — see below.</td>
@@ -92,6 +98,43 @@ themselves live on the <i>Risk profile</i> page; "my profile" picks up whatever 
 there. The trend score is a quality filter — it improves hit rate and drawdown, not the
 average return.</div>
 
+
+<h2>The quality score</h2>
+<p>Twelve criteria with fixed points (100 in total), computed in the weekly master-data run
+(<code>get_asset_info.py</code>, Sundays) from Yahoo's current data:</p>
+<table>
+<tr><th>Area</th><th>Criterion</th><th>Points</th></tr>
+<tr><td rowspan="3">Profitability</td><td>Return on equity &gt; 15 %</td><td>8</td></tr>
+<tr><td>Operating margin &gt; 15 %</td><td>9</td></tr>
+<tr><td>Gross margin stable or rising (latest year vs. mean of earlier years, at most −2 pp)</td><td>8</td></tr>
+<tr><td rowspan="3">Balance sheet</td><td>Net debt / EBITDA &lt; 2.5</td><td>10</td></tr>
+<tr><td>Interest cover (EBIT / interest expense) &gt; 5</td><td>8</td></tr>
+<tr><td>Current ratio &gt; 1.5</td><td>7</td></tr>
+<tr><td rowspan="3">Cash quality</td><td>Operating cash flow ≥ net income</td><td>10</td></tr>
+<tr><td>Free cash flow positive 5 years in a row</td><td>8</td></tr>
+<tr><td>Stock-based compensation &lt; 5 % of revenue</td><td>7</td></tr>
+<tr><td rowspan="2">Valuation</td><td>PEG &lt; 1.5</td><td>10</td></tr>
+<tr><td>FCF yield &gt; 4 %</td><td>8</td></tr>
+<tr><td>Growth</td><td>Consensus revenue growth &gt; 8 % (else trailing)</td><td>7</td></tr>
+</table>
+<ul>
+<li><b>Missing data does not count.</b> Score = 100 × points reached / points available;
+  below 40 available points there is no score. Tiers: from 85 elite, from 70 quality, from 50
+  average, below that high risk.</li>
+<li><b>Banks and insurers</b> are scored without the balance-sheet and cash-flow criteria —
+  debt, interest cover and free cash flow describe their business model.</li>
+<li><b>Sector rank:</b> each criterion is also ranked within its industry and weighted by its
+  points. Fixed cuts like “margin above 15 %” would otherwise drop retailers and industrials by
+  construction. “Top 15 %” refers to this rank across all scored stocks — a fixed cut that does
+  not depend on the selected universe.</li>
+</ul>
+<div class="info"><b>Not measured historically.</b> The inputs are a snapshot; history only
+exists since August 2026. The score is meant for today's selection, not for backtests — used
+historically it would carry today's figures into the past. Every change is recorded in
+<code>quality_score_history</code> so it can be tested later. Only one red flag is measured:
+two missed earnings estimates in a row trailed the market by 1.5 pp on average in 2020–2026
+(63 days, negative in 7 of 7 years). For backtests the earnings surprise is available as
+columns (<code>eps_surprise</code>, <code>eps_surprise_prev</code>, <code>eps_days</code>).</div>
 
 <h2>Why two different filters?</h2>
 <p>The <b>prefilter</b> is deliberately <b>not</b> your buy formula. Two reasons:</p>
@@ -142,6 +185,8 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   Larger = more thorough and slower (one price download per name).</td></tr>
 <tr><td>At most per sector</td><td>Stops one sector from filling the whole list.
   0 = no cap.</td></tr>
+<tr><td>Quality / Top %</td><td>Switches the quality step (off, exclude red flags, top %
+  only) and sets the share.</td></tr>
 <tr><td>Only with an entry signal</td><td>Keeps names whose most recent marker was an entry.
   Shortens the list below the requested length.</td></tr>
 </table>
@@ -157,6 +202,8 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   sector — it ranks the sectors, not the names.</td></tr>
 <tr><td>vs. sector</td><td>Four-week return minus that of the name's own sector ETF, in
   percentage points. <b>This</b> is the column that ranks the name within its sector.</td></tr>
+<tr><td>Quality / Qual. rank % / Red flags</td><td>Score (0–100), rank across all scored
+  stocks and the red flags found. Shown whenever data exists — also with the step off.</td></tr>
 <tr><td>Price / Currency</td><td>Last simulated close in the listing currency —
   <b>not</b> converted. LSE names are quoted in pence (GBp).</td></tr>
 <tr><td>Signal</td><td>Type and date of the last marker. <code>⚡</code> means the signal sits

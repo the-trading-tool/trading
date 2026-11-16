@@ -267,6 +267,37 @@ def ticker_financials(ticker: str, use_cache: bool = True):
         return pd.DataFrame()
 
 
+_CASHFLOW_CACHE: dict = {}
+
+
+def ticker_cashflow(ticker: str, use_cache: bool = True):
+    """Annual yfinance cash flow statement (about five fiscal years), cached.
+
+    Returns an empty DataFrame on failure.
+    """
+    if use_cache and ticker in _CASHFLOW_CACHE:
+        return _CASHFLOW_CACHE[ticker]
+    try:
+        t = yf.Ticker(ticker)
+        cf = t.cashflow if hasattr(t, 'cashflow') else pd.DataFrame()
+        _put_cache(_CASHFLOW_CACHE, ticker, cf)
+        return cf
+    except Exception:
+        return pd.DataFrame()
+
+
+def ticker_revenue_estimate(ticker: str):
+    """Analyst revenue consensus (rows 0q/+1q/0y/+1y; avg, growth, numberOfAnalysts).
+
+    Not cached: the consensus moves every week. Empty DataFrame on failure.
+    """
+    try:
+        est = yf.Ticker(ticker).revenue_estimate
+        return est if isinstance(est, pd.DataFrame) else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
 _BALANCE_CACHE: dict = {}
 
 def ticker_balance_sheet(ticker: str, use_cache: bool = True):

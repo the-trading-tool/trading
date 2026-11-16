@@ -49,6 +49,13 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
 <tr><td><b>ISIN vorhanden</b></td>
   <td>Optional, grobe Näherung für orderbar.</td>
   <td><code>yf_tickers.db/stocks.ISIN</code></td></tr>
+<tr><td><b>Qualität</b></td>
+  <td>Optional. <b>Warnzeichen ausschließen</b> entfernt Aktien mit hoher Verschuldung,
+  schwacher Zinsdeckung, Cash-Verbrauch, Verlusten ohne operativen Cashflow oder zwei
+  verfehlten Gewinnschätzungen in Folge; Werte ohne Score (ETFs, Indizes) bleiben.
+  <b>Nur die oberen %</b> behält das beste Segment nach sektor-relativem Rang. Bei Short
+  gespiegelt (Stufe-1-Werte raus bzw. die unteren %).</td>
+  <td><code>quality_scores</code> (asset_info.db)</td></tr>
 <tr><td><b>Risikoprofil</b></td>
   <td>Schneidet auf die Titel zu, die zum gewählten Profil passen (ATR im Verhältnis
   zum Kurs). Steht bewusst <i>vor</i> dem Trendfilter — siehe unten.</td>
@@ -93,6 +100,44 @@ Profile selbst stehen auf der Seite <i>Risikoprofil</i>; „mein Profil“ über
 eingestellt ist. Der Trendwert ist dabei ein Qualitätsfilter — er verbessert Trefferquote
 und Drawdown, nicht die Durchschnittsrendite.</div>
 
+
+<h2>Der Qualitäts-Score</h2>
+<p>Zwölf Kriterien mit festen Punkten (zusammen 100), gerechnet im wöchentlichen
+Stammdatenlauf (<code>get_asset_info.py</code>, sonntags) aus den aktuellen Daten von Yahoo:</p>
+<table>
+<tr><th>Bereich</th><th>Kriterium</th><th>Punkte</th></tr>
+<tr><td rowspan="3">Rentabilität</td><td>Eigenkapitalrendite &gt; 15 %</td><td>8</td></tr>
+<tr><td>Operative Marge &gt; 15 %</td><td>9</td></tr>
+<tr><td>Bruttomarge stabil oder steigend (letztes Jahr gegen Ø der Vorjahre, höchstens −2 Pp)</td><td>8</td></tr>
+<tr><td rowspan="3">Bilanz</td><td>Nettoschulden / EBITDA &lt; 2,5</td><td>10</td></tr>
+<tr><td>Zinsdeckung (EBIT / Zinsaufwand) &gt; 5</td><td>8</td></tr>
+<tr><td>Current Ratio &gt; 1,5</td><td>7</td></tr>
+<tr><td rowspan="3">Cash-Qualität</td><td>Operativer Cashflow ≥ Gewinn</td><td>10</td></tr>
+<tr><td>Freier Cashflow 5 Jahre in Folge positiv</td><td>8</td></tr>
+<tr><td>Aktienvergütung &lt; 5 % vom Umsatz</td><td>7</td></tr>
+<tr><td rowspan="2">Bewertung</td><td>PEG &lt; 1,5</td><td>10</td></tr>
+<tr><td>FCF-Rendite &gt; 4 %</td><td>8</td></tr>
+<tr><td>Wachstum</td><td>Umsatzwachstum laut Analysten-Konsens &gt; 8 % (sonst rückblickend)</td><td>7</td></tr>
+</table>
+<ul>
+<li><b>Fehlende Daten zählen nicht.</b> Score = 100 × erreichte / verfügbare Punkte; ohne
+  mindestens 40 verfügbare Punkte gibt es keinen Score. Stufen: ab 85 Elite, ab 70 Qualität,
+  ab 50 Durchschnitt, darunter Risiko.</li>
+<li><b>Banken und Versicherer</b> werden ohne die Bilanz- und Cashflow-Kriterien bewertet —
+  Schulden, Zinsdeckung und freier Cashflow beschreiben dort das Geschäftsmodell.</li>
+<li><b>Sektor-Rang:</b> jedes Kriterium wird zusätzlich innerhalb der Branche eingeordnet
+  und nach Punkten gewichtet. Feste Schwellen wie „Marge über 15 %“ würden sonst Handel und
+  Industrie systematisch aussortieren. „Obere 15 %“ bezieht sich auf diesen Rang über alle
+  bewerteten Aktien — ein fester Schnitt, der nicht vom gewählten Universum abhängt.</li>
+</ul>
+<div class="info"><b>Nicht rückwirkend gemessen.</b> Die Eingaben sind eine Momentaufnahme;
+eine Historie gibt es erst seit August 2026. Der Score taugt deshalb für die heutige Auswahl,
+nicht für Backtests — rückwirkend eingesetzt würde er die heutigen Zahlen in die Vergangenheit
+tragen. Jede Änderung wird in <code>quality_score_history</code> mitgeschrieben, damit er sich
+später prüfen lässt. Gemessen ist nur ein Warnzeichen: zwei verfehlte Gewinnschätzungen in
+Folge lagen 2020–2026 im Mittel 1,5 Pp hinter dem Markt (63 Tage, 7 von 7 Jahren negativ).
+Für Backtests gibt es die Gewinnüberraschung als Spalte (<code>eps_surprise</code>,
+<code>eps_surprise_prev</code>, <code>eps_days</code>).</div>
 
 <h2>Warum zwei verschiedene Filter?</h2>
 <p>Der <b>Vorfilter</b> ist bewusst <b>nicht</b> Ihre Buy-Formel. Zwei Gründe:</p>
@@ -144,6 +189,8 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   Größer = genauer und langsamer (ein Kursreihen-Download je Titel).</td></tr>
 <tr><td>Höchstens je Sektor</td><td>Verhindert, dass ein Sektor die ganze Liste füllt.
   0 = ohne Begrenzung.</td></tr>
+<tr><td>Qualität / Obere %</td><td>Schaltet den Qualitäts-Schritt (aus, Warnzeichen
+  ausschließen, nur die oberen %) und legt den Anteil fest.</td></tr>
 <tr><td>Nur mit Einstiegssignal</td><td>Behält nur Werte, deren letzter Marker ein Einstieg
   war. Kürzt die Liste unter die eingestellte Länge.</td></tr>
 </table>
@@ -159,6 +206,9 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   Sektors — er ordnet die Sektoren, nicht die Titel.</td></tr>
 <tr><td>vs. Sektor</td><td>Vier-Wochen-Rendite abzüglich der des eigenen Sektor-ETF, in
   Prozentpunkten. <b>Das</b> ist die Spalte, die den Titel im Sektor einordnet.</td></tr>
+<tr><td>Qualität / Qual.-Rang % / Warnzeichen</td><td>Score (0–100), Rang über alle
+  bewerteten Aktien und die gefundenen Warnzeichen. Stehen immer da, wenn Daten vorliegen —
+  auch wenn der Schritt aus ist.</td></tr>
 <tr><td>Kurs / Währung</td><td>Letzter simulierter Schlusskurs in der Notierungswährung —
   <b>nicht</b> umgerechnet. LSE-Werte stehen in Pence (GBp).</td></tr>
 <tr><td>Signal</td><td>Art und Datum des letzten Markers. <code>⚡</code> heißt: das Signal

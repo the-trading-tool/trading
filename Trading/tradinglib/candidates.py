@@ -99,6 +99,12 @@ DEFAULTS = {
     # Trendauswahl, sobald zuerst auf das ruhige Ende des Universums geschnitten
     # wurde -- andersherum bleibt davon nichts.
     'risk_profile': '',
+    # Qualitaets-Score (tradinglib/quality_score.py): 'off', 'exclude' (Werte
+    # mit Warnzeichen raus) oder 'top' (nur das obere quality_top_pct-Prozent
+    # nach sektor-relativem Rang, ohne Warnzeichen). Bei Short gespiegelt. Der
+    # Score ist eine Momentaufnahme -- fuer die heutige Auswahl, nicht gemessen.
+    'quality_mode': 'off',
+    'quality_top_pct': 15,
     # Mindest-Trendwert (Naehe zum eigenen Rekordhoch, 0..100). 0 = aus. Bei
     # 'short' gespiegelt: dort zaehlt der Abstand zum Hoch, nicht die Naehe.
     'min_trend_score': 0,
@@ -113,7 +119,12 @@ DEFAULTS = {
 # Spalten, nach denen vorsortiert werden darf. Whitelist, weil der Wert direkt
 # in die ORDER-BY-Stelle geht.
 RANK_COLUMNS = ('sortino', 'sharpe',
-                'ewo', 'relvol_ratio', 'fps_rs', 'trendScore', 'riskScore')
+                'ewo', 'relvol_ratio', 'fps_rs', 'trendScore', 'riskScore',
+                'quality_pct')
+
+QUALITY_MODES = ('off', 'exclude', 'top')
+QUALITY_COLUMNS = ('quality_score', 'quality_tier', 'quality_sector', 'quality_pct',
+                   'quality_flags', 'quality_n_flags', 'quality_avail')
 
 _ISIN_RE = r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$'
 
@@ -385,6 +396,63 @@ def _prefilter_pandas_latest(prefilter, db_path='database', lookback_days=LOOKBA
             except Exception:
                 pass
     return None
+
+
+def _apply_quality(df, opt, direction, db_path, step):
+    """Merge the stored quality scores and filter by ``quality_mode``.
+
+    Long: 'exclude' drops red-flagged equities and keeps rows without a score
+    (ETFs, indices, no data) -- the step removes known problems, it does not
+    demand proof. 'top' keeps ``quality_pct >= 100 - quality_top_pct`` without
+    flags; unscored rows go. Short mirrors it: 'exclude' drops tier 1 (the
+    compounders), 'top' keeps the bottom ``quality_top_pct`` percent.
+    """
+    try:
+        from tradinglib import quality_score as qs
+        scores = qs.load(db_path)
+    except Exception:
+        logger.warning("candidates: quality scores not readable", exc_info=True)
+        scores = pd.DataFrame()
+    mode = opt.get('quality_mode') if opt.get('quality_mode') in QUALITY_MODES else 'off'
+    if scores.empty:
+        if mode != 'off':
+            step('quality', 'Qualität', len(df), len(df),
+                 'keine Qualitätsdaten — übersprungen', 'note_quality_none')
+        return df
+    keep = ['ticker'] + [c for c in QUALITY_COLUMNS if c in scores.columns]
+    df = df.drop(columns=[c for c in QUALITY_COLUMNS if c in df.columns])
+    df = df.merge(scores[keep], on='ticker', how='left')
+    if mode == 'off':
+        return df
+    before = len(df)
+    pct = float(opt.get('quality_top_pct') or 15)
+    score = pd.to_numeric(df['quality_score'], errors='coerce')
+    flags = pd.to_numeric(df['quality_n_flags'], errors='coerce').fillna(0)
+    rank = pd.to_numeric(df['quality_pct'], errors='coerce')
+    tier = pd.to_numeric(df['quality_tier'], errors='coerce')
+    unscored = int(score.isna().sum())
+    if direction == 'long':
+        if mode == 'exclude':
+            mask = flags == 0
+            note = (f"{int((flags > 0).sum())} mit Warnzeichen entfernt, "
+                    f"{unscored} ohne Score behalten")
+            nkey, args = 'note_quality_exclude', {'n': int((flags > 0).sum()), 'u': unscored}
+        else:
+            mask = (rank >= 100 - pct) & (flags == 0)
+            note = f"obere {pct:.0f} % nach Sektor-Rang, ohne Warnzeichen"
+            nkey, args = 'note_quality_top', {'pct': int(pct)}
+    else:
+        if mode == 'exclude':
+            mask = tier != 1
+            note = f"{int((tier == 1).sum())} Elite-Werte (Stufe 1) entfernt"
+            nkey, args = 'note_quality_exclude_short', {'n': int((tier == 1).sum())}
+        else:
+            mask = rank <= pct
+            note = f"untere {pct:.0f} % nach Sektor-Rang"
+            nkey, args = 'note_quality_bottom', {'pct': int(pct)}
+    df = df[mask.fillna(False)]
+    step('quality', 'Qualität', before, len(df), note, nkey, **args)
+    return df
 
 
 def _universe_tickers(groups, db_path='database'):
@@ -676,6 +744,13 @@ def find(username: str, db_path: str = 'database', **kw):
         before = len(df)
         df = df[df['isin'].astype(str).str.match(_ISIN_RE, na=False)]
         step('isin', 'ISIN vorhanden', before, len(df))
+
+    # 3a — Qualitaets-Score. Momentaufnahme aus asset_info (woechentlich im
+    # get_asset_info-Lauf gerechnet); die Spalten kommen immer dazu, damit die
+    # Tabelle und die Vorsortierung sie zeigen koennen, gefiltert wird nur auf
+    # Wunsch.
+    if not df.empty:
+        df = _apply_quality(df, opt, direction, db_path, step)
 
     # 3b — Risikoprofil. Erst zuschneiden, dann nach Trend suchen: der Vorteil
     # einer Trendauswahl verdoppelte sich in der Messung (2020-2026), sobald das

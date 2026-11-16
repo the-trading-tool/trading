@@ -10,6 +10,8 @@ Two Yahoo sources are merged per quarter:
 * ``quarterly_income_stmt``: revenue, net income, diluted EPS, gross profit,
   operating income for about six quarters. It lags: in October 2026 Goldman
   Sachs had reported Q3 on the 13th, the statement still ended with Q2.
+* ``quarterly_cashflow`` (since 2026-11-16): operating cash flow, capex, free
+  cash flow and stock-based compensation, same quarters as the income statement.
 * ``get_earnings_dates``: reported EPS, the estimate and the surprise, with the
   exact date and time of the release — and the next scheduled release.
 
@@ -72,9 +74,20 @@ STATEMENT_ROWS = {
     'ebit':             ('EBIT',),
     'interest_expense': ('Interest Expense', 'Interest Expense Non Operating'),
 }
+# Cash flow statement rows (``quarterly_cashflow``), added 2026-11-16 for the
+# quality score: earnings quality (CFO vs. net income), free cash flow and
+# dilution through stock-based compensation. Kept apart from STATEMENT_ROWS
+# because both statements carry rows of the same name ("Net Income ...").
+CASHFLOW_ROWS = {
+    'operating_cashflow': ('Operating Cash Flow', 'Cash Flow From Continuing Operating Activities'),
+    'capex':              ('Capital Expenditure',),
+    'free_cashflow':      ('Free Cash Flow',),
+    'sbc':                ('Stock Based Compensation',),
+}
 VALUE_COLUMNS = ('eps_reported', 'eps_estimate', 'surprise_pct', 'eps_diluted',
                  'revenue', 'net_income', 'gross_profit', 'operating_income',
-                 'ebit', 'interest_expense')
+                 'ebit', 'interest_expense',
+                 'operating_cashflow', 'capex', 'free_cashflow', 'sbc')
 
 
 def _db_path(db_path: str = 'database', db_name: str = 'asset_info.db') -> str:
@@ -140,9 +153,29 @@ def _quarter_end_for(report: pd.Timestamp, known_ends: list) -> pd.Timestamp | N
     return candidate
 
 
+def _statement_rows(frame, row_map: dict, quarters: dict, known_ends: list) -> None:
+    """Copy the mapped rows of one Yahoo statement into *quarters*."""
+    if frame is None or frame.empty:
+        return
+    for col in frame.columns:
+        end = pd.to_datetime(col, errors='coerce')
+        if pd.isna(end):
+            continue
+        end = _month_end(end)
+        known_ends.append(end)
+        row = quarters.setdefault(end, {})
+        for field, names in row_map.items():
+            for name in names:
+                if name in frame.index:
+                    value = _num(frame.at[name, col])
+                    if value is not None:
+                        row[field] = value
+                        break
+
+
 def parse(statement: pd.DataFrame | None, earnings: pd.DataFrame | None,
-          today: date | None = None):
-    """Merge the two Yahoo frames into quarter rows. Pure function, no I/O.
+          today: date | None = None, cashflow: pd.DataFrame | None = None):
+    """Merge the Yahoo frames into quarter rows. Pure function, no I/O.
 
     Returns ``(rows, next_report_date)``: rows are dicts keyed like the table
     columns (without ticker/bookkeeping), next_report_date an ISO date or None.
@@ -151,21 +184,8 @@ def parse(statement: pd.DataFrame | None, earnings: pd.DataFrame | None,
     quarters: dict[pd.Timestamp, dict] = {}
 
     known_ends = []
-    if statement is not None and not statement.empty:
-        for col in statement.columns:
-            end = pd.to_datetime(col, errors='coerce')
-            if pd.isna(end):
-                continue
-            end = _month_end(end)
-            known_ends.append(end)
-            row = quarters.setdefault(end, {})
-            for field, names in STATEMENT_ROWS.items():
-                for name in names:
-                    if name in statement.index:
-                        value = _num(statement.at[name, col])
-                        if value is not None:
-                            row[field] = value
-                            break
+    _statement_rows(statement, STATEMENT_ROWS, quarters, known_ends)
+    _statement_rows(cashflow, CASHFLOW_ROWS, quarters, known_ends)
 
     next_report = None
     if earnings is not None and not earnings.empty:
@@ -217,9 +237,13 @@ def fetch(ticker: str):
             earnings = tk.get_earnings_dates(limit=16)
         except Exception:
             earnings = None
+        try:
+            cashflow = tk.quarterly_cashflow
+        except Exception:
+            cashflow = None
         if (statement is None or statement.empty) and (earnings is None or earnings.empty):
             return [], None
-        return parse(statement, earnings)
+        return parse(statement, earnings, cashflow=cashflow)
     except Exception:
         logger.debug("fundamentals_quarterly: fetch failed for %s", ticker, exc_info=True)
         return None

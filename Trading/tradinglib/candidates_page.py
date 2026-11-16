@@ -52,6 +52,13 @@ def _profile_label(name: str) -> str:
     return name if label == key else label
 
 
+def _flag_text(flags) -> str:
+    """'leverage,surprise' -> translated short labels; '' for none."""
+    if not isinstance(flags, str) or not flags.strip():
+        return ''
+    return ', '.join(t(f'cand.qflag_{f}') for f in flags.split(',') if f)
+
+
 def _viewer_url(ticker: str) -> str:
     """Asset-Viewer-Link mit aktivem Detail-Tab, relativ zur eigenen Herkunft."""
     return f"/?asset=true&symbol={quote(str(ticker))}&details=true"
@@ -192,6 +199,18 @@ class CandidatesPage:
                     int(opt.get('min_trend_score') or 0), step=5,
                     help=t('cand.min_trend_score_help'))
 
+                c1, c2 = st.columns([0.55, 0.45])
+                quality_mode = c1.selectbox(
+                    t('cand.quality_mode'), cand.QUALITY_MODES,
+                    index=(list(cand.QUALITY_MODES).index(opt.get('quality_mode'))
+                           if opt.get('quality_mode') in cand.QUALITY_MODES else 0),
+                    format_func=lambda m: t(f'cand.qmode_{m}'),
+                    help=t('cand.quality_mode_help'))
+                quality_top_pct = c2.number_input(
+                    t('cand.quality_top_pct'), 5, 50,
+                    int(opt.get('quality_top_pct') or 15), step=5,
+                    help=t('cand.quality_top_pct_help'))
+
                 c1, c2 = st.columns(2)
                 with_signal = c1.checkbox(t('cand.with_signal'),
                                           value=bool(opt['with_signal']),
@@ -218,6 +237,7 @@ class CandidatesPage:
             'use_rsc': use_rsc, 'min_rsc': float(min_rsc),
             'require_isin': require_isin,
             'risk_profile': risk_profile,
+            'quality_mode': quality_mode, 'quality_top_pct': int(quality_top_pct),
             'min_trend_score': int(min_trend_score),
             'rank_col': rank_col, 'pool_n': int(pool_n),
             'max_per_sector': int(max_per_sector), 'top_n': int(top_n),
@@ -325,6 +345,10 @@ class CandidatesPage:
             t('cand.col_vs_sector'): col('RSC_vs_ETF', 1),
             # Spaltenkopf folgt der gewaehlten Vorsortierung.
             _rank_label(strength_col): col(strength_col, 2),
+            t('cand.col_quality'): col('quality_score', 0),
+            t('cand.col_quality_pct'): col('quality_pct', 0),
+            t('cand.col_quality_flags'): [_flag_text(x) for x in df.get(
+                'quality_flags', pd.Series([''] * len(df)))],
             t('cand.col_price'): col('close', 2),
             t('cand.col_currency'): [str(x) for x in df.get('currency', '')],
             t('cand.col_signal'): [self._signal_text(a, ty, d) for a, ty, d in zip(

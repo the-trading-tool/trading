@@ -271,6 +271,121 @@ def _render_piotroski(data: dict, region) -> None:
         region.caption(t('fund.piotroski_cashflow'))
 
 
+# ── Quality score (tradinglib/quality_score.py) ─────────────────────────────
+_TIER_COLORS = {1: '#2E7D32', 2: '#7CB342', 3: '#F9A825', 4: '#C62828'}
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _quality_row(ticker: str) -> dict | None:
+    from tradinglib import quality_score as qs
+    return qs.load_one(ticker)
+
+
+def _q_value(key: str, value) -> str:
+    """A criterion value as it reads best; '' when missing."""
+    if value is None:
+        return ''
+    v = float(value)
+    if key in ('roe', 'op_margin', 'sbc_revenue', 'fcf_yield', 'revenue_growth'):
+        return f'{v * 100:,.1f} %'
+    if key == 'gm_stability':
+        return f"{v * 100:+,.1f} {t('fund.q_pp')}"
+    if key == 'net_debt_ebitda':
+        if v >= 1e8:
+            return t('fund.q_no_ebitda')
+        return t('fund.q_net_cash') if v == 0 else f'{v:,.2f}'
+    if key == 'interest_cover':
+        return t('fund.q_no_interest') if v >= 1e8 else f'{v:,.1f}'
+    if key == 'fcf_years':
+        return t('fund.q_years', n=int(v))
+    if key == 'peg' and v <= 0:
+        return t('fund.q_no_growth')
+    return f'{v:,.2f}'
+
+
+def _q_card(label: str, value: str, color: str = 'inherit', sub: str = '') -> str:
+    return (f"<div style='text-align:center'>"
+            f"<div style='font-size:0.8rem;opacity:0.7;margin-bottom:0.15rem'>{label}</div>"
+            f"<div style='font-size:1.55rem;font-weight:600;line-height:1.15;color:{color}'>"
+            f"{value}</div>"
+            f"<div style='font-size:0.66rem;opacity:0.55'>{sub}</div></div>")
+
+
+def _render_quality(ticker: str, region) -> bool:
+    """Quality score on top of the tab: score, tier, rank, red flags, the twelve criteria.
+
+    Returns False when there is no stored score for *ticker* (not an equity, or
+    the score was never computed) -- then nothing is drawn.
+    """
+    from tradinglib import quality_score as qs
+    try:
+        row = _quality_row(ticker)
+    except Exception:
+        row = None
+    if not row:
+        return False
+    region.markdown(f"**{t('fund.q_header')}**")
+    score, tier = row.get('quality_score'), row.get('quality_tier')
+    tier = int(tier) if tier is not None else None
+    cols = region.columns(4)
+    if score is None:
+        cols[0].markdown(_q_card(t('fund.q_score'), '–', sub=t('fund.q_too_little',
+                                                                  n=int(row.get('quality_avail') or 0))),
+                         unsafe_allow_html=True)
+    else:
+        cols[0].markdown(_q_card(t('fund.q_score'), f'{score:.0f}', _TIER_COLORS.get(tier, 'inherit'),
+                                 t('fund.q_of_100')), unsafe_allow_html=True)
+    cols[1].markdown(_q_card(t('fund.q_tier'), t(f'fund.qtier_{tier}') if tier else '–',
+                             _TIER_COLORS.get(tier, 'inherit'),
+                             t('fund.q_tier_sub', n=tier) if tier else ''),
+                     unsafe_allow_html=True)
+    pct = row.get('quality_pct')
+    cols[2].markdown(_q_card(t('fund.q_rank'), '–' if pct is None else f'{pct:.0f}',
+                             _rank_color(None if pct is None else pct / 10),
+                             t('fund.q_rank_sub')), unsafe_allow_html=True)
+    cols[3].markdown(_q_card(t('fund.q_avail'), f"{int(row.get('quality_avail') or 0)}",
+                             sub=t('fund.q_avail_sub')), unsafe_allow_html=True)
+
+    flags = [f for f in str(row.get('quality_flags') or '').split(',') if f]
+    if flags:
+        region.warning(t('fund.q_flags', flags=', '.join(t(f'cand.qflag_{f}') for f in flags)))
+    else:
+        region.caption(t('fund.q_no_flags'))
+
+    with region.expander(t('fund.q_details'), expanded=False):
+        rows = []
+        financial = bool(row.get('financial'))
+        for key, group, points, _higher in qs.CRITERIA:
+            ok = row.get(f'{key}_ok')
+            if financial and key in qs.FINANCIAL_SKIP:
+                shown = t('fund.q_skipped')
+            elif key == 'fcf_years' and ok is None and row.get(key) is not None:
+                shown = t('fund.q_years_short', n=int(row[key]))
+            else:
+                shown = _q_value(key, row.get(key))
+            rows.append({
+                t('fund.col_group'): t(f'fund.qg_{group}'),
+                t('fund.col_metric'): t(f'fund.qc_{key}'),
+                t('fund.col_value'): shown,
+                t('fund.q_col_result'): '–' if ok is None else ('✅' if ok else '❌'),
+                t('fund.q_col_points'): (f'– / {points}' if ok is None
+                                         else f'{points if ok else 0} / {points}'),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        notes = []
+        if financial:
+            notes.append(t('fund.q_financial'))
+        src = row.get('revenue_growth_src')
+        if src:
+            notes.append(t(f'fund.q_growth_{src}'))
+        if row.get('interest_cover_src'):
+            notes.append(t(f"fund.q_cover_{row['interest_cover_src']}"))
+        for n in notes:
+            st.caption(n)
+        st.caption(t('fund.q_method', date=str(row.get('asof') or '')[:10]))
+    return True
+
+
 # ── Charts ───────────────────────────────────────────────────────────────────
 def _year_labels(hist: pd.DataFrame) -> list[str]:
     """Fiscal-year labels for the x axis of the history charts.
@@ -391,10 +506,14 @@ def render(ticker: str, region=st) -> None:
         with st.spinner(t('fund.loading')):
             data = _payload(ticker)
 
+    shown = _render_quality(ticker, region)
+
     if data is None:
         region.info(t('fund.no_data', ticker=ticker))
         return
 
+    if shown:
+        region.divider()
     _render_header(data, region)
     region.divider()
     _render_signals(data, region)

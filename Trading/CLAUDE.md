@@ -2162,3 +2162,47 @@ Bei S2 verkuerzt CH die Haltedauer von 48 auf 28 Tage und nimmt dem System seine
   (Saisonfenster ab Sonntag), der Oszillator auf den letzten Handelstag (SAP.DE 15.11.: 10,0 vs 9,2).
 - **Nur live:** keine Spalten in `asset_simulation`, nicht in `_EXTRA_COLUMN_INDICATORS` →
   `edge_total` in Buy/Sell-Formeln geht im Chart (Oszillator aktiv), nicht im Strategy Finder.
+
+## Qualitäts-Score und Gewinnüberraschung (2026-11-16)
+
+### Gewinnüberraschung gemessen, als Spalten `eps_*`
+Messung (Scratch `surprise_measure.py`/`surprise_bh.py`/`surprise_analyze.py`, read-only): 80.858
+Quartalsmeldungen seit 2020, 4.151 Ticker, echte Meldedaten aus `fundamentals_quarterly`. Einstieg =
+Schluss des ersten Handelstags NACH dem Meldedatum, Vergleich = Kaufen-und-Halten-Mittel aller Ticker
+derselben Börse über dieselben Tage (eine täglich neu gewichtete Benchmark ist nach unten verzerrt).
+- Quintil der Überraschung je Quartal, 63 T, relativ zur Ø-Meldung: oben +1,18 Pp (t 3,0), unten −1,40
+  (t −2,9), Abstand +2,59 Pp (t 4,5), 7/7 Jahre und 78 % der Monate positiv, monoton, wächst 21→63 T.
+- Zwei negative Überraschungen in Folge: −1,51 % vs Markt / 63 T, 0/7 Jahre positiv (bester Ausschluss).
+- Trefferquote überall < 50 % (Vorteil aus dem rechten Rand); Kursreaktion am Meldetag allein ohne Aussage.
+- `tradinglib/earnings_surprise.py` + Indikator `eps` (Oszillator): `eps_surprise`, `eps_surprise_prev`,
+  `eps_days` (Handelstage seit Meldung, 1 = erster Tag danach, **0 = keine Meldung**; Formeln mit
+  `eps_days >= 1`). Kausal, nur `report_date_source='earnings_dates'`. In `INDICATOR_BACKFILL_MAP['eps']`,
+  `process_symbol`, `fill_pdict`, Formelkatalog (Gruppe earnings, Beispiel `surprise`).
+  Nachrechnung: `python asset_perf2.py /backfill:eps /force` (+ `/year:YYYY`, `/all`), gelaufen
+  2026-11-16 für alle acht DBs. Abdeckung (Zeilen mit `eps_days > 0`): 2021–2026 83–87 %, 2020 nur 29 %
+  — die Meldehistorie von Yahoo beginnt bei 2.372 von 4.389 Tickern erst im 4. Quartal 2020. Backtests
+  vor Nov. 2020 sehen also fast keine Überraschungen (und das Messjahr 2020 bestand fast nur aus Q4).
+
+### Qualitäts-Score (`tradinglib/quality_score.py`)
+Zwölf Kriterien, 100 Punkte (Schema des Nutzers): ROE>15 % (8), op. Marge>15 % (9), Bruttomarge stabil
+(8, letztes Jahr vs Ø Vorjahre ≥ −2 Pp), Nettoschulden/EBITDA<2,5 (10), Zinsdeckung>5 (8, TTM aus
+Quartalen, sonst Jahr), Current Ratio>1,5 (7), CFO≥Gewinn (10), FCF 5 J. positiv (8), SBC<5 % Umsatz
+(7), PEG<1,5 (10), FCF-Rendite>4 % (8, Währung umgerechnet), Konsens-Umsatzwachstum>8 % (7, sonst
+rückblickend). Score = 100 × erreicht / verfügbar, ab 40 verfügbaren Punkten; Stufen 85/70/50.
+Banken/Versicherer ohne Bilanz-/Cash-Kriterien. `quality_sector` = punktgewichteter Rang je Kriterium im
+Sektor, `quality_pct` = dessen Perzentil über alle Aktien (fester Schnitt). Warnzeichen: leverage (>4),
+interest (<1,5), cash_burn, losses, surprise (2× negativ, < 200 T alt).
+- **Momentaufnahme, nicht gemessen und nicht messbar** (Historie erst ab 08/2026) → nur für die heutige
+  Auswahl, NICHT in asset_simulation. Änderungen landen in `quality_score_history`.
+- Speicher: `asset_info.db` Tabellen `quality_scores` (ersetzt je Lauf) und `quality_score_history`.
+  Gerechnet am Ende jedes `get_asset_info.py`-Laufs; `python -m tradinglib.quality_score [/update] [/show:T]`.
+- Asset Viewer, Tab „Fundamental“ oben: Score, Stufe, Sektor-Rang, Datenbasis, Warnzeichen und ein
+  Expander mit den zwölf Kriterien (Wert, erfüllt/–, Punkte); liest `quality_scores` (`quality_score.load_one`).
+- Kandidaten: Schritt „Qualität“ vor dem Risikoprofil, `quality_mode` off/exclude/top, `quality_top_pct`;
+  Short gespiegelt (Stufe 1 raus bzw. untere %). Spalten Qualität/Rang/Warnzeichen, Vorsortierung `quality_pct`.
+- Neue Eingaben im Sonntagslauf (`get_asset_info.equity_extras`, nur Aktien, 2 Requests mehr je Titel):
+  `cashflowSheet` (Jahres-Cashflow JSON), `capitalExpenditures`, `stockBasedCompensation`,
+  `revenueGrowthEst`/`revenueGrowthEstNext`/`revenueEstAnalysts`; `fundamentals_history` verfolgt diese
+  plus `currentRatio`, `quickRatio`, `operatingCashflow`, `netIncomeToCommon`.
+  `fundamentals_quarterly` hat neu `operating_cashflow`, `capex`, `free_cashflow`, `sbc` (aus `quarterly_cashflow`).
+  Nachladen ohne Sonntag: `python get_asset_info.py /extras /worker:4`.
