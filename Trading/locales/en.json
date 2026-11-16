@@ -2067,7 +2067,7 @@
   "cand.rank_col": "Pre-sort by",
   "cand.rank_col_help": "Ranking used before relative strength is measured.",
   "cand.prefilter": "Prefilter (formula)",
-  "cand.prefilter_help": "Runs against asset_simulation. **One condition per line.** With “Conditions over (bars)” = 1 they must all hold on the same day; otherwise it is enough for each to have been true once within the window. Only stored columns work here — the signal step at the end checks live-only columns.",
+  "cand.prefilter_help": "Runs against asset_simulation. **One condition per line.** With “Conditions over (bars)” = 1 they must all hold on the same day; otherwise it is enough for each to have been true once within the window. Time series such as `sup_support.shift(1)` or `High.rolling(20).max()` are evaluated per ticker (somewhat slower). Only stored columns work here — the signal step at the end checks live-only columns.",
   "cand.use_rotation": "Only sectors with inflow",
   "cand.use_rotation_help": "Keeps sectors whose ETF shows Mansfield relative strength above the threshold.",
   "cand.min_sector_rsc": "Minimum sector strength",

@@ -2067,7 +2067,7 @@
   "cand.rank_col": "Vorsortierung",
   "cand.rank_col_help": "Nach dieser Kennzahl wird vorsortiert, bevor die Relativstärke gemessen wird.",
   "cand.prefilter": "Vorfilter (Formel)",
-  "cand.prefilter_help": "Läuft gegen asset_simulation. **Eine Bedingung je Zeile.** Mit „Bedingungen über (Bars)“ = 1 müssen alle am selben Tag zutreffen, sonst genügt es, wenn jede innerhalb des Fensters einmal wahr war. Nur gespeicherte Spalten sind nutzbar — reine Live-Spalten prüft der Signalschritt am Ende.",
+  "cand.prefilter_help": "Läuft gegen asset_simulation. **Eine Bedingung je Zeile.** Mit „Bedingungen über (Bars)“ = 1 müssen alle am selben Tag zutreffen, sonst genügt es, wenn jede innerhalb des Fensters einmal wahr war. Zeitreihen wie `sup_support.shift(1)` oder `High.rolling(20).max()` werden je Ticker ausgewertet (etwas langsamer). Nur gespeicherte Spalten sind nutzbar — reine Live-Spalten prüft der Signalschritt am Ende.",
   "cand.use_rotation": "Nur Sektoren mit Zufluss",
   "cand.use_rotation_help": "Behält nur Sektoren, deren ETF eine Mansfield-Relativstärke über der Schwelle hat.",
   "cand.min_sector_rsc": "Mindest-Sektorstärke",

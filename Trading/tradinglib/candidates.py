@@ -18,6 +18,7 @@ getrennte, sim-taugliche Vorfilter hier und die massgebliche Signalpruefung
 ueber denselben Pfad, den auch der Chart nimmt.
 """
 import logging
+import re
 
 import pandas as pd
 
@@ -180,7 +181,7 @@ def available_columns(db_path: str = 'database') -> list[str]:
     return []
 
 
-def _prefilter_window(prefilter, window, db_path='database'):
+def _prefilter_window(prefilter, window, db_path='database', tickers=None):
     """Bedingungen duerfen auf VERSCHIEDENEN Tagen erfuellt sein.
 
     Jede Zeile der Formel ist eine eigene Bedingung. Erfuellt heisst: irgendwann
@@ -231,6 +232,20 @@ def _prefilter_window(prefilter, window, db_path='database'):
                 continue
             first = min(days)
             per_cond, stats = [], []
+            if needs_pandas(prefilter):
+                # Same rule, evaluated per ticker in pandas: load enough bars
+                # before the window for every shift/rolling to be defined.
+                bars = _history_bars(prefilter, window)
+                since_hist = (pd.Timestamp(first) - pd.Timedelta(days=int(bars * 1.6) + 14)
+                              ).strftime('%Y-%m-%d')
+                panel = _load_panel(conn, prefilter, since_hist, tickers)
+                in_win = panel['d'] >= first
+                for cond, m in zip(lines, _line_masks(panel, lines)):
+                    sel = panel.loc[in_win & m, ['ticker', 'd']]
+                    d = sel.groupby('ticker')['d'].max()
+                    per_cond.append(d.to_dict())
+                    stats.append((cond, len(d)))
+                lines = []
             for cond in lines:
                 d = pd.read_sql_query(
                     'SELECT ticker, MAX(DATE(Date)) AS d FROM asset_simulation '
@@ -252,6 +267,124 @@ def _prefilter_window(prefilter, window, db_path='database'):
             except Exception:
                 pass
     return None, []
+
+
+# Time-series syntax SQLite cannot run: pandas methods (x.shift(1),
+# x.rolling(20).max()) and indexed access (x[-1]). Such a prefilter is
+# evaluated per ticker in pandas instead, with the evaluator the Strategy Finder
+# and the chart use -- otherwise SQLite answers 'near "(": syntax error'.
+_PANDAS_SYNTAX_RE = re.compile(r'\.\s*[A-Za-z_]\w*\s*\(|\w\s*\[\s*-?\d+\s*\]')
+# Integer arguments of rolling/shift; their sum bounds the history a line needs.
+_SPAN_RE = re.compile(r'\.\s*(?:rolling|shift)\s*\(\s*(?:window\s*=\s*)?(-?\d+)')
+
+
+def needs_pandas(prefilter) -> bool:
+    """True when the prefilter uses time-series syntax SQLite cannot evaluate."""
+    return bool(_PANDAS_SYNTAX_RE.search(str(prefilter or '')))
+
+
+def _history_bars(prefilter, window) -> int:
+    """Bars of history to load: spans of every rolling/shift plus the window."""
+    spans = sum(abs(int(n)) for n in _SPAN_RE.findall(str(prefilter or '')))
+    return spans + int(window) + 5
+
+
+def _load_panel(conn, prefilter, since, tickers=None):
+    """Rows since *since* for the columns the prefilter uses, time-ordered per ticker.
+
+    Names that match a column only case-insensitively (SQLite accepted
+    ``close > open`` because ``open`` is ``Open`` there) get an alias column,
+    so the pandas path accepts what the SQL path accepted. An unknown name
+    raises with SQLite's wording, which the page turns into a hint.
+    """
+    from tradinglib.tools import formula_names
+    cols = [r[1] for r in conn.execute('PRAGMA table_info(asset_simulation)')]
+    by_lower = {c.lower(): c for c in cols}
+    load, alias = [], {}
+    for name in formula_names(prefilter):
+        real = name if name in cols else by_lower.get(name.lower())
+        if real is None:
+            raise RuntimeError(f'no such column: {name}')
+        if real not in load:
+            load.append(real)
+        if real != name:
+            alias[name] = real
+    sel = ', '.join(f'"{c}"' for c in load if c.lower() not in ('ticker', 'date'))
+    df = pd.read_sql_query(
+        f'SELECT ticker, DATE(Date) AS d{", " + sel if sel else ""} '
+        'FROM asset_simulation WHERE DATE(Date) >= ? ORDER BY ticker, Date',
+        conn, params=(since,))
+    if tickers is not None:
+        # The universe step drops everything else anyway; evaluating per ticker
+        # is the expensive part (~1 ms each), so skip the rest up front.
+        df = df[df['ticker'].isin(tickers)]
+    # One row per ticker and day; a rerun can leave two (keep the newer).
+    df = df.drop_duplicates(['ticker', 'd'], keep='last').reset_index(drop=True)
+    for c in load:
+        if c not in ('ticker', 'd') and df[c].dtype == object:
+            df[c] = pd.to_numeric(df[c], errors='coerce')   # TEXT affinity
+    for name, real in alias.items():
+        df[name] = df[real]
+    return df
+
+
+def _line_masks(panel, lines):
+    """Per-line boolean masks, evaluated per ticker (shift/rolling stay inside one)."""
+    from tradinglib.tools import compute_signal_mask
+    out = []
+    for line in lines:
+        try:
+            m = compute_signal_mask(panel, line, group_col='ticker', window=1)
+        except Exception as exc:
+            raise RuntimeError(f'{line}: {exc}') from exc
+        out.append(m.fillna(False).astype(bool))
+    return out
+
+
+def _prefilter_pandas_latest(prefilter, db_path='database', lookback_days=LOOKBACK_DAYS,
+                             tickers=None):
+    """Window 1 for a time-series prefilter: does each ticker's latest row qualify?
+
+    Same rule as the SQL path (latest row within *lookback_days* of the newest
+    date, all conditions on that row), only evaluated in pandas. Returns
+    ``{ticker: date}`` of the qualifying tickers.
+    """
+    lines = split_conditions(prefilter)
+    if not lines:
+        return None
+    for db_name in ('asset_simulation_all', 'asset_simulation_', 'asset_simulation'):
+        p = Tools().get_path(path=db_path, file_name=f'{db_name}.db')
+        try:
+            conn = open_db(p, readonly=True)
+        except Exception:
+            continue
+        try:
+            row = conn.execute('SELECT DATE(MAX(Date)) FROM asset_simulation').fetchone()
+            if not row or not row[0]:
+                continue
+            newest = pd.Timestamp(row[0])
+            cutoff = (newest - pd.Timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+            bars = _history_bars(prefilter, 1)
+            since = (newest - pd.Timedelta(days=lookback_days + int(bars * 1.6) + 14)
+                     ).strftime('%Y-%m-%d')
+            panel = _load_panel(conn, prefilter, since, tickers)
+            if panel.empty:
+                continue
+            ok = pd.Series(True, index=panel.index)
+            for m in _line_masks(panel, lines):
+                ok &= m
+            last = panel.groupby('ticker').tail(1)
+            last = last[(last['d'] >= cutoff) & ok.loc[last.index]]
+            return dict(zip(last['ticker'], last['d']))
+        except Exception as exc:
+            logger.warning("candidates: prefilter (pandas) failed", exc_info=True)
+            raise RuntimeError(str(exc)) from exc
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    return None
 
 
 def _universe_tickers(groups, db_path='database'):
@@ -476,7 +609,7 @@ def find(username: str, db_path: str = 'database', **kw):
         # holen. Der Vorfilter darf dabei nicht noch einmal als WHERE laufen --
         # er wurde ja gerade ueber mehrere Tage geprueft.
         try:
-            hits, cond_stats = _prefilter_window(opt['prefilter'], win, db_path)
+            hits, cond_stats = _prefilter_window(opt['prefilter'], win, db_path, uni)
         except RuntimeError as exc:
             steps.append({'key': 'base', 'label': 'Werte mit Simulationsdaten',
                           'before': 0, 'after': 0, 'note': str(exc),
@@ -484,8 +617,25 @@ def find(username: str, db_path: str = 'database', **kw):
                           'note_args': {'db': 'asset_simulation', 'error': exc}})
             return pd.DataFrame(), steps
         df, note, n_total = _latest_rows('', db_path)
+    elif lines and needs_pandas(opt['prefilter']):
+        # shift/rolling cannot run in SQL: qualify the tickers in pandas, then
+        # fetch their latest rows without the prefilter.
+        try:
+            latest_hits = _prefilter_pandas_latest(opt['prefilter'], db_path, tickers=uni)
+        except RuntimeError as exc:
+            steps.append({'key': 'base', 'label': 'Werte mit Simulationsdaten',
+                          'before': 0, 'after': 0, 'note': str(exc),
+                          'note_key': 'note_error',
+                          'note_args': {'db': 'asset_simulation', 'error': exc}})
+            return pd.DataFrame(), steps
+        df, note, n_total = _latest_rows('', db_path)
+        if latest_hits is not None and not df.empty:
+            df = df[df['ticker'].isin(latest_hits)].copy()
     else:
-        df, note, n_total = _latest_rows(opt['prefilter'], db_path)
+        # One condition per line, all on the same row: join the lines, since a
+        # raw multi-line text is no valid WHERE clause ("(a)\n(b)").
+        where = " AND ".join(f"({ln})" for ln in lines) if lines else opt['prefilter']
+        df, note, n_total = _latest_rows(where, db_path)
     nk, na = note if isinstance(note, tuple) else ('', {})
     _fb = {'source': '{db}, Stand {date}', 'error': '{db}: {error}',
            'no_db': 'keine Simulationsdatenbank gefunden'}.get(nk, '')
