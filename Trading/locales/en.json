@@ -3286,5 +3286,17 @@
   "fund.q_method": "As of {date}. Points only for criteria with data (– = no data); score = points reached / points available. Sector rank: each criterion ranked within its industry, weighted by its points. Snapshot of current data, not measured historically — only the red flag “2× missed estimates” is measured.",
   "fund.q_pp": "pp",
   "fund.q_skipped": "not counted (bank)",
-  "fund.q_years_short": "only {n} yrs known"
+  "fund.q_years_short": "only {n} yrs known",
+  "cand.use_sdc": "Regression channel",
+  "cand.use_sdc_help": "Standard deviation channel (overlay sdc): long keeps names closing at or below the long threshold (−3 = lower band), short at or above the short threshold (+1 = upper band). Only names with full history over the chosen length have a channel.",
+  "cand.sdc_years": "Length (years)",
+  "cand.sdc_years_help": "Regression length in years. 10 reads the stored columns (fast); any other length is fitted live from the daily closes for the names left at that point, as in the chart.",
+  "cand.sdc_long": "Long: σ ≤",
+  "cand.sdc_long_help": "Distance of the close from the regression line in standard deviations (sdc_pos). Long keeps names at or below this threshold.",
+  "cand.sdc_short": "Short: σ ≥",
+  "cand.sdc_short_help": "Short keeps names whose sdc_pos is at or above this threshold.",
+  "cand.step_sdc": "Regression channel",
+  "cand.note_sdc_stored": "sdc_pos {op} {thr}σ, {years} y (stored), {n} of {total} with a channel",
+  "cand.note_sdc_live": "sdc_pos {op} {thr}σ, {years} y (fitted live), {n} of {total} with a channel",
+  "cand.col_sdc_pos": "Channel σ"
 }

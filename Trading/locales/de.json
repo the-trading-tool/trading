@@ -3286,5 +3286,17 @@
   "fund.q_method": "Stand {date}. Punkte nur für Kriterien mit Daten (– = keine Daten); Score = erreichte / verfügbare Punkte. Sektor-Rang: jedes Kriterium innerhalb der Branche eingeordnet, nach Punkten gewichtet. Momentaufnahme der aktuellen Daten, nicht rückwirkend gemessen — nur das Warnzeichen „2× Schätzung verfehlt“ ist gemessen.",
   "fund.q_pp": "Pp",
   "fund.q_skipped": "zählt nicht (Bank)",
-  "fund.q_years_short": "nur {n} J. bekannt"
+  "fund.q_years_short": "nur {n} J. bekannt",
+  "cand.use_sdc": "Regressionskanal",
+  "cand.use_sdc_help": "Standardabweichungs-Kanal (Overlay sdc): Long behält Werte, deren Schluss auf oder unter der Long-Schwelle liegt (−3 = unteres Band), Short auf oder über der Short-Schwelle (+1 = oberes Band). Nur Werte mit voller Historie über die gewählte Länge haben einen Kanal.",
+  "cand.sdc_years": "Länge (Jahre)",
+  "cand.sdc_years_help": "Regressionslänge in Jahren. 10 liest die gespeicherten Spalten (schnell); jede andere Länge wird für die bis hierhin verbliebenen Werte live aus den Tageskursen gerechnet, wie im Chart.",
+  "cand.sdc_long": "Long: σ ≤",
+  "cand.sdc_long_help": "Abstand des Schlusskurses zur Regressionslinie in Standardabweichungen (sdc_pos). Long behält Werte auf oder unter dieser Schwelle.",
+  "cand.sdc_short": "Short: σ ≥",
+  "cand.sdc_short_help": "Short behält Werte, deren sdc_pos auf oder über dieser Schwelle liegt.",
+  "cand.step_sdc": "Regressionskanal",
+  "cand.note_sdc_stored": "sdc_pos {op} {thr}σ, {years} J. (gespeichert), {n} von {total} mit Kanal",
+  "cand.note_sdc_live": "sdc_pos {op} {thr}σ, {years} J. (live gerechnet), {n} von {total} mit Kanal",
+  "cand.col_sdc_pos": "Kanal σ"
 }

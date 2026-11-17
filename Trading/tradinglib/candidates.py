@@ -108,6 +108,14 @@ DEFAULTS = {
     # Mindest-Trendwert (Naehe zum eigenen Rekordhoch, 0..100). 0 = aus. Bei
     # 'short' gespiegelt: dort zaehlt der Abstand zum Hoch, nicht die Naehe.
     'min_trend_score': 0,
+    # Standard deviation channel (indicator sdc): long keeps closes at or below
+    # sdc_long sigma from the regression line, short at or above sdc_short.
+    # sdc_years is the regression length; 10 reads the stored columns, any other
+    # length is fitted live on the rows left at that point.
+    'use_sdc': False,
+    'sdc_years': 10,
+    'sdc_long': -3.0,
+    'sdc_short': 1.0,
     'rank_col': 'sortino',
     'pool_n': 60,              # so viele gehen in die Relativstaerke-Messung
     'max_per_sector': 3,       # 0 = ohne Begrenzung
@@ -463,6 +471,94 @@ def _apply_quality(df, opt, direction, db_path, step):
             nkey, args = 'note_quality_bottom', {'pct': int(pct)}
     df = df[mask.fillna(False)]
     step('quality', 'Qualität', before, len(df), note, nkey, **args)
+    return df
+
+
+SDC_WORKERS = 8
+
+
+def _sdc_live(tickers, years, db_path='database'):
+    """``{ticker: (sdc_pos, sdc_std)}`` from the channel over the last *years*.
+
+    Same fit as the chart (``sdc.fit_last`` on the full local daily closes), so
+    a ticker without *years* of history gets no entry. Reads only the window
+    plus a margin; threads because the time goes into opening the files.
+    """
+    import os
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    import numpy as np
+    from tradinglib.indicator import sdc
+
+    since = (pd.Timestamp.today().normalize()
+             - sdc.window(years) - pd.Timedelta(days=40)).strftime('%Y-%m-%d')
+
+    def one(ticker):
+        path = Tools().get_path(path=db_path, file_name=f'yf_{ticker}.db')
+        if not os.path.exists(path):
+            return ticker, None
+        try:
+            con = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+            try:
+                rows = con.execute(
+                    "SELECT substr(Date, 1, 10), Close FROM day_data "
+                    "WHERE Close IS NOT NULL AND Date >= ? ORDER BY Date",
+                    (since,)).fetchall()
+            finally:
+                con.close()
+            if not rows:
+                return ticker, None
+            dates, closes = zip(*rows)
+            close = pd.Series(pd.to_numeric(pd.Series(closes), errors='coerce').to_numpy(),
+                              index=pd.DatetimeIndex(np.asarray(dates, dtype='datetime64[D]')))
+            close = close[~close.index.duplicated(keep='last')].dropna()
+            fit = sdc.fit_last(close, years)
+            if fit is None or not fit[1] > 0:
+                return ticker, None
+            mid, std, _r = fit
+            return ticker, ((float(close.iloc[-1]) - float(mid.iloc[-1])) / std, std)
+        except Exception:
+            logger.debug("candidates: sdc for %s failed", ticker, exc_info=True)
+            return ticker, None
+
+    with ThreadPoolExecutor(max_workers=SDC_WORKERS) as ex:
+        return {t: v for t, v in ex.map(one, tickers) if v is not None}
+
+
+def _apply_sdc(df, opt, direction, db_path, step):
+    """Keep closes beyond the chosen sigma line of the regression channel.
+
+    Long: ``sdc_pos <= sdc_long`` (default -3, the lower band), short:
+    ``sdc_pos >= sdc_short`` (default +1). With the stored length (10 years) the
+    columns from asset_simulation are used; they need the full window, NaN is
+    stored as 0, so only ``sdc_std > 0`` counts. Any other length -- or a sim DB
+    without the columns -- is fitted live on the remaining tickers.
+    """
+    from tradinglib.indicator import sdc
+    years = int(opt.get('sdc_years') or sdc.DEFAULT_YEARS)
+    thr = float(opt['sdc_long'] if direction == 'long' else opt['sdc_short'])
+    before = len(df)
+    std = (pd.to_numeric(df['sdc_std'], errors='coerce')
+           if 'sdc_std' in df.columns else pd.Series(float('nan'), index=df.index))
+    stored = (years == sdc.DEFAULT_YEARS and 'sdc_pos' in df.columns
+              and bool((std > 0).any()))
+    if stored:
+        pos = pd.to_numeric(df['sdc_pos'], errors='coerce').where(std > 0)
+        source, src_key = 'gespeichert', 'stored'
+    else:
+        live = _sdc_live(df['ticker'].astype(str).tolist(), years, db_path)
+        pos = df['ticker'].map(lambda t: (live.get(t) or (float('nan'),))[0])
+        source, src_key = 'live', 'live'
+    df = df.assign(sdc_pos=pos.astype(float))
+    mask = (df['sdc_pos'] <= thr) if direction == 'long' else (df['sdc_pos'] >= thr)
+    n_channel = int(df['sdc_pos'].notna().sum())
+    df = df[mask.fillna(False)]
+    op = '≤' if direction == 'long' else '≥'
+    step('sdc', 'Regressionskanal', before, len(df),
+         f"sdc_pos {op} {thr:+g}σ, {years} J. ({source}), "
+         f"{n_channel} von {before} mit Kanal",
+         f'note_sdc_{src_key}', op=op, thr=f"{thr:+g}", years=years,
+         n=n_channel, total=before)
     return df
 
 
@@ -869,6 +965,12 @@ def find(username: str, db_path: str = 'database', **kw):
         # sonst sieht der Trichter aus, als haette es den Schritt nie gegeben.
         step('retest', 'Testet Unterstützung/Widerstand', len(df), len(df),
              'abgeschaltet', 'note_off')
+
+    # 3e — Regressionskanal (sdc). After the cheap filters on purpose: with a
+    # length other than the stored 10 years the channel is fitted live per
+    # ticker, so it should see as few rows as possible.
+    if opt.get('use_sdc') and not df.empty:
+        df = _apply_sdc(df, opt, direction, db_path, step)
 
     # 4 — Sektor-Rotation: nur Sektoren mit Zufluss
     from tradinglib.sector_stocks import SECTOR_ETF_MAP

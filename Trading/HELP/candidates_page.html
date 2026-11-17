@@ -75,6 +75,14 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
   <td>Läuft der Kurs seine Unterstützung (long) bzw. seinen Widerstand (short) an, oder
   ist er nach einem Bruch dorthin zurückgekehrt?</td>
   <td>Tagesreihe aus <code>asset_simulation</code></td></tr>
+<tr><td><b>Regressionskanal</b></td>
+  <td>Optional. Abstand des Schlusskurses zur Regressionslinie des Standardabweichungs-Kanals
+  (Overlay <code>sdc</code>) in σ. Long behält Werte auf oder unter der Long-Schwelle
+  (Vorgabe −3 = unteres Band), Short auf oder über der Short-Schwelle (Vorgabe +1 = oberes
+  Band). Bei 10 Jahren aus den gespeicherten Spalten, bei jeder anderen Länge live aus den
+  Tageskursen der bis hierhin verbliebenen Werte — dieselbe Rechnung wie im Chart.
+  Ohne volle Historie über die Länge kein Kanal, der Wert fällt raus.</td>
+  <td><code>sdc_pos</code>/<code>sdc_std</code> bzw. Tageskurse</td></tr>
 <tr><td><b>Sektor mit Zufluss</b></td>
   <td>Behält nur Sektoren, deren ETF relative Stärke zeigt (Mansfield-RSC); bei Short
   die mit dem stärksten Abfluss.</td>
@@ -193,6 +201,10 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   0 = ohne Begrenzung.</td></tr>
 <tr><td>Qualität / Obere %</td><td>Schaltet den Qualitäts-Schritt (aus, Warnzeichen
   ausschließen, nur die oberen %, nur Elite) und legt den Anteil für „obere %“ fest.</td></tr>
+<tr><td>Regressionskanal / Länge / Long: σ ≤ / Short: σ ≥</td><td>Schaltet den
+  Kanal-Schritt, legt die Regressionslänge in Jahren fest (10 = gespeicherte Spalten, schnell;
+  sonst live, je Wert ein Lesezugriff auf die Tageskurse) und die Schwellen je Richtung.
+  Nicht gemessen — ein Rücksetzer-Filter, kein belegtes Signal.</td></tr>
 <tr><td>Nur mit Einstiegssignal</td><td>Behält nur Werte, deren letzter Marker ein Einstieg
   war. Kürzt die Liste unter die eingestellte Länge.</td></tr>
 </table>
@@ -211,6 +223,8 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <tr><td>Qualität / Qual.-Rang % / Warnzeichen</td><td>Score (0–100), Rang über alle
   bewerteten Aktien und die gefundenen Warnzeichen. Stehen immer da, wenn Daten vorliegen —
   auch wenn der Schritt aus ist.</td></tr>
+<tr><td>Kanal σ</td><td>Abstand des Schlusskurses zur Regressionslinie in
+  Standardabweichungen (nur bei eingeschaltetem Kanal-Schritt).</td></tr>
 <tr><td>Kurs / Währung</td><td>Letzter simulierter Schlusskurs in der Notierungswährung —
   <b>nicht</b> umgerechnet. LSE-Werte stehen in Pence (GBp).</td></tr>
 <tr><td>Signal</td><td>Art und Datum des letzten Markers. <code>⚡</code> heißt: das Signal

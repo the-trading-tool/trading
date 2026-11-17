@@ -73,6 +73,14 @@ per name, and the live signal path computes one name at a time.</p>
   <td>Is the price approaching its support (long) or resistance (short), or has it
   returned there after a break?</td>
   <td>daily series from <code>asset_simulation</code></td></tr>
+<tr><td><b>Regression channel</b></td>
+  <td>Optional. Distance of the close from the regression line of the standard deviation
+  channel (overlay <code>sdc</code>) in σ. Long keeps names at or below the long threshold
+  (default −3 = lower band), short at or above the short threshold (default +1 = upper band).
+  At 10 years from the stored columns, at any other length fitted live from the daily closes
+  of the names left at that point — the same calculation as the chart. Without full history
+  over the length there is no channel and the name drops out.</td>
+  <td><code>sdc_pos</code>/<code>sdc_std</code> or daily closes</td></tr>
 <tr><td><b>Sector with inflow</b></td>
   <td>Keeps sectors whose ETF shows relative strength (Mansfield RSC); for short, those
   with the strongest outflow.</td>
@@ -189,6 +197,10 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   0 = no cap.</td></tr>
 <tr><td>Quality / Top %</td><td>Switches the quality step (off, exclude red flags, top %
   only, elite only) and sets the share for “top %”.</td></tr>
+<tr><td>Regression channel / Length / Long: σ ≤ / Short: σ ≥</td><td>Switches the channel
+  step, sets the regression length in years (10 = stored columns, fast; otherwise live, one
+  read of the daily closes per name) and the threshold per direction. Not measured — a
+  pullback filter, not a proven signal.</td></tr>
 <tr><td>Only with an entry signal</td><td>Keeps names whose most recent marker was an entry.
   Shortens the list below the requested length.</td></tr>
 </table>
@@ -206,6 +218,8 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   percentage points. <b>This</b> is the column that ranks the name within its sector.</td></tr>
 <tr><td>Quality / Qual. rank % / Red flags</td><td>Score (0–100), rank across all scored
   stocks and the red flags found. Shown whenever data exists — also with the step off.</td></tr>
+<tr><td>Channel σ</td><td>Distance of the close from the regression line in standard
+  deviations (only with the channel step on).</td></tr>
 <tr><td>Price / Currency</td><td>Last simulated close in the listing currency —
   <b>not</b> converted. LSE names are quoted in pence (GBp).</td></tr>
 <tr><td>Signal</td><td>Type and date of the last marker. <code>⚡</code> means the signal sits

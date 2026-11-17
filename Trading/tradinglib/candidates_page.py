@@ -211,6 +211,23 @@ class CandidatesPage:
                     int(opt.get('quality_top_pct') or 15), step=5,
                     help=t('cand.quality_top_pct_help'))
 
+                c1, c2, c3, c4 = st.columns(4)
+                use_sdc = c1.checkbox(t('cand.use_sdc'),
+                                      value=bool(opt.get('use_sdc')),
+                                      help=t('cand.use_sdc_help'))
+                sdc_years = c2.number_input(
+                    t('cand.sdc_years'), 1, 30,
+                    int(opt.get('sdc_years') or 10),
+                    help=t('cand.sdc_years_help'))
+                sdc_long = c3.number_input(
+                    t('cand.sdc_long'), -6.0, 6.0,
+                    float(opt.get('sdc_long', -3.0)), step=0.5, format='%.1f',
+                    help=t('cand.sdc_long_help'))
+                sdc_short = c4.number_input(
+                    t('cand.sdc_short'), -6.0, 6.0,
+                    float(opt.get('sdc_short', 1.0)), step=0.5, format='%.1f',
+                    help=t('cand.sdc_short_help'))
+
                 c1, c2 = st.columns(2)
                 with_signal = c1.checkbox(t('cand.with_signal'),
                                           value=bool(opt['with_signal']),
@@ -239,6 +256,8 @@ class CandidatesPage:
             'risk_profile': risk_profile,
             'quality_mode': quality_mode, 'quality_top_pct': int(quality_top_pct),
             'min_trend_score': int(min_trend_score),
+            'use_sdc': use_sdc, 'sdc_years': int(sdc_years),
+            'sdc_long': float(sdc_long), 'sdc_short': float(sdc_short),
             'rank_col': rank_col, 'pool_n': int(pool_n),
             'max_per_sector': int(max_per_sector), 'top_n': int(top_n),
             'with_signal': with_signal, 'only_add': only_add,
@@ -341,6 +360,7 @@ class CandidatesPage:
             t('cand.col_level'): [t(f'cand.lvl_{k}') if k else ''
                                   for k in df.get('level_test', pd.Series([''] * len(df)))],
             t('cand.col_level_gap'): col('level_gap', 2),
+            t('cand.col_sdc_pos'): col('sdc_pos', 2),
             t('cand.col_sector_rsc'): col('sector_rsc', 2),
             t('cand.col_vs_sector'): col('RSC_vs_ETF', 1),
             # Spaltenkopf folgt der gewaehlten Vorsortierung.

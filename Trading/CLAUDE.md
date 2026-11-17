@@ -2200,6 +2200,11 @@ interest (<1,5), cash_burn, losses, surprise (2× negativ, < 200 T alt).
   Expander mit den zwölf Kriterien (Wert, erfüllt/–, Punkte); liest `quality_scores` (`quality_score.load_one`).
 - Kandidaten: Schritt „Qualität“ vor dem Risikoprofil, `quality_mode` off/exclude/top/elite (elite = Stufe 1 ohne Flags, Short: Stufe 4), `quality_top_pct`;
   Short gespiegelt (Stufe 1 raus bzw. untere %). Spalten Qualität/Rang/Warnzeichen, Vorsortierung `quality_pct`.
+- Kandidaten, Schritt „Regressionskanal“ (2026-11-17, nach dem Level-Test): `use_sdc`, `sdc_years`,
+  `sdc_long` (−3) / `sdc_short` (+1) gegen `sdc_pos`. 10 Jahre = gespeicherte Spalten (`sdc_std > 0`),
+  andere Länge oder Sim-DB ohne Spalten → live `sdc.fit_last` je Ticker (`_sdc_live`, 8 Threads,
+  ~30 ms/Ticker, Zeit steckt im Öffnen der yf_*.db). Nicht gemessen. `_latest_rows` liest
+  `asset_simulation_all.db` zuerst — die Spalten kommen dort mit dem nächsten `/all`-Lauf.
 - Neue Eingaben im Sonntagslauf (`get_asset_info.equity_extras`, nur Aktien, 2 Requests mehr je Titel):
   `cashflowSheet` (Jahres-Cashflow JSON), `capitalExpenditures`, `stockBasedCompensation`,
   `revenueGrowthEst`/`revenueGrowthEstNext`/`revenueEstAnalysts`; `fundamentals_history` verfolgt diese
