@@ -56,9 +56,13 @@ _TOLERANCE = pd.Timedelta(days=10)
 _MIN_BARS = 3
 MIN_DRAW_YEARS = 1
 
-# Line colours: regression brown, upper bands in browns, lower bands in greys.
+# Line colours: regression brown, upper bands in browns, lower bands in greys,
+# the middle of the filled channel (between up1 and lo1) dotted black. Hex values:
+# the settings dialog shows a colour picker that needs one (an empty default
+# came up as its fallback blue and was saved like that).
 DEFAULT_COLORS = {'mid': '#8B4513', 'up1': '#A0522D', 'up2': '#D2A679',
-                  'lo1': '#808080', 'lo2': '#B0B0B0', 'fill': '#A0522D'}
+                  'lo1': '#808080', 'lo2': '#B0B0B0', 'center': '#000000',
+                  'fill': '#A0522D'}
 _FILL_OPACITY = 0.12
 
 
@@ -164,19 +168,27 @@ class Sdc(_indicator._Indicator):
                      'label': 'Lower band 2 (- sigma)'},
         'log_scale': {'type': 'bool', 'default': False,
                       'label': 'Logarithmic regression (bands as % distance)'},
-        'color_mid':  {'type': 'color', 'default': '', 'label': 'Regression line color'},
-        'color_up1':  {'type': 'color', 'default': '', 'label': 'Upper band 1 color'},
-        'color_up2':  {'type': 'color', 'default': '', 'label': 'Upper band 2 color'},
-        'color_lo1':  {'type': 'color', 'default': '', 'label': 'Lower band 1 color'},
-        'color_lo2':  {'type': 'color', 'default': '', 'label': 'Lower band 2 color'},
-        'color_fill': {'type': 'color', 'default': '',
-                       'label': 'Fill between upper band 1 and lower band 1'},
+        'color_mid':    {'type': 'color', 'default': DEFAULT_COLORS['mid'],
+                         'label': 'Regression line color'},
+        'color_up1':    {'type': 'color', 'default': DEFAULT_COLORS['up1'],
+                         'label': 'Upper band 1 color'},
+        'color_up2':    {'type': 'color', 'default': DEFAULT_COLORS['up2'],
+                         'label': 'Upper band 2 color'},
+        'color_lo1':    {'type': 'color', 'default': DEFAULT_COLORS['lo1'],
+                         'label': 'Lower band 1 color'},
+        'color_lo2':    {'type': 'color', 'default': DEFAULT_COLORS['lo2'],
+                         'label': 'Lower band 2 color'},
+        'color_center': {'type': 'color', 'default': DEFAULT_COLORS['center'],
+                         'label': 'Channel middle color (dotted, between upper 1 and lower 1)'},
+        'color_fill':   {'type': 'color', 'default': DEFAULT_COLORS['fill'],
+                         'label': 'Fill between upper band 1 and lower band 1'},
     }
 
     def __init__(self, df, symbol="", years=DEFAULT_YEARS, mult_up1=DEFAULT_MULTS[0],
                  mult_up2=DEFAULT_MULTS[1], mult_lo1=DEFAULT_MULTS[2],
                  mult_lo2=DEFAULT_MULTS[3], color_mid='', color_up1='', color_up2='',
-                 color_lo1='', color_lo2='', color_fill='', log_scale=False):
+                 color_lo1='', color_lo2='', color_fill='', log_scale=False,
+                 color_center=''):
         """Initialize the indicator with the provided DataFrame and optional symbol/params."""
         super().__init__(df=df, symbol=symbol)
 
@@ -193,7 +205,8 @@ class Sdc(_indicator._Indicator):
         self.log = (log_scale if isinstance(log_scale, bool)
                     else str(log_scale).strip().lower() in ('1', 'true', 'yes'))
         given = {'mid': color_mid, 'up1': color_up1, 'up2': color_up2,
-                 'lo1': color_lo1, 'lo2': color_lo2, 'fill': color_fill}
+                 'lo1': color_lo1, 'lo2': color_lo2, 'center': color_center,
+                 'fill': color_fill}
         self.colors = {k: (given[k] or v) for k, v in DEFAULT_COLORS.items()}
         self.close = pd.Series(dtype=float)
         self.data()
@@ -241,7 +254,7 @@ class Sdc(_indicator._Indicator):
             self.df[column] = projected[column].to_numpy()
 
     def add_fig(self):
-        """The channel fitted at the chart's last bar: five straight lines, one fill."""
+        """The channel fitted at the chart's last bar: six lines, one fill."""
         self.fig = go.Figure()
         try:
             self.df = self.df.reset_index()
@@ -268,6 +281,8 @@ class Sdc(_indicator._Indicator):
         bands = {
             'up1': price(line + up1 * std), 'up2': price(line + up2 * std),
             'lo1': price(line - lo1 * std), 'lo2': price(line - lo2 * std),
+            # Middle of the filled channel: with +1/-3 that is the regression - 1 sigma.
+            'center': price(line + (up1 - lo1) / 2 * std),
         }
         line = price(line)
         # One polygon: the channel is straight, a per-session split only leaves
@@ -285,6 +300,7 @@ class Sdc(_indicator._Indicator):
             (bands['up2'], f'SDC +{up2:g}σ', c['up2'], 1, 'dash'),
             (bands['lo1'], f'SDC −{lo1:g}σ', c['lo1'], 1, 'dash'),
             (bands['lo2'], f'SDC −{lo2:g}σ', c['lo2'], 1, 'dash'),
+            (bands['center'], 'SDC channel middle', c['center'], 1, 'dot'),
         )
         for y, name, color, width, dash in traces:
             self.fig.add_trace(go.Scatter(x=x, y=y, name=name, showlegend=False,

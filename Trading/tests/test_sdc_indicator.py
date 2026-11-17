@@ -76,7 +76,7 @@ def test_overlay_on_weekly_chart_bars(monkeypatch):
     assert ind.df['sdc_mid'].notna().any()
     fig = ind.add_fig()
     lines = [t for t in fig.data if t.name and t.name.startswith('SDC') and t.name != 'SDC fill']
-    assert len(lines) == 5 and any('2.5σ' in t.name for t in lines)
+    assert len(lines) == 6 and any('2.5σ' in t.name for t in lines)
     mid = np.asarray(lines[0].y, dtype=float)
     # Drawn only over the fit window; the rest of the chart stays empty.
     assert np.isnan(mid).any() and np.isfinite(mid).any()
@@ -152,4 +152,21 @@ def test_drawing_under_copy_on_write(monkeypatch):
     monkeypatch.setattr(four_ps, 'load_daily', lambda t, db_path=None: pd.DataFrame({'Close': c}))
     df = pd.DataFrame({'Close': c.to_numpy()}, index=c.index.rename('Date'))
     with pd.option_context('mode.copy_on_write', True):
-        assert len(sdc.Sdc(df, symbol='X').add_fig().data) == 6
+        assert len(sdc.Sdc(df, symbol='X').add_fig().data) == 7
+
+
+def test_channel_middle_is_dotted_halfway_between_upper1_and_lower1(monkeypatch):
+    ind = _short(monkeypatch, 3)
+    fig = ind.add_fig()
+    by = {t.name.split(' (')[0]: t for t in fig.data}
+    up1 = np.asarray(by['SDC +1σ'].y, dtype=float)
+    lo1 = np.asarray(by['SDC −3σ'].y, dtype=float)
+    center = by['SDC channel middle']
+    assert center.line.dash == 'dot' and center.line.color == '#000000'
+    np.testing.assert_allclose(np.asarray(center.y, dtype=float), (up1 + lo1) / 2)
+
+
+def test_color_defaults_are_hex_for_the_picker():
+    for key, spec in sdc.Sdc.params.items():
+        if spec['type'] == 'color':
+            assert spec['default'].startswith('#') and len(spec['default']) == 7, key

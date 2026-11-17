@@ -9,6 +9,10 @@ import pandas
 import numpy as np
 
 from streamlit_authenticator import Authenticate
+from tradinglib import auth_config_io
+# The library rewrites config.yaml on every cookie login; with several tabs
+# reconnecting after a restart a reader caught the truncated file. See module.
+auth_config_io.install()
 from tradinglib import (
     portfolio as po, tiny_chart as tc, tools as ts, admin, market_map as mm, ticker_tools as tt,
     main_page as mp,
@@ -319,8 +323,7 @@ class TradingApp:
         
     def load_config(self):
         """Parse config.yaml and return the configuration dict."""
-        with open(ts.Tools().get_path('', self.config_file)) as file:
-            config = yaml.load(file, Loader=SafeLoader)
+        config = auth_config_io.read_config(ts.Tools().get_path('', self.config_file))
         self._warn_insecure_defaults(config)
         return config
 
