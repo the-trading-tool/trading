@@ -53,8 +53,10 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
   <td>Optional. <b>Warnzeichen ausschließen</b> entfernt Aktien mit hoher Verschuldung,
   schwacher Zinsdeckung, Cash-Verbrauch, Verlusten ohne operativen Cashflow oder zwei
   verfehlten Gewinnschätzungen in Folge; Werte ohne Score (ETFs, Indizes) bleiben.
-  <b>Nur die oberen %</b> behält das beste Segment nach sektor-relativem Rang. Bei Short
-  gespiegelt (Stufe-1-Werte raus bzw. die unteren %).</td>
+  <b>Nur die oberen %</b> behält das beste Segment nach sektor-relativem Rang.
+  <b>Nur Elite</b> behält Stufe 1 (Score ab 85) ohne Warnzeichen — ein fester Schnitt statt
+  eines Rangs, die Länge der Liste schwankt also mit der Datenlage. Bei Short gespiegelt
+  (Stufe-1-Werte raus, die unteren % bzw. nur Stufe 4).</td>
   <td><code>quality_scores</code> (asset_info.db)</td></tr>
 <tr><td><b>Risikoprofil</b></td>
   <td>Schneidet auf die Titel zu, die zum gewählten Profil passen (ATR im Verhältnis
@@ -190,7 +192,7 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <tr><td>Höchstens je Sektor</td><td>Verhindert, dass ein Sektor die ganze Liste füllt.
   0 = ohne Begrenzung.</td></tr>
 <tr><td>Qualität / Obere %</td><td>Schaltet den Qualitäts-Schritt (aus, Warnzeichen
-  ausschließen, nur die oberen %) und legt den Anteil fest.</td></tr>
+  ausschließen, nur die oberen %, nur Elite) und legt den Anteil für „obere %“ fest.</td></tr>
 <tr><td>Nur mit Einstiegssignal</td><td>Behält nur Werte, deren letzter Marker ein Einstieg
   war. Kürzt die Liste unter die eingestellte Länge.</td></tr>
 </table>

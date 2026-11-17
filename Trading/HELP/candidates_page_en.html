@@ -52,7 +52,9 @@ per name, and the live signal path computes one name at a time.</p>
   <td>Optional. <b>Exclude red flags</b> removes stocks with high leverage, weak interest
   cover, cash burn, losses without operating cash flow or two missed earnings estimates in a
   row; stocks without a score (ETFs, indices) stay. <b>Top % only</b> keeps the best segment
-  by sector-relative rank. Mirrored for short (tier-1 names out, or the bottom %).</td>
+  by sector-relative rank. <b>Elite only</b> keeps tier 1 (score 85 or more) without red
+  flags — a fixed cut instead of a rank, so the list length varies with the data. Mirrored
+  for short (tier-1 names out, the bottom %, or tier 4 only).</td>
   <td><code>quality_scores</code> (asset_info.db)</td></tr>
 <tr><td><b>Risk profile</b></td>
   <td>Cuts down to the names that fit the selected profile (ATR relative to price).
@@ -186,7 +188,7 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
 <tr><td>At most per sector</td><td>Stops one sector from filling the whole list.
   0 = no cap.</td></tr>
 <tr><td>Quality / Top %</td><td>Switches the quality step (off, exclude red flags, top %
-  only) and sets the share.</td></tr>
+  only, elite only) and sets the share for “top %”.</td></tr>
 <tr><td>Only with an entry signal</td><td>Keeps names whose most recent marker was an entry.
   Shortens the list below the requested length.</td></tr>
 </table>

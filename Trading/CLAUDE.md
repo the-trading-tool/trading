@@ -2198,7 +2198,7 @@ interest (<1,5), cash_burn, losses, surprise (2× negativ, < 200 T alt).
   Gerechnet am Ende jedes `get_asset_info.py`-Laufs; `python -m tradinglib.quality_score [/update] [/show:T]`.
 - Asset Viewer, Tab „Fundamental“ oben: Score, Stufe, Sektor-Rang, Datenbasis, Warnzeichen und ein
   Expander mit den zwölf Kriterien (Wert, erfüllt/–, Punkte); liest `quality_scores` (`quality_score.load_one`).
-- Kandidaten: Schritt „Qualität“ vor dem Risikoprofil, `quality_mode` off/exclude/top, `quality_top_pct`;
+- Kandidaten: Schritt „Qualität“ vor dem Risikoprofil, `quality_mode` off/exclude/top/elite (elite = Stufe 1 ohne Flags, Short: Stufe 4), `quality_top_pct`;
   Short gespiegelt (Stufe 1 raus bzw. untere %). Spalten Qualität/Rang/Warnzeichen, Vorsortierung `quality_pct`.
 - Neue Eingaben im Sonntagslauf (`get_asset_info.equity_extras`, nur Aktien, 2 Requests mehr je Titel):
   `cashflowSheet` (Jahres-Cashflow JSON), `capitalExpenditures`, `stockBasedCompensation`,

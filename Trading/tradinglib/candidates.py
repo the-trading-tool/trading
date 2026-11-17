@@ -122,7 +122,7 @@ RANK_COLUMNS = ('sortino', 'sharpe',
                 'ewo', 'relvol_ratio', 'fps_rs', 'trendScore', 'riskScore',
                 'quality_pct')
 
-QUALITY_MODES = ('off', 'exclude', 'top')
+QUALITY_MODES = ('off', 'exclude', 'top', 'elite')
 QUALITY_COLUMNS = ('quality_score', 'quality_tier', 'quality_sector', 'quality_pct',
                    'quality_flags', 'quality_n_flags', 'quality_avail')
 
@@ -404,8 +404,10 @@ def _apply_quality(df, opt, direction, db_path, step):
     Long: 'exclude' drops red-flagged equities and keeps rows without a score
     (ETFs, indices, no data) -- the step removes known problems, it does not
     demand proof. 'top' keeps ``quality_pct >= 100 - quality_top_pct`` without
-    flags; unscored rows go. Short mirrors it: 'exclude' drops tier 1 (the
-    compounders), 'top' keeps the bottom ``quality_top_pct`` percent.
+    flags; unscored rows go. 'elite' keeps tier 1 (score >= 85) without flags,
+    an absolute cut instead of a rank. Short mirrors it: 'exclude' drops tier 1
+    (the compounders), 'top' keeps the bottom ``quality_top_pct`` percent,
+    'elite' keeps tier 4.
     """
     try:
         from tradinglib import quality_score as qs
@@ -437,6 +439,11 @@ def _apply_quality(df, opt, direction, db_path, step):
             note = (f"{int((flags > 0).sum())} mit Warnzeichen entfernt, "
                     f"{unscored} ohne Score behalten")
             nkey, args = 'note_quality_exclude', {'n': int((flags > 0).sum()), 'u': unscored}
+        elif mode == 'elite':
+            mask = (tier == 1) & (flags == 0)
+            n_flagged = int(((tier == 1) & (flags > 0)).sum())
+            note = f"nur Elite (Stufe 1), {n_flagged} Elite-Werte mit Warnzeichen entfernt"
+            nkey, args = 'note_quality_elite', {'f': n_flagged}
         else:
             mask = (rank >= 100 - pct) & (flags == 0)
             note = f"obere {pct:.0f} % nach Sektor-Rang, ohne Warnzeichen"
@@ -446,6 +453,10 @@ def _apply_quality(df, opt, direction, db_path, step):
             mask = tier != 1
             note = f"{int((tier == 1).sum())} Elite-Werte (Stufe 1) entfernt"
             nkey, args = 'note_quality_exclude_short', {'n': int((tier == 1).sum())}
+        elif mode == 'elite':
+            mask = tier == 4
+            note = "nur Stufe 4 (Risiko)"
+            nkey, args = 'note_quality_elite_short', {}
         else:
             mask = rank <= pct
             note = f"untere {pct:.0f} % nach Sektor-Rang"

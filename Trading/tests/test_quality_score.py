@@ -177,6 +177,23 @@ def test_funnel_short_mirrors(monkeypatch):
     assert _funnel(monkeypatch, 'top', 'short')[0] == ['C']
 
 
+def test_funnel_elite_is_tier_one_without_flags(monkeypatch):
+    kept, steps = _funnel(monkeypatch, 'elite')
+    assert kept == ['A']                       # D is tier 1 but flagged, ETF unscored
+    assert steps[0][-1] == 'note_quality_elite'
+    assert _funnel(monkeypatch, 'elite', 'short')[0] == ['C']
+
+
+def test_funnel_modes_have_labels():
+    from pathlib import Path
+    from tradinglib import candidates as cand
+    root = Path(__file__).resolve().parent.parent / 'locales'
+    for lang in ('de', 'en'):
+        d = json.loads((root / f'{lang}.json').read_text(encoding='utf-8'))
+        assert all(f'cand.qmode_{m}' in d for m in cand.QUALITY_MODES)
+        assert {'cand.note_quality_elite', 'cand.note_quality_elite_short'} <= set(d)
+
+
 def test_funnel_off_only_adds_columns(monkeypatch):
     kept, steps = _funnel(monkeypatch, 'off')
     assert kept == ['A', 'B', 'C', 'D', 'ETF'] and not steps
