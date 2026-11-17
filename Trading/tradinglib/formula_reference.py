@@ -45,6 +45,8 @@ GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
              'mtt_high52', 'mtt_low52')),
     ('scr', ('scr_1mo', 'scr_3mo', 'scr_eoy', 'scr_buy', 'scr_sell')),
     ('earnings', ('eps_surprise', 'eps_surprise_prev', 'eps_days')),
+    ('sdc', ('sdc_pos', 'sdc_mid', 'sdc_std', 'sdc_r', 'sdc_up1', 'sdc_up2', 'sdc_lo1',
+             'sdc_lo2')),
     ('misc', ('hor_val', 'hor_threshold', 'fvg', 'qtrend_entry_price')),
     ('risk', ('vola', 'logVola', 'semiVola', 'atr', 'logRet', 'sharpe', 'sortino', 'riskScore',
               'riskBucket', 'stop_loss', 'take_profit', 'buySell')),

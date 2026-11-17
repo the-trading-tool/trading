@@ -295,6 +295,7 @@ _INDICATOR_COLUMN_HINTS = {
     'bol':    ('bol_',),
     'dema':   ('dema_',),
     'don':    ('don_',),
+    'sdc':    ('sdc_',),
     'sqz':    ('sqz_', 'mmm_'),
     'obd':    ('obd_', 'oft_'),
     'bos':    ('bos_',),

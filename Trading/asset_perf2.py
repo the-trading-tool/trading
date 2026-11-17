@@ -77,6 +77,12 @@ INDICATOR_BACKFILL_MAP: dict = {
     # (1 = first day after the report date, 0 = no report known). Point in time
     # from fundamentals_quarterly's real release dates; measured 2026-11-16.
     'eps':     ['eps_surprise', 'eps_surprise_prev', 'eps_days'],
+    # Standard deviation channel (tradinglib/indicator/sdc.py, port of the TV
+    # "Std Dev Chn"): linear regression of the close over 10 years ending at each
+    # day, bands at +1/+2/-3/-4 sigma by default. Causal; days with less than
+    # the full window of local history are stored as 0 (check sdc_std > 0).
+    'sdc':     ['sdc_mid', 'sdc_std', 'sdc_pos', 'sdc_r',
+                'sdc_up1', 'sdc_up2', 'sdc_lo1', 'sdc_lo2'],
     # Raw OHLC values copied straight from local OHLCV (no indicator to run).
     # Lets `/backfill:ohlc` populate Open (new) and refresh High/Low on existing rows.
     'ohlc':    ['Open', 'High', 'Low'],
@@ -720,7 +726,7 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
             pdict[_prof_col] = 0.0 if _prof_val is None or pd.isna(_prof_val) else float(_prof_val)
 
         for _mtt_col in (INDICATOR_BACKFILL_MAP['mtt'] + INDICATOR_BACKFILL_MAP['rft']
-                         + INDICATOR_BACKFILL_MAP['eps']):
+                         + INDICATOR_BACKFILL_MAP['eps'] + INDICATOR_BACKFILL_MAP['sdc']):
             _mtt_val = DataUtils.safe_last(df, _mtt_col, default=0)
             pdict[_mtt_col] = 0.0 if _mtt_val is None or pd.isna(_mtt_val) else float(_mtt_val)
 
@@ -808,7 +814,7 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt','rft','eps'])
+    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt','rft','eps','sdc'])
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling
