@@ -179,19 +179,20 @@ class AssetCardPage:
         key, weeks = self._select(side)
         self.render_market(key, weeks)
 
-    def render_market(self, key: str, weeks: int = 52) -> None:
-        """Scorecard eines festen Marktes (ohne Auswahl) — auch fuer den Asset Viewer."""
-        st.markdown(_CSS, unsafe_allow_html=True)
+    def market_card(self, key: str, weeks: int = 52) -> dict | None:
+        """Everything the market scorecard shows, without drawing it.
+
+        Shared by :meth:`render_market` and the HTML asset report, so both show
+        the same numbers. None when there is no price series for the market.
+        """
         cd.ensure_fresh()
         md.ensure_fresh()
         cot_date = cd.latest_report_date()
-        with st.spinner(t("asset.loading")):
-            s, src, cot_hist, obs, hist, n_stored = _asset_data(
-                key, dt.date.today().isoformat(), cot_date.isoformat() if cot_date else "",
-                md.get_meta("last_success") or "", weeks, _store_stamp())
+        s, src, cot_hist, obs, hist, n_stored = _asset_data(
+            key, dt.date.today().isoformat(), cot_date.isoformat() if cot_date else "",
+            md.get_meta("last_success") or "", weeks, _store_stamp())
         if s.empty:
-            st.warning(t("trend.missing", markets=t(f"cot.mkt_{key}")))
-            return
+            return None
         sign = td.SIGN.get(key, 1)
         trend = ac.trend_at(s, dt.date.today(), sign)
         cot_row = cot_hist.iloc[-1] if not cot_hist.empty else None
@@ -201,8 +202,26 @@ class AssetCardPage:
         cot_score = None if cot_row is None else float(cot_row["score"])
         total = ac.total_of(cot_score, macro_score, trend["score"])
         n_comp = ac.n_components(cot_score, macro_score, trend["score"])
-        bias = tot.bias_for(total, n_comp, trend["score"], trend["p_sma200"])
-        unconfirmed = tot.unconfirmed(total, trend["score"], trend["p_sma200"])
+        return {
+            "s": s, "src": src, "hist": hist, "n_stored": n_stored, "sign": sign, "trend": trend,
+            "cot_row": cot_row, "macro_lat": macro_lat, "macro_tab": macro_tab,
+            "macro_score": macro_score, "cot_score": cot_score, "total": total, "n_comp": n_comp,
+            "bias": tot.bias_for(total, n_comp, trend["score"], trend["p_sma200"]),
+            "unconfirmed": tot.unconfirmed(total, trend["score"], trend["p_sma200"]),
+        }
+
+    def render_market(self, key: str, weeks: int = 52) -> None:
+        """Scorecard eines festen Marktes (ohne Auswahl) — auch fuer den Asset Viewer."""
+        st.markdown(_CSS, unsafe_allow_html=True)
+        with st.spinner(t("asset.loading")):
+            c = self.market_card(key, weeks)
+        if c is None:
+            st.warning(t("trend.missing", markets=t(f"cot.mkt_{key}")))
+            return
+        s, src, hist, n_stored, sign, trend = c["s"], c["src"], c["hist"], c["n_stored"], c["sign"], c["trend"]
+        cot_row, macro_lat, macro_tab = c["cot_row"], c["macro_lat"], c["macro_tab"]
+        macro_score, cot_score, total, n_comp = c["macro_score"], c["cot_score"], c["total"], c["n_comp"]
+        bias, unconfirmed = c["bias"], c["unconfirmed"]
 
         st.caption(t("asset.caption", source=src) + (" · " + t("asset.inverted") if sign < 0 else ""))
         left, right = st.columns([2, 3])

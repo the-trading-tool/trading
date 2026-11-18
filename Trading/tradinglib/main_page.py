@@ -381,7 +381,7 @@ class render_mainpage(fetch_data.FetchData):
     def _render_asset_report_button(self, region, ticker, longname, interval, period,
                                     info_text, asset_info_block, signals_block, season_block,
                                     seasonality_enabled=False, market='', asset_sector='',
-                                    news_items=None):
+                                    news_items=None, index_name=''):
         """Build + offer the self-contained HTML report (Trend chart, key data, info,
         seasonality, AI analysis) for download; the user prints it to PDF in the browser.
 
@@ -406,8 +406,11 @@ class render_mainpage(fetch_data.FetchData):
                             logger.debug("seasonality figure failed", exc_info=True)
                     ai = st.session_state.get(f'_asset_ai_result_{ticker}') or {}
                     labels = {k: t(f'report.{k}') for k in
-                              ('title', 'trend', 'keydata', 'info', 'seasonality',
-                               'signals', 'ai', 'generated', 'footer')}
+                              ('title', 'trend', 'scorecard', 'keydata', 'info', 'fundamentals',
+                               'seasonality', 'signals', 'ai', 'generated', 'footer')}
+                    from tradinglib import report_sections as rs
+                    scorecard_items = rs.scorecard_items(ticker, index_name)
+                    fundamentals_items = rs.fundamentals_items(ticker)
                     trend_fig = self.t_chart.fig if getattr(self, 't_chart', None) else None
                     from tradinglib import market_overview_page as mo
                     rate_context = mo.get_rate_context(interval, period, self.sys_conf)
@@ -435,6 +438,8 @@ class render_mainpage(fetch_data.FetchData):
                         signals_text=signals_block or '',
                         ai_analysis=ai.get('analysis', ''), ai_ts=ai.get('ts', ''),
                         ai_model=ai.get('model', ''),
+                        scorecard_items=scorecard_items,
+                        fundamentals_items=fundamentals_items,
                         labels=labels,
                     )
                     st.session_state[report_key] = html_doc
@@ -1451,7 +1456,7 @@ class render_mainpage(fetch_data.FetchData):
                                     interval, period, info_text, asset_info_block,
                                     signals_block, season_block, seasonality_enabled,
                                     market=market, asset_sector=asset_sector,
-                                    news_items=news_items,
+                                    news_items=news_items, index_name=fts.index_name,
                                 )
                             except Exception as exc:
                                 logger.exception("asset AI tab failed")

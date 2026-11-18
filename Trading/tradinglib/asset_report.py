@@ -202,9 +202,23 @@ ul.news a { color: #2158c4; text-decoration: none; }
 ul.news .newsmeta { color: #8b93a3; font-size: 11.5px; margin-top: 2px; }
 .foot { margin-top: 26px; padding-top: 10px; border-top: 1px solid #e3e7ee;
        color: #8b93a3; font-size: 11px; }
+section h3 { font-size: 14px; color: #2a3446; margin: 14px 0 6px; }
+.rs-cols { display: grid; grid-template-columns: 2fr 3fr; gap: 18px; align-items: start; }
+.rs-cols.rs-even { grid-template-columns: 1fr 1fr; }
+.rs-cols3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.rs-cards { display: flex; flex-wrap: wrap; gap: 22px; justify-content: space-around; margin: 10px 0; }
+.rs-note { color: #6b7280; font-size: 11.5px; margin: 4px 0 8px; }
+table.rs-tab { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 4px 0 8px; }
+table.rs-tab th { text-align: left; color: #46506a; font-weight: 600; background: #f4f6fa;
+       padding: 4px 8px; }
+table.rs-tab td { padding: 4px 8px; border-top: 1px solid #f0f2f6; }
+@media (max-width: 800px) {
+  .rs-cols, .rs-cols.rs-even, .rs-cols3 { grid-template-columns: 1fr; }
+}
 @media print {
   body { padding: 0; }
   section { page-break-inside: avoid; }
+  section.long { page-break-inside: auto; }
   .no-print { display: none; }
 }
 """
@@ -217,15 +231,20 @@ def build_asset_report_html(
     season_fig=None, season_text: str = '', signals_text: str = '',
     context_text: str = '', news_items: list | None = None,
     ai_analysis: str = '', ai_ts: str = '', ai_model: str = '',
+    scorecard_items: list | None = None, fundamentals_items: list | None = None,
     labels: dict | None = None,
 ) -> str:
     """Assemble the self-contained HTML report. Sections with no data are omitted.
 
+    scorecard_items / fundamentals_items: the Asset Viewer tabs as report items
+    (HTML strings and Plotly figures, see :mod:`tradinglib.report_sections`).
     labels: optional dict of section titles for i18n; falls back to German defaults.
     """
     L = {
         'title':       'Asset-Report',
         'trend':       'Trend-Chart',
+        'scorecard':   'Scorecard',
+        'fundamentals': 'Fundamentaldaten',
         'keydata':     'Kennzahlen',
         'info':        'Unternehmens-/Asset-Info',
         'seasonality': 'Saisonalität',
@@ -253,10 +272,28 @@ def build_asset_report_html(
 
     parts = [f'<h1>{head}</h1>', f'<div class="sub">{" · ".join(subparts)}</div>']
 
-    # 1. Trend chart (inlines plotly.js)
-    trend_html = _fig_to_html(trend_fig, include_js=True)
+    # plotly.js is inlined with the first figure that renders, whichever section
+    # it is in; every later figure reuses it.
+    js_loaded = [False]
+
+    def fig_html(fig) -> str:
+        out = _fig_to_html(fig, include_js=not js_loaded[0])
+        if out:
+            js_loaded[0] = True
+        return out
+
+    def items_html(items) -> str:
+        return ''.join(fig_html(i) if isinstance(i, go.Figure) else str(i) for i in items or [])
+
+    # 1. Trend chart
+    trend_html = fig_html(trend_fig)
     if trend_html:
         parts.append(f'<section><h2>{L["trend"]}</h2>{trend_html}</section>')
+
+    # 1b. Scorecard (Asset Viewer tab)
+    if scorecard_items:
+        parts.append(f'<section class="long"><h2>{L["scorecard"]}</h2>'
+                     f'{items_html(scorecard_items)}</section>')
 
     # 2. Key data
     kv = _keydata_to_html(keydata_text)
@@ -268,9 +305,13 @@ def build_asset_report_html(
         parts.append(f'<section><h2>{L["info"]}</h2>'
                      f'<div class="info">{html.escape(info_text.strip())}</div></section>')
 
-    # 4. Seasonality — reuses the already-loaded plotly.js, unless the trend chart
-    #    was absent (then this figure must inline the library itself).
-    season_html = _fig_to_html(season_fig, include_js=not bool(trend_html))
+    # 3b. Fundamentals (Asset Viewer tab)
+    if fundamentals_items:
+        parts.append(f'<section class="long"><h2>{L["fundamentals"]}</h2>'
+                     f'{items_html(fundamentals_items)}</section>')
+
+    # 4. Seasonality
+    season_html = fig_html(season_fig)
     if season_html or (season_text and season_text.strip()):
         body = season_html
         if season_text and season_text.strip():

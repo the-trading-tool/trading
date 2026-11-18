@@ -1,7 +1,7 @@
 """batch_reports.py — sequential HTML-report generation for a list of assets.
 
-Generates one self-contained HTML report per ticker (Trend chart, key data, info,
-seasonality, signals, market context, AI analysis) — the same report the Asset
+Generates one self-contained HTML report per ticker (Trend chart, scorecard, key
+data, info, fundamentals, seasonality, signals, market context, AI analysis) — the same report the Asset
 Viewer produces on demand, but batched over the "Monitored assets" list.
 
 The AI step is rate-limited on free tiers. When a provider limit is hit after all
@@ -187,10 +187,16 @@ def build_report_html_for_ticker(
         ai_ts       = dt.datetime.now().strftime('%d.%m.%Y %H:%M')
         ai_ok       = True
 
-    # 5) Assemble the self-contained HTML document.
+    # 5) Asset Viewer tabs Scorecard + Fundamental as report sections (empty
+    #    when the tab would show nothing, e.g. Fundamental for an ETF).
+    from tradinglib import report_sections as rs
+    scorecard_items = rs.scorecard_items(ticker, idx_name)
+    fundamentals_items = rs.fundamentals_items(ticker)
+
+    # 6) Assemble the self-contained HTML document.
     labels = {k: t(f'report.{k}') for k in
-              ('title', 'trend', 'keydata', 'info', 'seasonality',
-               'signals', 'ai', 'generated', 'footer')}
+              ('title', 'trend', 'scorecard', 'keydata', 'info', 'fundamentals',
+               'seasonality', 'signals', 'ai', 'generated', 'footer')}
     html_doc = ar.build_asset_report_html(
         ticker=ticker, name=longname, interval=interval, period=period,
         generated_ts=dt.datetime.now().strftime('%d.%m.%Y %H:%M'),
@@ -201,6 +207,7 @@ def build_report_html_for_ticker(
         season_fig=season_fig, season_text=season_block or '',
         signals_text=signals_block or '',
         ai_analysis=ai_analysis, ai_ts=ai_ts, ai_model=ai_model,
+        scorecard_items=scorecard_items, fundamentals_items=fundamentals_items,
         labels=labels,
     )
     return {'html': html_doc, 'name': longname, 'short': (_val('shortName') or longname),
