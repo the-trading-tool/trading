@@ -3298,5 +3298,10 @@
   "cand.step_sdc": "Regression channel",
   "cand.note_sdc_stored": "sdc_pos {op} {thr}σ, {years} y (stored), {n} of {total} with a channel",
   "cand.note_sdc_live": "sdc_pos {op} {thr}σ, {years} y (fitted live), {n} of {total} with a channel",
+  "cand.sec_direction": "Direction",
+  "cand.sdc_min_quality": "Quality >",
+  "cand.sdc_min_quality_help": "Quality cut of the channel step (quality score 0–100). Long keeps only names scoring above this value, short (mirrored) only names below 100 minus this value. Names without a score (ETFs, indices, missing data) drop out. 0 = off. A snapshot, not measured.",
+  "cand.step_sdc_quality": "Channel quality",
+  "cand.note_sdc_quality": "quality score {op} {v}, {u} without a score removed",
   "cand.col_sdc_pos": "Channel σ"
 }

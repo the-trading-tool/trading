@@ -81,7 +81,9 @@ braucht eine Kursreihe je Titel, und der Live-Signalpfad rechnet einzeln.</p>
   (Vorgabe −3 = unteres Band), Short auf oder über der Short-Schwelle (Vorgabe +1 = oberes
   Band). Bei 10 Jahren aus den gespeicherten Spalten, bei jeder anderen Länge live aus den
   Tageskursen der bis hierhin verbliebenen Werte — dieselbe Rechnung wie im Chart.
-  Ohne volle Historie über die Länge kein Kanal, der Wert fällt raus.</td>
+  Ohne volle Historie über die Länge kein Kanal, der Wert fällt raus. Mit „Qualität &gt;“
+  vorher ein eigener Schritt „Kanal-Qualität“: Long behält nur Werte mit Qualitäts-Score über
+  dem Wert, Short nur unter 100 minus dem Wert; Werte ohne Score fallen raus.</td>
   <td><code>sdc_pos</code>/<code>sdc_std</code> bzw. Tageskurse</td></tr>
 <tr><td><b>Sektor mit Zufluss</b></td>
   <td>Behält nur Sektoren, deren ETF relative Stärke zeigt (Mansfield-RSC); bei Short
@@ -201,9 +203,10 @@ die Roh-OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   0 = ohne Begrenzung.</td></tr>
 <tr><td>Qualität / Obere %</td><td>Schaltet den Qualitäts-Schritt (aus, Warnzeichen
   ausschließen, nur die oberen %, nur Elite) und legt den Anteil für „obere %“ fest.</td></tr>
-<tr><td>Regressionskanal / Länge / Long: σ ≤ / Short: σ ≥</td><td>Schaltet den
+<tr><td>Regressionskanal / Länge / Long: σ ≤ / Short: σ ≥ / Qualität &gt;</td><td>Schaltet den
   Kanal-Schritt, legt die Regressionslänge in Jahren fest (10 = gespeicherte Spalten, schnell;
   sonst live, je Wert ein Lesezugriff auf die Tageskurse) und die Schwellen je Richtung.
+  „Qualität &gt;“ ist der Mindest-Score (0–100) für Long, bei Short gespiegelt; 0 = aus.
   Nicht gemessen — ein Rücksetzer-Filter, kein belegtes Signal.</td></tr>
 <tr><td>Nur mit Einstiegssignal</td><td>Behält nur Werte, deren letzter Marker ein Einstieg
   war. Kürzt die Liste unter die eingestellte Länge.</td></tr>

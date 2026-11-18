@@ -2204,7 +2204,9 @@ interest (<1,5), cash_burn, losses, surprise (2× negativ, < 200 T alt).
   `sdc_long` (−3) / `sdc_short` (+1) gegen `sdc_pos`. 10 Jahre = gespeicherte Spalten (`sdc_std > 0`),
   andere Länge oder Sim-DB ohne Spalten → live `sdc.fit_last` je Ticker (`_sdc_live`, 8 Threads,
   ~30 ms/Ticker, Zeit steckt im Öffnen der yf_*.db). Nicht gemessen. `_latest_rows` liest
-  `asset_simulation_all.db` zuerst — die Spalten kommen dort mit dem nächsten `/all`-Lauf.
+  `asset_simulation_all.db` zuerst — Spalten seit 18.11. in `_all`, `_etp` und 2020–2025 nachgerechnet.
+  `sdc_min_quality` (0 = aus): Schritt `sdc_quality` vor dem Kanal-Fit, Long `quality_score > x`,
+  Short `< 100 − x`, ohne Score raus (Spalten aus `_apply_quality`).
 - Neue Eingaben im Sonntagslauf (`get_asset_info.equity_extras`, nur Aktien, 2 Requests mehr je Titel):
   `cashflowSheet` (Jahres-Cashflow JSON), `capitalExpenditures`, `stockBasedCompensation`,
   `revenueGrowthEst`/`revenueGrowthEstNext`/`revenueEstAnalysts`; `fundamentals_history` verfolgt diese

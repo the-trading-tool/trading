@@ -3298,5 +3298,10 @@
   "cand.step_sdc": "Regressionskanal",
   "cand.note_sdc_stored": "sdc_pos {op} {thr}σ, {years} J. (gespeichert), {n} von {total} mit Kanal",
   "cand.note_sdc_live": "sdc_pos {op} {thr}σ, {years} J. (live gerechnet), {n} von {total} mit Kanal",
+  "cand.sec_direction": "Richtung",
+  "cand.sdc_min_quality": "Qualität >",
+  "cand.sdc_min_quality_help": "Qualitäts-Schnitt im Kanal-Schritt (Qualitäts-Score 0–100). Long behält nur Werte mit Score über diesem Wert, Short (gespiegelt) nur Werte unter 100 minus diesem Wert. Werte ohne Score (ETFs, Indizes, fehlende Daten) fallen raus. 0 = aus. Momentaufnahme, nicht gemessen.",
+  "cand.step_sdc_quality": "Kanal-Qualität",
+  "cand.note_sdc_quality": "Qualitäts-Score {op} {v}, {u} ohne Score entfernt",
   "cand.col_sdc_pos": "Kanal σ"
 }

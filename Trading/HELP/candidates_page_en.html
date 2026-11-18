@@ -79,7 +79,9 @@ per name, and the live signal path computes one name at a time.</p>
   (default −3 = lower band), short at or above the short threshold (default +1 = upper band).
   At 10 years from the stored columns, at any other length fitted live from the daily closes
   of the names left at that point — the same calculation as the chart. Without full history
-  over the length there is no channel and the name drops out.</td>
+  over the length there is no channel and the name drops out. With “Quality &gt;” a step
+  “Channel quality” runs first: long keeps only names with a quality score above the value,
+  short only below 100 minus the value; names without a score drop out.</td>
   <td><code>sdc_pos</code>/<code>sdc_std</code> or daily closes</td></tr>
 <tr><td><b>Sector with inflow</b></td>
   <td>Keeps sectors whose ETF shows relative strength (Mansfield RSC); for short, those
@@ -197,9 +199,10 @@ the raw OHLC <code>Open</code>/<code>High</code>/<code>Low</code>/<code>close</c
   0 = no cap.</td></tr>
 <tr><td>Quality / Top %</td><td>Switches the quality step (off, exclude red flags, top %
   only, elite only) and sets the share for “top %”.</td></tr>
-<tr><td>Regression channel / Length / Long: σ ≤ / Short: σ ≥</td><td>Switches the channel
+<tr><td>Regression channel / Length / Long: σ ≤ / Short: σ ≥ / Quality &gt;</td><td>Switches the channel
   step, sets the regression length in years (10 = stored columns, fast; otherwise live, one
-  read of the daily closes per name) and the threshold per direction. Not measured — a
+  read of the daily closes per name) and the threshold per direction. “Quality &gt;” is the
+  minimum score (0–100) for long, mirrored for short; 0 = off. Not measured — a
   pullback filter, not a proven signal.</td></tr>
 <tr><td>Only with an entry signal</td><td>Keeps names whose most recent marker was an entry.
   Shortens the list below the requested length.</td></tr>

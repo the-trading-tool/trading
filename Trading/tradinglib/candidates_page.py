@@ -34,6 +34,15 @@ _PREFERRED = ['^SPX', '^NDX', '^DJI', '^GDAXI', '^MDAXI', '^SDAXI', '^TECDAX',
 _STATE_KEY = '_cand_result'
 
 
+def _section(title: str) -> None:
+    """Horizontal rule with the funnel step's name above a group of settings."""
+    st.markdown(
+        "<div style='border-top:1px solid rgba(128,128,128,0.35);"
+        "margin:0.5rem 0 0.25rem;padding-top:0.35rem;font-weight:600;"
+        f"font-size:0.92rem'>{title}</div>",
+        unsafe_allow_html=True)
+
+
 def _rank_label(col: str) -> str:
     """Lesbarer Name einer Kennzahl; faellt auf den Spaltennamen zurueck."""
     key = f'cand.rank_{col}'
@@ -108,20 +117,76 @@ class CandidatesPage:
 
         with st.expander(t('cand.filters'), expanded=True):
             with st.form('_cand_form'):
-                c1, c2 = st.columns([0.5, 0.5])
-                direction = c1.radio(
+                # One labelled block per funnel step, in the order the funnel
+                # runs them (candidates.find), so a setting sits next to the
+                # step it drives.
+                _section(t('cand.sec_direction'))
+                direction = st.radio(
                     t('cand.direction'), cand.DIRECTIONS, horizontal=True,
                     index=(list(cand.DIRECTIONS).index(opt['direction'])
                            if opt['direction'] in cand.DIRECTIONS else 0),
                     format_func=lambda d: t(f'cand.dir_{d}'),
                     help=t('cand.direction_help'))
-                trend_mode = c2.selectbox(
-                    t('cand.trend_mode'), cand.TREND_MODES,
-                    index=(list(cand.TREND_MODES).index(opt['trend_mode'])
-                           if opt['trend_mode'] in cand.TREND_MODES else 0),
-                    format_func=lambda m: t(f'cand.trend_{m}'),
-                    help=t('cand.trend_mode_help'))
 
+                _section(t('cand.step_prefilter'))
+                c1, c2 = st.columns([0.8, 0.2])
+                prefilter = c1.text_area(t('cand.prefilter'), opt['prefilter'],
+                                         height=96, help=t('cand.prefilter_help'))
+                prefilter_window = c2.number_input(
+                    t('cand.prefilter_window'), 1, 60,
+                    int(opt.get('prefilter_window') or 1),
+                    help=t('cand.prefilter_window_help'))
+
+                c1, c2 = st.columns([0.7, 0.3])
+                with c1:
+                    _section(t('cand.step_universe'))
+                    universe = st.multiselect(t('cand.universe'), ordered,
+                                              default=universe,
+                                              help=t('cand.universe_help'))
+                with c2:
+                    _section(t('cand.step_isin'))
+                    require_isin = st.checkbox(t('cand.require_isin'),
+                                               value=bool(opt['require_isin']),
+                                               help=t('cand.require_isin_help'))
+
+                _section(t('cand.step_quality'))
+                c1, c2 = st.columns([0.55, 0.45])
+                quality_mode = c1.selectbox(
+                    t('cand.quality_mode'), cand.QUALITY_MODES,
+                    index=(list(cand.QUALITY_MODES).index(opt.get('quality_mode'))
+                           if opt.get('quality_mode') in cand.QUALITY_MODES else 0),
+                    format_func=lambda m: t(f'cand.qmode_{m}'),
+                    help=t('cand.quality_mode_help'))
+                quality_top_pct = c2.number_input(
+                    t('cand.quality_top_pct'), 5, 50,
+                    int(opt.get('quality_top_pct') or 15), step=5,
+                    help=t('cand.quality_top_pct_help'))
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    _section(t('cand.step_risk_profile'))
+                    profile_options = [''] + ['user'] + list(rp.available())
+                    risk_profile = st.selectbox(
+                        t('cand.risk_profile'), profile_options,
+                        index=(profile_options.index(opt['risk_profile'])
+                               if opt.get('risk_profile') in profile_options else 0),
+                        format_func=_profile_label, help=t('cand.risk_profile_help'))
+                with c2:
+                    _section(t('cand.step_trend_score'))
+                    min_trend_score = st.slider(
+                        t('cand.min_trend_score'), 0, 100,
+                        int(opt.get('min_trend_score') or 0), step=5,
+                        help=t('cand.min_trend_score_help'))
+                with c3:
+                    _section(t('cand.step_trend'))
+                    trend_mode = st.selectbox(
+                        t('cand.trend_mode'), cand.TREND_MODES,
+                        index=(list(cand.TREND_MODES).index(opt['trend_mode'])
+                               if opt['trend_mode'] in cand.TREND_MODES else 0),
+                        format_func=lambda m: t(f'cand.trend_{m}'),
+                        help=t('cand.trend_mode_help'))
+
+                _section(t('cand.step_retest'))
                 c1, c2, c3, c4 = st.columns(4)
                 retest = c1.checkbox(t('cand.retest'), value=bool(opt['retest']),
                                      help=t('cand.retest_help'))
@@ -138,80 +203,8 @@ class CandidatesPage:
                                               format='%.1f', disabled=not retest,
                                               help=t('cand.retest_lift_help'))
 
-                c1, c2 = st.columns([0.55, 0.45])
-                universe = c1.multiselect(t('cand.universe'), ordered,
-                                          default=universe,
-                                          help=t('cand.universe_help'))
-                rank_col = c2.selectbox(
-                    t('cand.rank_col'), cand.RANK_COLUMNS,
-                    index=(list(cand.RANK_COLUMNS).index(opt['rank_col'])
-                           if opt['rank_col'] in cand.RANK_COLUMNS else 0),
-                    format_func=_rank_label, help=t('cand.rank_col_help'))
-                c1, c2 = st.columns([0.8, 0.2])
-                prefilter = c1.text_area(t('cand.prefilter'), opt['prefilter'],
-                                         height=96, help=t('cand.prefilter_help'))
-                prefilter_window = c2.number_input(
-                    t('cand.prefilter_window'), 1, 60,
-                    int(opt.get('prefilter_window') or 1),
-                    help=t('cand.prefilter_window_help'))
-
-                c1, c2, c3 = st.columns(3)
-                use_rotation = c1.checkbox(t('cand.use_rotation'),
-                                           value=bool(opt['use_rotation']),
-                                           help=t('cand.use_rotation_help'))
-                min_sector_rsc = c2.number_input(t('cand.min_sector_rsc'),
-                                                 value=float(opt['min_sector_rsc']),
-                                                 step=0.5, format='%.1f',
-                                                 help=t('cand.min_sector_rsc_help'))
-                with c3:
-                    use_rsc = st.checkbox(t('cand.use_rsc'),
-                                          value=bool(opt['use_rsc']),
-                                          help=t('cand.use_rsc_help'))
-                    min_rsc = st.number_input(t('cand.min_rsc'),
-                                              value=float(opt['min_rsc']),
-                                              step=1.0, format='%.1f',
-                                              disabled=not use_rsc,
-                                              help=t('cand.min_rsc_help'))
-
-                c1, c2, c3, c4 = st.columns(4)
-                pool_n = c1.number_input(t('cand.pool_n'), 10, 400,
-                                         int(opt['pool_n']), step=10,
-                                         help=t('cand.pool_n_help'))
-                max_per_sector = c2.number_input(t('cand.max_per_sector'), 0, 20,
-                                                 int(opt['max_per_sector']),
-                                                 help=t('cand.max_per_sector_help'))
-                top_n = c3.number_input(t('cand.top_n'), 1, 100,
-                                        int(opt['top_n']),
-                                        help=t('cand.top_n_help'))
-                require_isin = c4.checkbox(t('cand.require_isin'),
-                                           value=bool(opt['require_isin']),
-                                           help=t('cand.require_isin_help'))
-
-                c1, c2 = st.columns([0.55, 0.45])
-                profile_options = [''] + ['user'] + list(rp.available())
-                risk_profile = c1.selectbox(
-                    t('cand.risk_profile'), profile_options,
-                    index=(profile_options.index(opt['risk_profile'])
-                           if opt.get('risk_profile') in profile_options else 0),
-                    format_func=_profile_label, help=t('cand.risk_profile_help'))
-                min_trend_score = c2.slider(
-                    t('cand.min_trend_score'), 0, 100,
-                    int(opt.get('min_trend_score') or 0), step=5,
-                    help=t('cand.min_trend_score_help'))
-
-                c1, c2 = st.columns([0.55, 0.45])
-                quality_mode = c1.selectbox(
-                    t('cand.quality_mode'), cand.QUALITY_MODES,
-                    index=(list(cand.QUALITY_MODES).index(opt.get('quality_mode'))
-                           if opt.get('quality_mode') in cand.QUALITY_MODES else 0),
-                    format_func=lambda m: t(f'cand.qmode_{m}'),
-                    help=t('cand.quality_mode_help'))
-                quality_top_pct = c2.number_input(
-                    t('cand.quality_top_pct'), 5, 50,
-                    int(opt.get('quality_top_pct') or 15), step=5,
-                    help=t('cand.quality_top_pct_help'))
-
-                c1, c2, c3, c4 = st.columns(4)
+                _section(t('cand.step_sdc'))
+                c1, c2, c3, c4, c5 = st.columns(5)
                 use_sdc = c1.checkbox(t('cand.use_sdc'),
                                       value=bool(opt.get('use_sdc')),
                                       help=t('cand.use_sdc_help'))
@@ -227,15 +220,62 @@ class CandidatesPage:
                     t('cand.sdc_short'), -6.0, 6.0,
                     float(opt.get('sdc_short', 1.0)), step=0.5, format='%.1f',
                     help=t('cand.sdc_short_help'))
+                sdc_min_quality = c5.number_input(
+                    t('cand.sdc_min_quality'), 0, 99,
+                    int(opt.get('sdc_min_quality') or 0), step=5,
+                    help=t('cand.sdc_min_quality_help'))
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    _section(t('cand.step_sector'))
+                    use_rotation = st.checkbox(t('cand.use_rotation'),
+                                               value=bool(opt['use_rotation']),
+                                               help=t('cand.use_rotation_help'))
+                    min_sector_rsc = st.number_input(t('cand.min_sector_rsc'),
+                                                     value=float(opt['min_sector_rsc']),
+                                                     step=0.5, format='%.1f',
+                                                     help=t('cand.min_sector_rsc_help'))
+                with c2:
+                    _section(t('cand.step_pool'))
+                    rank_col = st.selectbox(
+                        t('cand.rank_col'), cand.RANK_COLUMNS,
+                        index=(list(cand.RANK_COLUMNS).index(opt['rank_col'])
+                               if opt['rank_col'] in cand.RANK_COLUMNS else 0),
+                        format_func=_rank_label, help=t('cand.rank_col_help'))
+                    pool_n = st.number_input(t('cand.pool_n'), 10, 400,
+                                             int(opt['pool_n']), step=10,
+                                             help=t('cand.pool_n_help'))
+                with c3:
+                    _section(t('cand.step_rsc'))
+                    use_rsc = st.checkbox(t('cand.use_rsc'),
+                                          value=bool(opt['use_rsc']),
+                                          help=t('cand.use_rsc_help'))
+                    min_rsc = st.number_input(t('cand.min_rsc'),
+                                              value=float(opt['min_rsc']),
+                                              step=1.0, format='%.1f',
+                                              disabled=not use_rsc,
+                                              help=t('cand.min_rsc_help'))
 
                 c1, c2 = st.columns(2)
-                with_signal = c1.checkbox(t('cand.with_signal'),
-                                          value=bool(opt['with_signal']),
-                                          help=t('cand.with_signal_help'))
-                only_add = c2.checkbox(t('cand.only_add'),
-                                       value=bool(opt['only_add']),
-                                       help=t('cand.only_add_help'))
+                with c1:
+                    _section(t('cand.step_best'))
+                    s1, s2 = st.columns(2)
+                    top_n = s1.number_input(t('cand.top_n'), 1, 100,
+                                            int(opt['top_n']),
+                                            help=t('cand.top_n_help'))
+                    max_per_sector = s2.number_input(t('cand.max_per_sector'), 0, 20,
+                                                     int(opt['max_per_sector']),
+                                                     help=t('cand.max_per_sector_help'))
+                with c2:
+                    _section(t('cand.step_signal'))
+                    with_signal = st.checkbox(t('cand.with_signal'),
+                                              value=bool(opt['with_signal']),
+                                              help=t('cand.with_signal_help'))
+                    only_add = st.checkbox(t('cand.only_add'),
+                                           value=bool(opt['only_add']),
+                                           help=t('cand.only_add_help'))
 
+                st.divider()
                 b1, b2, b3 = st.columns([0.4, 0.3, 0.3])
                 run = b1.form_submit_button(t('cand.run'), type='primary',
                                             use_container_width=True)
@@ -258,6 +298,7 @@ class CandidatesPage:
             'min_trend_score': int(min_trend_score),
             'use_sdc': use_sdc, 'sdc_years': int(sdc_years),
             'sdc_long': float(sdc_long), 'sdc_short': float(sdc_short),
+            'sdc_min_quality': int(sdc_min_quality),
             'rank_col': rank_col, 'pool_n': int(pool_n),
             'max_per_sector': int(max_per_sector), 'top_n': int(top_n),
             'with_signal': with_signal, 'only_add': only_add,

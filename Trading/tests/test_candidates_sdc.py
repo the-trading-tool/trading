@@ -100,3 +100,51 @@ def test_locale_keys():
     for lang in ('de', 'en'):
         d = json.loads((root / f'{lang}.json').read_text(encoding='utf-8'))
         assert not keys - set(d), (lang, keys - set(d))
+
+
+def _q_frame():
+    return pd.DataFrame({'ticker': ['GOOD', 'MEH', 'BAD', 'ETF'],
+                         'sdc_pos': [-3.5, -3.2, 1.4, -3.1],
+                         'sdc_std': [5.0, 5.0, 5.0, 5.0],
+                         'quality_score': [82.0, 60.0, 20.0, np.nan]})
+
+
+def test_quality_gate_long_keeps_scores_above_x_and_drops_unscored():
+    steps, step = _steps()
+    out = cand._apply_sdc(_q_frame(), dict(cand.DEFAULTS, sdc_min_quality=70), 'long', 'database', step)
+    assert out['ticker'].tolist() == ['GOOD']
+    (args, kw), _ch = steps[0], steps[1]
+    assert args[0] == 'sdc_quality' and args[2:4] == (4, 1)   # GOOD only; ETF unscored
+    assert args[5] == 'note_sdc_quality' and kw == {'op': '>', 'v': '70', 'u': 1}
+    assert steps[1][0][0] == 'sdc'
+
+
+def test_quality_gate_short_is_mirrored():
+    _s, step = _steps()
+    out = cand._apply_sdc(_q_frame(), dict(cand.DEFAULTS, sdc_min_quality=70), 'short', 'database', step)
+    assert out['ticker'].tolist() == ['BAD']        # score < 30, at or above +1 sigma
+
+
+def test_quality_gate_is_strict_and_off_by_default():
+    steps, step = _steps()
+    out = cand._apply_sdc(_q_frame(), dict(cand.DEFAULTS, sdc_min_quality=82), 'long', 'database', step)
+    assert out.empty                                # 82 is not > 82
+    steps, step = _steps()
+    out = cand._apply_sdc(_q_frame(), dict(cand.DEFAULTS), 'long', 'database', step)
+    assert out['ticker'].tolist() == ['GOOD', 'MEH', 'ETF']
+    assert [a[0] for a, _k in steps] == ['sdc']
+
+
+def test_quality_gate_skips_without_score_data():
+    steps, step = _steps()
+    out = cand._apply_sdc(_frame(), dict(cand.DEFAULTS, sdc_min_quality=70), 'long', 'database', step)
+    assert out['ticker'].tolist() == ['LOW']
+    assert steps[0][0][0] == 'sdc_quality' and steps[0][0][5] == 'note_quality_none'
+
+
+def test_quality_gate_locale_keys():
+    root = Path(__file__).resolve().parents[1] / 'locales'
+    for lang in ('de', 'en'):
+        keys = json.loads((root / f'{lang}.json').read_text(encoding='utf-8'))
+        for k in ('sdc_min_quality', 'sdc_min_quality_help', 'step_sdc_quality', 'note_sdc_quality'):
+            assert f'cand.{k}' in keys, (lang, k)

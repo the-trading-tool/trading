@@ -116,6 +116,10 @@ DEFAULTS = {
     'sdc_years': 10,
     'sdc_long': -3.0,
     'sdc_short': 1.0,
+    # Quality gate of the channel step: long keeps quality_score > x, short
+    # (mirrored) quality_score < 100 - x; names without a score drop out.
+    # 0 = off. Runs before the channel fit, so a live fit has fewer names.
+    'sdc_min_quality': 0,
     'rank_col': 'sortino',
     'pool_n': 60,              # so viele gehen in die Relativstaerke-Messung
     'max_per_sector': 3,       # 0 = ohne Begrenzung
@@ -525,6 +529,37 @@ def _sdc_live(tickers, years, db_path='database'):
         return {t: v for t, v in ex.map(one, tickers) if v is not None}
 
 
+def _apply_sdc_quality(df, opt, direction, step):
+    """Quality gate of the channel step (``sdc_min_quality``, 0 = off).
+
+    Long keeps ``quality_score > x``, short ``quality_score < 100 - x``; rows
+    without a score (ETFs, indices, no data) drop out. The score columns come
+    from _apply_quality, which merges them whenever scores exist; without any
+    score data the gate is skipped, as the quality step does.
+    """
+    x = float(opt.get('sdc_min_quality') or 0)
+    if x <= 0:
+        return df
+    before = len(df)
+    if 'quality_score' not in df.columns:
+        step('sdc_quality', 'Kanal-Qualität', before, before,
+             'keine Qualitätsdaten — übersprungen', 'note_quality_none')
+        return df
+    score = pd.to_numeric(df['quality_score'], errors='coerce')
+    unscored = int(score.isna().sum())
+    if direction == 'long':
+        op, lim = '>', x
+        mask = score > lim
+    else:
+        op, lim = '<', 100 - x
+        mask = score < lim
+    df = df[mask.fillna(False)]
+    step('sdc_quality', 'Kanal-Qualität', before, len(df),
+         f"quality_score {op} {lim:g}, {unscored} ohne Score entfernt",
+         'note_sdc_quality', op=op, v=f"{lim:g}", u=unscored)
+    return df
+
+
 def _apply_sdc(df, opt, direction, db_path, step):
     """Keep closes beyond the chosen sigma line of the regression channel.
 
@@ -532,9 +567,13 @@ def _apply_sdc(df, opt, direction, db_path, step):
     ``sdc_pos >= sdc_short`` (default +1). With the stored length (10 years) the
     columns from asset_simulation are used; they need the full window, NaN is
     stored as 0, so only ``sdc_std > 0`` counts. Any other length -- or a sim DB
-    without the columns -- is fitted live on the remaining tickers.
+    without the columns -- is fitted live on the remaining tickers. The optional
+    quality gate (``sdc_min_quality``) runs first.
     """
     from tradinglib.indicator import sdc
+    df = _apply_sdc_quality(df, opt, direction, step)
+    if df.empty:
+        return df
     years = int(opt.get('sdc_years') or sdc.DEFAULT_YEARS)
     thr = float(opt['sdc_long'] if direction == 'long' else opt['sdc_short'])
     before = len(df)
