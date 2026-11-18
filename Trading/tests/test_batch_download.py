@@ -92,7 +92,8 @@ def test_prefetched_empty_counts_as_no_data(tmp_path, monkeypatch):
     s = tt.StockDataSaver('T')
     monkeypatch.setattr(s, 'fetch_data_dl', lambda *a, **k: (_ for _ in ()).throw(AssertionError('no request')))
     assert s.save_all_intervals(intervals=['1m'], periods=['2d'], prefetched={'1m': pd.DataFrame()}) == ['1m']
-    s.conn.close()
+    s.close_connection()
+    assert not (tmp_path / 'yf_T.db').exists()        # nothing to save, no empty file left behind
 
 
 def test_cli_batch_flag():

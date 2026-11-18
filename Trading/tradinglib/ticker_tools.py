@@ -530,17 +530,40 @@ CREATE TABLE IF NOT EXISTS stock_indices (
 class StockDataSaver(TickerTools):
 
     def __init__(self, ticker, db_path='database', tz_ready=""):
-        """Open/create the per-ticker SQLite database yf_<ticker>.db for OHLCV storage.
+        """Bind to the per-ticker SQLite database yf_<ticker>.db for OHLCV storage.
+
+        The file is created by the first write, not here: opening it up front
+        left a 4 KB file without tables behind for every ticker the provider
+        did not serve (670 of them by 11/2026), and every reader of such a
+        file then failed with "no such table: day_data".
 
         tz_ready: optional IANA timezone name (e.g. 'Europe/Berlin') to convert
         downloaded timestamps into. Leave empty to keep UTC.
         """
-        self.ticker = ticker        
+        self.ticker = ticker
         self.tz_ready = tz_ready
         self.db_path = db_path
-        db = tools.Db_tools(db_path=self.db_path, database_name=f"yf_{self.ticker}.db")
-        self.conn = db.conn
-        self.cursor = db.cursor
+        self.db_file = self.get_path(path=self.db_path, file_name=f"yf_{self.ticker}.db")
+        self._conn = None
+        self._cursor = None
+
+    def _connect(self, create=False):
+        """The connection to the price DB; None while the file is missing and create is False."""
+        if self._conn is None and (create or os.path.exists(self.db_file)):
+            self._conn = open_db(self.db_file)
+            self._cursor = self._conn.cursor()
+        return self._conn
+
+    @property
+    def conn(self):
+        """Writable connection; creates the file if it does not exist yet."""
+        return self._connect(create=True)
+
+    @property
+    def cursor(self):
+        """Cursor of the writable connection; creates the file if it does not exist yet."""
+        self._connect(create=True)
+        return self._cursor
 
     def _parse_date(self, date_str):
         """Converts various date formats into a consistent datetime object."""
@@ -758,10 +781,13 @@ class StockDataSaver(TickerTools):
         old scale, and the series gets a seam at the window's start (GOSS: x80).
         Compared on the days both hold; only a clean split ratio counts.
         """
+        conn = self._connect()
+        if conn is None:
+            return None                                    # nothing stored yet
         try:
             new = data['Close'].copy()
             new.index = pd.DatetimeIndex(pd.to_datetime(new.index)).tz_localize(None).normalize()
-            old = pd.read_sql_query('SELECT Date, Close FROM day_data', self.conn)
+            old = pd.read_sql_query('SELECT Date, Close FROM day_data', conn)
         except Exception:
             return None
         if old.empty:
@@ -809,9 +835,12 @@ class StockDataSaver(TickerTools):
             _log.warning('%s: aligning intraday bars failed', self.ticker, exc_info=True)
 
     def _daily_row_count(self) -> int:
-        """Number of rows currently stored in day_data (0 if the table is missing)."""
+        """Number of rows currently stored in day_data (0 if the table or file is missing)."""
+        conn = self._connect()
+        if conn is None:
+            return 0
         try:
-            return int(self.cursor.execute("SELECT COUNT(*) FROM day_data").fetchone()[0])
+            return int(conn.execute("SELECT COUNT(*) FROM day_data").fetchone()[0])
         except Exception:
             return 0
 
@@ -840,9 +869,12 @@ class StockDataSaver(TickerTools):
         never replaced by a resample, which would also pull in pre/post-market
         prints.
         """
+        conn = self._connect()
+        if conn is None:
+            return 0                                       # no hourly bars stored
         try:
             h = pd.read_sql_query(
-                "SELECT Date, Open, High, Low, Close, Volume FROM h60_data", self.conn)
+                "SELECT Date, Open, High, Low, Close, Volume FROM h60_data", conn)
         except Exception:
             return 0
         if h.empty or len(h) < min_rows:
@@ -873,16 +905,20 @@ class StockDataSaver(TickerTools):
     def get_data(self, interval):
         """Read all stored OHLCV rows for the given interval from SQLite."""
         table_name = self.get_table_name(interval)
-        self.cursor.execute(f"SELECT * FROM {table_name}")
-        rows = self.cursor.fetchall()
+        conn = self._connect()
+        if conn is None:
+            raise sqlite3.OperationalError(f"no such table: {table_name}")
+        rows = conn.execute(f"SELECT * FROM {table_name}").fetchall()
 
         df = pd.DataFrame(rows, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-        df['Date'] = pd.to_datetime(df['Date'])  # Datum in Datetime-Format umwandeln
+        df['Date'] = pd.to_datetime(df['Date'])  # convert to datetime
         return df
 
     def close_connection(self):
-        """Close the SQLite connection for this ticker's database."""
-        self.conn.close()
+        """Close the SQLite connection for this ticker's database, if one was opened."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = self._cursor = None
 
 
 def provider_supports_batch() -> bool:
