@@ -763,6 +763,8 @@ def _build_market_prompt(
     seasonality: str | None = None,
     sector_rotation: str | None = None,
     news: str | None = None,
+    scorecard: str | None = None,
+    fundamentals: str | None = None,
     single_asset: bool = False,
     primary_ticker: str | None = None,
     primary_name: str = '',
@@ -779,6 +781,8 @@ def _build_market_prompt(
     wie das Banner unter dem Trend-Chart), der als Marktkontext übergeben wird.
     signals: optionaler Block mit Buy/Sell-Signalen + zugrunde liegender Formel.
     seasonality: optionaler Saisonalitäts-Zusammenfassungsblock.
+    scorecard / fundamentals: optionale Textfassung der Asset-Viewer-Tabs "Scorecard"
+    und "Fundamental" (tradinglib.report_sections).
     single_asset: True → Intro und Analyse-Aufgabe sind auf EIN Ziel-Asset zugeschnitten
     (statt Multi-Asset-Makro-Bild). primary_ticker = das Analyse-Ziel; membership_note =
     optionaler Hinweis, in welchem Leitindex das Asset enthalten ist.
@@ -1175,6 +1179,32 @@ def _build_market_prompt(
             "",
         ]
 
+    # ── Fundamental-Tab (Einzel-Asset-Analyse) ─────────────────────────────────
+    if fundamentals and fundamentals.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "FUNDAMENTALDATEN (Fundamental-Tab: Qualitäts-Score, Ränge und Perzentile gegen "
+            "Branche/Sektor)",
+            "Momentaufnahme der lokal gespeicherten Stammdaten (vier Geschäftsjahre), ungeprüft.",
+            "════════════════════════════════════════",
+            "",
+            fundamentals.strip(),
+            "",
+        ]
+
+    # ── Scorecard-Tab (Einzel-Asset-Analyse) ───────────────────────────────────
+    if scorecard and scorecard.strip():
+        lines += [
+            "════════════════════════════════════════",
+            "SCORECARD (Edge-Score des Asset Viewers aus lokalen Tageskursen)",
+            "Regelbasierter Score; die Gewichtung der Komponenten ist NICHT gemessen — "
+            "Kontext, kein Beleg.",
+            "════════════════════════════════════════",
+            "",
+            scorecard.strip(),
+            "",
+        ]
+
     # ── Chart-Signale + Formel (Einzel-Asset-Analyse) ──────────────────────────
     if signals and signals.strip():
         lines += [
@@ -1249,7 +1279,13 @@ def _build_market_prompt(
             "bestätigt +/−; widerspricht es → neutral + KONFLIKT).  Volatilität(ATR% Kurs): niedrig<1.5 "
             "· normal 1.5–3.0 · hoch>3.0.  Regime nur bei eindeutiger Ausrichtung, sonst 'unklar'.",
         ]
-        if asset_info:
+        if scorecard:
+            lines += [
+                "  • Scorecard: Ordne Gesamt-Score und Bias ein — bestätigt oder widerspricht er deine "
+                "technische Einschätzung? Nenne die Komponente, die ihn treibt, und eine Veränderung "
+                "über 1/4 Wochen, falls angegeben. Kein eigenes Gewicht: der Score ist nicht gemessen.",
+            ]
+        if asset_info or fundamentals:
             lines += [
                 "",
                 "TEIL 3 — FUNDAMENTALE EINORDNUNG:",
@@ -1257,6 +1293,13 @@ def _build_market_prompt(
                 "Ertragslage; Qualität (Margen, ROE, Umsatzwachstum) und Bilanzrisiko (Debt/Equity, "
                 "Current Ratio). Benenne den zentralen Konflikt Bewertung ↔ Qualität, falls vorhanden.",
             ]
+            if fundamentals:
+                lines += [
+                    "  • Nutze Qualitäts-Score, Ränge und Perzentile gegen Branche/Sektor für die "
+                    "Einordnung RELATIV zu den Peers (z. B. 'teurer als 80 % der Branche'); nenne "
+                    "Warnzeichen, nicht erfüllte Qualitätskriterien sowie Piotroski/Altman Z "
+                    "ausdrücklich, falls vorhanden.",
+                ]
         if seasonality:
             lines += [
                 "",
@@ -1567,6 +1610,8 @@ def build_single_asset_prompt(
     market: str = '',
     compact: bool = False,
     freetext: str | None = None,
+    scorecard: str | None = None,
+    fundamentals: str | None = None,
 ) -> str:
     """Builds the AI prompt for a SINGLE asset, reusing the market-overview prompt
     scaffold (same per-asset criteria / thresholds) with a single-asset framing.
@@ -1581,6 +1626,9 @@ def build_single_asset_prompt(
     include_tnx:   attach ^TNX (10y US Treasury yield) as a compact rate-environment
                    context block (unless the target asset IS ^TNX).
     freetext:      optional individual user question appended at the end.
+    scorecard / fundamentals: optional text of the Asset Viewer tabs "Scorecard" and
+                   "Fundamental" (tradinglib.report_sections.scorecard_text /
+                   fundamentals_text).
     """
     result = _result_from_df(df, display_id, interval)
     result['name']     = name
@@ -1633,7 +1681,7 @@ def build_single_asset_prompt(
         headlines=None, sections=sec, freetext=freetext,
         asset_info=asset_info, market_status=market_status,
         signals=signals, seasonality=seasonality, sector_rotation=sector_rotation,
-        news=news,
+        news=news, scorecard=scorecard, fundamentals=fundamentals,
         single_asset=True, primary_ticker=display_id,
         primary_name=name, primary_market=market, membership_note=membership_note,
         compact=compact,
@@ -1655,6 +1703,7 @@ def render_single_asset_ai(
     asset_sector: str = '',
     username: str = 'admin',
     region=st,
+    index_name: str = '',
 ) -> None:
     """Self-contained single-asset AI analysis UI for the Asset Viewer tab.
 
@@ -1691,6 +1740,10 @@ def render_single_asset_ai(
         # click (cached market-wide per session), never on every tab rerun.
         with st.spinner(t('mv.spinner_ai')):
             sector_rotation = build_sector_rotation_text(asset_sector)
+            # The Scorecard and Fundamental tabs as text, built only on click.
+            from tradinglib import report_sections as rs
+            scorecard_txt = rs.scorecard_text(display_id, index_name)
+            fundamentals_txt = rs.fundamentals_text(display_id, compact=compact)
         prompt = build_single_asset_prompt(
             df, display_id, name, category, interval, period,
             asset_info=asset_info, market_status=market_status,
@@ -1698,6 +1751,7 @@ def render_single_asset_ai(
             news=news,
             parent_index=parent_index, indicators=indicators, sys_conf=sys_conf,
             market=market, compact=compact, freetext=freetext,
+            scorecard=scorecard_txt, fundamentals=fundamentals_txt,
         )
         with st.spinner(t('mv.spinner_ai')):   # module-level: writes into the active tab context
             try:

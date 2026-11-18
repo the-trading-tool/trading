@@ -302,3 +302,202 @@ def _fund_items(data: dict, fdp) -> list:
             out.append(_note(t('fund.bands_note')))
     out.append(_note(t('fund.disclaimer')))
     return out
+
+
+# ── Prompt text ───────────────────────────────────────────────────────────────
+# The AI prompt gets the same two tabs as compact text. German like the rest of
+# the prompt scaffold (market_overview_page); metric names come from i18n.
+
+_BIAS_DE = {'strong_bull': 'stark bullisch', 'bull': 'bullisch', 'neutral': 'neutral',
+            'bear': 'bärisch', 'strong_bear': 'stark bärisch'}
+
+
+def _n(v, fmt: str) -> str:
+    try:
+        if v is None or v != v:
+            return '–'
+        return fmt.format(v)
+    except (TypeError, ValueError):
+        return '–'
+
+
+def scorecard_text(ticker: str, index_name: str | None = None) -> str:
+    """The Scorecard tab as a few prompt lines; '' when the tab shows no card."""
+    try:
+        from tradinglib import ticker_scorecard as tsc
+        market = tsc.edge_market_for(ticker)
+        return _market_text(market) if market else _stock_text(ticker, index_name or '')
+    except Exception:
+        logger.warning("prompt: scorecard text for %s failed", ticker, exc_info=True)
+        return ''
+
+
+def _trend_line(tr: dict) -> str:
+    m, sea = tr.get('metrics') or {}, tr.get('season') or {}
+    if not m:
+        return ''
+    line = (f"Trend-Details: Abstand SMA200 {_n(m.get('dist200'), '{:+.1f} %')} · "
+            f"Momentum 3 M {_n(m.get('r63'), '{:+.1f} %')}")
+    if sea.get('n'):
+        line += (f" · Saison nächste 30 T Ø {_n(sea.get('mean'), '{:+.2f} %')}, "
+                 f"Trefferquote {_n(sea.get('hit'), '{:.0f} %')} ({sea['n']} J.)")
+    return line
+
+
+def _head_line(total, bias, notes) -> str:
+    extra = ''.join(f' · {n}' for n in notes)
+    return (f"Gesamt-Score: {_n(total, '{:+.1f}')} (Skala −10 … +10) · "
+            f"Bias: {_BIAS_DE.get(bias, bias)}{extra}")
+
+
+def _market_text(key: str) -> str:
+    from tradinglib.asset_card_page import AssetCardPage
+    c = AssetCardPage().market_card(key, 52)
+    if c is None:
+        return ''
+    notes = (['nur eine Komponente'] if c['n_comp'] == 1 else []) + \
+            (['vom Kurs nicht bestätigt'] if c['unconfirmed'] else [])
+    lines = [f"Edge-Markt {t(f'cot.mkt_{key}')} (Markt-Scorecard)",
+             _head_line(c['total'], c['bias'], notes),
+             f"Komponenten: Trend & Saison {_n(c['trend']['score'], '{:+.0f}')} (−4 … +4) · "
+             f"COT-Positionierung {_n(c['cot_score'], '{:+.0f}')} (−3 … +3) · "
+             f"Makro {_n(c['macro_score'], '{:+.0f}')} (−6 … +6)"]
+    hist = c['hist']
+    if hist is not None and not hist.empty and {'date', 'total'} <= set(hist.columns):
+        from tradinglib import ticker_scorecard as tsc
+        lines.append(_change_line(tsc, hist))
+    lines.append(_trend_line(c['trend']))
+    return '\n'.join(x for x in lines if x)
+
+
+def _change_line(tsc, hist) -> str:
+    return (f"Veränderung Gesamt-Score: 1 W {_n(tsc.change(hist, 1), '{:+.1f}')} · "
+            f"4 W {_n(tsc.change(hist, 4), '{:+.1f}')}")
+
+
+def _stock_text(ticker: str, index_name: str) -> str:
+    from tradinglib import ticker_scorecard as tsc
+    from tradinglib.ticker_scorecard_page import _data, _macro_score
+    today = dt.date.today()
+    s, idx, _idx_key, hist, ctx, ccy = _data(ticker, index_name, today.isoformat(), 52)
+    if len(s) < 200:
+        return ''
+    c = tsc.card_at(s, idx, today)
+    has_idx = idx is not None and not idx.empty
+    notes = (['nur eine Komponente'] if c['n'] == 1 else []) + \
+            (['vom Kurs nicht bestätigt'] if c['unconfirmed'] else [])
+    lines = [_head_line(c['total'], c['bias'], notes)]
+    if has_idx:
+        lines.append(f"Komponenten: Trend & Saison {_n(c['trend'], '{:+.0f}')} (−4 … +4) · "
+                     f"Relative Stärke vs. {index_name} {_n(c['rs'], '{:+.0f}')} (−2 … +2) · "
+                     f"Marktumfeld {index_name} {_n(c['market'], '{:+.0f}')} (−10 … +10)")
+    else:
+        lines.append(f"Komponenten: Trend & Saison {_n(c['trend'], '{:+.0f}')} (−4 … +4) · "
+                     "kein Vergleichsindex, relative Stärke und Marktumfeld fehlen")
+    if not hist.empty:
+        lines.append(_change_line(tsc, hist))
+    if c['ret'] is not None:
+        lines.append(f"Rendite 13 W: {_n(c['ret'], '{:+.1f} %')}"
+                     + (f" vs. Index {_n(c['idx_ret'], '{:+.1f} %')} "
+                        f"(Differenz {_n(c['rs_diff'], '{:+.1f}')} Pp)" if has_idx else ''))
+    lines.append(_trend_line(c['trend_detail']))
+
+    def ctx_num(k, fmt):
+        v = ctx.get(k)
+        if v is None or v != v or (v == 0 and k in ('riskBucket', 'trendScore', 'mtt_rs')):
+            return '–'
+        return fmt.format(v)
+    markov = {1: 'bullisch', 0: 'neutral', -1: 'bärisch'}.get(ctx.get('markov_regime'), '–')
+    macro = _macro_score(ccy)
+    lines.append(f"Kontext (nicht im Score): Risikostufe {ctx_num('riskBucket', '{:.0f}')}/4 · "
+                 f"trendScore {ctx_num('trendScore', '{:.0f}')} · 4PS-Phase {ctx_num('fps_phase', '{:.0f}')} · "
+                 f"Markov-Regime {markov} · Minervini-RS {ctx_num('mtt_rs', '{:.0f}')}"
+                 + (' (Trend-Template erfüllt)' if ctx.get('mtt_pass') == 1 else '')
+                 + (f" · Makro-Score {ccy} {_n(macro, '{:+.0f}')}" if ccy else ''))
+    return '\n'.join(x for x in lines if x)
+
+
+def fundamentals_text(ticker: str, compact: bool = False) -> str:
+    """The Fundamental tab as prompt lines; '' for non-equities or without data.
+
+    compact drops the per-metric lines (peer percentiles of every ratio) and keeps
+    quality score, ranks, signals, Piotroski and Altman Z.
+    """
+    try:
+        from tradinglib import fundamentals_page as fdp
+        lines = _quality_text(ticker, fdp)
+        data = fdp._payload(ticker)
+        if data is not None:
+            lines += _fund_text(data, fdp, compact)
+        return '\n'.join(lines)
+    except Exception:
+        logger.warning("prompt: fundamentals text for %s failed", ticker, exc_info=True)
+        return ''
+
+
+def _quality_text(ticker: str, fdp) -> list[str]:
+    from tradinglib import quality_score as qs
+    try:
+        row = fdp._quality_row(ticker)
+    except Exception:
+        row = None
+    if not row:
+        return []
+    score, tier, pct = row.get('quality_score'), row.get('quality_tier'), row.get('quality_pct')
+    tier = int(tier) if tier is not None else None
+    flags = [f for f in str(row.get('quality_flags') or '').split(',') if f]
+    line = (f"Qualitäts-Score: {_n(score, '{:.0f}')}/100"
+            + (f" · Stufe {tier} von 4 ({t(f'fund.qtier_{tier}')})" if tier else '')
+            + f" · sektor-relativer Rang {_n(pct, '{:.0f}')}. Perzentil"
+            + f" · Datenabdeckung {int(row.get('quality_avail') or 0)}/100 Punkte"
+            + f" · Warnzeichen: {', '.join(t(f'cand.qflag_{f}') for f in flags) if flags else 'keine'}")
+    failed = [t(f'fund.qc_{k}') for k, _g, _p, _h in qs.CRITERIA if row.get(f'{k}_ok') == 0]
+    out = [line]
+    if failed:
+        out.append('Qualitäts-Kriterien nicht erfüllt: ' + ', '.join(failed))
+    return out
+
+
+def _fund_text(data: dict, fdp, compact: bool) -> list[str]:
+    from tradinglib import fundamentals as fu
+    out = []
+    ranks = []
+    for g in fu.RANK_GROUPS:
+        r = data['ranks'].get(g) or {}
+        ranks.append(f"{t(f'fund.rank_{g}')} {_n(r.get('industry'), '{:.1f}')}/{_n(r.get('sector'), '{:.1f}')}")
+    out.append(f"Ränge 0–10 (Branche {data['industry'] or '–'} / Sektor {data['sector'] or '–'}): "
+               + ' · '.join(ranks))
+    if data['warnings']:
+        out.append('Auffälligkeiten: ' + '; '.join(t(f'fund.warn_{k}', **p) for k, p in data['warnings']))
+    if data['positives']:
+        out.append('Pluspunkte: ' + '; '.join(t(f'fund.good_{k}', **p) for k, p in data['positives']))
+    score, maximum, _checks = data['piotroski']
+    z = data['metrics'].get('altman_z')
+    extra = []
+    if maximum:
+        extra.append(f"Piotroski F-Score {score}/{maximum}")
+    if z is not None:
+        zone = ('Gefahrenzone' if z < fdp._ALTMAN_DISTRESS
+                else 'sicher' if z > fdp._ALTMAN_SAFE else 'Grauzone')
+        extra.append(f"Altman Z {z:.2f} ({zone})")
+    if extra:
+        out.append(' · '.join(extra))
+    if not compact:
+        metrics, ind, sec = data['metrics'], data['peers_industry'], data['peers_sector']
+        for group in fu.GROUPS:
+            cells = []
+            for key, (grp, unit, higher) in fu.METRICS.items():
+                v = metrics.get(key)
+                if grp != group or v is None:
+                    continue
+                pi = fu.percentile(v, ind.get(key), higher)
+                ps = fu.percentile(v, sec.get(key), higher)
+                cells.append(f"{t(f'fund.m_{key}')} {fdp._fmt(v, unit)} "
+                             f"(P {_n(pi, '{:.0f}')}/{_n(ps, '{:.0f}')})")
+            if cells:
+                label = t(f'fund.group_{group}').split(' ', 1)[-1]       # drop the emoji
+                out.append(f"{label}: " + ' · '.join(cells))
+        out.append('P = Perzentil gegen Branche/Sektor, 100 = bester Wert der Gruppe.')
+    out.append(f"Stand Stammdaten {str(data['timestamp'] or '')[:10]}, {len(data['years'])} Geschäftsjahre, "
+               f"Bilanzwährung {data['report_currency']}.")
+    return out

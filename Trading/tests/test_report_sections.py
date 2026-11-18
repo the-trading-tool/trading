@@ -57,6 +57,50 @@ def test_short_history_gives_no_scorecard(monkeypatch):
     assert rs.scorecard_items('T', '') == []
 
 
+def _prompt(monkeypatch, **kw):
+    import pandas as pd
+    from tradinglib import market_overview_page as mo
+    monkeypatch.setattr(mo, '_result_from_df', lambda df, d, i: {'ticker': d, 'error': 'no data'})
+    return mo.build_single_asset_prompt(pd.DataFrame(), 'T', 'Test', 'Tech', '1d', '1y',
+                                        include_tnx=False, **kw)
+
+
+def test_prompt_carries_both_tabs_and_asks_for_them(monkeypatch):
+    p = _prompt(monkeypatch, scorecard='Gesamt-Score: +5.0', fundamentals='Qualitäts-Score: 80/100')
+    assert 'SCORECARD (Edge-Score' in p and 'Gesamt-Score: +5.0' in p
+    assert 'FUNDAMENTALDATEN' in p and 'Qualitäts-Score: 80/100' in p
+    assert '• Scorecard:' in p and 'Nutze Qualitäts-Score' in p
+    assert p.index('Qualitäts-Score: 80/100') < p.index('ANALYSE-AUFGABE')
+
+
+def test_prompt_without_tabs_is_unchanged(monkeypatch):
+    p = _prompt(monkeypatch)
+    assert 'SCORECARD (Edge-Score' not in p and 'FUNDAMENTALDATEN' not in p
+    assert '• Scorecard:' not in p and 'TEIL 3' not in p
+
+
+def test_fundamentals_text_compact_drops_metric_lines(monkeypatch):
+    import pandas as pd
+    from tradinglib import fundamentals as fu
+    from tradinglib import fundamentals_page as fdp
+    data = {'ranks': {g: {'industry': 5.0, 'sector': 4.0} for g in fu.RANK_GROUPS},
+            'industry': 'Software', 'sector': 'Technology', 'warnings': [], 'positives': [],
+            'piotroski': (7, 9, []), 'metrics': {'pe': 20.0, 'altman_z': 3.5},
+            'peers_industry': {'pe': [10.0, 30.0]}, 'peers_sector': {'pe': [15.0, 25.0]},
+            'timestamp': '2026-11-16', 'years': ['a', 'b', 'c', 'd'], 'report_currency': 'USD',
+            'history': pd.DataFrame(), 'val_hist': None}
+    monkeypatch.setattr(fdp, '_payload', lambda ticker: data)
+    monkeypatch.setattr(fdp, '_quality_row', lambda ticker: {
+        'quality_score': 80, 'quality_tier': 2, 'quality_pct': 90, 'quality_avail': 92,
+        'quality_flags': '', 'roe_ok': 1, 'peg_ok': 0})
+    full = rs.fundamentals_text('T')
+    short = rs.fundamentals_text('T', compact=True)
+    assert 'Qualitäts-Score: 80/100' in short and 'Piotroski F-Score 7/9' in short
+    assert 'Altman Z 3.50 (sicher)' in short
+    assert 'P = Perzentil' in full and 'P = Perzentil' not in short
+    assert 'nicht erfüllt' in short                    # peg_ok == 0
+
+
 def test_report_labels_exist():
     import json
     from pathlib import Path

@@ -1448,6 +1448,7 @@ class render_mainpage(fetch_data.FetchData):
                                     asset_sector=asset_sector,
                                     username=self.username,
                                     region=tab_ai,
+                                    index_name=idx_name or '',
                                 )
 
                                 # ── HTML-Report (Print → PDF) ─────────────────────────

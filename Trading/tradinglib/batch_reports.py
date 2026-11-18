@@ -171,6 +171,8 @@ def build_report_html_for_ticker(
     rate_context = mo.get_rate_context(interval, period, sys_conf)
 
     # 4) AI analysis — may raise (rate limit / all providers down) → caller pauses.
+    #    The Scorecard and Fundamental tabs go into the prompt as text, too.
+    from tradinglib import report_sections as rs
     ai_analysis, ai_model, ai_ts, ai_ok = '', '', '', False
     if include_ai:
         prompt = mo.build_single_asset_prompt(
@@ -180,6 +182,8 @@ def build_report_html_for_ticker(
             sector_rotation=sector_rotation, news=news_block,
             parent_index=parent_index, indicators=indicators, sys_conf=sys_conf,
             market=market, compact=compact, freetext='',
+            scorecard=rs.scorecard_text(ticker, idx_name),
+            fundamentals=rs.fundamentals_text(ticker, compact=compact),
         )
         client = AiClient(username=username)
         ai_analysis = client.run_question(prompt, max_tokens=2800, groq_brevity=True)  # may raise
@@ -189,7 +193,6 @@ def build_report_html_for_ticker(
 
     # 5) Asset Viewer tabs Scorecard + Fundamental as report sections (empty
     #    when the tab would show nothing, e.g. Fundamental for an ETF).
-    from tradinglib import report_sections as rs
     scorecard_items = rs.scorecard_items(ticker, idx_name)
     fundamentals_items = rs.fundamentals_items(ticker)
 
