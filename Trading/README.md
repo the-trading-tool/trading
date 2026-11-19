@@ -35,6 +35,7 @@ Diese Anleitung erklärt Schritt für Schritt, wie du die Trading-App auf einem 
 
 - [Windows-Installation](#windows-installation)
 - [Linux-Installation](#linux-installation)
+- [Neuer Rechner ohne Zugriff auf die bisherige Installation](#neuer-rechner-ohne-zugriff-auf-die-bisherige-installation)
 
 ---
 
@@ -148,7 +149,7 @@ Die App benötigt Ticker-Stammdaten von Yahoo Finance. Gib im PowerShell-Fenster
 .\install.ps1 -InitInfo
 ```
 
-Das Script lädt Metadaten (Name, Sektor, Branche) für alle ~130 vordefinierten Ticker.  
+Das Script lädt Metadaten (Name, Sektor, Branche) für alle rund 890 vordefinierten Ticker.  
 **Bitte warte — das dauert ca. 10–20 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
 
 Einige Ticker können mit `404 Not Found` fehlschlagen — das ist normal, Yahoo Finance kennt nicht jeden Ticker. Der Rest wird trotzdem geladen.
@@ -314,7 +315,7 @@ Am Ende erscheint:
 ./install.sh --init-info
 ```
 
-Das Script lädt Metadaten (Name, Sektor, Branche) für alle ~130 vordefinierten Ticker von Yahoo Finance.  
+Das Script lädt Metadaten (Name, Sektor, Branche) für alle rund 890 vordefinierten Ticker von Yahoo Finance.  
 **Bitte warte — das dauert ca. 10–20 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
 
 Einige Ticker können mit `404 Not Found` fehlschlagen — das ist normal. Der Rest wird trotzdem geladen.
@@ -404,3 +405,40 @@ cd trading/Trading
 ```
 
 Die Installation muss nur einmal gemacht werden.
+
+---
+
+## Neuer Rechner ohne Zugriff auf die bisherige Installation
+
+Programm und Marktdaten lassen sich vollständig neu aufbauen: den Code liefert dieses öffentliche Repo, Kurse und Stammdaten laden die Installationsschritte neu von Yahoo. Der Ablauf ist derselbe wie bei einer Erstinstallation. Beispiel Linux (Ubuntu/Debian):
+
+```bash
+sudo apt update && sudo apt install -y python3.11 python3.11-venv python3-pip git libta-lib-dev
+git clone https://github.com/the-trading-tool/trading
+cd trading/Trading
+chmod +x install.sh && ./install.sh       # Umgebung, Pakete, Admin-Login
+./install.sh --init-info                  # Ticker-DB + Stammdaten (Pflicht, ~20 Min)
+./install.sh --init                       # Kurshistorie + Indikatoren (Stunden)
+.venv/bin/streamlit run asset_analyzer.py
+.venv/bin/python schedserver.py           # Hintergrund-Jobs, dauerhaft laufen lassen
+```
+
+Unter Windows entsprechend `.\install.ps1`, `.\install.ps1 -InitInfo` und `.\install.ps1 -Init` (siehe [Windows-Installation](#windows-installation)).
+
+### Was dabei nicht wiederhergestellt wird
+
+| Was | Folge / was zu tun ist |
+|---|---|
+| Premium-Module (`tradinglib/premium/`) | Nicht im Git-Repo. Ohne sie blendet die App Strategy Finder, Multi Strategies, Paper/Live Trading, Saisonalität und den Index-Sync aus. Die Dateien müssen gesondert auf den Rechner kommen. |
+| Benutzer (`config.yaml`) | Der Installer legt einen neuen Admin an; weitere Benutzer neu anlegen. |
+| Einstellungen (`database/config.db`) | Es gelten die Vorgaben. Eigene Buy/Sell-Formeln, Multi-Strategies-Konfiguration, Overlays, Risikoprofil, Kandidaten-Filter usw. neu einrichten. |
+| Zugänge (`credentials.json` + `secret.key`) | API-Schlüssel für Datenprovider, KI, Pushover und Broker neu eingeben. |
+| Eigene Transaktionen (`database/trades.db`) | Leer. Scalable-Transaktionen lassen sich per CSV-Import unter „Own Transactions" neu einlesen. |
+| Historien aus dem laufenden Betrieb | Fundamentaldaten-Historie, Qualitäts-Score-Historie und die Zeitstempel der Indexmitgliedschaften entstehen nur, während die Jobs laufen – sie beginnen am Installationstag neu. |
+| Ältere Intraday-Kurse | Yahoo liefert Minuten- und Stundenkerzen nur für einen kurzen Zeitraum zurück. Tages- und Monatskurse kommen vollständig (`1d:max`). |
+| Backtest-Jahre (`asset_simulation_<JAHR>.db`) | `--init` berechnet nur das laufende Jahr. Vorjahre je Jahr nachrechnen, z. B. `.venv/bin/python asset_perf2.py init /year:2025 /worker:2`. |
+| Ticker-Universum | `seed_db.py` legt die gepflegte Liste an (DAX, MDAX, SDAX, S&P 500, NASDAQ-100, Dow sowie Indizes, Futures, Währungen, Krypto und eine ETF-Auswahl). Zusätzlich importierte Märkte oder Gruppen erneut laden, z. B. `get_asset_data.py /group:ETP 1d:max` und danach `get_asset_info.py /group:ETP`. |
+
+> **Ist der alte Rechner doch noch einmal erreichbar**, diese Dateien mitnehmen – sie ersparen fast die ganze Neueinrichtung: `tradinglib/premium/`, `config.yaml`, `database/config.db`, `database/secret.key` zusammen mit `database/credentials.json` (nur gemeinsam lesbar) und `database/trades.db`. Wer den ganzen Ordner `database/` kopiert, spart sich auch die stundenlangen Downloads. Datenbanken nur bei beendeter App und gestopptem Scheduler kopieren und die zugehörigen `-wal`/`-shm`-Dateien mitnehmen.
+
+Ausführlicher: Hilfeseite „Installationsanleitung" in der App (Hilfe → CLI-Skripte) bzw. [HELP/installation.html](HELP/installation.html), Abschnitt 13.
