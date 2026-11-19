@@ -35,6 +35,7 @@ a{color:#1f78d1}
 <tr><td>8</td><td>Optional: data provider, AI, Pushover and broker credentials</td><td>optional</td><td>5 min each</td></tr>
 </table>
 <div class="info">In a hurry: steps 1–5 are enough to start the app. If the ticker database is still missing on first start, the in-app <b>setup wizard</b> takes over "create ticker DB" and "load first price data" (see section "Setup wizard on first start").</div>
+<div class="info">New computer, but no access to the previous installation? Section <b>13</b> shows the procedure and what gets lost.</div>
 
 <h2>0. Requirements</h2>
 <table>
@@ -229,5 +230,30 @@ Passwort bestaetigen:</pre>
 </table>
 
 <div class="info"><b>Scalable edition:</b> runs from the same installation with its own data directory and login. Set up via <code>setup_scalable.ps1</code> or <code>setup_scalable.sh</code>, start via <code>start_scalable.bat</code> – details in the "Scalable" help.</div>
+<h2>13. New computer without access to the previous installation</h2>
+<p>Program and market data can be rebuilt completely: the public GitHub repository supplies the code (step 2), and steps 5 and 7 load prices and master data from Yahoo again. The procedure is the same as for a first installation. Example Linux (Ubuntu/Debian):</p>
+<pre>sudo apt update &amp;&amp; sudo apt install -y python3.11 python3.11-venv python3-pip git libta-lib-dev
+git clone https://github.com/the-trading-tool/trading
+cd trading/Trading
+chmod +x install.sh &amp;&amp; ./install.sh       # environment, packages, admin login
+./install.sh --init-info                  # ticker DB + master data (required, ~20 min)
+./install.sh --init                       # price history + indicators (hours)
+.venv/bin/streamlit run asset_analyzer.py
+.venv/bin/python schedserver.py           # background jobs, keep it running</pre>
+
+<h3>What is not restored</h3>
+<table>
+<tr><th>What</th><th>Consequence / what to do</th></tr>
+<tr><td>Premium modules (<code>tradinglib/premium/</code>)</td><td>Not in the Git repository. Without them the app hides Strategy Finder, Multi Strategies, Paper/Live Trading, Seasonality and the index sync. The files have to be brought to the computer separately.</td></tr>
+<tr><td>Users (<code>config.yaml</code>)</td><td>The installer creates a new admin (step 4); create further users again.</td></tr>
+<tr><td>Settings (<code>database/config.db</code>)</td><td>Defaults apply. Set up your own buy/sell formulas, Multi Strategies configuration, overlays, risk profile, candidate filters etc. again.</td></tr>
+<tr><td>Credentials (<code>credentials.json</code> + <code>secret.key</code>)</td><td>Enter the API keys for data providers, AI, Pushover and brokers again (section 9).</td></tr>
+<tr><td>Own transactions (<code>database/trades.db</code>)</td><td>Empty. Scalable transactions can be imported again via CSV under "Own Transactions".</td></tr>
+<tr><td>Histories built during operation</td><td>Fundamentals history, quality score history and the timestamps of index memberships only grow while the jobs run – they start again on the day of installation.</td></tr>
+<tr><td>Older intraday prices</td><td>Yahoo only delivers minute and hourly candles for a short period back; older intraday data of the old installation cannot be recovered. Daily and monthly prices come back in full (<code>1d:max</code>).</td></tr>
+<tr><td>Backtest years (<code>asset_simulation_&lt;YEAR&gt;.db</code>)</td><td><code>--init</code> only computes the current year. Compute previous years for Strategy Finder and Multi Strategies one by one, e.g. <code>.venv/bin/python asset_perf2.py init /year:2025 /worker:2</code>.</td></tr>
+<tr><td>Ticker universe</td><td><code>seed_db.py</code> creates the predefined list. Load additionally imported markets or groups again, e.g. <code>get_asset_data.py /group:ETP 1d:max</code> and then <code>get_asset_info.py /group:ETP</code>.</td></tr>
+</table>
+<div class="info"><b>If the old computer becomes reachable after all</b>, take these files along – they save almost the entire setup: <code>tradinglib/premium/</code>, <code>config.yaml</code>, <code>database/config.db</code>, <code>database/secret.key</code> together with <code>database/credentials.json</code> (only readable together) and <code>database/trades.db</code>. Copying the whole <code>database/</code> folder also saves the hours of downloads. Copy databases only while the app and the scheduler are stopped, and include the matching <code>-wal</code>/<code>-shm</code> files.</div>
 </body>
 </html>
