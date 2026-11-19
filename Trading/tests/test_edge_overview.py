@@ -55,7 +55,7 @@ def test_top_setup_needs_agreement():
 
 
 def test_card_registered_and_locale_keys():
-    assert "overview" in [k for k, *_r in esp.CARDS] and esp.DEFAULT_CARD == "asset"
+    assert "overview" in [k for k, *_r in esp.CARDS] and esp.DEFAULT_CARD == "overview"
     src = open("tradinglib/edge_overview_page.py", encoding="utf-8").read()
     keys = set(re.findall(r't\("((?:ov|edge)\.[a-z_]+)"', src))
     keys = {k for k in keys if not k.endswith("_")} | {f"ov.sort_{o}" for o in ("group", "strength", "chg_1w", "chg_4w")}

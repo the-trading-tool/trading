@@ -6,7 +6,7 @@ Sidebar), rechts die gewählte Scorecard. Neue Scorecards werden nur in
 (deaktiviert), damit die Struktur der späteren Gesamtbewertung sichtbar ist.
 
 Route: ``?edge=true[&card=<key>]``; das alte ``?cot=true`` landet ebenfalls auf der
-Start-Karte (Asset-Scorecard).
+Start-Karte (Übersicht).
 """
 from __future__ import annotations
 
@@ -62,14 +62,14 @@ def _render_asset(username: str, side) -> None:
 
 # key, Locale-Key, Icon, Renderer (None = geplant)
 CARDS: list[tuple[str, str, str, Callable | None]] = [
-    ("asset", "edge.card_asset", "🔎", _render_asset),
     ("overview", "edge.card_overview", "🧭", _render_overview),
+    ("asset", "edge.card_asset", "🔎", _render_asset),
     ("cot", "edge.card_cot", "📊", _render_cot),
     ("macro", "edge.card_macro", "🏛️", _render_macro),
     ("trend", "edge.card_trend", "📈", _render_trend),
     ("total", "edge.card_total", "🎯", _render_total),
 ]
-DEFAULT_CARD = "asset"
+DEFAULT_CARD = "overview"
 _STATE_KEY = "_edge_card"
 
 

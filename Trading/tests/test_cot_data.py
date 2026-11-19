@@ -101,14 +101,15 @@ def test_is_stale_respects_release_and_retry(tmp_path, monkeypatch):
 
 def test_edge_scores_card_resolution():
     from tradinglib import edge_scores_page as e
-    assert e.resolve_card(None, None) == "asset"
-    assert e.CARDS[0][0] == "asset"
+    assert e.resolve_card(None, None) == "overview"
+    assert e.CARDS[0][0] == "overview"
+    assert e.resolve_card("asset", None) == "asset"
     assert e.resolve_card("cot", None) == "cot"
     assert e.resolve_card("macro", None) == "macro"
     assert e.resolve_card("trend", None) == "trend"
     assert e.resolve_card("total", None) == "total"
     assert e.resolve_card("bogus", "cot") == "cot"
-    assert e.resolve_card("bogus", None) == "asset"
+    assert e.resolve_card("bogus", None) == "overview"
     # Sitzungszustand (Klick im Untermenue) schlaegt den URL-Parameter
     assert e.resolve_card("cot", "cot") == "cot"
 
