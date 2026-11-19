@@ -80,7 +80,8 @@ def _breadth_timeseries(index: str, start_year: int = 2020) -> pd.DataFrame:
 
     WICHTIG: `asset_simulation_all.db` enthält nur das laufende Jahr. Die Historie
     kommt aus den Jahres-DBs `asset_simulation_{YYYY}.db` (2020–Vorjahr), das
-    laufende Jahr aus `_all.db`. Alle mit AVG(CASE …) je Handelstag aggregiert und
+    laufende Jahr aus `_all.db` (fehlt sie, wie direkt nach einer Neuinstallation,
+    aus `asset_simulation_.db`). Alle mit AVG(CASE …) je Handelstag aggregiert und
     zusammengefügt. `near_high`/`near_low` (lyHigh/lyLow) → Netto 52W-Hochs−Tiefs.
     """
     members = _members(index)
@@ -100,7 +101,13 @@ def _breadth_timeseries(index: str, start_year: int = 2020) -> pd.DataFrame:
     cur_year = dt.date.today().year
     frames = []
     for yr in range(start_year, cur_year + 1):
-        name = "asset_simulation_all.db" if yr == cur_year else f"asset_simulation_{yr}.db"
+        if yr == cur_year:
+            # _all.db only exists after the first "/all" scheduler run; a fresh
+            # install (install --init) has just the current-year asset_simulation_.db.
+            name = next((n for n in ("asset_simulation_all.db", "asset_simulation_.db")
+                         if os.path.exists(_p(n))), "asset_simulation_all.db")
+        else:
+            name = f"asset_simulation_{yr}.db"
         p = _p(name)
         if not os.path.exists(p):
             continue

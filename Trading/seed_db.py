@@ -22,6 +22,8 @@ und vom Aktien-Download ausgeschlossen.
 Indexmitglieder und die Gruppen INDEX/CURRENCIES/CRYPTO: Stand 2026-11-19,
 uebernommen aus dem gepflegten Bestand (DAX/MDAX/SDAX/NDX/DJI per finanzen.net-Abgleich,
 S&P 500 per sync_index_members.py). ETP bleibt eine kuratierte Auswahl.
+Abweichend vom Bestand stehen TLT/HYG/LQD (dort ETP) zusaetzlich in INDEX: der
+Fear & Greed braucht sie, und --init laedt die Gruppe INDEX, die Gruppe ETP nicht.
 
 Aufruf: python seed_db.py [--dry-run]
 """
@@ -227,7 +229,10 @@ INDEX = [
     '^VIX3M',    # CBOE 3-Month Volatility (Terminstruktur, Fear & Greed)
     '^VIXEQ',    # CBOE Equity VIX
     'DX-Y.NYB',  # US-Dollar-Index (auch in CURRENCIES)
+    'HYG',       # iShares High Yield Corporate Bond ETF (Fear & Greed: Junk-Bonds)
     'IXG',       # iShares Global Financials ETF
+    'LQD',       # iShares Investment Grade Corporate Bond ETF (Fear & Greed: Junk-Bonds)
+    'TLT',       # iShares 20+ Year Treasury Bond ETF (Fear & Greed: Safe Haven)
     'ZN=F',      # 10Y US-Treasury-Note-Future (auch in COMMODITIES)
     'ZT=F',      # 2Y US-Treasury-Note-Future
 ]
