@@ -322,16 +322,20 @@ class DataVisualizer(tt.TickerTools):
         # bulk_upsert_dicts) — convert strings to float tolerantly
         for _num_col in ('marketCap', 'enterpriseValue', 'ebitdaMargins',
                          'totalDebt', 'totalRevenue'):
-            combined_df[_num_col] = pd.to_numeric(combined_df[_num_col], errors='coerce')
-        combined_df['dTrend']=combined_df['dTrend'].round(2)
-        combined_df['wkTrend']=combined_df['wkTrend'].round(2)
-        combined_df['moTrend']=combined_df['moTrend'].round(2)
-        combined_df['sortino']=combined_df['sortino'].round(2)
-        combined_df['sharpe']=combined_df['sharpe'].round(2)
-        combined_df['momentum']=combined_df['momentum'].round(1)
-        combined_df['marketCap']=combined_df['marketCap'].div(1000000).round(2)
-        combined_df['enterpriseValue']=combined_df['enterpriseValue'].div(1000000).round(2)
-        combined_df['enterpriseValue']=combined_df['enterpriseValue'].fillna(0)
+            if _num_col in combined_df.columns:
+                combined_df[_num_col] = pd.to_numeric(combined_df[_num_col], errors='coerce')
+        # Simulation columns are missing until asset_perf2.py has run once (fresh
+        # install: make_query falls back to master data only) -- round what exists.
+        for _col, _digits in (('dTrend', 2), ('wkTrend', 2), ('moTrend', 2),
+                              ('sortino', 2), ('sharpe', 2), ('momentum', 1)):
+            if _col in combined_df.columns:
+                combined_df[_col] = pd.to_numeric(combined_df[_col], errors='coerce').round(_digits)
+        if 'marketCap' in combined_df.columns:
+            combined_df['marketCap'] = combined_df['marketCap'].div(1000000).round(2)
+        if 'enterpriseValue' in combined_df.columns:
+            combined_df['enterpriseValue'] = combined_df['enterpriseValue'].div(1000000).round(2).fillna(0)
+        if 'close' not in combined_df.columns:
+            combined_df['close'] = np.nan
         
         # Bucket edges per colour metric: eleven steps, the middle one is neutral.
         # Chosen from the spread of the latest sim rows so that every step is used.
@@ -351,12 +355,15 @@ class DataVisualizer(tt.TickerTools):
             column_names['gainPct'] = [-_inf,-20,-10,-5,-2,-0.5,0.5,2,5,10,20,_inf]
         _labels = {'gainPct': t('mm.trend_gain'), 'positionValue': t('mm.size_value')}
 
+        # Offer only metrics the frame carries; day_change is computed below from
+        # the local price files and therefore always available.
+        _opts = [c for c in column_names if c == 'day_change' or c in combined_df.columns]
+
         # Selection
-        _opts = list(column_names)
         self.trend = self.sel_tre.selectbox(
                 t('mm.trend_by'),
                 options = _opts,
-                index = _opts.index(default_trend) if default_trend in _opts else 2,
+                index = _opts.index(default_trend if default_trend in _opts else 'day_change'),
                 format_func = lambda o: _labels.get(o, o),
             )
 
@@ -482,7 +489,8 @@ class DataVisualizer(tt.TickerTools):
         (formerly part of generate_treemap, now inside the index-view expander)."""
         df_expander = st.expander(t('mm.underlying_data'), expanded=False)
         with df_expander:
-            selection = self.dataframe_with_selections(combined_df[['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','totalDebt','totalRevenue']]) #, sort_by='ticker')
+            _cols = ['details','Date','ticker','longName','close','roa','rsi_ema','Low','High','ebitdaMargins','momentum','trendDirection','buySell','targetLowPrice','targetMeanPrice','targetHighPrice','currency','revenueGrowth','sortino','sharpe','totalDebt','totalRevenue']
+            selection = self.dataframe_with_selections(combined_df[[c for c in _cols if c in combined_df.columns]])
             try:
                 if not selection.empty:
                     self.overlay_chart(selection)
@@ -748,6 +756,9 @@ class DataVisualizer(tt.TickerTools):
         if combined_df.empty:
             st.error(t('mm.no_data'))
             return
+        if 'sortino' not in combined_df.columns:
+            # No asset_simulation yet (fresh install): only the day change can colour the map.
+            st.info(t('mm.no_sim_data'))
 
         # Kompakte Fear-&-Greed-Skala für den gewählten Index (Marktstimmung auf
         # einen Blick, über der Treemap). Rendert nur bei ^-Index mit Mitgliedern.

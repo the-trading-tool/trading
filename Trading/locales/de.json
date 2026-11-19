@@ -1019,6 +1019,7 @@
   "mm.price_range": "Preisbereich:",
   "mm.market_cap": "Marktkapitalisierung:",
   "mm.no_data": "Keine Daten für den gewählten Index verfügbar.",
+  "mm.no_sim_data": "Noch keine Performance-Daten (asset_perf2.py ist noch nicht gelaufen). Die Karte lässt sich bis dahin nur nach Tagesveränderung einfärben; Kennzahlen wie sortino oder dTrend erscheinen nach dem ersten Lauf (install --init bzw. asset_perf2.py).",
   "mm.breadth_title": "📊 Markov Breadth — {index} Mitglieder",
   "mm.breadth_loading": "Markov-Breadth für {index}-Mitglieder wird berechnet …",
   "mm.breadth_no_data": "Keine Regime-Daten für {index}-Mitglieder verfügbar (lokale OHLCV-Historie fehlt oder ist zu kurz).",
