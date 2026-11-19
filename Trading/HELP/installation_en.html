@@ -28,7 +28,7 @@ a{color:#1f78d1}
 <tr><td>1</td><td>Install Python</td><td>✅ yes</td><td>5 min</td></tr>
 <tr><td>2</td><td>Download the program code</td><td>✅ yes</td><td>2 min</td></tr>
 <tr><td>3</td><td>Run the installer (<code>install.ps1</code> / <code>install.sh</code>) – environment, packages, admin login</td><td>✅ yes</td><td>5–10 min</td></tr>
-<tr><td>4</td><td>Load ticker master data (<code>-InitInfo</code> / <code>--init-info</code>)</td><td>✅ yes</td><td>10–20 min</td></tr>
+<tr><td>4</td><td>Load ticker master data (<code>-InitInfo</code> / <code>--init-info</code>)</td><td>✅ yes</td><td>60–90 min</td></tr>
 <tr><td>5</td><td>Start the app (<code>start.bat</code> or <code>streamlit run</code>)</td><td>✅ yes</td><td>1 min</td></tr>
 <tr><td>6</td><td>Load full price history + compute indicators (<code>-Init</code>)</td><td>recommended</td><td>several hours</td></tr>
 <tr><td>7</td><td>Start background jobs (<code>schedserver.py</code>)</td><td>recommended</td><td>2 min</td></tr>
@@ -236,7 +236,7 @@ Passwort bestaetigen:</pre>
 git clone https://github.com/the-trading-tool/trading
 cd trading/Trading
 chmod +x install.sh &amp;&amp; ./install.sh       # environment, packages, admin login
-./install.sh --init-info                  # ticker DB + master data (required, ~20 min)
+./install.sh --init-info                  # ticker DB + master data (required, ~60–90 min)
 ./install.sh --init                       # price history + indicators (hours)
 .venv/bin/streamlit run asset_analyzer.py
 .venv/bin/python schedserver.py           # background jobs, keep it running</pre>

@@ -47,7 +47,7 @@ Diese Anleitung erklärt Schritt für Schritt, wie du die Trading-App auf einem 
 
 - Windows 10 oder 11
 - Internetverbindung (zwingend erforderlich — die App lädt Kursdaten von Yahoo Finance)
-- Ca. 30–60 Minuten Zeit (davon ~20 Min. für den Daten-Download)
+- Ca. 1,5–2 Stunden Zeit (davon ~60–90 Min. für den Daten-Download)
 
 ---
 
@@ -150,7 +150,7 @@ Die App benötigt Ticker-Stammdaten von Yahoo Finance. Gib im PowerShell-Fenster
 ```
 
 Das Script lädt Metadaten (Name, Sektor, Branche) für alle rund 890 vordefinierten Ticker.  
-**Bitte warte — das dauert ca. 10–20 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
+**Bitte warte — das dauert ca. 60–90 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
 
 Einige Ticker können mit `404 Not Found` fehlschlagen — das ist normal, Yahoo Finance kennt nicht jeden Ticker. Der Rest wird trotzdem geladen.
 
@@ -184,7 +184,7 @@ Schließe das schwarze PowerShell/Terminal-Fenster, das beim Start geöffnet wur
 | Schritt | Befehl | Pflicht? | Dauer |
 |---|---|---|---|
 | Umgebung + Config anlegen | `.\install.ps1` | ✅ Ja | ~5 Min |
-| Ticker-Stammdaten laden | `.\install.ps1 -InitInfo` | ✅ Ja | ~20 Min |
+| Ticker-Stammdaten laden | `.\install.ps1 -InitInfo` | ✅ Ja | ~60–90 Min |
 | Historische Kursdaten laden | `.\install.ps1 -Init` | Optional | Stunden |
 
 ---
@@ -224,7 +224,7 @@ Die Installation (Schritte 1–5) muss nur einmal gemacht werden.
 
 - Ubuntu 20.04+ / Debian 11+ / Fedora 36+ oder eine vergleichbare Distribution
 - Internetverbindung (zwingend erforderlich — die App lädt Kursdaten von Yahoo Finance)
-- Ca. 30–60 Minuten Zeit (davon ~20 Min. für den Daten-Download)
+- Ca. 1,5–2 Stunden Zeit (davon ~60–90 Min. für den Daten-Download)
 
 ---
 
@@ -316,7 +316,7 @@ Am Ende erscheint:
 ```
 
 Das Script lädt Metadaten (Name, Sektor, Branche) für alle rund 890 vordefinierten Ticker von Yahoo Finance.  
-**Bitte warte — das dauert ca. 10–20 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
+**Bitte warte — das dauert ca. 60–90 Minuten.** Du siehst laufende Ausgaben wie `ADS.DE`, `SAP.DE` usw.
 
 Einige Ticker können mit `404 Not Found` fehlschlagen — das ist normal. Der Rest wird trotzdem geladen.
 
@@ -345,7 +345,7 @@ Die App öffnet sich automatisch im Browser unter `http://localhost:8501`.
 | Schritt | Befehl | Pflicht? | Dauer |
 |---|---|---|---|
 | Umgebung + Config anlegen | `./install.sh` | ✅ Ja | ~5 Min |
-| Ticker-Stammdaten laden | `./install.sh --init-info` | ✅ Ja | ~20 Min |
+| Ticker-Stammdaten laden | `./install.sh --init-info` | ✅ Ja | ~60–90 Min |
 | Historische Kursdaten laden | `./install.sh --init` | Optional | Stunden |
 
 ---
@@ -417,7 +417,7 @@ sudo apt update && sudo apt install -y python3.11 python3.11-venv python3-pip gi
 git clone https://github.com/the-trading-tool/trading
 cd trading/Trading
 chmod +x install.sh && ./install.sh       # Umgebung, Pakete, Admin-Login
-./install.sh --init-info                  # Ticker-DB + Stammdaten (Pflicht, ~20 Min)
+./install.sh --init-info                  # Ticker-DB + Stammdaten (Pflicht, ~60–90 Min)
 ./install.sh --init                       # Kurshistorie + Indikatoren (Stunden)
 .venv/bin/streamlit run asset_analyzer.py
 .venv/bin/python schedserver.py           # Hintergrund-Jobs, dauerhaft laufen lassen

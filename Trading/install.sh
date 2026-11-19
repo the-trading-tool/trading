@@ -4,7 +4,7 @@
 # Verwendung:
 #   ./install.sh                 # Umgebung + Config
 #   ./install.sh --seed          # + Ticker-DB befuellen
-#   ./install.sh --init-info     # + Ticker-DB + Metadaten von Yahoo (~20 Min)
+#   ./install.sh --init-info     # + Ticker-DB + Metadaten von Yahoo (~60-90 Min)
 #   ./install.sh --init          # Vollstaendige Initialisierung (Stunden!)
 #
 # Aequivalent zu install.ps1 unter Windows.
@@ -508,7 +508,7 @@ if [[ "$DO_SEED" -eq 0 ]]; then
     echo -e "${RED}  WICHTIG: Die App benoetigt Ticker-Stammdaten um zu funktionieren!${NC}"
     echo -e "${YELLOW}  Bitte jetzt ausfuehren:${NC}"
     echo ""
-    echo -e "${CYAN}    bash install.sh --init-info   # PFLICHT (~20 Min)${NC}"
+    echo -e "${CYAN}    bash install.sh --init-info   # PFLICHT (~60-90 Min)${NC}"
     echo ""
     echo -e "${GRAY}  Optional danach:${NC}"
     echo "    bash install.sh --init       # + Kursdaten laden (dauert Stunden)"

@@ -566,7 +566,7 @@ if (-not ($Seed -or $Init -or $InitInfo)) {
     Write-Host "  WICHTIG: Die App benoetigt Ticker-Stammdaten um zu funktionieren!" -ForegroundColor Red
     Write-Host "  Bitte jetzt ausfuehren:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "    .\install.ps1 -InitInfo   <-- PFLICHT (laedt Daten von Yahoo Finance, ~20 Min)" -ForegroundColor Cyan
+    Write-Host "    .\install.ps1 -InitInfo   <-- PFLICHT (laedt Daten von Yahoo Finance, ~60-90 Min)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Optional danach:" -ForegroundColor Gray
     Write-Host "    .\install.ps1 -Init       # + Kursdaten laden (dauert Stunden)"
