@@ -629,6 +629,7 @@
   "tp.signals_recalc_btn": "🔄 Recalculate Signals",
   "tp.signals_last_calc": "Last calculated: **{ts}** — press 🔄 to refresh.",
   "tp.signals_run_hint": "▶ Press **Recalculate Signals** to run the portfolio simulation.",
+  "tp.signals_reused": "Result reused: strategies, settings and simulation data are unchanged since the last calculation. 🔄 recalculates.",
   "tp.signals_lookback": "Show closed positions from last N days:",
   "tp.signals_eval_errors": "⚠ Signal evaluation errors",
   "tp.signals_neutral": "No current signals — all strategies are neutral.",

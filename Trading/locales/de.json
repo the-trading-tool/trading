@@ -629,6 +629,7 @@
   "tp.signals_recalc_btn": "🔄 Signale neu berechnen",
   "tp.signals_last_calc": "Zuletzt berechnet: **{ts}** — 🔄 zum Aktualisieren drücken.",
   "tp.signals_run_hint": "▶ **Signale neu berechnen** drücken, um die Portfolio-Simulation zu starten.",
+  "tp.signals_reused": "Ergebnis übernommen: Strategien, Einstellungen und Simulationsdaten sind seit der letzten Berechnung unverändert. 🔄 rechnet neu.",
   "tp.signals_lookback": "Geschlossene Positionen der letzten N Tage anzeigen:",
   "tp.signals_eval_errors": "⚠ Fehler bei der Signal-Auswertung",
   "tp.signals_neutral": "Keine aktuellen Signale — alle Strategien sind neutral.",
