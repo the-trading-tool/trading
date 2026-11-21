@@ -608,9 +608,54 @@ class Scheduler:
             st.success("Jobs saved.")
             st.rerun()
 
+    def _path_migration(self, conn):
+        """Offer to rewrite job commands copied from a Windows installation.
+
+        Rendered only when at least one command still contains a C:\\ path on a
+        POSIX host; see tradinglib.scheduler_paths for the rewrite rules.
+        """
+        from tradinglib import scheduler_paths as sp
+        from tradinglib.i18n import t
+        with self.lock:
+            rows = conn.execute('SELECT id, job_name, command FROM jobs').fetchall()
+        done = st.session_state.pop('_sched_paths_msg', None)
+        if done:
+            st.success(done)
+        items = sp.plan(rows)
+        if not items:
+            return
+        unresolved = [it for it in items if it['unresolved']]
+        st.warning(t('sched.paths_found', n=len(items), root=sp.APP_ROOT.as_posix()))
+        with st.expander(t('sched.paths_preview'), expanded=False):
+            st.dataframe(
+                pd.DataFrame([{t('sched.paths_col_job'): it['job_name'],
+                               t('sched.paths_col_old'): it['old'],
+                               t('sched.paths_col_new'): it['new'],
+                               t('sched.paths_col_missing'): ', '.join(it['unresolved'])}
+                              for it in items]),
+                hide_index=True, use_container_width=True)
+        if unresolved:
+            st.caption(t('sched.paths_unresolved', n=len(unresolved)))
+        if st.button(t('sched.paths_btn'), type='primary', key='_sched_fix_paths'):
+            bak = sp.backup(self.database)
+            with self.lock:
+                n = sp.apply(conn, items)
+                # Drop the in-process registrations that still carry the old
+                # command, then plan from the DB again (Save does the same).
+                old_cmds = {it['old'] for it in items}
+                for job in list(schedule.jobs):
+                    kw = job.job_func.keywords or {}
+                    if kw.get('command') in old_cmds:
+                        schedule.cancel_job(job)
+                self.schedule_tasks(self.load_schedule_from_db(conn), conn)
+            st.session_state.pop('_jobs_editor_table', None)
+            st.session_state['_sched_paths_msg'] = t('sched.paths_done', n=n, backup=bak)
+            st.rerun()
+
     def jobs(self, conn):
         """Render a coloured status overview (auto-refresh) and an editable jobs table."""
         st.header("Current scheduled jobs")
+        self._path_migration(conn)
         self.jobs_status(conn)    # fragment – auto-refreshes every 30 s
         self._jobs_editor(conn)   # fragment – only reruns on user interaction
 

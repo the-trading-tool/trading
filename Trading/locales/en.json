@@ -3307,5 +3307,14 @@
   "cand.sdc_min_quality_help": "Quality cut of the channel step (quality score 0–100). Long keeps only names scoring above this value, short (mirrored) only names below 100 minus this value. Names without a score (ETFs, indices, missing data) drop out. 0 = off. A snapshot, not measured.",
   "cand.step_sdc_quality": "Channel quality",
   "cand.note_sdc_quality": "quality score {op} {v}, {u} without a score removed",
-  "cand.col_sdc_pos": "Channel σ"
+  "cand.col_sdc_pos": "Channel σ",
+  "sched.paths_found": "{n} jobs contain Windows paths (C:\\…) and cannot run on this system. They can be rewritten for this installation ({root}).",
+  "sched.paths_preview": "Preview: old → new",
+  "sched.paths_col_job": "Job",
+  "sched.paths_col_old": "Current",
+  "sched.paths_col_new": "New",
+  "sched.paths_col_missing": "Not found",
+  "sched.paths_unresolved": "{n} jobs refer to files that do not exist here. Those paths stay unchanged and must be fixed by hand.",
+  "sched.paths_btn": "🔧 Rewrite paths",
+  "sched.paths_done": "{n} commands rewritten. Backup: {backup}. If schedserver.py runs as a separate process, restart it."
 }

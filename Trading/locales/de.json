@@ -3307,5 +3307,14 @@
   "cand.sdc_min_quality_help": "Qualitäts-Schnitt im Kanal-Schritt (Qualitäts-Score 0–100). Long behält nur Werte mit Score über diesem Wert, Short (gespiegelt) nur Werte unter 100 minus diesem Wert. Werte ohne Score (ETFs, Indizes, fehlende Daten) fallen raus. 0 = aus. Momentaufnahme, nicht gemessen.",
   "cand.step_sdc_quality": "Kanal-Qualität",
   "cand.note_sdc_quality": "Qualitäts-Score {op} {v}, {u} ohne Score entfernt",
-  "cand.col_sdc_pos": "Kanal σ"
+  "cand.col_sdc_pos": "Kanal σ",
+  "sched.paths_found": "{n} Jobs enthalten Windows-Pfade (C:\\…) und laufen auf diesem System nicht. Sie lassen sich auf diese Installation ({root}) umstellen.",
+  "sched.paths_preview": "Vorschau: alt → neu",
+  "sched.paths_col_job": "Job",
+  "sched.paths_col_old": "Bisher",
+  "sched.paths_col_new": "Neu",
+  "sched.paths_col_missing": "Nicht gefunden",
+  "sched.paths_unresolved": "{n} Jobs verweisen auf Dateien, die es hier nicht gibt. Diese Pfade bleiben unverändert und müssen von Hand angepasst werden.",
+  "sched.paths_btn": "🔧 Pfade umstellen",
+  "sched.paths_done": "{n} Kommandos umgestellt. Sicherung: {backup}. Läuft schedserver.py als eigener Prozess, diesen neu starten."
 }
