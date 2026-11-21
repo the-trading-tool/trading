@@ -340,6 +340,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Phase 1G: Premium-Module, Lizenz und Scheduler-Pfade pruefen
+# ---------------------------------------------------------------------------
+# tradinglib/premium/ und license.json sind gitignored -- ein git clone bringt
+# sie nicht mit. Ohne sie startet die freie Version, ohne jeden Hinweis in der
+# App. Diese Phase meldet das nur (keine Aenderung, kein Abbruch). Dazu
+# Windows-Pfade in einer von Windows kopierten scheduler.db.
+
+step "Phase 1G: Premium-Module, Lizenz und Scheduler-Pfade pruefen"
+
+PREMIUM_HINT=0
+# Logik in tradinglib/install_check.py (gemeinsam mit install.ps1).
+CHECK_OUT="$("$VENV_PYTHON" -m tradinglib.install_check "$DB_DIR" 2>/dev/null || true)"
+
+if [[ -z "$CHECK_OUT" ]]; then
+    warn "Pruefung nicht moeglich (Python-Fehler) -- uebersprungen."
+else
+    while IFS='|' read -r level msg; do
+        case "$level" in
+            OK)   ok "$msg" ;;
+            WRN)  warn "$msg" ;;
+            INFO) info "$msg" ;;
+            HINT) PREMIUM_HINT=1 ;;
+        esac
+    done <<< "$CHECK_OUT"
+fi
+
+# ---------------------------------------------------------------------------
 # Phase 2: config.yaml anlegen
 # ---------------------------------------------------------------------------
 
@@ -503,6 +530,15 @@ echo ""
 echo -e "${CYAN} App starten:${NC}"
 echo "   .venv/bin/streamlit run asset_analyzer.py"
 echo ""
+
+if [[ "$PREMIUM_HINT" -eq 1 ]]; then
+    echo -e "${YELLOW}  Premium: tradinglib/premium/*.py und license.json fehlen oder sind unvollstaendig.${NC}"
+    echo -e "${YELLOW}  Beides kommt nicht ueber git -- vom bestehenden System kopieren, z. B.:${NC}"
+    echo "    scp <quelle>/Trading/license.json $ROOT/"
+    echo "    scp <quelle>/Trading/tradinglib/premium/*.py $ROOT/tradinglib/premium/"
+    echo -e "${YELLOW}  Danach die App neu starten (Browser-Reload reicht nicht).${NC}"
+    echo ""
+fi
 
 if [[ "$DO_SEED" -eq 0 ]]; then
     echo -e "${RED}  WICHTIG: Die App benoetigt Ticker-Stammdaten um zu funktionieren!${NC}"

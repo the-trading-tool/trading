@@ -5,6 +5,7 @@
 
 .DESCRIPTION
     Phase 1 (immer):      Python pruefen - .venv anlegen - Pakete installieren - Verzeichnisse erstellen
+                          - Scheduler-Jobs seeden - Premium-Module, Lizenz und Scheduler-Pfade pruefen
     Phase 2 (immer):      config.yaml anlegen, falls noch nicht vorhanden (Benutzer wird abgefragt)
     Phase 3 (--Seed):     yf_tickers.db mit Beispiel-Tickern befuellen
     Phase 4 (--Init):     Asset-Metadaten + OHLC-Daten + Performance berechnen (dauert Stunden!)
@@ -381,6 +382,45 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---------------------------------------------------------------------------
+# Phase 1G: Premium-Module, Lizenz und Scheduler-Pfade pruefen
+# ---------------------------------------------------------------------------
+# tradinglib\premium\ und license.json sind gitignored -- ein git clone bringt
+# sie nicht mit. Ohne sie startet die freie Version, ohne jeden Hinweis in der
+# App. Diese Phase meldet das nur (keine Aenderung, kein Abbruch). Dazu
+# Linux-Pfade in einer von Linux kopierten scheduler.db.
+# Logik in tradinglib\install_check.py (gemeinsam mit install.sh).
+
+Write-Step "Phase 1G: Premium-Module, Lizenz und Scheduler-Pfade pruefen"
+
+$PremiumHint = $false
+$checkOut = @()
+# Windows PowerShell 5.1 wirft bei 'Stop' schon auf jede stderr-Zeile eines
+# nativen Programms (z. B. eine Log-Warnung) -- hier nur lokal lockern.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $checkOut = @(& $PY -m tradinglib.install_check $DB_DIR 2>$null)
+} catch {
+    $checkOut = @()
+} finally {
+    $ErrorActionPreference = $prevEap
+}
+if ($checkOut.Count -eq 0) {
+    Write-Warn "Pruefung nicht moeglich (Python-Fehler) -- uebersprungen."
+} else {
+    foreach ($line in $checkOut) {
+        $parts = "$line".Split([char]'|', 2)
+        $msg = if ($parts.Count -gt 1) { $parts[1] } else { '' }
+        switch ($parts[0]) {
+            'OK'   { Write-Ok   $msg }
+            'WRN'  { Write-Warn $msg }
+            'INFO' { Write-Info $msg }
+            'HINT' { $PremiumHint = $true }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # Phase 2: config.yaml anlegen
 # ---------------------------------------------------------------------------
 
@@ -561,6 +601,14 @@ Write-Host " App starten:" -ForegroundColor Cyan
 Write-Host "   .\start.bat"
 Write-Host "   oder: .venv\Scripts\streamlit.exe run asset_analyzer.py"
 Write-Host ""
+if ($PremiumHint) {
+    Write-Host "  Premium: tradinglib\premium\*.py und license.json fehlen oder sind unvollstaendig." -ForegroundColor Yellow
+    Write-Host "  Beides kommt nicht ueber git -- vom bestehenden System kopieren, z. B.:" -ForegroundColor Yellow
+    Write-Host "    Copy-Item <quelle>\Trading\license.json $ROOT\"
+    Write-Host "    Copy-Item <quelle>\Trading\tradinglib\premium\*.py $ROOT\tradinglib\premium\"
+    Write-Host "  Danach die App neu starten (Browser-Reload reicht nicht)." -ForegroundColor Yellow
+    Write-Host ""
+}
 if (-not ($Seed -or $Init -or $InitInfo)) {
     Write-Host ""
     Write-Host "  WICHTIG: Die App benoetigt Ticker-Stammdaten um zu funktionieren!" -ForegroundColor Red

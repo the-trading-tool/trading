@@ -45,6 +45,17 @@ def is_windows_command(command) -> bool:
     return bool(command) and bool(_WIN_PATH.search(str(command)))
 
 
+# Linux-written commands as install.sh seeds them: a quoted absolute POSIX path
+# with at least two components, the venv interpreter, or the standby command.
+# Bare "/flag" arguments (/index, /group:ETP) never match.
+_POSIX_PATH = re.compile(r'"/[^"/\s]+/[^"]*"|/\.venv/bin/python|^\s*systemctl\s')
+
+
+def is_posix_command(command) -> bool:
+    """True when the command was written for Linux (e.g. a scheduler.db copied to Windows)."""
+    return bool(command) and bool(_POSIX_PATH.search(str(command)))
+
+
 def needs_rewrite(command, posix: bool | None = None) -> bool:
     """True when the command was written for the other platform.
 
