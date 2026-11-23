@@ -632,7 +632,7 @@ def render_withdrawal_simulation(username: str = '') -> None:
     with st.expander(_t('wd.exp_expander', n=len(exp_rows_saved)), expanded=bool(exp_rows_saved)):
         exp_df = st.data_editor(
             pd.DataFrame(st.session_state[_KEY + 'exp_init'], columns=_EXP_COLS).astype(
-                {'year': 'Int64', 'every': 'Int64', 'until': 'Int64', 'amount': 'float'}),
+                {'year': 'float', 'every': 'float', 'until': 'float', 'amount': 'float'}),
             hide_index=True, use_container_width=True, num_rows='dynamic', key=_KEY + 'exp_ed',
             column_config={
                 'year': st.column_config.NumberColumn(_t('wd.exp_year'), min_value=this_year,
@@ -1143,12 +1143,19 @@ def _render_results(state: dict, scen_opts: dict) -> None:
                              line=dict(color='#888', dash='dot')))
     fig.add_trace(go.Scatter(x=x, y=pct['solvent'] * 100, yaxis='y2', name=_t('wd.solvent_line'),
                              line=dict(color='#d93025', dash='dash')))
-    # one-off expenses as markers
-    marks = _expense_marks(state.get('expenses') or [])
-    for i, (month, label, amount) in enumerate(marks[:25]):
-        fig.add_vline(x=state['age0'] + month / 12.0, line_dash='dot', line_color='#9334e6', opacity=0.6,
-                      annotation_text=f"{label} {_eur(amount, sym)}".strip(), annotation_position='top',
-                      annotation_font_size=10, annotation_yshift=-12 * (i % 3))
+    # single expenses as lines (label on hover); recurring ones are listed below the chart,
+    # a line for every year would bury the chart
+    rows = state.get('expenses') or []
+    once = _expense_marks([r for r in rows if not int(r.get('every') or 0)])
+    for month, label, amount in once:
+        x_age = state['age0'] + month / 12.0
+        fig.add_vline(x=x_age, line_dash='dot', line_color='#9334e6', opacity=0.7)
+    if once:
+        fig.add_trace(go.Scatter(
+            x=[state['age0'] + m / 12.0 for m, _, _ in once], y=[0] * len(once), mode='markers',
+            marker=dict(symbol='triangle-up', size=11, color='#9334e6'), name=_t('wd.exp_marker'),
+            text=[f"{_year_of(m)}: {lbl} {_eur(a, sym)}".replace('  ', ' ') for m, lbl, a in once],
+            hovertemplate='%{text}<extra></extra>'))
     fig.update_layout(
         height=480, hovermode='x unified', margin=dict(t=30, b=40),
         xaxis_title=_t('wd.x_age'),
@@ -1157,6 +1164,15 @@ def _render_results(state: dict, scen_opts: dict) -> None:
         legend=dict(orientation='h', y=-0.18))
     st.plotly_chart(fig, use_container_width=True)
     st.caption(_t('wd.chart_caption'))
+    recurring = [r for r in rows if int(r.get('every') or 0) > 0]
+    if recurring:
+        parts = []
+        for r in recurring:
+            until = r.get('until')
+            span = _t('wd.exp_rec_until', start=r['year'], end=until) if until else _t('wd.exp_rec_from', start=r['year'])
+            every = _t('wd.exp_rec_yearly') if int(r['every']) == 1 else _t('wd.exp_rec_every', n=int(r['every']))
+            parts.append(f"{every}: {r.get('label') or ''} {_eur(float(r['amount']), sym)} {span}".replace('  ', ' '))
+        st.caption(_t('wd.exp_rec_caption', items='; '.join(parts)))
 
     # spending actually financed
     sp = ws.spending_percentiles(res, real=real)

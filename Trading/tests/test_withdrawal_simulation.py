@@ -492,3 +492,14 @@ def test_one_off_expenses_are_paid_with_inflation():
     assert w[2] - w[3] == pytest.approx(30_000 * 1.02 ** (2 / 12))
     assert w[26] - w[27] == pytest.approx(10_000 * 1.02 ** (26 / 12))
     assert ws.net_flow_summary(res)['flow_p50'] > 0
+
+
+def test_recurring_expense_without_end_is_paid_every_year():
+    import datetime as dt
+    ex = ws.expand_expenses([{'year': 2027, 'amount': 3_300, 'every': 1, 'until': None}], dt.date(2026, 11, 23))
+    cfg = ws.SimConfig(capital=1_000_000, spending=0, fixed_years=40, tax='off', ter=0,
+                       inflation_mode='constant', inflation=0.0, n_sims=2, one_off_expenses=ex)
+    w = ws.simulate(cfg, np.zeros((240, 1)))['wealth'][0]
+    paid_months = [t for t in range(480) if w[t] - w[t + 1] > 1]
+    assert len(paid_months) == 40                     # every year of the 40-year horizon, not only 25
+    assert paid_months[-1] > 12 * 35

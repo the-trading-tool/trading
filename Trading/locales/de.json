@@ -3679,6 +3679,12 @@
   "wd.exp_until_help": "Nur bei Wiederholung: letztes Jahr. Leer = solange der Haushalt lebt.",
   "wd.exp_summary": "{n} Zahlungen, zusammen {total} in heutiger Kaufkraft.",
   "wd.exp_caption": "Zeilen mit + hinzufügen, markieren und Entf zum Löschen. Jede Ausgabe wird im Januar ihres Jahres zusätzlich zu den laufenden Ausgaben aus dem Vermögen bezahlt (erst Festgeld bzw. anteilig, dann Wertpapiere mit Steuer auf den Gewinnanteil). Beträge in heutiger Kaufkraft, sie steigen mit der Inflation. Sie werden nicht vom Entnahmemodell gekürzt und nur gezahlt, solange der Haushalt lebt. Wird automatisch gespeichert.",
-  "wd.expl_expenses": "**Einmalige Ausgaben:** {n} Zahlungen, zusammen {total} in heutiger Kaufkraft (z. B. {examples}); sie sind in allen Zahlen enthalten und in der Vermögensgrafik als violette Linien markiert.",
-  "wd.sustain_target_help": "Höchstens so viele der simulierten Lebensverläufe dürfen vor dem Tod pleitegehen (1–30 %, in 1-%-Schritten). Für kleine Werte rechnet der Simulator mit mehr Pfaden (bis 1.500), damit wenige Ausreißer nicht das Ergebnis bestimmen – das dauert etwas länger."
+  "wd.expl_expenses": "**Einmalige und wiederkehrende Ausgaben:** {n} Zahlungen, zusammen {total} in heutiger Kaufkraft (z. B. {examples}); sie sind in allen Zahlen enthalten. Einmalige stehen in der Vermögensgrafik als violette Linie mit Dreieck (Details beim Darüberfahren), wiederkehrende darunter als Text.",
+  "wd.sustain_target_help": "Höchstens so viele der simulierten Lebensverläufe dürfen vor dem Tod pleitegehen (1–30 %, in 1-%-Schritten). Für kleine Werte rechnet der Simulator mit mehr Pfaden (bis 1.500), damit wenige Ausreißer nicht das Ergebnis bestimmen – das dauert etwas länger.",
+  "wd.exp_marker": "Einmalige Ausgabe",
+  "wd.exp_rec_yearly": "jährlich",
+  "wd.exp_rec_every": "alle {n} Jahre",
+  "wd.exp_rec_from": "ab {start}",
+  "wd.exp_rec_until": "{start}–{end}",
+  "wd.exp_rec_caption": "Wiederkehrende Ausgaben (in allen Jahren eingerechnet, nicht als Linien gezeichnet): {items}."
 }

@@ -3679,6 +3679,12 @@
   "wd.exp_until_help": "Only with repetition: last year. Empty = as long as the household lives.",
   "wd.exp_summary": "{n} payments, together {total} in today's money.",
   "wd.exp_caption": "Add rows with +, select and Del to delete. Each expense is paid in January of its year on top of the regular spending (first deposits or proportionally, then securities with tax on the gain share). Amounts in today's money, they rise with inflation. They are not cut by the withdrawal model and only paid while the household lives. Saved automatically.",
-  "wd.expl_expenses": "**One-off expenses:** {n} payments, together {total} in today's money (e.g. {examples}); they are included in all figures and marked as purple lines in the wealth chart.",
-  "wd.sustain_target_help": "At most this share of the simulated lives may run out of money before death (1–30 %, in 1 % steps). For small values the simulator uses more paths (up to 1,500) so a few outliers do not decide the result – that takes a bit longer."
+  "wd.expl_expenses": "**One-off and recurring expenses:** {n} payments, together {total} in today's money (e.g. {examples}); they are included in all figures. One-off ones are shown in the wealth chart as a purple line with a triangle (details on hover), recurring ones as text below it.",
+  "wd.sustain_target_help": "At most this share of the simulated lives may run out of money before death (1–30 %, in 1 % steps). For small values the simulator uses more paths (up to 1,500) so a few outliers do not decide the result – that takes a bit longer.",
+  "wd.exp_marker": "One-off expense",
+  "wd.exp_rec_yearly": "yearly",
+  "wd.exp_rec_every": "every {n} years",
+  "wd.exp_rec_from": "from {start}",
+  "wd.exp_rec_until": "{start}–{end}",
+  "wd.exp_rec_caption": "Recurring expenses (included in every year, not drawn as lines): {items}."
 }
