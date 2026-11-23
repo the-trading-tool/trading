@@ -73,16 +73,11 @@ def check(root, db_dir, posix: bool | None = None) -> list[tuple[str, str]]:
                 rows = con.execute('SELECT id, job_name, command FROM jobs').fetchall()
             finally:
                 con.close()
-            if posix:
-                n = len(sp.plan(rows, posix=True))
-                if n:
-                    out += [('WRN', '%d Scheduler-Jobs mit Windows-Pfaden (kopierte scheduler.db)' % n),
-                            ('WRN', 'In der App umstellen: Admin -> Scheduler -> "Pfade umstellen"')]
-            else:
-                n = sum(1 for _, _, cmd in rows if sp.is_posix_command(cmd))
-                if n:
-                    out += [('WRN', '%d Scheduler-Jobs mit Linux-Pfaden (kopierte scheduler.db)' % n),
-                            ('WRN', 'Von Hand anpassen: Admin -> Scheduler, Spalte "Kommando"')]
+            n = sum(1 for _, _, cmd in rows if sp.needs_rewrite(cmd, posix=posix))
+            if n:
+                other = 'Windows' if posix else 'Linux'
+                out += [('WRN', '%d Scheduler-Jobs mit %s-Pfaden (kopierte scheduler.db)' % (n, other)),
+                        ('WRN', 'In der App umstellen: Admin -> Scheduler -> "Pfade umstellen"')]
         except Exception as e:
             out.append(('WRN', 'scheduler.db nicht pruefbar: %s' % e))
     return out

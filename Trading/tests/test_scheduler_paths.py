@@ -65,12 +65,72 @@ def test_slash_flags_are_not_paths():
     assert sp.is_windows_command(f'"{PY}" /index')
 
 
-def test_plan_only_on_posix(root):
+def test_plan_direction_follows_host(root):
     rows = [(1, 'A', f'"{PY}" "{WIN}\\asset_perf2.py" /all'),
             (2, 'B', f'"/venv/bin/python" "{root.as_posix()}/asset_perf2.py" /all')]
-    assert sp.plan(rows, root=root, python='/p', posix=False) == []
-    items = sp.plan(rows, root=root, python='/p', posix=True)
-    assert [it['id'] for it in items] == [1]
+    assert [it['id'] for it in sp.plan(rows, root=root, python='/p', posix=True)] == [1]
+    assert [it['id'] for it in sp.plan(rows, root=root, python='P', posix=False)] == [2]
+
+
+# --- Linux -> Windows (commands as install.sh seeds them) -------------------
+
+LX = '/home/kurt/trading.V2/Trading'
+LPY = LX + '/.venv/bin/python'
+WPY = r'C:\T\.venv\Scripts\python.exe'
+
+
+def _win(cmd, root):
+    return sp.convert_to_windows(cmd, root=root, python=WPY)
+
+
+def test_linux_python_and_script_with_args_kept(root):
+    tail = '"1m:2d"  "/group:^GDAXI,^MDAXI,^SDAXI" /worker:4'
+    new, missing = _win(f'"{LPY}" "{LX}/get_asset_data.py" {tail}', root)
+    assert new == f'"{WPY}" "{root / "get_asset_data.py"}" {tail}'
+    assert missing == []
+
+
+def test_linux_select_quoting_untouched(root):
+    tail = "1d:1mo /select:'WHERE Ticker IN (\"TLT\",\"HYG\")'"
+    new, _ = _win(f'"{LPY}" "{LX}/get_asset_data.py" {tail}', root)
+    assert new.endswith(tail)
+
+
+def test_linux_pwsh_catchup(root):
+    new, missing = _win(f'pwsh -NoProfile -ExecutionPolicy Bypass -File "{LX}/catchup.ps1" -Scope daily', root)
+    assert new == (f'{sp.WIN_PWSH} -NoProfile -ExecutionPolicy Bypass -File '
+                   f'"{root / "catchup.ps1"}" -Scope daily')
+    assert missing == []
+
+
+def test_systemctl_suspend_becomes_hibernate(root):
+    assert _win('systemctl suspend', root) == (sp.WIN_STANDBY, [])
+
+
+def test_other_systemctl_is_unresolved(root):
+    assert _win('systemctl restart foo', root) == ('systemctl restart foo', ['systemctl restart foo'])
+
+
+def test_linux_missing_file_stays_and_is_reported(root):
+    new, missing = _win(f'"{LPY}" "{LX}/run_agent.py" --user kurt', root)
+    assert new == f'"{WPY}" "{LX}/run_agent.py" --user kurt'
+    assert missing == [f'{LX}/run_agent.py']
+
+
+def test_linux_bare_path_gets_quoted(root):
+    # The scheduler splits with shlex (POSIX mode): an unquoted C:\ path would lose its backslashes.
+    new, _ = _win(f'{LPY} {LX}/asset_perf2.py true /all', root)
+    assert new == f'"{WPY}" "{root / "asset_perf2.py"}" true /all'
+    import shlex
+    assert shlex.split(new)[1] == str(root / 'asset_perf2.py')
+
+
+def test_rewritten_commands_are_native(root):
+    """Converted commands are not flagged again on their target host."""
+    lin = f'"{LPY}" "{LX}/asset_perf2.py" /all'
+    win = f'"{PY}" "{WIN}\\asset_perf2.py" /all'
+    assert not sp.needs_rewrite(_win(lin, root)[0], posix=False)
+    assert not sp.needs_rewrite(_conv(win, root)[0], posix=True)
 
 
 def test_apply_and_backup(root, tmp_path):

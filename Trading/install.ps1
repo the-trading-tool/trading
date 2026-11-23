@@ -387,7 +387,8 @@ if ($LASTEXITCODE -ne 0) {
 # tradinglib\premium\ und license.json sind gitignored -- ein git clone bringt
 # sie nicht mit. Ohne sie startet die freie Version, ohne jeden Hinweis in der
 # App. Diese Phase meldet das nur (keine Aenderung, kein Abbruch). Dazu
-# Linux-Pfade in einer von Linux kopierten scheduler.db.
+# Linux-Pfade in einer von Linux kopierten scheduler.db (Umstellung in der
+# App: Admin -> Scheduler -> "Pfade umstellen").
 # Logik in tradinglib\install_check.py (gemeinsam mit install.sh).
 
 Write-Step "Phase 1G: Premium-Module, Lizenz und Scheduler-Pfade pruefen"

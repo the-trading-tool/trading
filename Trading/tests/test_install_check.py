@@ -88,6 +88,7 @@ def test_linux_scheduler_on_windows(tree):
     _sched(tree, LINUX_CMDS + [WIN_CMD])
     msgs = [m for _, m in ic.check(tree, tree / 'db', posix=False)]
     assert '3 Scheduler-Jobs mit Linux-Pfaden (kopierte scheduler.db)' in msgs
+    assert 'In der App umstellen: Admin -> Scheduler -> "Pfade umstellen"' in msgs
 
 
 def test_native_scheduler_is_quiet(tree):

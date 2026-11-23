@@ -611,8 +611,9 @@ class Scheduler:
     def _path_migration(self, conn):
         """Offer to rewrite job commands copied from a Windows installation.
 
-        Rendered only when at least one command still contains a C:\\ path on a
-        POSIX host; see tradinglib.scheduler_paths for the rewrite rules.
+        Rendered only when at least one command was written for the other
+        operating system (C:\\ paths on a POSIX host, /home/... paths on
+        Windows); see tradinglib.scheduler_paths for the rewrite rules.
         """
         from tradinglib import scheduler_paths as sp
         from tradinglib.i18n import t
@@ -625,7 +626,10 @@ class Scheduler:
         if not items:
             return
         unresolved = [it for it in items if it['unresolved']]
-        st.warning(t('sched.paths_found', n=len(items), root=sp.APP_ROOT.as_posix()))
+        if os.name == 'nt':
+            st.warning(t('sched.paths_found_posix', n=len(items), root=str(sp.APP_ROOT)))
+        else:
+            st.warning(t('sched.paths_found', n=len(items), root=sp.APP_ROOT.as_posix()))
         with st.expander(t('sched.paths_preview'), expanded=False):
             st.dataframe(
                 pd.DataFrame([{t('sched.paths_col_job'): it['job_name'],
