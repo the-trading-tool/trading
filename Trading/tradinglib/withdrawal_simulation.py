@@ -1278,6 +1278,18 @@ def composition_percentiles(res: dict, real: bool = True) -> pd.DataFrame:
     return df
 
 
+def ruin_share_by_year(res: dict) -> pd.Series:
+    """Cumulative share of ALL households whose money ran out while alive, by year from today.
+
+    Reaches ``summarize()['p_ruin']`` at the end; unlike "alive with wealth" it is not
+    lowered by deaths.
+    """
+    rm = np.asarray(res['ruin_month'])
+    years = np.arange(0, res['months'] // 12 + 1)
+    share = [float(((rm >= 0) & (rm < y * 12)).mean()) for y in years]
+    return pd.Series(share, index=years)
+
+
 def wealth_percentiles(res: dict, real: bool = True, q=(10, 25, 50, 75, 90)) -> pd.DataFrame:
     """Yearly percentiles of the wealth of households still alive."""
     m = res['months']

@@ -503,3 +503,12 @@ def test_recurring_expense_without_end_is_paid_every_year():
     paid_months = [t for t in range(480) if w[t] - w[t + 1] > 1]
     assert len(paid_months) == 40                     # every year of the 40-year horizon, not only 25
     assert paid_months[-1] > 12 * 35
+
+
+def test_ruin_share_by_year_ends_at_p_ruin_and_ignores_deaths():
+    cfg = ws.SimConfig(capital=300_000, spending=2_500, persons=[ws.Person(65, 'm')], n_sims=400)
+    res = ws.simulate(cfg, np.random.default_rng(8).normal(0.003, 0.04, (240, 1)))
+    share = ws.ruin_share_by_year(res)
+    assert share.iloc[0] == 0.0
+    assert (share.diff().dropna() >= -1e-12).all()                   # cumulative, never falls
+    assert share.iloc[-1] == pytest.approx(ws.summarize(res)['p_ruin'])

@@ -1140,9 +1140,20 @@ def _render_results(state: dict, scen_opts: dict) -> None:
                              line=dict(width=0), name=_t('wd.band_25_75')))
     fig.add_trace(go.Scatter(x=x, y=pct['p50'], line=dict(color='#1f78d1', width=3), name=_t('wd.median')))
     fig.add_trace(go.Scatter(x=x, y=pct['alive'] * 100, yaxis='y2', name=_t('wd.alive_line'),
-                             line=dict(color='#888', dash='dot')))
-    fig.add_trace(go.Scatter(x=x, y=pct['solvent'] * 100, yaxis='y2', name=_t('wd.solvent_line'),
-                             line=dict(color='#d93025', dash='dash')))
+                             line=dict(color='#80868b', dash='dot'), hovertemplate='%{y:.1f} %'))
+    # cumulative share of ALL households that ran out of money while alive (own scale:
+    # it is usually a few percent and would vanish on the 0-100 % axis of the alive line)
+    ruin = ws.ruin_share_by_year(res).reindex(pct['year']).ffill().fillna(0.0) * 100
+    ruin_top = max(5.0, float(np.ceil(ruin.max() * 1.3)))
+    fig.add_trace(go.Scatter(x=x, y=ruin.values, yaxis='y3', name=_t('wd.ruin_line'),
+                             line=dict(color='#d93025', width=2.5), hovertemplate='%{y:.1f} %'))
+    # few households left: the median there rests on a handful of (often wealthy) survivors
+    thin = pct.loc[pct['alive'] < 0.10, 'year']
+    if len(thin):
+        fig.add_vrect(x0=state['age0'] + float(thin.min()), x1=state['age0'] + float(pct['year'].max()),
+                      fillcolor='rgba(128,134,139,0.10)', line_width=0, layer='below',
+                      annotation_text=_t('wd.few_households'), annotation_position='top left',
+                      annotation_font_size=10)
     # single expenses as lines (label on hover); recurring ones are listed below the chart,
     # a line for every year would bury the chart
     rows = state.get('expenses') or []
@@ -1160,7 +1171,12 @@ def _render_results(state: dict, scen_opts: dict) -> None:
         height=480, hovermode='x unified', margin=dict(t=30, b=40),
         xaxis_title=_t('wd.x_age'),
         yaxis=dict(title=_t('wd.y_wealth_real' if real else 'wd.y_wealth_nominal', cur=sym), rangemode='tozero'),
-        yaxis2=dict(title='%', overlaying='y', side='right', range=[0, 105], showgrid=False),
+        xaxis=dict(domain=[0.0, 0.90]),
+        yaxis2=dict(title=dict(text=_t('wd.y_alive'), font=dict(color='#80868b')), overlaying='y',
+                    side='right', anchor='x', range=[0, 105], showgrid=False, tickfont=dict(color='#80868b')),
+        yaxis3=dict(title=dict(text=_t('wd.y_ruin'), font=dict(color='#d93025')), overlaying='y',
+                    side='right', anchor='free', position=1.0, range=[0, ruin_top], showgrid=False,
+                    tickfont=dict(color='#d93025')),
         legend=dict(orientation='h', y=-0.18))
     st.plotly_chart(fig, use_container_width=True)
     st.caption(_t('wd.chart_caption'))

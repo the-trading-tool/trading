@@ -3470,12 +3470,11 @@
   "wd.band_10_90": "10–90 %",
   "wd.band_25_75": "25–75 %",
   "wd.median": "Median",
-  "wd.alive_line": "Haushalt lebt (%)",
-  "wd.solvent_line": "lebt und hat noch Vermögen (%)",
+  "wd.alive_line": "Haushalt lebt noch (%)",
   "wd.x_age": "Alter (jüngere Person)",
   "wd.y_wealth_real": "Vermögen real ({cur})",
   "wd.y_wealth_nominal": "Vermögen nominal ({cur})",
-  "wd.chart_caption": "Bänder: Vermögensverteilung der Haushalte, die noch leben. Graue Linie: Anteil lebender Haushalte. Rote Linie: Anteil, der lebt und noch Vermögen hat. Der Abstand der beiden Linien ist das Pleite-Risiko.",
+  "wd.chart_caption": "Blaue Bänder: Vermögen der Haushalte, die noch leben (Median, 25–75 %, 10–90 %). Graue Linie (rechte Achse): Anteil der Haushalte, in denen noch jemand lebt – sie fällt durch Todesfälle, nicht durch Pleiten. Rote Linie (eigene Achse ganz rechts): Anteil aller Haushalte, denen bis zu diesem Alter das Geld zu Lebzeiten ausgegangen ist; ihr Endwert entspricht 100 % minus „Geld reicht ein Leben lang“. Grau hinterlegt: weniger als 10 % der Haushalte leben noch, der Median beruht dort auf wenigen, oft vermögenden Überlebenden.",
   "wd.sustain_expander": "💡 Nachhaltige Ausgaben: wie viel geht?",
   "wd.sustain_target": "Max. Pleite-Risiko",
   "wd.sustain_run": "Berechnen",
@@ -3686,5 +3685,9 @@
   "wd.exp_rec_every": "alle {n} Jahre",
   "wd.exp_rec_from": "ab {start}",
   "wd.exp_rec_until": "{start}–{end}",
-  "wd.exp_rec_caption": "Wiederkehrende Ausgaben (in allen Jahren eingerechnet, nicht als Linien gezeichnet): {items}."
+  "wd.exp_rec_caption": "Wiederkehrende Ausgaben (in allen Jahren eingerechnet, nicht als Linien gezeichnet): {items}.",
+  "wd.ruin_line": "Pleite bisher (% aller Haushalte)",
+  "wd.y_alive": "lebt noch %",
+  "wd.y_ruin": "pleite %",
+  "wd.few_households": "unter 10 % leben noch – Median unsicher"
 }

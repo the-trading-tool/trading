@@ -2324,6 +2324,11 @@ Kapitalverzehrs ueber die ganze Lebenszeit.
   die €-Ansicht der Klassen-Grafik zeigt „zahlt ein / entnimmt rund X € pro Jahr“. Schalter heisst jetzt „mit Ein- und
   Auszahlungen / nur Startkapital / Vergleich“ (vorher „ohne Entnahmen“ – missverstaendlich, weil die Variante
   auch die Renten weglaesst und bei Renten-Ueberschuss tiefer liegt). `_STATE_VERSION` = 9.
+- **Vermoegensgrafik (2026-11-23):** Die rote Linie „lebt und hat noch Vermoegen“ wurde als Pleite gelesen (fiel durch
+  Todesfaelle; Pleite war nur der kaum sichtbare Abstand zur grauen Linie). Jetzt: grau „Haushalt lebt noch“ (y2,
+  0–100 %), rot „Pleite bisher (% aller Haushalte)“ = `ws.ruin_share_by_year()` kumuliert auf eigener Achse y3
+  (0–max(5 %, 1,3 × Max)), Endwert = `p_ruin`. Bereich mit < 10 % lebenden Haushalten grau hinterlegt („Median
+  unsicher“). x-Achse bis 0,90 der Breite, damit beide rechten Achsen Platz haben.
 - **Menue (2026-11-23):** Eintrag in der Gruppe Portfolio direkt nach „Scalable Transaktionen“ (own_trades), auch in
   der Scalable-Edition. Die Portfolio-Gruppe war admin-only; jetzt sehen Nicht-Admins sie ebenfalls, aber nur mit dem
   Simulator (Strategy Finder, Multi, Trading, own_trades bleiben `self.is_admin`). Gruppe ist aufgeklappt, wenn

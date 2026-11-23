@@ -3470,12 +3470,11 @@
   "wd.band_10_90": "10–90 %",
   "wd.band_25_75": "25–75 %",
   "wd.median": "Median",
-  "wd.alive_line": "household alive (%)",
-  "wd.solvent_line": "alive with money left (%)",
+  "wd.alive_line": "Household still alive (%)",
   "wd.x_age": "Age (younger person)",
   "wd.y_wealth_real": "Wealth, real ({cur})",
   "wd.y_wealth_nominal": "Wealth, nominal ({cur})",
-  "wd.chart_caption": "Bands: wealth distribution of households still alive. Grey line: share of households alive. Red line: share alive with money left. The gap between the two lines is the ruin risk.",
+  "wd.chart_caption": "Blue bands: wealth of households still alive (median, 25–75 %, 10–90 %). Grey line (right axis): share of households in which someone is still alive – it falls through deaths, not ruin. Red line (own axis on the far right): share of all households whose money ran out while alive up to this age; its end value equals 100 % minus “money lasts a lifetime”. Grey area: fewer than 10 % of households are still alive, the median there rests on a few, often wealthy survivors.",
   "wd.sustain_expander": "💡 Sustainable spending: how much is possible?",
   "wd.sustain_target": "Max. ruin risk",
   "wd.sustain_run": "Calculate",
@@ -3686,5 +3685,9 @@
   "wd.exp_rec_every": "every {n} years",
   "wd.exp_rec_from": "from {start}",
   "wd.exp_rec_until": "{start}–{end}",
-  "wd.exp_rec_caption": "Recurring expenses (included in every year, not drawn as lines): {items}."
+  "wd.exp_rec_caption": "Recurring expenses (included in every year, not drawn as lines): {items}.",
+  "wd.ruin_line": "Ruined so far (% of all households)",
+  "wd.y_alive": "alive %",
+  "wd.y_ruin": "ruined %",
+  "wd.few_households": "under 10 % still alive – median uncertain"
 }
