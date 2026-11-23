@@ -42,6 +42,7 @@ DEFAULT_SIDEBAR_ITEMS = {
     'summary': False,
     'performance': False,
     'compound': False,
+    'withdrawal': True,
     'strategy_finder': False,
     'multi': False,
     'trading': False,
@@ -59,7 +60,7 @@ DEFAULT_SIDEBAR_ITEMS = {
 SIDEBAR_MENU_GROUPS = [
     ('nav.group_market', ['marketmap', 'rotation', 'market_overview', 'correlation', 'fear_greed', 'global_rotation', 'edge_scores']),
     ('nav.group_assets', ['asset', 'asset_search', 'candidates', 'risk_profile', 'four_ps', 'summary', 'performance', 'compound']),
-    ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades']),
+    ('nav.group_portfolio', ['strategy_finder', 'multi', 'trading', 'own_trades', 'withdrawal']),
     ('nav.group_admin', ['admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine']),
 ]
 
@@ -79,6 +80,7 @@ SIDEBAR_ITEM_LABEL_KEYS = {
     'summary': 'nav.asset_summary',
     'performance': 'nav.performance',
     'compound': 'nav.compound_simulation',
+    'withdrawal': 'nav.withdrawal_simulation',
     'strategy_finder': 'nav.strategy_finder',
     'multi': 'nav.multi_strategies',
     'trading': 'nav.trading',
@@ -842,6 +844,7 @@ class SystemConfig(tools.Db_tools):
                 self._render_help_pages([
                     ("Einstellungen (⚙)", "system_config"),
                     ("Zinseszins-Simulation", "compound_simulation"),
+                    ("Entnahme-Simulator", "withdrawal_simulation"),
                     ("Earnings-Kalender", "earnings_calendar"),
                     ("Pine Script Export", "pine_exporter"),
                     ("KI-Integration", "ai_client"),
@@ -892,5 +895,6 @@ class SystemConfig(tools.Db_tools):
                 ("Sektorrotation / Sector rotation", "sector_rotation_page"),
                 ("Market Map", "market_map"),
                 ("Einmalinvestition / Lump sum", "compound_simulation"),
+                ("Entnahme-Simulator / Withdrawal simulator", "withdrawal_simulation"),
                 ("Datenquellen (Yahoo / FMP / EODHD)", "providers"),
             ])

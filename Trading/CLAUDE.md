@@ -2213,3 +2213,166 @@ interest (<1,5), cash_burn, losses, surprise (2× negativ, < 200 T alt).
   plus `currentRatio`, `quickRatio`, `operatingCashflow`, `netIncomeToCommon`.
   `fundamentals_quarterly` hat neu `operating_cashflow`, `capex`, `free_cashflow`, `sbc` (aus `quarterly_cashflow`).
   Nachladen ohne Sonntag: `python get_asset_info.py /extras /worker:4`.
+
+## Entnahme-Simulator (2026-11-22)
+
+Neue Seite `?withdrawal=true` (Gruppe **Portfolio** seit 2026-11-23, vorher Assets; Sidebar-Item `withdrawal`, Default an, in der
+Scalable-Edition frei; `app_edition._ROUTE_PARAMS`/`SCALABLE_FREE_ROUTES`). Monte-Carlo des
+Kapitalverzehrs ueber die ganze Lebenszeit.
+
+| Datei | Rolle |
+|---|---|
+| `tradinglib/withdrawal_simulation.py` | Rechenkern ohne Streamlit: Sterblichkeit, Pflege, Marktdaten, `simulate`, `summarize`, `wealth_percentiles`, `sustainable_spending` |
+| `tradinglib/withdrawal_simulation_page.py` | Seite: Haushalt, Depot + ETF/Rohstoff-Beimischung, Festgeld, Ausgaben/Inflation/Steuer, Marktmodell, Ergebnisse |
+| `HELP/withdrawal_simulation[_en].html` | Hilfe (in `system_config` registriert, auch Scalable-Hilfe) |
+| `tests/test_withdrawal_simulation.py` | 16 Tests (Destatis-Kalibrierung, Split-Filter, Deckel, Ruin, Steuer, Inflation, Paar/Pflege) |
+
+- **Maerkte:** Monatsrenditen aus `month_data` + `day_data` der lokalen `yf_*.db` (day_data ist oft
+  kurz, z. B. EUNL.DE erst ab 2021, month_data ab 2009), in Systemwaehrung ueber `fx_history.per_unit`.
+  Split-Spruenge (Kursverhaeltnis ~1:n) werden auf 0 gesetzt. Block-Bootstrap 12 Monate, gleiche
+  Monate fuer alle Anlagen. Luecken kuerzerer Reihen = Proxy (Default SPY in EUR). Dividenden aus
+  `asset_info.dividendYield` (yfinance liefert Prozent, /100). Renditedeckel je Anlage (Default 8 % p. a.)
+  gegen Survivorship-Bias der Einzelaktien. `^GSPC` hat lokal keine month_data → nicht als Proxy.
+- **Depot:** `portfolio_map.load('own')` + `by_ticker`; Startkapital vorbelegt mit dem Depotwert,
+  unrealisierte Gewinne aus `gainPct`.
+- **Sterblichkeit:** Gompertz-Makeham, c fix (m 0,1013 / f 0,1230), B auf Destatis Periodensterbetafel
+  2023/2025 kalibriert (e65 m 18,0 / f 21,1; ergibt e0 79,0/84,0 vs. Destatis 78,8/83,4). Kohorten-Effekt
+  = Rueckgang der qx um x % p. a. (Default 1 %). Gesundheit/Lebensstil als Hazard-Multiplikatoren
+  relativ zum Bevoelkerungsschnitt (Richtwerte, keine eigene Messung), geklemmt 0,4–4, im Alter abgeschwaecht.
+  `Person.average()` = Tafel-Schnitt (Faktor 1) — Default-`Person` ist Nichtraucher (0,85)!
+- **Pflege:** Eintritt 0,25 % mit 60, verdoppelt alle ~6 J.; im Pflegefall qx ×3, mind. 20 %/J.;
+  Eigenanteil je Person, Kosten steigen Inflation + `care_real`. Richtwerte, nicht kalibriert.
+- **Festgeld:** Quote, Zins fest oder Inflation + Aufschlag; `rebalance` (Quote jaehrlich) oder
+  `bucket` (erst Festgeld, Auffuellen nur nach Plus-Jahr). Zinsen versteuert.
+- **Inflation:** konstant oder AR(1) je Pfad (Mittel, Schock 1,2 %, Persistenz 0,7, Boden −2 %);
+  Preisniveau je Pfad (`res['price']`), reale Werte damit deflationiert.
+- **Steuer:** 26,375 % (+KiSt) auf Gewinnanteil jedes Verkaufs (Brutto-Hochrechnung), Sparerpauschbetrag
+  1.000 € je lebender Person/Jahr, Teilfreistellung 30 % fuer quoteType ETF (nicht Rohstoffe).
+  Nicht modelliert: Steuer beim Rebalancing innerhalb der Wertpapiere (nur beim Festgeld-Auffuellen),
+  KV-Beitraege auf Kapitalertraege, Rollkosten der Futures.
+- **Aufteilung (2026-11-22, Nachtrag):** jede Anlage hat eine Klasse `stock`/`etf`/`commodity`
+  (`ws.asset_class`: quoteType + Namensmuster + `COMMODITY_ETC`; auf der Seite je Zeile aenderbar) und ein
+  Gewicht in der Klasse (`default_inner_weights`: Depotwerte nach Positionswert, neue Titel = Klassen-Ø).
+  Drei Zielanteile am Wertpapierteil → `class_target_weights` (Klasse ohne Titel faellt raus, Rest wird
+  hochskaliert). Szenarien: `mixed` = Gewaehlte Aufteilung, `depot` = Depot wie es ist, `extras` =
+  nur ETF/Rohstoffe im Verhaeltnis der Zielanteile. Teilfreistellung jetzt nach Klasse `etf`.
+  Alter Regler „Beimischung %“ (`wd.mix*`, `wd.col_share`) entfernt.
+- **Entnahmemodelle (2026-11-22, Nachtrag):** `SimConfig.withdrawal_rule` = `fixed` | `guardrails`
+  (Guyton-Klinger, `guard_band`/`guard_step`) | `percent` (`percent_rate`, 0 = Startquote; ein expliziter
+  Satz gilt ab Monat 1) | `vol` (Wurzel aus langjaehriger/12-M-Portfolio-Vola, minus Drawdown ueber 10 %,
+  max ±15 %/Jahr, **Erhoehung nur solange reales Vermoegen >= Startkapital**) | `skip_infl`. Anpassung
+  einmal im Jahr als Faktor `adj` auf den Plan, geklemmt auf `spend_floor`/`spend_ceiling` (0,75/1,25).
+  Pflegekosten werden nie gekuerzt. Neu im Ergebnis: `consumption`/`planned` (real, je Monat),
+  `spending_stats` (Ø Ausgaben, tiefstes Jahr vs Plan, Anteil Jahre mit >10 % Kuerzung),
+  `spending_percentiles`; Seite mit Ausgaben-Chart und Modellvergleich (gleiche Zufallspfade).
+  Messung (EUNL/Gold 80/20, Paar, 600k, 20 % Festgeld): bei 4.500 €/Monat fest 83,7 % Erfolg, `vol` 88,7 %
+  bei gleichen Ø-Ausgaben, `skip_infl` 90,3 %; Leitplanken/Prozent heben die Ø-Ausgaben, kosten Nachlass.
+  Erste `vol`-Version (ohne Startkapital-Bedingung, Obergrenze 150 %) war schlechter als fest (79 %).
+  Alle Prozent-Regler auf 1-%-Schritte (Wunsch Nutzer).
+- **Ist gegen Ziel (2026-11-22, Nachtrag):** kein Startkapital-Eingabefeld mehr. Vermoegen heute =
+  Depot (ausgewaehlte Positionswerte) + Festgeld-Tabelle (Bank, Betrag, Zins; gespeichert pro Nutzer unter
+  `<user>:wd_banks` in config.db per Knopf). Gerechnet wird mit dem betragsgewichteten Ø-Zins (eine
+  Festgeld-Position in der Engine). Szenarien: `current` = Depot + Festgeld wie heute (Quote = Festgeld/Gesamt,
+  jaehrlich darauf zurueckgesetzt), `target` = Festgeld-Anteil (Slider, Vorgabe = heutiger Anteil) + Klassen-
+  Anteile, `extras` = Ziel ohne Aktien. Umschichtung ueber `ws.switch_cost`: nur Verkaeufe gehaltener Positionen,
+  Gewinnanteil × (1 − Teilfreistellung), minus Sparerpauschbetrag × Personen, × Steuersatz; die Steuer geht vom
+  Startkapital ab, der Gewinnanteil des Zielportfolios = behaltene Gewinne / Wertpapierwert. Seite zeigt
+  Tabelle „heute / Ziel“ je Klasse und je Szenario „Start: …, Umschichtung: … verkauft, Steuer …“.
+- **Steuer Deutschland/Spanien (2026-11-22, Nachtrag):** `TAX_REGIMES`
+  `de`/`de_kist8`/`de_kist9`/`es`/`off` (alte Keys `none`/`kist8`/`kist9` gemappt) mit Stufen (upper, rate),
+  Freibetrag je Person, Teilfreistellung. Spanien base del ahorro seit 2025: 19 % bis 6k, 21 % bis 50k,
+  23 % bis 200k, 27 % bis 300k, 30 %; kein Freibetrag, keine Teilfreistellung, Stufen nominal.
+  Engine: `ytd` = steuerpflichtige Kapitalertraege des Jahres, Grenzsatz `marginal_rate(ytd / lebende Personen)`
+  je Verkauf/Zins (Paar = getrennte Veranlagung, 50/50). `SimConfig.tax_brackets`/`tax_allowance` ueberschreiben
+  die Vorlage. Seite: Auswahl + Expander (Stufen-Tabelle, Freibetrag, Teilfreistellung), „als Standard speichern“
+  unter `<user>:wd_tax`. Dividenden jetzt netto (Grenzsatz bei 30k je Person, mit Teilfreistellung).
+  `switch_cost(..., brackets=, persons=)` progressiv. Befund: mit Aktien-ETFs ist DE (26,375 % × 0,7 + 1.000 €)
+  guenstiger als ES 19–21 %, bei Einzelaktien ES. Nicht modelliert: spanische Vermoegensteuer/Solidaritaetssteuer,
+  steuerfreie traspasos, Quellensteuer.
+- **Spanische Vermoegensteuer (2026-11-22, Nachtrag):** `wealth_tax_es()` = staatliche Skala (Ley 19/1991
+  art. 30, 0,2–3,5 %) ueber `wt_exemption` (700k) × (1 − `wt_bonus`), plus Solidaritaetssteuer (ITSGF, 0 % bis
+  3 M ueber 700k, dann 1,7/2,1/3,5 %, Vermoegensteuer angerechnet). Engine: zu jedem Jahresbeginn ab Jahr 2 auf
+  (Depot + Festgeld + `wt_other` × Preisniveau) / lebende Personen, faellig als Ausgabe im Folgemonat (laeuft durch
+  die normale Entnahme inkl. Gewinnsteuer). `summarize` → `wealth_tax_year_p50`/`_total_p50`/`_p90`. Nur bei
+  Steuer `es`, Einstellungen im Steuer-Expander, gespeichert in `<user>:wd_tax['wealth']`.
+  **60-%-Grenze** (`wealth_tax_cap_es`, `wt_cap60`, Default an): Einkommen = `wt_general_income` (brutto je Person,
+  waechst wie die Rente) + Festgeldzinsen des Vorjahres je Person (Dividenden bewusst nicht, langfristige
+  Kursgewinne zaehlen nicht); Einkommensteuer = `irpf_general_es` (allg. Skala 2025 19–47 %, Mindestbetrag 65+
+  6.700 €) + Sparsteuer auf die Zinsen; Kuerzung der Vermoegensteuer um den Ueberschuss ueber 60 %, hoechstens
+  80 %. Nicht modelliert: Hauptwohnungs-Freibetrag 300k, abweichende Regionalskalen (nur Freibetrag + Bonifikation).
+- **Kanaren (2026-11-22):** Sparsteuer und Vermoegensteuer gelten dort unveraendert (Sparskala landesweit gleich;
+  Kanaren: 700k Freibetrag, staatliche Skala, keine Bonifikation laut Sekundaerquellen). Fuer die 60-%-Grenze
+  `wt_income_region` = `avg` | `canarias`: `IRPF_GENERAL_CANARIAS` = Staat 2025 + kanarischer Teil 2025
+  (9/11,5/14/18,5/23,5/25/26 %, Grenzen 13.748/19.422/35.924/57.566/93.268/123.745 laut AEAT-Manual + calcuenta),
+  ausgeschrieben, Test prueft gegen `combine_brackets`. Obere Grenzen (25/26 %) in Quellen uneinheitlich.
+- **Ausgaben-Grafik** folgt jetzt dem Schalter „Inflationsbereinigt“ (`spending_percentiles(real=)`); real ist
+  sie waagrecht, weil der Plan mit der Inflation waechst — Nutzer hatte das als fehlende Preiskorrektur gelesen.
+- **Anlageklassen-Grafik (2026-11-22):** `SimConfig.asset_classes` (Klasse je Asset); `simulate` liefert zusaetzlich
+  `idx` (gezogene Monate, int32), `composition` (n × Jahre × [stock, etf, commodity, cash], nominal zum Jahresende)
+  und `asset_classes`. `class_growth()` = 1 € je Klasse auf denselben Pfaden (Klassen-Innengewichte, monatlich
+  rebalanciert, nach TER, vor Steuern/Entnahmen; Festgeld Ø-Zins bzw. Inflation + Aufschlag), `composition_percentiles()`
+  = Median je Klasse der lebenden Haushalte. Seite: Abschnitt „Anlageklassen über die Lebenszeit“ (Wertentwicklung /
+  Aufteilung in €), Jahre bis min. 10 % Haushalte leben, folgt Szenario- und Real-Schalter. `_STATE_VERSION` = 8.
+  €-Ansicht mit Schalter mit / ohne Entnahmen / Vergleich: `without_withdrawals(cfg)` (Ausgaben 0, Renten 0, keine
+  Pflege, Regel fest; Kosten, Zins-/Dividendensteuer, Vermoegensteuer bleiben), gleiche Pfade (gleicher Seed),
+  Ergebnis je Szenario in `state['nowd']` gecacht; Vergleich = Flaechen mit Entnahmen + `composition_total`-Linien.
+- **Fix Puffer-Modell (2026-11-22):** `cash_mode='bucket'` fuellte das Festgeld nur nach Plus-Jahren auf, baute
+  einen Ueberschuss ueber der Quote aber nie ab → Renten-Ueberschuesse sammelten sich unbegrenzt im Festgeld
+  (Renten groesser als Ausgaben). Jetzt: unter Quote nur nach Plus-Jahr auffuellen, ueber Quote
+  jedes Jahr in Wertpapiere anlegen. Ergebnisse mit Puffer + Ueberschuss sind seitdem hoeher (weniger Festgeld).
+- **Netto-Zahlungen:** `res['net_flow_real']` (je Jahr real, + = Entnahme, − = Einzahlung) und `net_flow_summary()`;
+  die €-Ansicht der Klassen-Grafik zeigt „zahlt ein / entnimmt rund X € pro Jahr“. Schalter heisst jetzt „mit Ein- und
+  Auszahlungen / nur Startkapital / Vergleich“ (vorher „ohne Entnahmen“ – missverstaendlich, weil die Variante
+  auch die Renten weglaesst und bei Renten-Ueberschuss tiefer liegt). `_STATE_VERSION` = 9.
+- **Menue (2026-11-23):** Eintrag in der Gruppe Portfolio direkt nach „Scalable Transaktionen“ (own_trades), auch in
+  der Scalable-Edition. Die Portfolio-Gruppe war admin-only; jetzt sehen Nicht-Admins sie ebenfalls, aber nur mit dem
+  Simulator (Strategy Finder, Multi, Trading, own_trades bleiben `self.is_admin`). Gruppe ist aufgeklappt, wenn
+  die Route `withdrawal` aktiv ist. `SIDEBAR_MENU_GROUPS` entsprechend. Gesamt-App-Harness braucht fuer die
+  Admin-Ansicht auch `config.yaml` in der DB-Kopie (sonst legt `ensure_config_yaml` eine neue an, ohne Admin).
+- **Pleite-Risiko 1-%-Schritte (2026-11-22):** Slider 1–30 % unter neuem Key `_wd_sust_pct` (ganze Prozent; der alte
+  `sust_t` hielt Bruchteile — gleicher Key haette beim Laden gespeicherter Werte einen Typkonflikt ausgeloest).
+  Pfade je Suche 1.500 (< 3 %), 1.000 (< 6 %), sonst 600. `sustainable_spending(..., tolerance=10)` bricht die
+  Bisektion bei 10 € Genauigkeit ab (vorher feste 14 Schritte; gemessen 113 s → 7 s fuer zwei Szenarien bei 2 %).
+- **Einmalige Ausgaben (2026-11-22):** Tabelle (Jahr, Zweck, Betrag heutige Kaufkraft, alle N Jahre, bis Jahr) unter
+  `<user>:wd_expenses`, automatisch gespeichert bei Aenderung. `ws.expand_expenses(rows, today)` → [(Monat, Betrag)],
+  Januar des Jahres (laufendes Jahr = sofort), Wiederholung bis `until` bzw. 75 Jahre. `SimConfig.one_off_expenses`;
+  in `simulate` zum Bedarf des Monats × Preisniveau addiert (nicht durch Entnahmeregel/Hinterbliebenen-Faktor,
+  nur solange der Haushalt lebt). Violette Linien in der Vermoegensgrafik, Zeile in der Erklaerung.
+  **data_editor-Falle:** die Basisdaten des Editors (`_wd_exp_init`) bleiben fest, solange der Editor lebt (seine
+  Edits sind Deltas dazu); neu gesetzt nur, wenn `_wd_exp_ed` fehlt (erster Besuch/Seitenwechsel). `_STATE_VERSION` = 10.
+  Harness `wd_app_settings.py` ersetzt `_save_expenses`/`_load_expenses` (JSON im Scratchpad).
+- **Ergebnis lesen (2026-11-22):** Expander „So liest du das Ergebnis“ je Szenario aus `explain_lines()` (Seite):
+  Plan vs. tatsaechliche Ausgaben, Entnahmemodell mit Untergrenze in €, Renten jetzt/spaeter, Netto-Ein-/Auszahlung,
+  Start/Umschichtung, Erfolgsquote, Pleite-Alter, Nachlass mit Lesart „in 90 % mindestens P10“ (Nutzer hatte P10 mit
+  der Erfolgsquote verknuepft), tiefstes Ausgabenjahr (0 % = Pflege frisst Rente), Pflege, Vermoegensteuer, viel
+  Festgeld, Grenzen. „Nachhaltige Ausgaben“: Spalte heisst jetzt Gesamtausgaben (vorher missverstaendlich „vor
+  Renten“), Knopf „Mit X € rechnen (Szenario)“ setzt `_wd_pending_spend`/`_wd_pending_run`, der naechste Lauf
+  schreibt den Betrag vor dem Widget in `_wd_spend` und startet die Simulation (Widget-State darf nach dem Zeichnen
+  nicht mehr gesetzt werden).
+- **Einstellungen speichern (2026-11-22):** alle `_wd_*`-Widgetwerte (bool/int/float/str/Liste von str) unter
+  `<user>:wd_settings` in config.db — per Knopf „Einstellungen speichern“ und automatisch bei „Simulation starten“;
+  „Auf Standard zurücksetzen“ leert sie. Ausgenommen (`_NOT_SETTINGS`): Ergebnisse, Knoepfe, Tabellen-Editoren
+  (Depot-Auswahl, Klassen-Tabelle, Steuerstufen — die Stufen speichert „Steuer als Standard“), `scen`/`chart_sc`
+  (Optionen haengen an Daten). Laden einmal je Sitzung in `_apply_saved_settings` (Werte in session_state, dann
+  `st.rerun()`); Streamlits einmaliger Hinweis „default value and Session State“ wird dabei ueber das private
+  Flag `policies._shown_default_value_warning` unterdrueckt (try/except). Headless-Tests: Harness
+  `wd_app_settings.py` im Scratchpad ersetzt Speichern/Laden durch eine JSON-Datei — **nie gegen
+  TradingDB-Produktion auf „Simulation starten“ klicken ohne diesen Ersatz**, sonst schreibt der Auto-Save
+  in die echte config.db.
+  **Fix Seitenwechsel (2026-11-22):** Streamlit loescht den State nicht gezeichneter Widgets → nach einem Wechsel auf
+  eine andere App-Seite standen alle Eingaben (u. a. Steuerland) wieder auf Vorgabe, weil `_wd_loaded` schon gesetzt
+  war. Jetzt Sitzungskopie `_wd_shadow` (jeder Lauf, vor den Ergebnissen) und Wiederherstellung, sobald `_wd_hh`
+  fehlt (Quelle: Kopie, sonst beim ersten Besuch config.db). Harness `wd_app_nav.py` (Scratchpad) simuliert den Wechsel.
+  **Auto-Save:** jeder Lauf vergleicht `_collect_settings()` mit `_wd_saved_snapshot` und speichert bei Aenderung sofort
+  in config.db (vorher nur per Knopf/Simulationsstart → Werte gingen beim Neuladen ohne Rechnen verloren).
+  Gesamt-App-Test: `app_real.py` im Scratchpad ersetzt `Authenticate.login` durch festen Nutzer; nur mit
+  `TradingDB` auf einer DB-Kopie (config, trades, asset_info, yf_tickers + yf_* der Depotwerte) laufen lassen.
+- **Fix 2026-11-22:** „'SimConfig' object has no attribute 'tax_brackets'“ — ein Ergebnis aus einer aelteren
+  Version lag in `st.session_state`, „Alle Modelle rechnen“ kopierte dessen alte `cfg`. Jetzt `ws.upgrade_config()`
+  am Anfang von `simulate` (fehlende Felder = Default) und `_STATE_VERSION` auf der Seite (alte Ergebnisse werden
+  verworfen, Hinweis „neu rechnen“). **Bei jeder Aenderung an SimConfig oder am Ergebnis-Layout `_STATE_VERSION`
+  hochzaehlen.**
+- Laufzeit: 2.000 Pfade × 3 Szenarien ~6 s; `sustainable_spending` (Bisektion, 600 Pfade) ~5 s je Szenario.
+- **Nach V2 kopiert** (2026-11-22): die fuenf neuen Dateien + `asset_analyzer.py`, `system_config.py`,
+  `app_edition.py` ganz (V2 war dort == Git-HEAD); in den Locales nur die 186 `wd.*`/`nav|page|error.withdrawal*`-
+  Keys angehaengt (V2 hatte schon einen eigenen `sched.*`-Key). Alle Nachtraege (Aufteilung, Entnahmemodelle, Ist gegen Ziel, Steuer DE/ES, Vermoegensteuer, 60-%-Grenze, Kanaren, nominale Ausgaben, Einstellungen speichern, Anlageklassen-Grafik mit/ohne Entnahmen, Puffer-Fix, Netto-Zahlungen, Seitenwechsel/Auto-Save, Ergebnis-Erklaerung, einmalige Ausgaben) ebenfalls in V2, dort 54 Tests gruen.

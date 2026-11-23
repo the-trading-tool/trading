@@ -72,6 +72,7 @@ SCALABLE_FREE_ROUTES = frozenset({
     'market_overview',  # Market View
     'correlation',      # Correlation Index
     'compound',         # Lump Sum Investment
+    'withdrawal',       # Withdrawal simulator (own depot + ETF/commodities)
 })
 
 # All route-determining query params in check order. Mirrors the
@@ -82,7 +83,7 @@ SCALABLE_FREE_ROUTES = frozenset({
 _ROUTE_PARAMS = (
     'admin', 'live_chart', 'performance', 'multi', 'own_trades',
     'strategy_finder', 'trading', 'rotation', 'rotation_hub', 'market_overview',
-    'correlation', 'compound', 'marketmap', 'summary', 'candidates', 'four_ps',
+    'correlation', 'compound', 'withdrawal', 'marketmap', 'summary', 'candidates', 'four_ps',
     'risk_profile',
     'option_calc',
     'upgrade',

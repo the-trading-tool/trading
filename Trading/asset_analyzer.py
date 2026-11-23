@@ -709,6 +709,7 @@ class TradingApp:
             # Lump Sum. Upgrade-Features werden mit 🔒 gezeigt (Klick → Upgrade-Seite).
             with st.sidebar.expander(t('nav.group_portfolio'), expanded=True):
                 _nav(t('nav.own_transactions'), own_trades='true')
+                _nav(t('nav.withdrawal_simulation'), withdrawal='true')
 
             with st.sidebar.expander(t('nav.group_assets'), expanded=False):
                 _nav(t('nav.asset_viewer'), asset='true')
@@ -779,16 +780,22 @@ class TradingApp:
                         _nav(t('nav.compound_simulation'), compound='true')
 
             # ── Portfolio ───────────────────────────────────────────────────────
-            if self.is_admin and any(_sb_items.get(k) for k in ('strategy_finder', 'multi', 'trading', 'own_trades')):
-                with st.sidebar.expander(t('nav.group_portfolio'), expanded=False):
-                    if _sb_items.get('strategy_finder') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
-                        _nav(t('nav.strategy_finder'), strategy_finder='true')
-                    if _sb_items.get('multi') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
-                        _nav(t('nav.multi_strategies'), multi='true')
-                    if _sb_items.get('trading') and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
-                        _nav(t('nav.trading'), trading='true')
-                    if _sb_items.get('own_trades'):
-                        _nav(t('nav.own_transactions'), own_trades='true')
+            # Admins see the whole group; everybody sees the withdrawal simulator in it.
+            _pf_admin = self.is_admin and any(_sb_items.get(k) for k in ('strategy_finder', 'multi', 'trading', 'own_trades'))
+            if _pf_admin or _sb_items.get('withdrawal'):
+                _pf_open = bool(st.session_state.get('_nav_params', {}).get('withdrawal'))
+                with st.sidebar.expander(t('nav.group_portfolio'), expanded=_pf_open):
+                    if self.is_admin:
+                        if _sb_items.get('strategy_finder') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                            _nav(t('nav.strategy_finder'), strategy_finder='true')
+                        if _sb_items.get('multi') and STRATEGY_ENGINE_AVAILABLE and has_feature(FEATURE_STRATEGY_ENGINE):
+                            _nav(t('nav.multi_strategies'), multi='true')
+                        if _sb_items.get('trading') and PAPER_TRADING_AVAILABLE and has_feature(FEATURE_PAPER_TRADING):
+                            _nav(t('nav.trading'), trading='true')
+                        if _sb_items.get('own_trades'):
+                            _nav(t('nav.own_transactions'), own_trades='true')
+                    if _sb_items.get('withdrawal'):
+                        _nav(t('nav.withdrawal_simulation'), withdrawal='true')
 
             # ── Admin (always last) ─────────────────────────────────────────────
             if self.is_admin and any(_sb_items.get(k) for k in ('admin_ticker', 'admin_database', 'admin_credentials', 'admin_system', 'admin_scheduler', 'admin_pine')):
@@ -1151,6 +1158,14 @@ class TradingApp:
                                 render_compound_simulation()
                             except Exception as e:
                                 st.error(t('error.load_compound_sim', error=e))
+                    elif parms.get('withdrawal'):
+                        self.set_page_config(t('page.withdrawal_simulation'))
+                        try:
+                            from tradinglib.withdrawal_simulation_page import render_withdrawal_simulation
+                            render_withdrawal_simulation(username=self.username)
+                        except Exception as e:
+                            self.logger.exception('withdrawal simulation page failed')
+                            st.error(t('error.load_withdrawal_sim', error=e))
                     elif parms.get('marketmap'):
                         self.set_page_config(t('page.market_map'))
                         with st.spinner(t('page.market_map') + " …"):

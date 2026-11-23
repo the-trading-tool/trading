@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Withdrawal Simulator – Help</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Withdrawal Simulator <small style="font-size:.6em;color:#888">withdrawal_simulation.py</small></h1>
+<p>Simulates spending down capital in retirement over a whole lifetime, using your own depot, additionally selected ETFs and commodities, and a fixed-deposit share. The result is not a single curve but the probability that the money lasts a lifetime.</p>
+<h2>What every simulation computes (month by month)</h2>
+<table>
+<tr><th>Component</th><th>Model</th></tr>
+<tr><td>Markets</td><td>Block bootstrap: 12-month blocks from the real history (default 20 years) of all assets at once. Correlations, crashes and recoveries are kept. Returns in the system currency incl. FX effects.</td></tr>
+<tr><td>Wealth today</td><td>Depot from “Own Transactions” (values editable) plus fixed/overnight deposits as a table of bank, amount and rate (can be saved). Total wealth = sum; the simulation uses the amount-weighted average rate or, optionally, inflation + spread.</td></tr>
+<tr><td>Target split</td><td>Deposit share of total wealth (1 % steps), the rest by <b>stocks %</b>, <b>ETFs %</b>, <b>commodities %</b>. Every asset has a class (suggested, changeable) and a weight within its class. Sales from the depot when switching cost flat-rate tax on the gain share (after the saver's allowance), deducted from the starting capital.</td></tr>
+<tr><td>Scenarios</td><td><b>Current split</b> (depot and deposits as today) against <b>target split</b>; optionally “target ETFs / commodities only”. All on the same random paths.</td></tr>
+<tr><td>Withdrawal model</td><td><b>Fixed</b> (planned amount, inflation-adjusted) or dynamic, adjusted once a year and limited by floor/ceiling: <b>guardrails</b> (Guyton-Klinger: withdrawal rate 20 % above/below the start → cut/raise 10 %), <b>fixed percentage</b> of current wealth (in 0.1 % steps), <b>by expected volatility</b> (calm 12 months → more, rough or drawdown > 10 % → less; raises only above the real starting capital), <b>skip inflation raise</b> after loss years. A comparison of all models on the same random paths shows success, actual spending, lowest spending year and estate.</td></tr>
+<tr><td>One-off expenses</td><td>Table with year, purpose, amount (today's money) and optional repetition (“every 8 years until 2045”). Paid in January of the year on top of regular spending, inflation-adjusted, with tax on gains sold, not cut by the withdrawal model; marked purple in the wealth chart. Saved automatically.</td></tr>
+<tr><td>Inflation</td><td>Constant or fluctuating (AR(1): yearly shocks that persist, producing spikes like 2022). Spending, pensions and care costs grow with each path's price level. Results in today's money.</td></tr>
+<tr><td>Taxes &amp; costs</td><td>Tax on capital income per person and calendar year, as brackets with allowance and partial exemption (all adjustable, can be saved as default). Presets: <b>Germany</b> 26.375 % (+ church tax 8/9 %), saver's allowance €1,000 per person, 30 % partial exemption for equity ETFs; <b>Spain</b> (savings base) 19 % up to €6,000, 21 % up to €50,000, 23 % up to €200,000, 27 % up to €300,000, 30 % above, no allowance, no partial exemption, nominal brackets. Taxed are the gain share of every sale, interest and dividends; for a couple it is split between both. Not included: Spanish wealth tax, tax-free traspasos. Plus running costs (TER).</td></tr>
+<tr><td>Wealth tax (Spain)</td><td>Optional with tax “Spain”: Impuesto sobre el Patrimonio once a year on net wealth per person (depot + deposits + further wealth, halved for a couple), state scale 0.2–3.5 % above the exemption (default €700,000), regional rebate (e.g. 100 % Madrid/Andalusia), plus the solidarity tax on wealth above €3 M (1.7/2.1/3.5 %, wealth tax credited). Paid from the portfolio like an expense. With the 60 % cap (límite conjunto): wealth plus income tax at most 60 % of income (gross income per person + interest, without long-term gains), wealth tax reduced by at most 80 %. Income-tax scale selectable: average or Canary Islands (state + Canary half 2025, 18.5–50.5 %). Not included: main-home exemption.</td></tr>
+<tr><td>Life expectancy</td><td>Gompertz-Makeham mortality calibrated to the Destatis period life table 2023/2025 (at 65: men 18.0, women 21.1 years), plus a cohort effect (mortality keeps falling, default 1 % p.a.).</td></tr>
+<tr><td>Health &amp; lifestyle</td><td>Risk factor from health, smoking, exercise, weight and alcohol (guide values from cohort studies), fading in old age.</td></tr>
+<tr><td>Care risk</td><td>Yearly probability of a paid care case (0.25 % at 60 to about 8 % at 90), monthly co-payment, cost growth above inflation, higher mortality in care.</td></tr>
+<tr><td>Couple</td><td>Two life paths; after the first death spending drops (default 70 %) and the survivor receives the widow's pension (default 55 %).</td></tr>
+</table>
+<h2>Result</h2>
+<ul>
+<li><b>Money lasts a lifetime</b> – share of paths without ruin while anyone in the household is alive.</li>
+<li><b>Estate, real</b> – wealth at the last death in today's money (median and worst 10 %).</li>
+<li><b>Fan chart</b> – wealth distribution by age, with the share of households alive and still solvent.</li>
+<li><b>Sustainable spending</b> – highest total monthly spending at, for example, ≤ 5 % ruin risk; “Run with …” takes the amount and reruns all figures for it. At this limit the estate is small.</li>
+<li><b>How to read the result</b> – explanation per scenario from its numbers: spending and withdrawal model, pension share, net in/outflow, success, estate (median and “in 90 % of cases at least …”), lowest spending year, care, wealth tax, deposit share.</li>
+</ul>
+<h2>Asset classes over the lifetime</h2>
+<ul>
+<li><b>Growth per class</b> – what 1 € in stocks, ETFs, commodities and deposits grows to, on the same random paths, after costs, before taxes, without withdrawals (median, optionally with the 10–90 % range).</li>
+<li><b>Wealth split in €</b> – stacked per class over age (median of households alive), either <b>with inflows and outflows</b> (pensions in, spending out) or <b>starting capital only</b> (same paths, without pensions, spending and care costs) or as a <b>comparison</b> with both totals as lines. If “with” is above “starting capital only”, the household pays in on balance (pensions above spending); a hint shows the amount per year.</li>
+</ul>
+<h2>Limits</h2>
+<div class="info">The past is no promise. Single stocks with high past returns are therefore capped at 8 % p.a. by default. Commodity futures are front-month prices without roll costs. Taxes on the yearly rebalancing within securities, health-insurance contributions on capital income and inheritance tax are not modelled. Life expectancy and care risk are averages, not a medical forecast.</div>
+</body>
+</html>

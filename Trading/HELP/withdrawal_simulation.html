@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head><meta charset="utf-8"><title>Entnahme-Simulator – Hilfe</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;line-height:1.55;margin:0;padding:8px 12px}
+h1{color:#1f78d1;font-size:1.3em;border-bottom:2px solid #1f78d1;padding-bottom:5px;margin:0 0 12px}
+h2{color:#1f78d1;font-size:1.05em;margin:14px 0 5px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:.9em}
+th{background:#e8f0fe;color:#174ea6}th,td{border:1px solid #dee2e6;padding:6px 9px;text-align:left;vertical-align:top}
+.info{background:#e8f5e9;border-left:4px solid #34a853;padding:7px 11px;margin:8px 0;font-size:.9em}
+ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
+</style>
+</head>
+<body>
+<h1>Entnahme-Simulator <small style="font-size:.6em;color:#888">withdrawal_simulation.py</small></h1>
+<p>Simuliert den Kapitalverzehr im Ruhestand über die ganze Lebenszeit – mit deinem eigenen Depot, zusätzlich gewählten ETFs und Rohstoffen und einer Festgeldquote. Ergebnis ist keine einzelne Kurve, sondern die Wahrscheinlichkeit, dass das Geld ein Leben lang reicht.</p>
+<h2>Was jede Simulation durchrechnet (Monat für Monat)</h2>
+<table>
+<tr><th>Baustein</th><th>Modell</th></tr>
+<tr><td>Märkte</td><td>Block-Bootstrap: 12-Monats-Blöcke aus der echten Historie (Standard 20 Jahre) aller Anlagen gleichzeitig. Korrelationen, Crashs und Erholungen bleiben erhalten. Renditen in Systemwährung inkl. Währungseffekt.</td></tr>
+<tr><td>Vermögen heute</td><td>Depot aus „Eigene Transaktionen“ (Werte änderbar) plus Festgeld/Tagesgeld als Tabelle mit Bank, Betrag und Zins (speicherbar). Gesamtvermögen = Summe; gerechnet wird mit dem nach Betrag gewichteten Ø-Zins oder wahlweise Inflation + Aufschlag.</td></tr>
+<tr><td>Zielaufteilung</td><td>Festgeld-Anteil am Gesamtvermögen (1-%-Schritte), der Rest nach <b>Aktien %</b>, <b>ETFs %</b>, <b>Rohstoffe %</b>. Jeder Titel hat eine Klasse (vorgeschlagen, änderbar) und ein Gewicht in der Klasse. Verkäufe aus dem Depot beim Umschichten kosten Abgeltungsteuer auf den Gewinnanteil (nach Sparerpauschbetrag), die vom Startkapital abgeht.</td></tr>
+<tr><td>Szenarien</td><td><b>Aktuelle Aufteilung</b> (Depot und Festgeld wie heute) gegen <b>Zielaufteilung</b>; optional „Ziel nur ETFs / Rohstoffe“. Alle auf denselben Zufallspfaden.</td></tr>
+<tr><td>Entnahmemodell</td><td><b>Fest</b> (geplanter Betrag, inflationsangepasst) oder dynamisch, einmal im Jahr angepasst und auf Unter-/Obergrenze begrenzt: <b>Leitplanken</b> (Guyton-Klinger: Entnahmequote 20 % über/unter Start → 10 % kürzen/erhöhen), <b>fester Prozentsatz</b> des aktuellen Vermögens (in 0,1-%-Schritten), <b>nach erwarteter Schwankung</b> (ruhige 12 Monate → mehr, unruhige oder Rückgang > 10 % → weniger; Erhöhung nur über dem realen Startkapital), <b>Inflationsausgleich aussetzen</b> nach Verlustjahren. Ein Vergleich aller Modelle auf denselben Zufallspfaden zeigt Erfolg, tatsächliche Ausgaben, tiefstes Ausgabenjahr und Nachlass.</td></tr>
+<tr><td>Einmalige Ausgaben</td><td>Tabelle mit Jahr, Zweck, Betrag (heutige Kaufkraft) und optionaler Wiederholung („alle 8 Jahre bis 2045“). Gezahlt im Januar des Jahres zusätzlich zu den laufenden Ausgaben, inflationsangepasst, mit Steuer auf verkaufte Gewinne, nicht vom Entnahmemodell gekürzt; in der Vermögensgrafik violett markiert. Wird automatisch gespeichert.</td></tr>
+<tr><td>Inflation</td><td>Konstant oder schwankend (AR(1): jährliche Schocks, die nachwirken – Inflationsschübe wie 2022). Ausgaben, Renten und Pflegekosten wachsen mit dem Preisniveau des jeweiligen Pfads. Ergebnisse real in heutiger Kaufkraft.</td></tr>
+<tr><td>Steuern &amp; Kosten</td><td>Steuer auf Kapitalerträge je Person und Kalenderjahr, als Stufen mit Freibetrag und Teilfreistellung (alles anpassbar, als Standard speicherbar). Vorlagen: <b>Deutschland</b> 26,375 % (+ Kirchensteuer 8/9 %), Sparerpauschbetrag 1.000 € je Person, Teilfreistellung 30 % für Aktien-ETFs; <b>Spanien</b> (base del ahorro) 19 % bis 6.000 €, 21 % bis 50.000 €, 23 % bis 200.000 €, 27 % bis 300.000 €, 30 % darüber, kein Freibetrag, keine Teilfreistellung, Stufen nominal. Besteuert werden Gewinnanteil jedes Verkaufs, Zinsen und Dividenden; bei einem Paar wird auf beide aufgeteilt. Nicht enthalten: spanische Vermögensteuer, steuerfreie traspasos. Dazu laufende Kosten (TER).</td></tr>
+<tr><td>Vermögensteuer (Spanien)</td><td>Optional bei Steuer „Spanien“: Impuesto sobre el Patrimonio einmal im Jahr auf das Nettovermögen je Person (Depot + Festgeld + weiteres Vermögen, bei einem Paar halbiert), staatliche Skala 0,2–3,5 % über dem Freibetrag (Standard 700.000 €), regionale Bonifikation (z. B. 100 % Madrid/Andalucía), dazu die Solidaritätssteuer auf Vermögen über 3 Mio. € (1,7/2,1/3,5 %, Anrechnung der Vermögensteuer). Bezahlt aus dem Vermögen wie eine Ausgabe. Mit der 60-%-Grenze (límite conjunto): Vermögen- plus Einkommensteuer höchstens 60 % des Einkommens (Bruttoeinkommen je Person + Zinsen, ohne langfristige Kursgewinne), Kürzung der Vermögensteuer um höchstens 80 %. Einkommensteuer-Skala wählbar: Durchschnitt oder Kanarische Inseln (staatlicher + kanarischer Teil 2025, 18,5–50,5 %). Nicht enthalten: Freibetrag Hauptwohnung.</td></tr>
+<tr><td>Lebenserwartung</td><td>Gompertz-Makeham-Sterblichkeit, kalibriert auf die Destatis Periodensterbetafel 2023/2025 (mit 65: Männer 18,0, Frauen 21,1 Jahre), plus Kohorten-Effekt (Sterblichkeit sinkt weiter, Standard 1 % p. a.).</td></tr>
+<tr><td>Gesundheit &amp; Lebensstil</td><td>Risikofaktor aus Gesundheitszustand, Rauchen, Bewegung, Gewicht und Alkohol (Richtwerte aus Kohortenstudien), der im hohen Alter abnimmt.</td></tr>
+<tr><td>Pflegerisiko</td><td>Jährliche Wahrscheinlichkeit eines kostenpflichtigen Pflegefalls (0,25 % mit 60 bis ca. 8 % mit 90), Eigenanteil pro Monat, Kostensteigerung über Inflation, erhöhte Sterblichkeit im Pflegefall.</td></tr>
+<tr><td>Ehepaar</td><td>Zwei Lebensläufe; nach dem ersten Todesfall sinkt der Bedarf (Standard 70 %) und der Hinterbliebene erhält die Witwenrente (Standard 55 %).</td></tr>
+</table>
+<h2>Ergebnis</h2>
+<ul>
+<li><b>Geld reicht ein Leben lang</b> – Anteil der Pfade ohne Pleite, solange jemand im Haushalt lebt.</li>
+<li><b>Nachlass real</b> – Vermögen beim letzten Todesfall in heutiger Kaufkraft (Median und ungünstigste 10 %).</li>
+<li><b>Fächerdiagramm</b> – Vermögensverteilung nach Alter, dazu der Anteil lebender und noch zahlungsfähiger Haushalte.</li>
+<li><b>Nachhaltige Ausgaben</b> – höchste monatliche Gesamtausgaben bei z. B. ≤ 5 % Pleite-Risiko; „Mit … rechnen“ übernimmt den Betrag und rechnet alle Kennzahlen dafür neu. An dieser Grenze ist der Nachlass klein.</li>
+<li><b>So liest du das Ergebnis</b> – Erklärung je Szenario aus dessen Zahlen: Ausgaben und Entnahmemodell, Rentenanteil, Ein-/Auszahlung, Erfolgsquote, Nachlass (Median und „in 90 % der Fälle mindestens …“), tiefstes Ausgabenjahr, Pflege, Vermögensteuer, Festgeld-Anteil.</li>
+</ul>
+<h2>Anlageklassen über die Lebenszeit</h2>
+<ul>
+<li><b>Wertentwicklung je Klasse</b> – was aus 1 € in Aktien, ETFs, Rohstoffen und Festgeld wird, auf denselben Zufallspfaden, nach Kosten, vor Steuern, ohne Entnahmen (Median, wahlweise mit Spanne 10–90 %).</li>
+<li><b>Vermögensaufteilung in €</b> – gestapelt je Klasse über das Alter (Median der lebenden Haushalte), wahlweise <b>mit Ein- und Auszahlungen</b> (Renten hinein, Ausgaben hinaus) oder <b>nur Startkapital</b> (gleiche Pfade, ohne Renten, Ausgaben und Pflegekosten) oder als <b>Vergleich</b> mit beiden Gesamtsummen als Linien. Liegt „mit“ über „nur Startkapital“, zahlt der Haushalt unterm Strich ein (Renten über den Ausgaben); ein Hinweis nennt den Betrag pro Jahr.</li>
+</ul>
+<h2>Grenzen</h2>
+<div class="info">Vergangenheit ist kein Versprechen. Einzelaktien mit hohen Vergangenheitsrenditen werden deshalb standardmäßig auf 8 % p. a. gedeckelt. Rohstoff-Futures sind Frontmonat-Kurse ohne Rollkosten. Steuern beim jährlichen Rebalancing innerhalb der Wertpapiere, Kranken-/Pflegeversicherungsbeiträge auf Kapitalerträge und Erbschaftsteuer sind nicht modelliert. Lebenserwartung und Pflegerisiko sind Durchschnittswerte, keine medizinische Prognose.</div>
+</body>
+</html>
