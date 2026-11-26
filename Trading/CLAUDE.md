@@ -2372,6 +2372,18 @@ Kapitalverzehrs ueber die ganze Lebenszeit.
   in config.db (vorher nur per Knopf/Simulationsstart → Werte gingen beim Neuladen ohne Rechnen verloren).
   Gesamt-App-Test: `app_real.py` im Scratchpad ersetzt `Authenticate.login` durch festen Nutzer; nur mit
   `TradingDB` auf einer DB-Kopie (config, trades, asset_info, yf_tickers + yf_* der Depotwerte) laufen lassen.
+- **Speicher-Audit (2026-11-26):** Auf Nachfrage geprueft, ob alles gespeichert wird. Vorher: 68/69 Felder ok,
+  `scen` fehlte; Konten und Steuerstufen nur per Knopf, Depot-Abwahl und Klassen-Tabelle gar nicht. Jetzt speichern
+  alle Tabellen automatisch bei Aenderung: `<user>:wd_banks`, `wd_depot` (`depot_overrides`: nur Abwahl/geaenderte
+  Werte), `wd_classes` (`class_overrides`: nur Abweichung von Vorschlag; Eintraege nicht angezeigter Titel bleiben),
+  `wd_tax_brackets` (je Regime, erst wenn von der Vorlage abweichend), `wd_expenses`. Gemeinsames Muster
+  `_saved_once` / `_editor_base` / `_autosave`. Knoepfe „Konten speichern“ und „Steuer als Standard“ entfernt
+  (`_save_tax` ungenutzt, `_load_tax` nur noch fuer Altdaten). `scen` ist jetzt eine Einstellung; vor dem Widget gegen
+  die heute verfuegbaren Szenarien bereinigt (leer → Vorgabe), `default=None` wenn der Key schon im State ist.
+  Pruefung headless mit Fake-`SystemConfig` (JSON statt config.db, `wd_app_fakecfg.py`): 69/69 Felder nach
+  Seitenwechsel und neuer Sitzung zurueck; gespeicherte Tabellen werden geladen und nicht ueberschrieben.
+  AppTest kann data_editor nicht bedienen → Tabellen-Speicherlogik per Unit-Tests der Override-Funktionen.
+  Ergebnisse selbst werden nicht gespeichert (nach Neustart einmal „Simulation starten“).
 - **Fix 2026-11-22:** „'SimConfig' object has no attribute 'tax_brackets'“ — ein Ergebnis aus einer aelteren
   Version lag in `st.session_state`, „Alle Modelle rechnen“ kopierte dessen alte `cfg`. Jetzt `ws.upgrade_config()`
   am Anfang von `simulate` (fehlende Felder = Default) und `_STATE_VERSION` auf der Seite (alte Ergebnisse werden

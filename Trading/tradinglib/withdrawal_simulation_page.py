@@ -96,11 +96,117 @@ def _load_banks(username: str) -> pd.DataFrame:
     return df[['bank', 'amount', 'rate']]
 
 
+def _bank_rows(banks: pd.DataFrame) -> list:
+    return [{'bank': str(r.bank or ''), 'amount': float(r.amount),
+             'rate': float(r.rate) if pd.notna(r.rate) else 0.0}
+            for r in banks.itertuples() if pd.notna(r.amount)]
+
+
 def _save_banks(username: str, banks: pd.DataFrame) -> None:
     from tradinglib.system_config import SystemConfig
-    rows = [{'bank': str(r.bank or ''), 'amount': float(r.amount), 'rate': float(r.rate)}
-            for r in banks.itertuples() if pd.notna(r.amount)]
-    SystemConfig(username=username or 'admin').set_value(_BANKS_KEY, rows)
+    SystemConfig(username=username or 'admin').set_value(_BANKS_KEY, _bank_rows(banks))
+
+
+# Further tables of the page, saved automatically on every change (like the settings).
+_DEPOT_KEY = 'wd_depot'            # {ticker: {'use': bool, 'value': float | None}}
+_CLASSES_KEY = 'wd_classes'        # {ticker: {'cls': 'stock'|'etf'|'commodity', 'inner': float}}
+_BRACKETS_KEY = 'wd_tax_brackets'  # {regime: [[upper | None, rate], ...]}
+
+
+def _cfg_get(username: str, key: str, default=None):
+    try:
+        from tradinglib.system_config import SystemConfig
+        v = SystemConfig(username=username or 'admin').get_value(key, None)
+        return default if v is None else v
+    except Exception:
+        logger.debug('could not read %s', key, exc_info=True)
+        return default
+
+
+def _cfg_set(username: str, key: str, value) -> None:
+    try:
+        from tradinglib.system_config import SystemConfig
+        SystemConfig(username=username or 'admin').set_value(key, value)
+    except Exception:
+        logger.warning('could not save %s', key, exc_info=True)
+
+
+def _saved_once(name: str, loader):
+    """Saved value of a table, read from config.db once per session."""
+    k = _KEY + name + '_saved'
+    if k not in st.session_state:
+        st.session_state[k] = loader()
+    return st.session_state[k]
+
+
+def _editor_base(editor_key: str, base_key: str, builder):
+    """Base data of a data_editor: fixed while the editor is on screen (its edits are deltas
+    to it), rebuilt only when the editor is new (first visit, back from another page)."""
+    if editor_key not in st.session_state or base_key not in st.session_state:
+        st.session_state[base_key] = builder()
+    return st.session_state[base_key]
+
+
+def _autosave(name: str, username: str, config_key: str, value) -> None:
+    """Write *value* to config.db when it differs from what was saved last."""
+    k = _KEY + name + '_saved'
+    if value != st.session_state.get(k):
+        _cfg_set(username, config_key, value)
+        st.session_state[k] = value
+
+
+def depot_overrides(table: pd.DataFrame, current: pd.Series) -> dict:
+    """Deselected positions and changed values of the depot table, per ticker."""
+    out = {}
+    for r in table.itertuples(index=False):
+        cur = float(current.get(r.ticker, np.nan))
+        val = float(r.positionValue) if pd.notna(r.positionValue) else np.nan
+        changed = np.isfinite(val) and (not np.isfinite(cur) or abs(val - cur) > 0.5)
+        if not bool(r.use) or changed:
+            out[str(r.ticker)] = {'use': bool(r.use), 'value': val if changed else None}
+    return out
+
+
+def apply_depot_overrides(table: pd.DataFrame, overrides: dict) -> pd.DataFrame:
+    t = table.copy()
+    for i, tk in enumerate(t['ticker']):
+        o = (overrides or {}).get(str(tk))
+        if not o:
+            continue
+        t.iloc[i, t.columns.get_loc('use')] = bool(o.get('use', True))
+        if o.get('value') is not None:
+            t.iloc[i, t.columns.get_loc('positionValue')] = float(o['value'])
+    return t
+
+
+def class_overrides(table: pd.DataFrame, label_cls: dict, defaults_cls: pd.Series,
+                    defaults_inner: pd.Series) -> dict:
+    """Rows of the class table that differ from the suggested class or weight."""
+    out = {}
+    for r in table.itertuples(index=False):
+        c = label_cls.get(r.cls, r.cls)
+        inner = float(r.inner) if pd.notna(r.inner) else 0.0
+        if c != defaults_cls.get(r.ticker) or abs(inner - round(float(defaults_inner.get(r.ticker, 0.0)), 1)) > 0.05:
+            out[str(r.ticker)] = {'cls': c, 'inner': inner}
+    return out
+
+
+def apply_class_overrides(table: pd.DataFrame, overrides: dict, cls_label: dict) -> pd.DataFrame:
+    t = table.copy()
+    for i, tk in enumerate(t['ticker']):
+        o = (overrides or {}).get(str(tk))
+        if not o:
+            continue
+        if o.get('cls') in cls_label:
+            t.iloc[i, t.columns.get_loc('cls')] = cls_label[o['cls']]
+        if o.get('inner') is not None:
+            t.iloc[i, t.columns.get_loc('inner')] = float(o['inner'])
+    return t
+
+
+def bracket_rows(br: pd.DataFrame) -> list:
+    return [[(float(u) if pd.notna(u) else None), float(r)]
+            for u, r in zip(br['upper'], br['rate']) if pd.notna(r)]
 
 
 _TAX_KEY = 'wd_tax'
@@ -141,9 +247,11 @@ def _save_expenses(username: str, rows: list) -> None:
 _SETTINGS_KEY = 'wd_settings'
 # session keys that are not settings: results, buttons, table editors, choices that depend on data
 _NOT_SETTINGS = ('results', 'rules_cmp', 'sust', 'loaded', 'shadow', 'saved_snapshot', 'pending_spend',
+                 'banks_ed', 'banks_init', 'banks_saved', 'depot_init', 'depot_saved', 'cls_init_',
+                 'classes_saved', 'tax_brackets_saved',
                  'exp_ed', 'exp_saved', 'exp_init',
                  'pending_run', 'use_sust_', 'applied_sust', 'depot_ed', 'banks_ed', 'cls_ed_', 'tax_br_',
-                 'scen', 'chart_sc', 'restored', 'run', 'banks_save', 'tax_save', 'rules_run', 'sust_run',
+                 'chart_sc', 'restored', 'run', 'banks_save', 'tax_save', 'rules_run', 'sust_run',
                  'set_save', 'set_reset')
 
 
@@ -415,10 +523,17 @@ def render_withdrawal_simulation(username: str = '') -> None:
     if not depot.empty:
         depot_total0 = float(depot['positionValue'].sum())
         with st.expander(_t('wd.depot_expander', n=len(depot), value=_eur(depot_total0, sym)), expanded=False):
-            ed = depot[['ticker', 'longName', 'positionValue']].copy()
-            ed.insert(0, 'use', True)
+            current_values = depot.set_index('ticker')['positionValue'].astype(float)
+            saved_dep = _saved_once('depot', lambda: _cfg_get(username, _DEPOT_KEY, {}) or {})
+
+            def _depot_base():
+                base = depot[['ticker', 'longName', 'positionValue']].copy()
+                base.insert(0, 'use', True)
+                return apply_depot_overrides(base, saved_dep)
+
             ed = st.data_editor(
-                ed, hide_index=True, use_container_width=True, key=_KEY + 'depot_ed',
+                _editor_base(_KEY + 'depot_ed', _KEY + 'depot_init', _depot_base),
+                hide_index=True, use_container_width=True, key=_KEY + 'depot_ed',
                 disabled=['ticker', 'longName'],
                 column_config={
                     'use': st.column_config.CheckboxColumn(_t('wd.col_use')),
@@ -426,15 +541,18 @@ def render_withdrawal_simulation(username: str = '') -> None:
                     'positionValue': st.column_config.NumberColumn(_t('wd.col_value', cur=sym),
                                                                    format='%.0f'),
                 })
+            _autosave('depot', username, _DEPOT_KEY, depot_overrides(ed, current_values))
             sel = ed[ed['use']]
             depot_weights = sel.set_index('ticker')['positionValue'].astype(float).clip(lower=0.0)
             st.caption(_t('wd.depot_caption'))
     depot_value = float(depot_weights.sum())
 
     st.markdown(f"**{_t('wd.banks_header')}**")
-    banks0 = _load_banks(username)
+    saved_banks = _saved_once('banks', lambda: _bank_rows(_load_banks(username)))
     banks = st.data_editor(
-        banks0, hide_index=True, use_container_width=True, num_rows='dynamic', key=_KEY + 'banks_ed',
+        _editor_base(_KEY + 'banks_ed', _KEY + 'banks_init',
+                     lambda: pd.DataFrame(saved_banks, columns=['bank', 'amount', 'rate'])),
+        hide_index=True, use_container_width=True, num_rows='dynamic', key=_KEY + 'banks_ed',
         column_config={
             'bank': st.column_config.TextColumn(_t('wd.col_bank'), required=True),
             'amount': st.column_config.NumberColumn(_t('wd.col_amount', cur=sym), min_value=0.0,
@@ -447,10 +565,7 @@ def render_withdrawal_simulation(username: str = '') -> None:
     banks['rate'] = pd.to_numeric(banks['rate'], errors='coerce').fillna(0.0)
     cash_total = float(banks['amount'].sum())
     cash_rate_avg = float((banks['amount'] * banks['rate']).sum() / cash_total / 100.0) if cash_total > 0 else 0.0
-    a, b = st.columns([1, 3])
-    if a.button(_t('wd.banks_save'), key=_KEY + 'banks_save'):
-        _save_banks(username, banks)
-        b.success(_t('wd.banks_saved'))
+    _autosave('banks', username, _BANKS_KEY, _bank_rows(banks))
     st.caption(_t('wd.banks_caption'))
 
     total = depot_value + cash_total
@@ -506,10 +621,15 @@ def render_withdrawal_simulation(username: str = '') -> None:
             'cls': [cls_label[classes[t]] for t in all_assets],
             'inner': [round(float(inner0[t]), 1) for t in all_assets],
         })
-        ed_key = _KEY + 'cls_ed_' + str(abs(hash(tuple(all_assets))))
+        tag = str(abs(hash(tuple(all_assets))))
+        ed_key = _KEY + 'cls_ed_' + tag
+        saved_cls = _saved_once('classes', lambda: _cfg_get(username, _CLASSES_KEY, {}) or {})
+        default_tbl = tbl
         with st.expander(_t('wd.alloc_table', n=len(all_assets)), expanded=False):
             tbl = st.data_editor(
-                tbl, hide_index=True, use_container_width=True, key=ed_key,
+                _editor_base(ed_key, _KEY + 'cls_init_' + tag,
+                             lambda: apply_class_overrides(default_tbl, saved_cls, cls_label)),
+                hide_index=True, use_container_width=True, key=ed_key,
                 disabled=['ticker', 'name', 'source'],
                 column_config={
                     'ticker': _t('wd.col_ticker'), 'name': _t('wd.col_name'),
@@ -520,6 +640,11 @@ def render_withdrawal_simulation(username: str = '') -> None:
                                                            help=_t('wd.col_inner_help')),
                 })
             st.caption(_t('wd.alloc_table_caption'))
+        # keep overrides of assets that are not on screen right now (e.g. an ETF deselected for a while)
+        diffs = class_overrides(tbl, label_cls, classes, inner0)
+        merged = {k: v for k, v in saved_cls.items() if k not in set(all_assets)}
+        merged.update(diffs)
+        _autosave('classes', username, _CLASSES_KEY, merged)
         classes = pd.Series([label_cls.get(c, 'stock') for c in tbl['cls']], index=tbl['ticker'])
         inner = pd.Series(pd.to_numeric(tbl['inner'], errors='coerce').fillna(0.0).values, index=tbl['ticker'])
 
@@ -566,8 +691,15 @@ def render_withdrawal_simulation(username: str = '') -> None:
                  if (s != 'current' or total > 0)
                  and (s != 'extras' or has_extras)
                  and (s != 'target' or (len(classes) and tsum > 0) or cash_quota >= 1.0)]
+    if _KEY + 'scen' in st.session_state:
+        kept = [x for x in (st.session_state[_KEY + 'scen'] or []) if x in available]
+        if kept:
+            st.session_state[_KEY + 'scen'] = kept
+        else:
+            del st.session_state[_KEY + 'scen']
     scenarios = st.multiselect(_t('wd.scenarios'), available,
-                               default=[s for s in ('current', 'target') if s in available],
+                               default=None if _KEY + 'scen' in st.session_state
+                               else [x for x in ('current', 'target') if x in available],
                                format_func=scen_opts.get, key=_KEY + 'scen', help=_t('wd.scenarios_help'))
 
     cm_opts = _opt('wd.cash_mode', ['rebalance', 'bucket'])
@@ -684,11 +816,17 @@ def render_withdrawal_simulation(username: str = '') -> None:
     if saved_tax['regime'] == tax and saved_tax.get('brackets'):
         preset = {'brackets': saved_tax['brackets'], 'allowance': saved_tax['allowance'],
                   'fund_exemption': saved_tax['fund_exemption']}
+    saved_br = _saved_once('tax_brackets', lambda: _cfg_get(username, _BRACKETS_KEY, {}) or {})
     with st.expander(_t('wd.tax_expander', regime=tax_opts[tax]), expanded=False):
-        br = pd.DataFrame({'upper': [None if not np.isfinite(u) else float(u) for u, _ in preset['brackets']],
-                           'rate': [round(r * 100.0, 3) for _, r in preset['brackets']]})
+        def _br_base():
+            rows = saved_br.get(tax)
+            if rows:
+                return pd.DataFrame(rows, columns=['upper', 'rate']).astype(float)
+            return pd.DataFrame({'upper': [np.nan if not np.isfinite(u) else float(u) for u, _ in preset['brackets']],
+                                 'rate': [round(r * 100.0, 3) for _, r in preset['brackets']]})
         x, y = st.columns([3, 2])
-        br = x.data_editor(br, hide_index=True, use_container_width=True, num_rows='dynamic',
+        br = x.data_editor(_editor_base(_KEY + 'tax_br_' + tax, _KEY + 'tax_br_init_' + tax, _br_base),
+                           hide_index=True, use_container_width=True, num_rows='dynamic',
                            key=_KEY + 'tax_br_' + tax, disabled=tax == 'off',
                            column_config={
                                'upper': st.column_config.NumberColumn(_t('wd.tax_upper', cur=sym), min_value=0.0,
@@ -749,9 +887,14 @@ def render_withdrawal_simulation(username: str = '') -> None:
             wt_kw = {'wealth_tax': wt_on, 'wt_exemption': wt_ex, 'wt_bonus': wt_bonus,
                      'wt_solidarity': wt_sol, 'wt_other': wt_other, 'wt_cap60': wt_cap,
                      'wt_general_income': wt_gi, 'wt_income_region': wt_region}
-        if y.button(_t('wd.tax_save'), key=_KEY + 'tax_save'):
-            _save_tax(username, tax, br, tax_allow, fund_ex, wt_kw)
-            y.success(_t('wd.tax_saved'))
+        # brackets are saved per regime as soon as they differ from the preset
+        rows_now = bracket_rows(br)
+        preset_rows = [[(None if not np.isfinite(u) else float(u)), round(r * 100.0, 3)]
+                       for u, r in preset['brackets']]
+        new_br = dict(saved_br)
+        if rows_now != preset_rows or tax in saved_br:
+            new_br[tax] = rows_now
+        _autosave('tax_brackets', username, _BRACKETS_KEY, new_br)
     br = br.dropna(subset=['rate'])
     tax_brackets = [((float(u) if pd.notna(u) else ws.INF), float(r) / 100.0)
                     for u, r in zip(br['upper'], br['rate'])] or [(ws.INF, 0.0)]

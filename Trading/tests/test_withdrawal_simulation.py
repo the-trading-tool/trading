@@ -389,9 +389,10 @@ def test_page_settings_filter():
     ok = page._is_setting
     assert ok('hh', 'couple') and ok('p0_age', 67) and ok('impr', 1.5) and ok('care', True)
     assert ok('extras', ['EUNL.DE', 'GC=F'])
+    assert ok('scen', ['current', 'target'])        # saved, cleaned against availability on load
     # results, buttons, editors and data-dependent choices are not settings
     for name, value in (('results', {}), ('run', False), ('set_save', False), ('cls_ed_123', {}),
-                        ('tax_br_es', {}), ('scen', ['current']), ('chart_sc', 'target'), ('loaded', True),
+                        ('tax_br_es', {}), ('chart_sc', 'target'), ('loaded', True), ('banks_init', []),
                         ('shadow', {'hh': 'couple'}), ('saved_snapshot', {})):
         assert not ok(name, value), name
     assert not ok('weird', {'a': 1})
@@ -512,3 +513,41 @@ def test_ruin_share_by_year_ends_at_p_ruin_and_ignores_deaths():
     assert share.iloc[0] == 0.0
     assert (share.diff().dropna() >= -1e-12).all()                   # cumulative, never falls
     assert share.iloc[-1] == pytest.approx(ws.summarize(res)['p_ruin'])
+
+
+# ── page tables are saved and restored (depot selection, classes, brackets, accounts) ──
+
+def test_depot_overrides_roundtrip():
+    from tradinglib import withdrawal_simulation_page as page
+    current = pd.Series({'SAP.DE': 1_000.0, 'ALV.DE': 500.0, 'BAS.DE': 800.0})
+    table = pd.DataFrame({'use': [True, False, True], 'ticker': ['SAP.DE', 'ALV.DE', 'BAS.DE'],
+                          'longName': ['', '', ''], 'positionValue': [1_000.0, 500.0, 950.0]})
+    ov = page.depot_overrides(table, current)
+    assert ov == {'ALV.DE': {'use': False, 'value': None}, 'BAS.DE': {'use': True, 'value': 950.0}}
+    fresh = table.assign(use=True, positionValue=[1_000.0, 500.0, 800.0])
+    back = page.apply_depot_overrides(fresh, ov)
+    assert list(back['use']) == [True, False, True] and list(back['positionValue']) == [1_000.0, 500.0, 950.0]
+    assert page.depot_overrides(fresh, current) == {}          # nothing changed -> nothing stored
+
+
+def test_class_overrides_roundtrip():
+    from tradinglib import withdrawal_simulation_page as page
+    cls_label = {'stock': 'Aktien', 'etf': 'ETFs', 'commodity': 'Rohstoffe'}
+    label_cls = {v: k for k, v in cls_label.items()}
+    defaults_cls = pd.Series({'4GLD.DE': 'stock', 'EUNL.DE': 'etf'})
+    defaults_inner = pd.Series({'4GLD.DE': 100.0, 'EUNL.DE': 100.0})
+    table = pd.DataFrame({'ticker': ['4GLD.DE', 'EUNL.DE'], 'name': ['', ''], 'source': ['', ''],
+                          'cls': ['Rohstoffe', 'ETFs'], 'inner': [100.0, 70.0]})
+    ov = page.class_overrides(table, label_cls, defaults_cls, defaults_inner)
+    assert ov == {'4GLD.DE': {'cls': 'commodity', 'inner': 100.0}, 'EUNL.DE': {'cls': 'etf', 'inner': 70.0}}
+    fresh = table.assign(cls=['Aktien', 'ETFs'], inner=[100.0, 100.0])
+    back = page.apply_class_overrides(fresh, ov, cls_label)
+    assert list(back['cls']) == ['Rohstoffe', 'ETFs'] and list(back['inner']) == [100.0, 70.0]
+
+
+def test_bracket_and_bank_rows():
+    from tradinglib import withdrawal_simulation_page as page
+    br = pd.DataFrame({'upper': [6_000.0, np.nan], 'rate': [19.0, 21.0]})
+    assert page.bracket_rows(br) == [[6_000.0, 19.0], [None, 21.0]]
+    banks = pd.DataFrame({'bank': ['A', 'B'], 'amount': [10_000.0, np.nan], 'rate': [2.5, 3.0]})
+    assert page._bank_rows(banks) == [{'bank': 'A', 'amount': 10_000.0, 'rate': 2.5}]
