@@ -2384,6 +2384,9 @@ Kapitalverzehrs ueber die ganze Lebenszeit.
   Seitenwechsel und neuer Sitzung zurueck; gespeicherte Tabellen werden geladen und nicht ueberschrieben.
   AppTest kann data_editor nicht bedienen → Tabellen-Speicherlogik per Unit-Tests der Override-Funktionen.
   Ergebnisse selbst werden nicht gespeichert (nach Neustart einmal „Simulation starten“).
+- **Alter bei Pleite (2026-11-26):** „im Median mit 82“ neben „99,6 % reicht“ wurde als Widerspruch gelesen — der
+  Median gilt nur fuer die Pleite-Faelle. `summarize` liefert `n_ruined`/`n_paths`; Kennzahl heisst „Alter bei Pleite
+  (nur die X % Pleite-Faelle)“, Erklaerung nennt „n von N“; unter `RUIN_FEW_CASES` (20) Sternchen + Hinweis „nur grob“.
 - **Fix 2026-11-22:** „'SimConfig' object has no attribute 'tax_brackets'“ — ein Ergebnis aus einer aelteren
   Version lag in `st.session_state`, „Alle Modelle rechnen“ kopierte dessen alte `cfg`. Jetzt `ws.upgrade_config()`
   am Anfang von `simulate` (fehlende Felder = Default) und `_STATE_VERSION` auf der Seite (alte Ergebnisse werden

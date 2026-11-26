@@ -3459,7 +3459,7 @@
   "wd.m_bequest": "Nachlass real (Median)",
   "wd.m_bequest_help": "Vermögen beim Tod des letzten Haushaltsmitglieds (bzw. am Ende), in heutiger Kaufkraft.",
   "wd.m_bequest_p10": "Nachlass real (ungünstigste 10 %)",
-  "wd.m_ruin_age": "Alter bei Pleite (Median, falls pleite)",
+  "wd.m_ruin_age": "Alter bei Pleite (nur die {share} Pleite-Fälle)",
   "wd.m_last_age": "Alter beim letzten Todesfall (Median)",
   "wd.m_care": "Mind. ein Pflegefall",
   "wd.m_care_help": "Wahrscheinlichkeit, dass im Haushalt mindestens ein kostenpflichtiger Pflegefall eintritt. Ø {years} Pflegejahre je Haushalt.",
@@ -3651,7 +3651,7 @@
   "wd.expl_switch": "**Umschichtung:** Um die Zielaufteilung zu erreichen, werden {sold} aus dem Depot verkauft; das kostet {tax} Steuer, die vom Startkapital abgeht.",
   "wd.expl_success": "**{succ} „Geld reicht ein Leben lang“:** In so vielen der simulierten Lebensverläufe reicht das Vermögen, bis auch die letzte Person im Haushalt gestorben ist (im Median mit {death}). In {ruin} der Verläufe ist es vorher aufgebraucht.",
   "wd.expl_success_fixed": "**{succ} „Geld reicht“:** In so vielen Verläufen reicht das Vermögen über den ganzen Zeitraum, in {ruin} ist es vorher aufgebraucht.",
-  "wd.expl_ruin_age": "Wenn das Geld ausgeht, dann im Median mit {age} Jahren – danach bleiben nur noch die Renten.",
+  "wd.expl_ruin_age": "In den {share} der Verläufe ({n} von {total}), in denen das Geld ausgeht, passiert das im Median mit {age} Jahren – danach bleiben nur noch die Renten. Für alle anderen Verläufe gilt dieses Alter nicht.",
   "wd.expl_bequest": "**Nachlass:** Im Median bleiben beim letzten Todesfall {p50} (heutige Kaufkraft). In 10 % der Verläufe bleibt weniger als {p10} – darin enthalten sind auch die Fälle, in denen das Geld schon vorher ausging. Richtig gelesen heißt das: In 90 % der Fälle bleiben mindestens {p10}, nicht in der „Geld reicht“-Quote.",
   "wd.expl_bequest_zero": "**Nachlass:** Im Median bleiben beim letzten Todesfall {p50} (heutige Kaufkraft). In den ungünstigsten 10 % der Verläufe bleibt nichts übrig.",
   "wd.expl_worst": "**Tiefstes Ausgabenjahr:** In den ungünstigsten 10 % der Verläufe sinken die Ausgaben in mindestens einem Jahr auf {worst} des Plans; im Schnitt sind {cut} der Jahre um mehr als 10 % gekürzt.",
@@ -3685,5 +3685,7 @@
   "wd.ruin_line": "Pleite bisher (% aller Haushalte)",
   "wd.y_alive": "lebt noch %",
   "wd.y_ruin": "pleite %",
-  "wd.few_households": "unter 10 % leben noch – Median unsicher"
+  "wd.few_households": "unter 10 % leben noch – Median unsicher",
+  "wd.m_ruin_age_help": "Median-Alter, in dem das Geld ausgeht – gerechnet nur über die {n} von {total} Lebensverläufen, in denen es überhaupt ausgeht. Für alle übrigen reicht es bis zum Tod.",
+  "wd.expl_ruin_few": "(* wenige Fälle – das Alter ist nur ein grober Wert und kann bei einer neuen Rechnung spürbar anders ausfallen.)"
 }

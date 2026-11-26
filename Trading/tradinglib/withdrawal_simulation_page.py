@@ -1118,6 +1118,9 @@ def _render_class_chart(state: dict, pick: str, real: bool, sym: str) -> None:
     st.caption(caption)
 
 
+RUIN_FEW_CASES = 20      # below this many ruined paths the median age is only a rough figure
+
+
 def _num1(v: float) -> str:
     """One decimal, with a comma in German."""
     txt = f"{v:.1f}"
@@ -1183,7 +1186,13 @@ def explain_lines(r: dict, sym: str = '€', fixed: bool = False, expenses: list
         lines.append(_t('wd.expl_success', succ=_pct(s['p_success']), ruin=_pct(s['p_ruin']),
                         death=f"{s.get('last_death_age_median', np.nan):.0f}"))
         if s['p_ruin'] > 0 and np.isfinite(s.get('ruin_age_median', np.nan)):
-            lines.append(_t('wd.expl_ruin_age', age=f"{s['ruin_age_median']:.0f}"))
+            n_paths = int(s.get('n_paths') or len(r['res']['ruined']))
+            n_ruin = int(s.get('n_ruined', round(s['p_ruin'] * n_paths)))
+            line = _t('wd.expl_ruin_age', share=_pct(s['p_ruin']), n=n_ruin, total=n_paths,
+                      age=f"{s['ruin_age_median']:.0f}")
+            if n_ruin < RUIN_FEW_CASES:
+                line += ' ' + _t('wd.expl_ruin_few')
+            lines.append(line)
     if s['bequest_real_p10'] > 0:
         lines.append(_t('wd.expl_bequest', p50=_eur(s['bequest_real_p50'], sym), p10=_eur(s['bequest_real_p10'], sym)))
     else:
@@ -1241,7 +1250,12 @@ def _render_results(state: dict, scen_opts: dict) -> None:
                    help=_t('wd.m_bequest_help'))
         col.metric(_t('wd.m_bequest_p10'), _eur(s['bequest_real_p10'], sym))
         if np.isfinite(s['ruin_age_median']):
-            col.metric(_t('wd.m_ruin_age'), f"{s['ruin_age_median']:.0f}")
+            n_paths = int(s.get('n_paths') or len(r['res']['ruined']))
+            n_ruin = int(s.get('n_ruined', round(s['p_ruin'] * n_paths)))
+            col.metric(_t('wd.m_ruin_age', share=_pct(s['p_ruin'])),
+                       f"{s['ruin_age_median']:.0f}" + (' *' if n_ruin < RUIN_FEW_CASES else ''),
+                       help=_t('wd.m_ruin_age_help', n=n_ruin, total=n_paths)
+                       + (' ' + _t('wd.expl_ruin_few') if n_ruin < RUIN_FEW_CASES else ''))
         if not state['fixed']:
             col.metric(_t('wd.m_last_age'), f"{s['last_death_age_median']:.0f}")
             col.metric(_t('wd.m_care'), _pct(s['p_care_any'], 0),

@@ -3459,7 +3459,7 @@
   "wd.m_bequest": "Estate, real (median)",
   "wd.m_bequest_help": "Wealth when the last household member dies (or at the end), in today's money.",
   "wd.m_bequest_p10": "Estate, real (worst 10 %)",
-  "wd.m_ruin_age": "Age at ruin (median, if ruined)",
+  "wd.m_ruin_age": "Age at ruin (only the {share} ruined paths)",
   "wd.m_last_age": "Age at last death (median)",
   "wd.m_care": "At least one care case",
   "wd.m_care_help": "Probability of at least one paid care case in the household. Avg {years} care years per household.",
@@ -3651,7 +3651,7 @@
   "wd.expl_switch": "**Switch:** to reach the target split, {sold} of the depot is sold; that costs {tax} tax, deducted from the starting capital.",
   "wd.expl_success": "**{succ} “money lasts a lifetime”:** in that share of simulated lives the wealth lasts until the last household member dies (median age {death}). In {ruin} of the paths it runs out earlier.",
   "wd.expl_success_fixed": "**{succ} “money lasts”:** in that share of paths the wealth lasts the whole period; in {ruin} it runs out earlier.",
-  "wd.expl_ruin_age": "If the money runs out, it does so at a median age of {age} – after that only the pensions remain.",
+  "wd.expl_ruin_age": "In the {share} of paths ({n} of {total}) in which the money runs out, this happens at a median age of {age} – after that only the pensions remain. This age does not apply to the other paths.",
   "wd.expl_bequest": "**Estate:** at the last death a median of {p50} remains (today's money). In 10 % of the paths less than {p10} remains – this includes the paths in which the money ran out earlier. Read correctly: in 90 % of cases at least {p10} remains, not in the “money lasts” share.",
   "wd.expl_bequest_zero": "**Estate:** at the last death a median of {p50} remains (today's money). In the worst 10 % of paths nothing is left.",
   "wd.expl_worst": "**Lowest spending year:** in the worst 10 % of paths spending falls to {worst} of the plan in at least one year; on average {cut} of the years are cut by more than 10 %.",
@@ -3685,5 +3685,7 @@
   "wd.ruin_line": "Ruined so far (% of all households)",
   "wd.y_alive": "alive %",
   "wd.y_ruin": "ruined %",
-  "wd.few_households": "under 10 % still alive – median uncertain"
+  "wd.few_households": "under 10 % still alive – median uncertain",
+  "wd.m_ruin_age_help": "Median age at which the money runs out – computed only over the {n} of {total} simulated lives in which it runs out at all. For all others it lasts until death.",
+  "wd.expl_ruin_few": "(* few cases – the age is only a rough figure and can differ noticeably in a new run.)"
 }

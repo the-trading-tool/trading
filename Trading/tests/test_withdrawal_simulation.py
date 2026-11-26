@@ -551,3 +551,16 @@ def test_bracket_and_bank_rows():
     assert page.bracket_rows(br) == [[6_000.0, 19.0], [None, 21.0]]
     banks = pd.DataFrame({'bank': ['A', 'B'], 'amount': [10_000.0, np.nan], 'rate': [2.5, 3.0]})
     assert page._bank_rows(banks) == [{'bank': 'A', 'amount': 10_000.0, 'rate': 2.5}]
+
+
+def test_ruin_age_text_names_share_and_count():
+    from tradinglib import withdrawal_simulation_page as page
+    cfg = ws.SimConfig(capital=300_000, spending=2_600, persons=[ws.Person(65, 'm')], n_sims=400)
+    res = ws.simulate(cfg, np.random.default_rng(8).normal(0.003, 0.04, (240, 1)))
+    s = ws.summarize(res)
+    assert s['n_paths'] == 400 and s['n_ruined'] == int(res['ruined'].sum())
+    assert s['n_ruined'] > 0
+    lines = page.explain_lines({'sum': s, 'cfg': cfg, 'res': res, 'start': {}})
+    ruin_line = [ln for ln in lines if 'expl_ruin_age' in ln or f"{s['n_ruined']}" in ln and str(400) in ln]
+    assert ruin_line, lines
+    assert (s['n_ruined'] < page.RUIN_FEW_CASES) == any('expl_ruin_few' in ln or '*' in ln for ln in ruin_line)

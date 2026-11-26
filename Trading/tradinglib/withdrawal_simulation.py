@@ -1074,6 +1074,8 @@ def summarize(res: dict) -> dict:
                         res['ages0'].min() + res['ruin_month'] / 12.0, np.nan)
     out = {
         'p_ruin': float(res['ruined'].mean()),
+        'n_ruined': int(res['ruined'].sum()),
+        'n_paths': int(len(res['ruined'])),
         'p_success': float(1.0 - res['ruined'].mean()),
         'ruin_age_median': float(np.nanmedian(ruin_age)) if np.isfinite(ruin_age).any() else np.nan,
         'bequest_real_p10': float(np.percentile(real_end, 10)),
