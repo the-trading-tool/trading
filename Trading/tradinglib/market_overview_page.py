@@ -751,6 +751,159 @@ def _correlation_prompt_block() -> str:
     return "\n".join(lines)
 
 
+# ── Edge Scores context blocks (macro / COT) ──────────────────────────────────
+# Only the raw values go into the prompt, never the Edge scores or bias labels:
+# the COT score showed no predictive power (2019-2026) and the index total score
+# worked contrarian, so a "bullish" label would steer the model the wrong way.
+
+# Currency area -> markets of the overview it belongs to (German prompt scaffold).
+_MACRO_REGIONS = {
+    'USD': 'USA (S&P 500, Dow, Nasdaq; Zinsen ^TNX/ZN=F; Dollar DX-Y.NYB)',
+    'EUR': 'Euroraum (DAX, Euro Stoxx 50, CAC 40, IBEX)',
+    'GBP': 'Großbritannien (FTSE 100)',
+    'JPY': 'Japan (Nikkei 225)',
+    'CHF': 'Schweiz (SMI)',
+    'CAD': 'Kanada (TSX)',
+    'AUD': 'Australien (ASX 200)',
+    'NZD': 'Neuseeland',
+}
+_MACRO_LABELS = {'rate': 'Leitzins', 'cpi': 'Inflation J/J', 'unemp': 'Arbeitslosigkeit',
+                 'gdp': 'BIP Q/Q', 'cli': 'Frühindikator CLI'}
+_MACRO_LAG = {'rate': '6 M', 'cpi': '3 M', 'unemp': '3 M', 'cli': '1 M'}
+
+
+def _macro_period(period, freq) -> str:
+    p = pd.Timestamp(period)
+    return f"Q{(p.month - 1) // 3 + 1}/{p.year}" if freq == 'Q' else f"{p.month:02d}/{p.year}"
+
+
+def format_macro_block(lat: pd.DataFrame, updated: str | None = None) -> str:
+    """Prompt block with the latest macro values per currency area.
+
+    *lat* is ``macro_data.latest()`` (ccy, indicator, period, freq, value, prev,
+    change). Returns '' without data.
+    """
+    if lat is None or lat.empty:
+        return ''
+    lines = [
+        "════════════════════════════════════════",
+        "MAKRO-UMFELD je Währungsraum (Rohdaten: BIS, OECD, FRED, Eurostat)"
+        + (f"  |  Abruf: {str(updated)[:10]}" if updated else ""),
+        "Fakten, KEIN Signal: ob sie Kurse vorhersagen, ist nicht gemessen. Für das Makro-Bild "
+        "(Zinsen, Inflation, Konjunktur) nutzen, nicht als Kauf-/Verkaufsgrund.",
+        "In Klammern: Datenstand (Monat bzw. Quartal) und Veränderung. Makrodaten erscheinen mit "
+        "1–4 Monaten Verzug — Zahlen beschreiben die jüngere Vergangenheit, nicht heute.",
+        "Lesehilfe: Realzins ≈ Leitzins − Inflation. CLI = OECD-Frühindikator, 100 = langfristiger "
+        "Trend; > 100 und steigend = Aufschwung, < 100 und fallend = Abschwung.",
+        "════════════════════════════════════════",
+        "",
+    ]
+    by = {(r['ccy'], r['indicator']): r for _, r in lat.iterrows()}
+    found = False
+    for ccy in _MACRO_REGIONS:
+        parts = []
+        for ind, label in _MACRO_LABELS.items():
+            r = by.get((ccy, ind))
+            if r is None or pd.isna(r['value']):
+                continue
+            val = float(r['value'])
+            when = _macro_period(r['period'], r['freq'])
+            if ind == 'cli':
+                txt = f"{label} {val:.1f}"
+            elif ind == 'gdp':
+                txt = f"{label} {val:+.2f} %"
+            else:
+                txt = f"{label} {val:.2f} %"
+            if ind == 'gdp':
+                prev = r.get('prev')
+                extra = f"; Vorquartal {float(prev):+.2f} %" if prev is not None and pd.notna(prev) else ""
+            else:
+                ch = r.get('change')
+                if ch is None or pd.isna(ch):
+                    extra = ""
+                else:
+                    span = 'ggü. Vorquartal' if r['freq'] == 'Q' else _MACRO_LAG[ind]
+                    unit = '' if ind == 'cli' else ' Pp'
+                    extra = f"; {span}: {float(ch):+.2f}{unit}"
+            parts.append(f"{txt} ({when}{extra})")
+        if not parts:
+            continue
+        lines.append(f"─── {ccy} · {_MACRO_REGIONS[ccy]} ───")
+        lines.append("  " + " · ".join(parts))
+        found = True
+    if not found:
+        return ''
+    lines += [
+        "",
+        "Keine Makrodaten für China/Hongkong, Schwellenländer, Rohstoffe und Krypto — dort KEINE "
+        "Makro-Aussagen erfinden.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def format_cot_block(card: pd.DataFrame) -> str:
+    """Prompt block with the speculators' positioning (``cot_data.scorecard()``).
+
+    Raw positioning only — no score, no bias: the COT score showed no predictive
+    power in our measurement. Returns '' without data.
+    """
+    if card is None or card.empty:
+        return ''
+    rep = card['report_date'].max()
+    rel = card['release_date'].max()
+    lines = [
+        "════════════════════════════════════════",
+        "COT-POSITIONIERUNG der Spekulanten (CFTC, Non-Commercials, Futures)"
+        f"  |  Stichtag {rep}, veröffentlicht {rel}",
+        "GEMESSEN: KEINE Vorhersagekraft für die Kurse der folgenden 13 Wochen (2019–2026, "
+        "20 Märkte). Nur als Kontext zur Positionierung lesen — KEINE Richtung ableiten, "
+        "nicht 'Spekulanten long → bullish' (und auch nicht das Gegenteil) folgern.",
+        "Long % = Anteil Long an allen Spekulanten-Positionen; Rang 3J = Perzentil dieses Anteils "
+        "in den letzten 3 Jahren (90+ = so long wie selten, 10− = so short wie selten); "
+        "COT-Index 52W = Netto-Position im 52-Wochen-Band (0 = Tief, 100 = Hoch).",
+        "════════════════════════════════════════",
+        "",
+    ]
+    for _, r in card.iterrows():
+        rank = '' if r.get('long_rank') is None or pd.isna(r['long_rank']) else f" (Rang 3J: {r['long_rank']:.0f})"
+        dlp = '' if r.get('d_long_pct') is None or pd.isna(r['d_long_pct']) else f" · Δ Woche {r['d_long_pct']:+.1f} Pp"
+        idx = '' if r.get('cot_index') is None or pd.isna(r['cot_index']) else f" · COT-Index 52W {r['cot_index']:.0f}"
+        lines.append(f"  {r['market']}: {r['long_pct']:.1f} % long{rank}{dlp}{idx}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def load_edge_context(macro: bool, cot: bool) -> tuple[str, str]:
+    """(macro_block, cot_block) from the Edge Scores data; '' when off or unavailable.
+
+    Refreshes the stored data the same way the Edge Scores cards do
+    (``ensure_fresh`` — at most once a day for macro, once per COT release).
+    """
+    macro_txt = cot_txt = ''
+    if macro:
+        try:
+            from tradinglib import macro_data as md
+            md.ensure_fresh()
+            macro_txt = format_macro_block(md.latest(md.load_obs()), md.get_meta('last_success'))
+        except Exception as exc:
+            logger.warning("market_overview: macro block failed: %s", exc)
+    if cot:
+        try:
+            from tradinglib import cot_data as cd
+            cd.ensure_fresh()
+            card = cd.scorecard()
+            if not card.empty:
+                # scorecard() sorts by score within a group; a fixed order keeps the
+                # model from reading a ranking into the list.
+                order = {m[0]: i for i, m in enumerate(cd.MARKETS)}
+                card = card.sort_values('key', key=lambda s: s.map(order)).reset_index(drop=True)
+            cot_txt = format_cot_block(card)
+        except Exception as exc:
+            logger.warning("market_overview: COT block failed: %s", exc)
+    return macro_txt, cot_txt
+
+
 def _build_market_prompt(
     results: list[dict], symbol_meta: list[tuple],
     interval: str, period: str, indicators: list,
@@ -771,6 +924,8 @@ def _build_market_prompt(
     primary_market: str = '',
     membership_note: str | None = None,
     compact: bool = False,
+    macro: str | None = None,
+    cot: str | None = None,
 ) -> str:
     """Multi-Asset Regime & Risk Model — hierarchisch strukturierter Analyse-Prompt.
 
@@ -1156,6 +1311,16 @@ def _build_market_prompt(
             lines.append(_corr_block)
             has_corr = True
 
+    # ── Edge Scores: macro environment + COT positioning (raw values only) ─────
+    has_macro = bool(macro and macro.strip())
+    has_cot = bool(cot and cot.strip())
+    if has_macro:
+        lines.append(macro.strip())
+        lines.append("")
+    if has_cot:
+        lines.append(cot.strip())
+        lines.append("")
+
     # ── Index-Status / Marktbreite (Einzel-Asset-Analyse) ──────────────────────
     if market_status and market_status.strip():
         lines += [
@@ -1414,6 +1579,34 @@ def _build_market_prompt(
             "wiederholt, keine Aussage.",
         ]
 
+    if has_macro:
+        lines += [
+            "",
+            "─────────────────────────────────────────",
+            "MAKRO-NUTZUNG (Block MAKRO-UMFELD — Hintergrund, kein Signal)",
+            "─────────────────────────────────────────",
+            "  • Ordne die Aktienindizes ihrem Währungsraum zu (USD → S&P 500, EUR → DAX, JPY → Nikkei …) "
+            "und prüfe, ob Zins-, Inflations- und Konjunkturlage den Kurstrend STÜTZT oder ihm "
+            "WIDERSPRICHT (z.B. Kurs bull, aber CLI < 100 und fallend = Kurs läuft der Konjunktur voraus).",
+            "  • Zinsthema: Leitzins + Inflationstrend mit ^TNX/ZN=F und Gold zusammen lesen "
+            "(Realzins). Ein Thema, nicht doppelt zählen.",
+            "  • Makro bestimmt NICHT die Richtung je Asset — die kommt aus [1-TREND]. Bei Konflikt "
+            "Kurs ↔ Makro: benennen, aber der Kurs ist die gemessene Größe.",
+            "  • Datenstand beachten: ein Wert von vor 3 Monaten ist kein 'aktuell'.",
+        ]
+
+    if has_cot:
+        lines += [
+            "",
+            "─────────────────────────────────────────",
+            "COT-NUTZUNG (Block COT-POSITIONIERUNG — nur Kontext)",
+            "─────────────────────────────────────────",
+            "  • Höchstens 1–2 Sätze, und nur bei extremer Positionierung (Rang 3J ≥ 90 oder ≤ 10) "
+            "eines ausgewählten Marktes: als 'Positionierung ist einseitig' erwähnen.",
+            "  • KEINE Richtung, keine Umschichtung und keine Confidence-Änderung aus COT ableiten — "
+            "der Score hatte in unserer Messung keine Vorhersagekraft.",
+        ]
+
     if inc.get('trend_compare', True):
         lines += [
             "",
@@ -1476,6 +1669,8 @@ _SECTION_DEFAULTS: dict[str, tuple[str, bool]] = {
     'compare_4w':         ('4-Wochen-Vergleich',                      True),
     'headlines':          ('Nachrichten-Sentiment (Yahoo RSS)',        True),
     'correlations':       ('Cross-Asset-Korrelationen',               True),
+    'macro':              ('Makro-Umfeld (Edge Makro)',               True),
+    'cot':                ('COT-Positionierung (nur Kontext)',        False),
     'global_summary':     ('Global Summary + Risk Score',             True),
     'trend_compare':      ('Trendvergleich & Umschichtung',           True),
     'depot_55plus':       ('Depot-Profil 55+',                        True),
@@ -1496,6 +1691,8 @@ _SINGLE_ASSET_SECTIONS: dict[str, bool] = {
     'compare_4w':        True,
     'headlines':         False,
     'correlations':      True,    # Cross-Asset-Korrelationen als Makro-Regime-Kontext
+    'macro':             False,   # Edge macro / COT: market overview only
+    'cot':               False,
     'global_summary':    False,
     'trend_compare':     False,
     'depot_55plus':      False,
@@ -1880,9 +2077,16 @@ class MarketOverviewPage:
         with st.spinner(t('mv.spinner_sentiment')):
             headlines = _fetch_sentiment_headlines()
 
+        sec = sections or {}
+        macro_txt = cot_txt = ''
+        if sec.get('macro') or sec.get('cot'):
+            with st.spinner(t('mv.spinner_edge')):
+                macro_txt, cot_txt = load_edge_context(bool(sec.get('macro')), bool(sec.get('cot')))
+
         prompt    = _build_market_prompt(
             results, active_symbols, interval, period, indicators,
             headlines, sections, freetext,
+            macro=macro_txt, cot=cot_txt,
         )
         client    = AiClient(username=self.username)   # nur für Provider-Liste
 
