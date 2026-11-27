@@ -991,13 +991,19 @@ class TradingApp:
                             )
                             system_currency = self.sys_config.get_value('system_currency', 'EUR')
                             with st.spinner(t('page.own_transactions') + " …"):
-                                tab_scalable, tab_portfolio, tab_entry, tab_risk, tab_trades = st.tabs([
+                                # on_change='rerun' makes the tabs lazy: only the
+                                # review tab checks `.open` -- it loads prices and
+                                # signals for every position and must not run
+                                # while another tab is shown.
+                                (tab_scalable, tab_portfolio, tab_entry, tab_risk, tab_review,
+                                 tab_trades) = st.tabs([
                                     t('own_trades.tab_scalable'),
                                     t('own_trades.tab_portfolio'),
                                     t('own_trades.tab_entry'),
                                     t('own_trades.tab_risk'),
+                                    t('own_trades.tab_review'),
                                     t('own_trades.tab_trades'),
-                                ])
+                                ], key='ot_tabs', on_change='rerun')
                                 with tab_portfolio:
                                     render_portfolio_analysis(
                                         region=tab_portfolio,
@@ -1017,6 +1023,15 @@ class TradingApp:
                                         db_path='database',
                                         system_currency=system_currency,
                                     )
+                                with tab_review:
+                                    if tab_review.open:
+                                        from tradinglib.portfolio_review_page import render as render_review
+                                        render_review(
+                                            'own',
+                                            username=self.username,
+                                            db_path='database',
+                                            system_currency=system_currency,
+                                        )
                                 with tab_scalable:
                                     render_scalable_import(
                                         region=tab_scalable,

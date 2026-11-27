@@ -145,23 +145,28 @@ def multi_positions(db_path: str = 'database', system_currency: str = 'EUR',
 
 
 def paper_positions(username: str = '', db_path: str = 'database', system_currency: str = 'EUR',
-                    broker_id: str = 'alpaca') -> pd.DataFrame:
-    """Live positions of the paper broker (needs the premium trading bridge)."""
-    from tradinglib import ksplib
+                    broker_id: str = 'alpaca', broker=None) -> pd.DataFrame:
+    """Live positions of the paper broker (needs the premium trading bridge).
+
+    Pass *broker* to reuse a connected instance -- the trading page does, since a
+    second IBKR connection with the same client id would be refused.
+    """
     from tradinglib.premium.trading_bridge import BrokerFactory, OrderLog
-    from tradinglib.system_config import SystemConfig
-    cfg = SystemConfig(username=username)
-    bcfg = {'alpaca_key': '', 'alpaca_secret': '',
-            'ibkr_host': cfg.get_value('ibkr_host', '127.0.0.1'),
-            'ibkr_port': cfg.get_value('ibkr_port', '7497')}
-    try:
-        creds = ksplib.Ksp(storage_path=db_path, secrets_path=db_path).get_ksp(
-            cfg.get_value('alpaca_ksp_name', 'av-paper'))
-        if isinstance(creds, dict):
-            bcfg['alpaca_key'], bcfg['alpaca_secret'] = creds.get('user', ''), creds.get('password', '')
-    except Exception:
-        logger.debug('paper broker credentials not available', exc_info=True)
-    broker = BrokerFactory.create(broker_id, bcfg)
+    if broker is None:
+        from tradinglib import ksplib
+        from tradinglib.system_config import SystemConfig
+        cfg = SystemConfig(username=username)
+        bcfg = {'alpaca_key': '', 'alpaca_secret': '',
+                'ibkr_host': cfg.get_value('ibkr_host', '127.0.0.1'),
+                'ibkr_port': cfg.get_value('ibkr_port', '7497')}
+        try:
+            creds = ksplib.Ksp(storage_path=db_path, secrets_path=db_path).get_ksp(
+                cfg.get_value('alpaca_ksp_name', 'av-paper'))
+            if isinstance(creds, dict):
+                bcfg['alpaca_key'], bcfg['alpaca_secret'] = creds.get('user', ''), creds.get('password', '')
+        except Exception:
+            logger.debug('paper broker credentials not available', exc_info=True)
+        broker = BrokerFactory.create(broker_id, bcfg)
     if not broker.is_connected():
         raise ConnectionError(f'{broker_id} not connected')
     mode = 'live' if broker_id == 'ibkr' else 'paper'
@@ -263,10 +268,11 @@ def enrich(df: pd.DataFrame, db_path: str = 'database', sim_db: str = 'asset_sim
             try:
                 have = {r[1] for r in con.execute('PRAGMA table_info(asset_simulation)')}
                 cols = [c for c in SIM_COLUMNS if c in have]
-                sim = pd.read_sql_query(
-                    f'SELECT ticker, {", ".join(cols)} FROM asset_simulation '
-                    f'WHERE ticker IN ({ph}) AND Date >= ? ORDER BY Date', con,
-                    params=tickers + [since]).drop_duplicates('ticker', keep='last')
+                if 'Date' in cols:          # an empty file (no table) has no columns
+                    sim = pd.read_sql_query(
+                        f'SELECT ticker, {", ".join(cols)} FROM asset_simulation '
+                        f'WHERE ticker IN ({ph}) AND Date >= ? ORDER BY Date', con,
+                        params=tickers + [since]).drop_duplicates('ticker', keep='last')
             finally:
                 con.close()
     out = out.merge(info.rename(columns={'longName': '_info_name'}), on='ticker', how='left')
