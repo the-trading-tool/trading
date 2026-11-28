@@ -4,8 +4,9 @@ Indicators are path dependent, so every simulation row of a repaired ticker
 from its FIRST changed daily bar on is stale -- including rows on phantom
 days (Saturdays) that no longer exist in day_data.
 
-asset_perf2 itself cannot do this: a normal run keeps an existing row and
-drops the new one (insert + "keep MIN(rowid)"), and /fill only adds days that
+asset_perf2 itself cannot do this: a normal run only recomputes its own window
+(last days, or the year with /init; it updates those rows since 2026-11-28 --
+before, it kept the existing row and dropped the new one), and /fill only adds days that
 are missing. This script therefore uses asset_perf2's own per-ticker worker
 (process_symbol with only_dates, i.e. the /fill path) and, per ticker and only
 after the computation succeeded, replaces the stale span in one transaction:

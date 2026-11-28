@@ -531,6 +531,28 @@ def calc_atr_percent(df, period=14):
     return round(DataUtils.safe_last(atr_series(df, period), default=0), 2)
 
 
+def upsert_sim_row(cursor, table, row) -> bool:
+    """Write one simulation row: update the stored (ticker, Date) row if there is one, else insert.
+
+    Only the columns in *row* are set; any other column of a stored row keeps
+    its value. Column names and values follow Db_tools.insert_data (keys
+    starting with a digit get a '_' prefix, lists are stored as JSON).
+    Returns True when an existing row was updated.
+    """
+    cols, vals = [], []
+    for key, value in row.items():
+        cols.append(f"_{key}" if key[0].isdigit() else key)
+        vals.append(json.dumps(value) if isinstance(value, list) else value)
+    set_cols = [(c, v) for c, v in zip(cols, vals) if c not in ('ticker', 'Date')]
+    cursor.execute(f"UPDATE {table} SET {', '.join(f'{c} = ?' for c, _ in set_cols)} "
+                   f"WHERE ticker = ? AND Date = ?",
+                   [v for _, v in set_cols] + [row['ticker'], row['Date']])
+    if cursor.rowcount > 0:
+        return True
+    cursor.execute(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", vals)
+    return False
+
+
 def atr_series(df, period=14):
     """ATR for every bar of *df* -- the series calc_atr_percent takes the last value of.
 
@@ -1239,22 +1261,36 @@ if __name__ == "__main__":
     # in-memory copy: the whole DB (1.2-1.8 GB) was loaded before the run,
     # held for its full length, written back, loaded again for the duplicate
     # cleanup and written back once more -- four full passes over the file
-    # for a few thousand new rows. Same statements, same order, same result.
+    # for a few thousand new rows.
+    #
+    # Upsert, newest computation wins (2026-11-28). Before, every row was
+    # inserted and the duplicate cleanup below kept MIN(rowid) -- the FIRST
+    # computation of a day. The 16:00 run computes US stocks mid-session, so
+    # their rows kept an intraday close (and every indicator on it) for good;
+    # the 22:00 run and the next days' reruns were thrown away. Columns this
+    # run does not write (backfill-only ones such as macd_diff, scr_*, and
+    # mtt_rs) keep their stored values.
     db_table = "asset_simulation"
     write_start = time.time()
     sim_db = tt.tools.Db_tools(db_path='database', database_name=sim_db_name, db_type=":file:")
     known_keys = None
+    updated = inserted = 0
     for pdict in all_results:
         keys = tuple(pdict.keys())
         if keys != known_keys:   # schema check only when the key set changes (idempotent)
             sim_db.ensure_table_and_columns(pdict.keys(), pdict, db_table, primary_key=False)
             known_keys = keys
-        sim_db.insert_data(pdict.keys(), pdict, db_table, replace=False)
+        if upsert_sim_row(sim_db.cursor, db_table, pdict):
+            updated += 1
+        else:
+            inserted += 1
 
     sim_db.conn.commit()
+    logger.info("%d rows updated, %d inserted", updated, inserted)
 
     logger.info("removing duplicates...")
-    # avoid duplicate entries
+    # Duplicates can only be pre-existing ones now (the upsert updated all
+    # copies of a key alike), so which copy is kept no longer matters.
     try:
         sim_db.cursor.execute( f"""
         DELETE FROM {db_table}

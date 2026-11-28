@@ -2489,7 +2489,7 @@ Lauf zweimal komplett geladen/zurueckgeschrieben, `fill_pdict` ~16 ms je Zeile (
 - **Unveraendert teuer in fill_pdict:** sharpe/sortino/semiVola/dTrend/vola rechnen je Zeile ueber
   den ganzen Ausschnitt seit Vorjahresbeginn; eine fortlaufende Variante waere nicht bit-gleich.
 
-### BEFUND (offen): Duplikat-Regel behaelt die ERSTE Berechnung eines Tages
+### ERLEDIGT 2026-11-28: Duplikat-Regel behielt die ERSTE Berechnung eines Tages
 
 Geschrieben wird per INSERT, danach `DELETE ... WHERE rowid NOT IN (SELECT MIN(rowid) ... GROUP BY
 ticker, Date)` → die aelteste Zeile gewinnt, jede spaetere Neuberechnung desselben Tages wird
@@ -2500,3 +2500,14 @@ samt aller Indikatoren. Geprueft 2026-11-10..27 (read-only): `close` != `day_dat
 erst nach Handelsschluss erreicht). Die Memory-Notiz "Sim- vs OHLC-Preis-Vintage" fuehrte das auf
 Yahoo-Revisionen zurueck — das ist hoechstens ein Teil. Fix waere `MAX(rowid)` (neueste gewinnt)
 bzw. Upsert; aendert gespeicherte Backtest-Daten → Entscheidung Nutzer, nicht umgesetzt.
+**Umgesetzt (Entscheidung Nutzer: neueste gewinnt):** `asset_perf2.upsert_sim_row()` — je Zeile
+`UPDATE ... WHERE ticker=? AND Date=?`, ohne Treffer `INSERT`. Nur die Spalten des Laufs werden
+gesetzt; was der Lauf nicht schreibt (`macd_diff`, `ewo_diff`, `ewo_trend`, `scr_*` aus /backfill,
+`mtt_rs` aus `update_rs`) bleibt erhalten. Die MIN(rowid)-Bereinigung bleibt fuer Alt-Duplikate (alle
+Kopien eines Schluessels werden gleich aktualisiert). Nachweis (`/index:^GDAXI` auf DB-Kopien):
+unveraenderte Kopie → 199 Zeilen aktualisiert, 0 eingefuegt, Werte identisch mit frisch
+geschriebener Kopie, Zeilenzahl gleich, keine Duplikate; 42 der 199 hatten vorher einen anderen
+`close`. Tests `tests/test_perf2_upsert.py`.
+**Folge:** ab jetzt ueberschreibt jeder Lauf die Tage seines Fensters (Standard: letzte ~6 Tage,
+`/init`: das Jahr). Aeltere Zeilen behalten ihren Erststand, bis sie neu gerechnet werden
+(`/init` je DB oder `recompute_sim_rows.py`).
