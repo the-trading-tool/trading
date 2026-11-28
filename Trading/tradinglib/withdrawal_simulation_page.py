@@ -252,7 +252,7 @@ _NOT_SETTINGS = ('results', 'rules_cmp', 'sust', 'loaded', 'shadow', 'saved_snap
                  'exp_ed', 'exp_saved', 'exp_init',
                  'pending_run', 'use_sust_', 'applied_sust', 'depot_ed', 'banks_ed', 'cls_ed_', 'tax_br_',
                  'chart_sc', 'restored', 'run', 'banks_save', 'tax_save', 'rules_run', 'sust_run',
-                 'set_save', 'set_reset')
+                 'set_save', 'set_reset', 'stress', 'stress_run', 'stress_sc', 'stress_pick')
 
 
 def _is_setting(name: str, value) -> bool:
@@ -1025,7 +1025,7 @@ def render_withdrawal_simulation(username: str = '') -> None:
 
     state = st.session_state.get(_KEY + 'results')
     if state and state.get('version') != _STATE_VERSION:
-        for k in ('results', 'rules_cmp', 'sust'):
+        for k in ('results', 'rules_cmp', 'sust', 'stress'):
             st.session_state.pop(_KEY + k, None)
         st.info(_t('wd.stale_results'))
         state = None
@@ -1119,6 +1119,142 @@ def _render_class_chart(state: dict, pick: str, real: bool, sym: str) -> None:
 
 
 RUIN_FEW_CASES = 20      # below this many ruined paths the median age is only a rough figure
+
+
+def _stress_timing() -> tuple[int, int, str]:
+    """(start_year, random_years, label) from the timing widgets."""
+    when = st.session_state.get(_KEY + 'stress_when', 'now')
+    if when == 'year':
+        y = int(st.session_state.get(_KEY + 'stress_year', 5))
+        return y - 1, 0, _t('wd.stress_when_year_lbl', n=y)
+    if when == 'random':
+        n = int(st.session_state.get(_KEY + 'stress_rand', 10))
+        return 0, max(n - 1, 0), _t('wd.stress_when_random_lbl', n=n)
+    return 0, 0, _t('wd.stress_when_now_lbl')
+
+
+def _render_stress(state: dict, scen_opts: dict, sym: str) -> None:
+    """Stress test: every chosen crisis on the same random paths as the normal run."""
+    results = state['results']
+    st.caption(_t('wd.stress_intro'))
+    a, b, c = st.columns(3)
+    sc = a.selectbox(_t('wd.scenario'), list(results), format_func=scen_opts.get, key=_KEY + 'stress_sc')
+    when = b.radio(_t('wd.stress_when'), ['now', 'year', 'random'],
+                   format_func=lambda k: _t(f'wd.stress_when.{k}'), key=_KEY + 'stress_when')
+    if when == 'year':
+        b.slider(_t('wd.stress_year'), 1, 40, 5, 1, key=_KEY + 'stress_year')
+    elif when == 'random':
+        b.slider(_t('wd.stress_rand'), 1, 40, 10, 1, key=_KEY + 'stress_rand', help=_t('wd.stress_rand_help'))
+    recovery = c.toggle(_t('wd.stress_rec'), value=True, key=_KEY + 'stress_rec', help=_t('wd.stress_rec_help'))
+    crisis_opts = _opt('wd.crisis', ws.CRISIS_ORDER)
+    if _KEY + 'stress_keys' in st.session_state:      # restored setting: drop unknown keys
+        st.session_state[_KEY + 'stress_keys'] = [k for k in st.session_state[_KEY + 'stress_keys']
+                                                  if k in ws.CRISIS_ORDER]
+    keys = st.multiselect(_t('wd.stress_keys'), list(ws.CRISIS_ORDER),
+                          default=None if _KEY + 'stress_keys' in st.session_state else list(ws.CRISIS_ORDER),
+                          format_func=crisis_opts.get, key=_KEY + 'stress_keys')
+    custom_on = st.toggle(_t('wd.stress_custom'), value=False, key=_KEY + 'stress_custom',
+                          help=_t('wd.stress_custom_help'))
+    custom = None
+    if custom_on:
+        c1, c2, c3, c4, c5 = st.columns(5)
+        custom = {
+            'months': int(c1.number_input(_t('wd.stress_c_months'), 1, 120, 24, 1, key=_KEY + 'stress_c_months')),
+            'stock': c2.number_input(_t('wd.stress_c_stock'), -95, 100, -50, 1, key=_KEY + 'stress_c_stock') / 100.0,
+            'commodity': c3.number_input(_t('wd.stress_c_comm'), -95, 200, 0, 1, key=_KEY + 'stress_c_comm') / 100.0,
+            'cash_cut': c4.number_input(_t('wd.stress_c_cash'), 0, 100, 0, 1, key=_KEY + 'stress_c_cash') / 100.0,
+            'inflation': c5.number_input(_t('wd.stress_c_infl'), -10, 50, 3, 1, key=_KEY + 'stress_c_infl') / 100.0,
+        }
+    run_keys = list(keys) + (['custom'] if custom_on else [])
+    if st.button(_t('wd.stress_run', scenario=scen_opts[sc]), key=_KEY + 'stress_run', disabled=not run_keys):
+        r = results[sc]
+        cfg, M = r['cfg'], state['M']
+        classes = list(cfg.asset_classes or ['stock'] * M.shape[1])
+        start_year, rand_years, when_lbl = _stress_timing()
+        rows = {}
+        prog = st.progress(0.0, text=_t('wd.stress_running'))
+        for i, key in enumerate(run_keys):
+            win = ws.stress_window(key, M, classes, recovery=recovery, custom=custom)
+            if win is None:
+                rows[key] = None
+            else:
+                res = ws.simulate(ws.stress_config(cfg, win, start_year, rand_years), M.values)
+                rows[key] = {'win': win, 'sum': ws.summarize(res), 'pct': ws.wealth_percentiles(res),
+                             'dd': ws.stress_drawdown(win, cfg.weights)}
+            prog.progress((i + 1) / len(run_keys), text=_t('wd.stress_running'))
+        prog.empty()
+        st.session_state[_KEY + 'stress'] = {'sc': sc, 'rows': rows, 'when': when_lbl, 'start': start_year,
+                                             'random': rand_years, 'recovery': recovery,
+                                             'cash_quota': float(cfg.cash_quota)}
+    out = st.session_state.get(_KEY + 'stress')
+    if not out or out['sc'] not in results:
+        st.caption(_t('wd.stress_caption'))
+        return
+    base = results[out['sc']]['sum']
+    labels = dict(crisis_opts, custom=_t('wd.crisis.custom'))
+    st.markdown(_t('wd.stress_result_head', scenario=scen_opts[out['sc']], when=out['when'],
+                   rec=_t('wd.stress_rec_on') if out['recovery'] else _t('wd.stress_rec_off')))
+    table = [{
+        _t('wd.stress_col_crisis'): _t('wd.stress_normal'), _t('wd.stress_col_period'): '',
+        _t('wd.stress_col_trough'): '', _t('wd.stress_col_end'): '', _t('wd.stress_col_infl'): '',
+        _t('wd.m_success'): _pct(base['p_success']), _t('wd.stress_col_delta'): '',
+        _t('wd.m_bequest'): _eur(base['bequest_real_p50'], sym),
+        _t('wd.m_bequest_p10'): _eur(base['bequest_real_p10'], sym),
+        _t('wd.stress_col_ruin_age'): f"{base['ruin_age_median']:.0f}" if np.isfinite(base['ruin_age_median']) else '–',
+    }]
+    for key, row in out['rows'].items():
+        if row is None:
+            table.append({_t('wd.stress_col_crisis'): labels.get(key, key),
+                          _t('wd.stress_col_period'): _t('wd.stress_no_data')})
+            continue
+        s, win, dd = row['sum'], row['win'], row['dd']
+        n_ruin = int(s.get('n_ruined', 0))
+        age = f"{s['ruin_age_median']:.0f}" + (' *' if n_ruin < RUIN_FEW_CASES else '') \
+            if np.isfinite(s['ruin_age_median']) else '–'
+        cut = f" · {_t('wd.stress_cash_cut', p=_pct(win['cash_cut'], 0))}" if win.get('cash_cut') else ''
+        table.append({
+            _t('wd.stress_col_crisis'): labels.get(key, key),
+            _t('wd.stress_col_period'): (win['period'] or _t('wd.stress_months', n=win['months'])) + cut,
+            _t('wd.stress_col_trough'): _pct(dd['trough'] if abs(dd['trough']) >= 0.005 else 0.0, 0),
+            _t('wd.stress_col_end'): _pct(dd['end'] if abs(dd['end']) >= 0.005 else 0.0, 0),
+            _t('wd.stress_col_infl'): _pct(float(np.mean(win['infl'])), 1),
+            _t('wd.m_success'): _pct(s['p_success']),
+            _t('wd.stress_col_delta'): f"{(s['p_success'] - base['p_success']) * 100:+.1f} Pp".replace('.', ','),
+            _t('wd.m_bequest'): _eur(s['bequest_real_p50'], sym),
+            _t('wd.m_bequest_p10'): _eur(s['bequest_real_p10'], sym),
+            _t('wd.stress_col_ruin_age'): age,
+        })
+    st.dataframe(pd.DataFrame(table), hide_index=True, use_container_width=True)
+    if any(v is None for v in out['rows'].values()):
+        st.caption(_t('wd.stress_no_data_hint'))
+
+    done = [k for k, v in out['rows'].items() if v is not None]
+    if done:
+        pick = st.radio(_t('wd.stress_pick'), done, format_func=lambda k: labels.get(k, k), horizontal=True,
+                        key=_KEY + 'stress_pick')
+        p0, p1 = results[out['sc']]['pct'], out['rows'][pick]['pct']
+        x0, x1 = state['age0'] + p0['year'], state['age0'] + p1['year']
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x0, y=p0['p50'], name=_t('wd.stress_line_normal'),
+                                 line=dict(color='#1f78d1', width=3)))
+        fig.add_trace(go.Scatter(x=x0, y=p0['p10'], name=_t('wd.stress_line_normal_p10'),
+                                 line=dict(color='#1f78d1', width=1.5, dash='dot')))
+        fig.add_trace(go.Scatter(x=x1, y=p1['p50'], name=_t('wd.stress_line_crisis', crisis=labels.get(pick, pick)),
+                                 line=dict(color='#d93025', width=3)))
+        fig.add_trace(go.Scatter(x=x1, y=p1['p10'], name=_t('wd.stress_line_crisis_p10'),
+                                 line=dict(color='#d93025', width=1.5, dash='dot')))
+        win = out['rows'][pick]['win']
+        if not out['random']:
+            s0 = state['age0'] + out['start']
+            fig.add_vrect(x0=s0, x1=s0 + win['crisis_months'] / 12.0, fillcolor='rgba(217,48,37,0.10)',
+                          line_width=0, layer='below', annotation_text=_t('wd.stress_band'),
+                          annotation_position='top left', annotation_font_size=10)
+        fig.update_layout(height=420, hovermode='x unified', margin=dict(t=30, b=40),
+                          xaxis_title=_t('wd.x_age'),
+                          yaxis=dict(title=_t('wd.y_wealth_real', cur=sym), rangemode='tozero'),
+                          legend=dict(orientation='h', y=-0.2))
+        st.plotly_chart(fig, use_container_width=True)
+    st.caption(_t('wd.stress_caption'))
 
 
 def _num1(v: float) -> str:
@@ -1393,6 +1529,10 @@ def _render_results(state: dict, scen_opts: dict) -> None:
         if cmp_ and cmp_[0] in results:
             st.dataframe(cmp_[1], hide_index=True, use_container_width=True)
         st.caption(_t('wd.rules_caption'))
+
+    # historical crises inserted at a chosen point of the life
+    with st.expander(_t('wd.stress_expander'), expanded=False):
+        _render_stress(state, scen_opts, sym)
 
     # sustainable spending
     with st.expander(_t('wd.sustain_expander'), expanded=False):

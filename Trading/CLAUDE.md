@@ -2387,6 +2387,18 @@ Kapitalverzehrs ueber die ganze Lebenszeit.
 - **Alter bei Pleite (2026-11-26):** „im Median mit 82“ neben „99,6 % reicht“ wurde als Widerspruch gelesen — der
   Median gilt nur fuer die Pleite-Faelle. `summarize` liefert `n_ruined`/`n_paths`; Kennzahl heisst „Alter bei Pleite
   (nur die X % Pleite-Faelle)“, Erklaerung nennt „n von N“; unter `RUIN_FEW_CASES` (20) Sternchen + Hinweis „nur grob“.
+- **Krisen-Stresstest (2026-11-28):** Expander unter den Ergebnissen. `ws.CRISES`/`CRISIS_ORDER`: `local`
+  (gfc 11/2007–02/2009, corona 02–03/2020, rates2022 01–09/2022, tariffs2025 02–04/2025; Monatsrenditen der
+  gewaehlten Anlagen aus der Rendite-Matrix M, Inflation `HICP_EA`), `annual` (depression 1929–32, oil1973,
+  dotcom; gerundete Kalenderjahre S&P-500-TR / Gold / US-CPI, USD, gleichmaessig auf Monate verteilt → Tiefpunkt
+  im Jahr fehlt), `cut` (currency_cut: Festgeld −93,5 %, 10 % Inflation) und `custom`. Je Krise Erholung
+  (12 Monate / Folgejahr) zuschaltbar. `stress_window()` → (L×k)-Renditen + Inflation je 12 Monate;
+  `stress_config()` setzt `SimConfig.stress_*`; `simulate` ersetzt die gezogenen Monate ab Startjahr je Pfad
+  (Start zufaellig ueber eigenen RNG `seed+7919` → Sterbefaelle/Bootstrap identisch zum Normallauf), ueberschreibt
+  `infl_y`, Festgeld-Schnitt im Startmonat. Erholung = historisch, ohne = Bootstrap danach (haerter). Lokale
+  Krisen ausserhalb des Historie-Fensters → „nicht in den Kursdaten“. Renten folgen auch in Deflation der
+  Inflation (1930–32 sinken Ausgaben/Renten nominal). class_growth kennt den Stress nicht (nur Normallauf).
+  Probe (Paar, 80/20 ETF/Gold, 20 % Festgeld): normal 96 %, 1929 sofort ohne Erholung 74 %, GFC ohne 80 %.
 - **Fix 2026-11-22:** „'SimConfig' object has no attribute 'tax_brackets'“ — ein Ergebnis aus einer aelteren
   Version lag in `st.session_state`, „Alle Modelle rechnen“ kopierte dessen alte `cfg`. Jetzt `ws.upgrade_config()`
   am Anfang von `simulate` (fehlende Felder = Default) und `_STATE_VERSION` auf der Seite (alte Ergebnisse werden

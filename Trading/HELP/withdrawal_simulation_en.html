@@ -44,6 +44,17 @@ ul{padding-left:1.4em;margin:5px 0}li{margin:3px 0}
 <li><b>Growth per class</b> – what 1 € in stocks, ETFs, commodities and deposits grows to, on the same random paths, after costs, before taxes, without withdrawals (median, optionally with the 10–90 % range).</li>
 <li><b>Wealth split in €</b> – stacked per class over age (median of households alive), either <b>with inflows and outflows</b> (pensions in, spending out) or <b>starting capital only</b> (same paths, without pensions, spending and care costs) or as a <b>comparison</b> with both totals as lines. If “with” is above “starting capital only”, the household pays in on balance (pensions above spending); a hint shows the amount per year.</li>
 </ul>
+<h2>Crisis stress test</h2>
+<p>The normal run draws random 12-month blocks from the last (default) 20 years. Earlier crises do not occur in it, and long bear markets are cut into pieces. The stress test therefore inserts a crisis as a fixed sequence of months into every simulated life – <b>right away</b>, <b>from a given year</b> or <b>at random</b> within the first N years – together with the inflation of that time. Before and after it the random path continues, on the same paths as the normal run.</p>
+<table>
+<tr><th>Crisis</th><th>Source</th></tr>
+<tr><td>Financial crisis 2007–09, Covid 2020, rate turn 2022, tariffs 2025</td><td>actual monthly returns of your assets from the local price data (peak to trough), euro-area inflation (HICP) of those years</td></tr>
+<tr><td>Great Depression 1929–32, oil crisis 1973–74, dotcom 2000–02</td><td>rounded calendar-year values: S&amp;P 500 with dividends for stocks and ETFs, gold for commodities, US inflation; in US dollars, spread evenly over the months (the low inside a year is missing)</td></tr>
+<tr><td>Currency cut (like 1948)</td><td>stylised: deposits lose 93.5 % once, securities keep their value, one year of 10 % inflation</td></tr>
+<tr><td>Own crisis</td><td>duration, change of stocks/ETFs and commodities, loss of deposits and inflation freely chosen</td></tr>
+</table>
+<p><b>With the recovery afterwards</b> appends the 12 months or the year after the crisis as they were then. Without it the path continues at random after the low – the harder test. The table shows per crisis the low of the securities, the success rate and the difference to the normal run; the chart compares the median and the worst 10 % of wealth.</p>
+<p>Pensions continue normally in all crises and follow inflation – in the 1930–32 deflation spending and pensions therefore also fall in nominal terms. A fixed deposit rate gains in real terms during deflation; bank failures can only be modelled with the own crisis.</p>
 <h2>Limits</h2>
 <div class="info">The past is no promise. Single stocks with high past returns are therefore capped at 8 % p.a. by default. Commodity futures are front-month prices without roll costs. Taxes on the yearly rebalancing within securities, health-insurance contributions on capital income and inheritance tax are not modelled. Life expectancy and care risk are averages, not a medical forecast.</div>
 </body>

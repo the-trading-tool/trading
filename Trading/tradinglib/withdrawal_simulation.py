@@ -623,6 +623,12 @@ class SimConfig:
     persons: list = field(default_factory=lambda: [Person()])
     asset_classes: Optional[list] = None   # class per asset ('stock'/'etf'/'commodity'), for the charts
     one_off_expenses: Optional[list] = None  # [(month index from today, amount in today's money), ...]
+    # stress test: a fixed crisis sequence replaces the drawn months (see stress_window)
+    stress_returns: Optional[np.ndarray] = None  # (L x k) monthly returns of the risky assets
+    stress_infl: Optional[list] = None   # inflation per 12 months of the crisis
+    stress_cash_cut: float = 0.0          # one-off loss of the deposits when the crisis starts
+    stress_start_year: int = 0            # crisis starts in this year (0 = right away)
+    stress_random_years: int = 0          # > 0: start drawn per path from start_year .. start_year + N
 
 
 def _block_indices(rng, n: int, months: int, T: int, block: int) -> np.ndarray:
@@ -761,6 +767,24 @@ def simulate(cfg: SimConfig, R: np.ndarray) -> dict:
     idx = _block_indices(rng, n, months, T, cfg.block)
     infl_y = inflation_paths(cfg, rng, n, months // 12 + 1)
     price = np.ones((n, months + 1))      # price level, 1.0 = today
+
+    # stress test: own random stream, so the normal paths (mortality, markets) stay identical
+    S, s_start = None, None
+    if cfg.stress_returns is not None and len(cfg.stress_returns):
+        S = np.asarray(cfg.stress_returns, dtype=float)
+        if S.ndim == 1:
+            S = S[:, None]
+        if S.shape[1] != k:
+            raise ValueError('stress_returns needs one column per asset')
+        sy = np.full(n, max(int(cfg.stress_start_year), 0))
+        if cfg.stress_random_years and cfg.stress_random_years > 0:
+            sy = sy + np.random.default_rng(cfg.seed + 7919).integers(0, int(cfg.stress_random_years) + 1, n)
+        s_start = sy * 12
+        rows = np.arange(n)
+        for j, v in enumerate(cfg.stress_infl or []):
+            col = sy + j
+            ok = col < infl_y.shape[1]
+            infl_y[rows[ok], col[ok]] = float(v)
 
     regime = tax_regime(cfg.tax)
     brackets = cfg.tax_brackets if cfg.tax_brackets else regime['brackets']
@@ -915,9 +939,18 @@ def simulate(cfg: SimConfig, R: np.ndarray) -> dict:
             live = np.full(n, t < months)
 
         # markets
-        H *= 1.0 + R[idx[:, t]]
+        r_t = R[idx[:, t]]
+        if S is not None:
+            off = t - s_start
+            hit = (off >= 0) & (off < len(S))
+            if hit.any():
+                r_t = r_t.copy()
+                r_t[hit] = S[off[hit]]
+            if cfg.stress_cash_cut:
+                cash = np.where(off == 0, cash * (1.0 - float(np.clip(cfg.stress_cash_cut, 0.0, 1.0))), cash)
+        H *= 1.0 + r_t
         if dynamic:
-            r_p = port_r[idx[:, t]]
+            r_p = r_t @ w
             ret_buf[:, t % 12] = r_p
             level *= 1.0 + r_p
             level_peak = np.maximum(level_peak, level)
@@ -1061,6 +1094,7 @@ def simulate(cfg: SimConfig, R: np.ndarray) -> dict:
         'composition': comp,
         'asset_classes': cls_list,
         'net_flow_real': flow_real,
+        'stress_start': s_start,
     }
 
 
@@ -1335,3 +1369,119 @@ def sustainable_spending(cfg: SimConfig, R: np.ndarray, target_ruin: float = 0.1
         else:
             hi = mid
     return lo
+
+
+# ---------------------------------------------------------------------------
+# Stress test: historical crises inserted at a fixed or random point of the life
+# ---------------------------------------------------------------------------
+# 'local': monthly returns of the selected assets from the return matrix (the crisis
+#          lies inside the local price history), inflation = euro-area HICP (annual average).
+# 'annual': crises before the local history. Calendar-year total returns of the S&P 500
+#          (stocks and ETFs), gold (commodities) and US CPI Dec/Dec, rounded, in USD.
+#          Spread evenly over the months -> the deepest point inside a year is not visible
+#          (1929-32: about -65 % year end to year end, about -85 % peak to trough).
+# 'cut':   stylised currency cut: deposits lose most of their value once, real assets keep it.
+# Each crisis has a recovery part (12 months / the following year) that can be left out.
+HICP_EA = {2007: 0.021, 2008: 0.033, 2009: 0.003, 2010: 0.016, 2020: 0.003, 2021: 0.026,
+           2022: 0.084, 2023: 0.054, 2024: 0.024, 2025: 0.021, 2026: 0.020}
+
+CRISES = {
+    'gfc': {'kind': 'local', 'start': '2007-11', 'end': '2009-02', 'recovery': 12},
+    'corona': {'kind': 'local', 'start': '2020-02', 'end': '2020-03', 'recovery': 12},
+    'rates2022': {'kind': 'local', 'start': '2022-01', 'end': '2022-09', 'recovery': 12},
+    'tariffs2025': {'kind': 'local', 'start': '2025-02', 'end': '2025-04', 'recovery': 12},
+    'dotcom': {'kind': 'annual',
+               'years': [(2000, -0.0903, -0.060, 0.034), (2001, -0.1185, 0.014, 0.016),
+                         (2002, -0.2197, 0.240, 0.024)],
+               'recovery': [(2003, 0.2836, 0.217, 0.019)]},
+    'oil1973': {'kind': 'annual',
+                'years': [(1973, -0.1431, 0.730, 0.087), (1974, -0.2590, 0.662, 0.123)],
+                'recovery': [(1975, 0.3700, -0.248, 0.069)]},
+    'depression': {'kind': 'annual',
+                   'years': [(1929, -0.0830, 0.0, 0.006), (1930, -0.2512, 0.0, -0.064),
+                             (1931, -0.4384, 0.0, -0.093), (1932, -0.0864, 0.0, -0.103)],
+                   'recovery': [(1933, 0.4998, 0.650, 0.008)]},
+    'currency_cut': {'kind': 'cut', 'cash_cut': 0.935, 'months': 12, 'stock': 0.0,
+                     'commodity': 0.0, 'inflation': 0.10},
+}
+CRISIS_ORDER = ('depression', 'currency_cut', 'oil1973', 'dotcom', 'gfc', 'corona', 'rates2022',
+                'tariffs2025')
+
+
+def _even_monthly(total: float, months: int) -> np.ndarray:
+    """Monthly returns that compound to *total* over *months*."""
+    return np.full(months, (1.0 + total) ** (1.0 / months) - 1.0) if months > 0 else np.zeros(0)
+
+
+def _by_class(classes, stock: np.ndarray, commodity: np.ndarray) -> np.ndarray:
+    cols = [commodity if c == 'commodity' else stock for c in classes]
+    return np.column_stack(cols) if cols else np.zeros((len(stock), 0))
+
+
+def stress_window(key: str, M: pd.DataFrame, classes, recovery: bool = True,
+                  custom: Optional[dict] = None) -> Optional[dict]:
+    """Crisis *key* as monthly returns for the columns of *M* (one class per column).
+
+    Returns {'returns': (L x k), 'infl': [per 12 months], 'cash_cut', 'months', 'period',
+    'crisis_months'} or None when the crisis is not inside the local history.
+    ``key='custom'`` uses *custom*: months, stock (total change), commodity, cash_cut, inflation.
+    """
+    classes = list(classes)
+    if key == 'custom':
+        spec = dict(custom or {})
+        spec['kind'] = 'cut'
+    else:
+        spec = CRISES.get(key)
+    if spec is None:
+        return None
+    kind = spec['kind']
+    if kind == 'local':
+        start = pd.Period(spec['start'], 'M')
+        crisis_end = pd.Period(spec['end'], 'M')
+        end = crisis_end + (int(spec['recovery']) if recovery else 0)
+        want = pd.period_range(start, end, freq='M')
+        pos = {p: i for i, p in enumerate(pd.DatetimeIndex(M.index).to_period('M'))}
+        if any(p not in pos for p in want):
+            return None
+        rows = M.values[[pos[p] for p in want]]
+        infl = [HICP_EA.get(want[min(j + 6, len(want) - 1)].year, 0.02) for j in range(0, len(want), 12)]
+        return {'returns': np.asarray(rows, dtype=float), 'infl': infl, 'cash_cut': 0.0,
+                'months': len(want), 'crisis_months': len(pd.period_range(start, crisis_end, freq='M')),
+                'period': f"{start.strftime('%m/%Y')}–{want[-1].strftime('%m/%Y')}"}
+    if kind == 'annual':
+        years = list(spec['years']) + (list(spec['recovery']) if recovery else [])
+        blocks = [_by_class(classes, _even_monthly(stock, 12), _even_monthly(gold, 12))
+                  for _, stock, gold, _ in years]
+        period = f"{years[0][0]}–{years[-1][0]}" if len(years) > 1 else str(years[0][0])
+        return {'returns': np.vstack(blocks), 'infl': [y[3] for y in years], 'cash_cut': 0.0,
+                'months': 12 * len(years), 'crisis_months': 12 * len(spec['years']), 'period': period}
+    # 'cut' and custom: even change over the crisis months, optional deposit cut at the start
+    months = max(int(spec.get('months', 12)), 1)
+    rows = _by_class(classes, _even_monthly(float(spec.get('stock', 0.0)), months),
+                     _even_monthly(float(spec.get('commodity', 0.0)), months))
+    return {'returns': rows, 'infl': [float(spec.get('inflation', 0.02))] * int(np.ceil(months / 12)),
+            'cash_cut': float(spec.get('cash_cut', 0.0)), 'months': months, 'crisis_months': months,
+            'period': ''}
+
+
+def stress_config(cfg: SimConfig, window: dict, start_year: int = 0, random_years: int = 0) -> SimConfig:
+    """*cfg* with the crisis *window* inserted (same seed -> same paths as the normal run)."""
+    import dataclasses
+    cfg = upgrade_config(cfg)
+    return dataclasses.replace(cfg, stress_returns=window['returns'], stress_infl=list(window['infl']),
+                               stress_cash_cut=float(window.get('cash_cut', 0.0)),
+                               stress_start_year=int(start_year), stress_random_years=int(random_years))
+
+
+def stress_drawdown(window: dict, weights) -> dict:
+    """Deepest point and end value of the risky part over the crisis (weights = risky weights)."""
+    w = np.asarray(weights, dtype=float)
+    w = w / w.sum() if w.sum() > 0 else w
+    r = np.asarray(window['returns'], dtype=float) @ w
+    if not len(r):
+        return {'trough': 0.0, 'crisis_end': 0.0, 'end': 0.0}
+    level = np.cumprod(1.0 + r)
+    cm = int(window.get('crisis_months', len(r)))
+    return {'trough': float(min(level.min(), 1.0) - 1.0),
+            'crisis_end': float(level[min(max(cm, 1), len(level)) - 1] - 1.0),
+            'end': float(level[-1] - 1.0)}

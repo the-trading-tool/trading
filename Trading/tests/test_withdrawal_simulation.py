@@ -564,3 +564,74 @@ def test_ruin_age_text_names_share_and_count():
     ruin_line = [ln for ln in lines if 'expl_ruin_age' in ln or f"{s['n_ruined']}" in ln and str(400) in ln]
     assert ruin_line, lines
     assert (s['n_ruined'] < page.RUIN_FEW_CASES) == any('expl_ruin_few' in ln or '*' in ln for ln in ruin_line)
+
+
+# -- crisis stress test ---------------------------------------------------------
+
+def _stress_cfg(**kw):
+    base = dict(capital=500_000, spending=2_000, n_sims=300, seed=3, tax='off', inflation_mode='constant',
+                persons=[ws.Person(65, 'm')])
+    base.update(kw)
+    return ws.SimConfig(**base)
+
+
+def test_stress_keeps_the_normal_random_paths():
+    R = _flat_returns(0.004)
+    cfg = _stress_cfg()
+    win = {'returns': np.full((6, 1), -0.10), 'infl': [0.05], 'cash_cut': 0.0, 'months': 6, 'crisis_months': 6}
+    a = ws.simulate(cfg, R)
+    b = ws.simulate(ws.stress_config(cfg, win), R)
+    np.testing.assert_array_equal(a['death_age'], b['death_age'])       # same lives
+    np.testing.assert_array_equal(a['idx'], b['idx'])                   # same drawn months
+    assert b['wealth'][:, 6].mean() < a['wealth'][:, 6].mean() * 0.6    # six months of -10 %
+    assert b['price'][0, 12] == pytest.approx(1.05)                      # crisis inflation in year 1
+
+
+def test_stress_start_year_and_random_range():
+    R = _flat_returns(0.0)
+    cfg = _stress_cfg(fixed_years=30, spending=0.0)
+    win = {'returns': np.full((1, 1), -0.5), 'infl': [0.02], 'months': 1, 'crisis_months': 1}
+    late = ws.simulate(ws.stress_config(cfg, win, start_year=4), R)
+    assert np.allclose(late['wealth'][:, 48], 500_000 * (1 - 0.002 / 12) ** 48)   # untouched before
+    assert np.all(late['wealth'][:, 49] < 260_000)
+    rnd = ws.simulate(ws.stress_config(cfg, win, start_year=2, random_years=5), R)
+    assert rnd['stress_start'].min() >= 24 and rnd['stress_start'].max() <= 84
+    assert len(np.unique(rnd['stress_start'])) > 1
+
+
+def test_stress_cash_cut_hits_only_deposits():
+    R = _flat_returns(0.0)
+    cfg = _stress_cfg(fixed_years=5, spending=0.0, cash_quota=0.4, cash_rate=0.0, ter=0.0)
+    win = ws.stress_window('currency_cut', pd.DataFrame(R), ['etf'])
+    res = ws.simulate(ws.stress_config(cfg, win), R)
+    # 300k securities keep their value, 200k deposits lose 93.5 %
+    assert res['wealth'][0, 1] == pytest.approx(300_000 + 200_000 * 0.065)
+
+
+def test_stress_window_local_uses_the_matrix_months():
+    idx = pd.date_range('2006-12-31', periods=240, freq='ME')
+    M = pd.DataFrame({'A': np.linspace(-0.05, 0.05, 240), 'G': 0.01}, index=idx)
+    win = ws.stress_window('gfc', M, ['etf', 'commodity'], recovery=False)
+    assert win['months'] == 16 and win['crisis_months'] == 16
+    np.testing.assert_allclose(win['returns'], M.loc['2007-11':'2009-02'].values)
+    assert ws.stress_window('gfc', M, ['etf', 'commodity'])['months'] == 28
+    assert ws.stress_window('gfc', M.loc['2010':], ['etf', 'commodity']) is None   # outside the history
+
+
+def test_stress_window_annual_compounds_to_the_year_values():
+    M = pd.DataFrame({'A': [0.0], 'B': [0.0]})
+    win = ws.stress_window('oil1973', M, ['stock', 'commodity'], recovery=False)
+    assert win['months'] == 24 and win['infl'] == [0.087, 0.123]
+    year1 = np.prod(1 + win['returns'][:12], axis=0) - 1
+    np.testing.assert_allclose(year1, [-0.1431, 0.730])
+    dd = ws.stress_drawdown(win, [1.0, 0.0])
+    assert dd['end'] == pytest.approx((1 - 0.1431) * (1 - 0.2590) - 1)
+    assert ws.stress_window('oil1973', M, ['stock', 'commodity'])['months'] == 36
+
+
+def test_every_crisis_has_a_label_in_both_languages():
+    import json
+    for lang in ('de', 'en'):
+        data = json.load(open(f'locales/{lang}.json', encoding='utf-8'))
+        for key in list(ws.CRISIS_ORDER) + ['custom']:
+            assert f'wd.crisis.{key}' in data
