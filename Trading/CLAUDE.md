@@ -2425,3 +2425,31 @@ Ticker (fps/atc/prof/mtt laden je Aufruf die volle Tageshistorie, `load_daily` 1
 trainiert je Rahmen XGBoost); Worker auf Linux = 1; Sim-DB 1,2-1,8 GB wird je Lauf zweimal geladen
 und zurueckgeschrieben (Hauptlauf + Duplikat-Bereinigung). Auf dem Linux-Rechner zuerst messen
 (Dauer eines `/tickers:`-Laufs mit 20 Tickern, `/worker:2` vs 1), dann entscheiden.
+
+### asset_perf2: nur noch berechnete Indikatoren, die auch gespeichert werden (2026-11-28)
+
+Gemessen (4 Ticker, DB-Kopien): von der Indikatorzeit je Ticker entfielen **62 % auf Wochen- und
+Monatsrahmen**, aus denen `fill_pdict` nur 9 Spalten liest. `process_symbol` lief dort die volle
+Tagesliste (34 Indikatoren, darunter fps/atc/prof/mtt/sdc/eps, die je Aufruf die ganze
+Tageshistorie nachladen, und `pre` mit XGBoost-Training).
+- `HTF_INDICATORS = adx, macd, sup, ewo, relvol, markov` fuer 1wk/1mo (eigene `FetchData`-Instanz).
+  `macd_trend` stammt aus `adx` (erbt von Macd, laeuft zuerst, eigenes Signalfenster) → adx bleibt.
+  `ewo` wuerde auch ohne Eintrag gerechnet (Default-Kaufformel `(ewo>ewo_ema)` von FetchData), steht
+  aber explizit drin, damit das nicht an diesem Default haengt.
+- `DAILY_INDICATORS` ohne bol, bos, bsz, candle, don, fib, gan, ici, lqz, vol, vwap (nichts davon wird
+  gespeichert; `pre` bleibt, `fill_pdict` liest `ft.pre.pr_low/pr_high` als Attribut). Reihenfolge
+  beibehalten — ein Indikator sieht die Spalten der vorherigen.
+- Ermittelt per Aufzeichnung der von `fill_pdict` gelesenen Spalten je Rahmen + gierige Minimalliste
+  mit exaktem Wertevergleich (Scratch `perf2_usage.py`, `htf_subset.py`).
+
+**Verifiziert** alt (git HEAD) gegen neu, gleiche DB-Kopien: Tageslauf 30 Ticker (SPX, DAX/MDAX,
+FTSE/IBEX, N225/HSI, Index, Krypto, FX) **427 s → 204 s (×2,1)**, Jahreslauf (`init`) 8 Ticker
+249 s → 164 s (×1,5, dort wiegt `fill_pdict` je Zeile mehr). Alle gespeicherten Werte identisch bis
+auf **`qtrend_entry_price`**: alt immer leer, neu der echte Einstiegskurs.
+**Ursache = alter Fehler:** `bsz` haengt eine Spalte `Date` an den Tagesrahmen, `qtrend` macht danach
+`set_index('Date')` und seine Werte passen nicht mehr zum Index. Ohne bsz stimmt die Spalte mit dem
+Chart (qtrend allein) ueberein. In `asset_simulation_.db` waren 2,7 % der Zeilen gefuellt, keine
+gespeicherte Formel nutzt die Spalte. Andere Indikatoren nach bsz zeigten keine Abweichung.
+
+Offen: Worker auf Linux = 1 (`/worker:N` in den Jobs nach Messung auf dem Zielrechner), Sim-DB je
+Lauf zweimal komplett geladen/zurueckgeschrieben, `fill_pdict` ~16 ms je Zeile (103 `safe_last`).

@@ -96,6 +96,24 @@ INDICATOR_BACKFILL_MAP: dict = {
 # Map entries that are not indicator modules: their columns are built below.
 NON_INDICATOR_BACKFILL = {'ohlc', 'trend'}
 
+# Indicators process_symbol computes per frame. Only what fill_pdict reads is
+# computed: every indicator costs per ticker AND per frame, and several of them
+# (fps, atc, prof, mtt, sdc, eps) reload the full daily history from disk.
+#
+# Daily: all indicators whose columns (or, for 'pre', instance attributes) end
+# up in a row. Not here, because nothing of them is stored: bol, bos, bsz,
+# candle, don, fib, gan, ici, lqz, vol, vwap. The relative order is kept --
+# an indicator sees the columns of the ones before it.
+DAILY_INDICATORS = ['adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'sup', 'pre', 'ewo',
+                    'heikin', 'atc', 'zcr', 'relvol', 'dema', 'hor', 'qtrend', 'markov',
+                    'fps', 'prof', 'mtt', 'rft', 'eps', 'sdc']
+# Weekly/monthly: fill_pdict reads ewo, ewo_trend, macd_trend, markov_regime,
+# relvol_ratio/_direction, sup_resistance/_support and Close. macd_trend comes
+# from adx (it subclasses Macd and runs first, with its own signal window), so
+# adx stays in. These two frames used to run the full daily list and cost more
+# than the daily frame itself (measured 2026-11-28: 62 % of indicator time).
+HTF_INDICATORS = ['adx', 'macd', 'sup', 'ewo', 'relvol', 'markov']
+
 # Indicators that are additionally computed on higher timeframes during
 # backfill. Each entry: (interval, period, column_suffix). The indicator runs
 # on the wk/mo OHLCV and its columns from INDICATOR_BACKFILL_MAP are
@@ -814,15 +832,16 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
     """
     from tradinglib import fetch_data, indicator, ticker_tools as tt  # 🔹 Lokale Imports innerhalb des Prozesses
     from tradinglib.utils import DataUtils
-    ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','hor','qtrend','markov','fps','prof','mtt','rft','eps','sdc'])
+    ft = fetch_data.FetchData(indicators=DAILY_INDICATORS)
+    ft_htf = fetch_data.FetchData(indicators=HTF_INDICATORS)
     results = []
 
     # Use DataUtils.ensure_datetime_index for consistent index handling
 
     now = datetime.now()
     try:
-        (df_m, _) = ft.fetch_data(symbol, interval="1mo", period="10y")
-        (df_w, _) = ft.fetch_data(symbol, interval="1wk", period="6y")
+        (df_m, _) = ft_htf.fetch_data(symbol, interval="1mo", period="10y")
+        (df_w, _) = ft_htf.fetch_data(symbol, interval="1wk", period="6y")
         if not year == '':
             periods = (2 + now.year - year)
             (df, ticker) = ft.fetch_data(symbol,interval = '1d', period = f"{periods}y")
