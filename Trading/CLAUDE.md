@@ -2450,6 +2450,7 @@ auf **`qtrend_entry_price`**: alt immer leer, neu der echte Einstiegskurs.
 `set_index('Date')` und seine Werte passen nicht mehr zum Index. Ohne bsz stimmt die Spalte mit dem
 Chart (qtrend allein) ueberein. In `asset_simulation_.db` waren 2,7 % der Zeilen gefuellt, keine
 gespeicherte Formel nutzt die Spalte. Andere Indikatoren nach bsz zeigten keine Abweichung.
+**Entscheidung Nutzer 2026-11-28:** korrigierte Werte behalten (bsz bleibt draussen).
 
 Offen: Worker auf Linux = 1 (`/worker:N` in den Jobs nach Messung auf dem Zielrechner), Sim-DB je
 Lauf zweimal komplett geladen/zurueckgeschrieben, `fill_pdict` ~16 ms je Zeile (103 `safe_last`).
