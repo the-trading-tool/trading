@@ -37,6 +37,7 @@ python asset_perf2.py 1d:1y 1wk:2y</pre>
 <tr><td><code>/all /group:ETP</code></td><td>Only ETP members; writes to <code>asset_simulation_etp.db</code>. Runs independently of <code>/all</code> – its own expensive computation pass. <code>/group:ETF</code> and <code>/group:ETP,ETF</code> count as the ETP run too (the ETF group is part of ETP). Any other group with <code>/all</code> computes all tickers except ETP.</td></tr>
 <tr><td><code>/year:2024</code></td><td>Restrict the computation to one calendar year (snapshot/backtest).</td></tr>
 <tr><td><code>/worker:N</code></td><td>N parallel processes (ProcessPoolExecutor, CPU-heavy). On Windows automatically limited when unspecified (RAM per process).</td></tr>
+<tr><td><code>/parallel</code></td><td>Do not wait for another running asset_perf2. Without it only <b>one</b> asset_perf2 runs at a time: a run on another database waits until the running one is done; a run on the <b>same</b> database is skipped (message “skipping this run”), because both load the whole database into memory and the one finishing last would overwrite the other's results. The locks (<code>perf2_slot.lock</code>, <code>perf2_&lt;db&gt;.lock</code> in the database folder) are released by the operating system when the process ends, also after a crash or kill.</td></tr>
 </table>
 
 <h2>Fast modes (without recomputation)</h2>

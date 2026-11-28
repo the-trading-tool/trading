@@ -2396,3 +2396,32 @@ Kapitalverzehrs ueber die ganze Lebenszeit.
 - **Nach V2 kopiert** (2026-11-22): die fuenf neuen Dateien + `asset_analyzer.py`, `system_config.py`,
   `app_edition.py` ganz (V2 war dort == Git-HEAD); in den Locales nur die 186 `wd.*`/`nav|page|error.withdrawal*`-
   Keys angehaengt (V2 hatte schon einen eigenen `sched.*`-Key). Alle Nachtraege (Aufteilung, Entnahmemodelle, Ist gegen Ziel, Steuer DE/ES, Vermoegensteuer, 60-%-Grenze, Kanaren, nominale Ausgaben, Einstellungen speichern, Anlageklassen-Grafik mit/ohne Entnahmen, Puffer-Fix, Netto-Zahlungen, Seitenwechsel/Auto-Save, Ergebnis-Erklaerung, einmalige Ausgaben) ebenfalls in V2, dort 54 Tests gruen.
+
+## asset_perf2: Laufsperren gegen sich stapelnde Laeufe (2026-11-28)
+
+**Befund (Linux mit HDD):** mehrere asset_perf2 liefen parallel und wurden tagelang nicht fertig.
+- Der Scheduler ueberspringt nur einen Job mit **gleichem Namen**. Es gibt vier asset_perf2-Jobs
+  (16:00 und 22:00 aktuelles Jahr, 19:52 Mo/Mi/Fr `/all`, 22:00 ETP). Ein Standardlauf hat 3.570
+  Ticker, ~5 s je Ticker (Profil 2026-11-04, SSD) → mit 1 Worker > 5 h; ausserhalb von Windows ist
+  `max_workers` ohne `/worker:N` immer 1. Auf HDD laenger → der naechste Job startet, alle teilen sich
+  Platte und CPU, keiner wird fertig, am naechsten Tag kommen 16:00/22:00 neu dazu.
+- **Datenverlust:** jeder Lauf laedt die ganze Sim-DB in den Speicher (`db_type=":memory:"`) und
+  schreibt sie am Ende per `backup()` komplett zurueck. 16:00 und 22:00 schreiben dieselbe
+  `asset_simulation_.db` → der zuletzt fertige verwirft die Zeilen des anderen. Gilt auch fuer
+  einen `/backfill` neben einem normalen Lauf.
+
+**Umgesetzt** (`tradinglib/run_lock.py`, Aufruf direkt nach der Bestimmung von `sim_db_name`, vor
+allen Modi): OS-Dateisperren (`fcntl.flock` bzw. `msvcrt.locking`) im DB-Ordner, vom
+Betriebssystem freigegeben, wenn der Prozess endet (kein Stale-Lock nach kill/Absturz).
+- `perf2_<db>.lock` — ein Schreiber je Sim-DB; belegt → Warnung "skipping this run", exit 0.
+- `perf2_slot.lock` — ein asset_perf2 gleichzeitig; Laeufe auf andere DBs **warten** (Log
+  "Waiting for the running asset_perf2 ..."), `/parallel` (cli.parse_args) ueberspringt das Warten.
+- Tests `tests/test_run_lock.py` (zweiter Prozess, Freigabe nach kill, Warten, asset_perf2 ueberspringt).
+  **Linux-Zweig (fcntl) lokal nicht ausgefuehrt** (WSL-Debian ohne Python) — auf dem Linux-Rechner
+  `pytest tests/test_run_lock.py` laufen lassen.
+
+**Nicht geaendert, aber die eigentliche Laufzeit:** Indikatoren laufen fuer Tag, Woche und Monat je
+Ticker (fps/atc/prof/mtt laden je Aufruf die volle Tageshistorie, `load_daily` 11x je Ticker, `pre`
+trainiert je Rahmen XGBoost); Worker auf Linux = 1; Sim-DB 1,2-1,8 GB wird je Lauf zweimal geladen
+und zurueckgeschrieben (Hauptlauf + Duplikat-Bereinigung). Auf dem Linux-Rechner zuerst messen
+(Dauer eines `/tickers:`-Laufs mit 20 Tickern, `/worker:2` vs 1), dann entscheiden.

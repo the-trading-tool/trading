@@ -17,6 +17,8 @@ def print_help():
           "  /inverse - select tickers not related to an index,\n"
           "  /silent - suppress notifications,\n"
           "  /worker:N - number of workers to use,\n"
+          "  /parallel - asset_perf2: run next to another asset_perf2 on a different DB\n"
+          "              (default: wait; a run on the SAME DB is always skipped),\n"
           "  /batch:N - get_asset_data: tickers per Yahoo request (default 50, 1 = one request per ticker),\n"
           "  /backfill:ind1,ind2 - fill missing indicator columns from local OHLCV (fast, no yfinance),\n"
           "                        known indicators: heikin,markov,macd,rsi,ewo,adx,dema,hor,sup,relvol,atc,fps\n"
@@ -67,6 +69,7 @@ def parse_args(argv=None) -> Dict[str, Any]:
         # fast modes (no yfinance)
         'backfill': None,   # list[str] when set
         'force': False,     # skip already-filled check in backfill
+        'parallel': False,  # asset_perf2: do not wait for another run on a different DB
         'fill': False,            # asset_perf2: nur fehlende Tage ergaenzen statt /init
         'dry': False,             # nur berichten, nichts schreiben
         'vacuum': False,          # asset_perf2: VACUUM statt Simulationslauf
@@ -163,6 +166,8 @@ def parse_args(argv=None) -> Dict[str, Any]:
                     result['vacuum_pattern'] = suf
             if pref == 'force':
                 result['force'] = True
+            if pref == 'parallel':
+                result['parallel'] = True
             if pref == 'repair':
                 result['repair'] = True
             if pref == 'apply':

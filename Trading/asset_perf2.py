@@ -948,6 +948,38 @@ if __name__ == "__main__":
         sim_db_name = f"{db_table}_{year}.db"
 
     # -----------------------------------------------------------------------
+    # Run locks
+    #
+    # The scheduler only skips a job while the SAME job name still runs. Four
+    # asset_perf2 jobs exist (16:00, 19:52, 22:00, 22:00 ETP); on a slow
+    # machine a run takes longer than the gap to the next one, so they piled
+    # up and slowed each other down for days. Worse, two of them write the
+    # same file: each run loads the whole DB into memory and writes it back at
+    # the end, so the run finishing last silently discards the other's rows.
+    #
+    # 1. One writer per simulation DB: if another run holds it, this one
+    #    exits -- the running one already covers the job.
+    # 2. One asset_perf2 at a time overall (runs on other DBs wait for the
+    #    slot) -- parallel runs on one disk only make each other slower.
+    #    /parallel skips the wait, e.g. for a manual run on another DB.
+    # Both are OS file locks: a killed run never leaves a stale lock.
+    # -----------------------------------------------------------------------
+    from tradinglib.run_lock import RunLock
+    _lock_dir = os.path.dirname(_Tools().get_path(path='database', file_name=sim_db_name))
+    _run_label = f"{sim_db_name} {' '.join(sys.argv[1:])}"
+    db_lock = RunLock(os.path.join(_lock_dir, f"perf2_{sim_db_name[:-3]}.lock"), _run_label)
+    if not db_lock.acquire(blocking=False):
+        logger.warning("Another asset_perf2 run is writing %s (%s) -- skipping this run.",
+                       sim_db_name, db_lock.holder() or "holder unknown")
+        exit(0)
+    if not args.get('parallel', False):
+        slot_lock = RunLock(os.path.join(_lock_dir, "perf2_slot.lock"), _run_label)
+        slot_lock.acquire(
+            blocking=True, poll=30,
+            on_wait=lambda h: logger.info("Waiting for the running asset_perf2 (%s) to finish ...",
+                                          h or "holder unknown"))
+
+    # -----------------------------------------------------------------------
     # Fast modes — no yfinance, early exit
     #
     # Note the order: /vacuum runs BEFORE SystemConfig is instantiated. That
