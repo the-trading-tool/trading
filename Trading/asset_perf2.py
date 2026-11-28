@@ -1,4 +1,5 @@
 import concurrent.futures
+import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 import glob
@@ -526,17 +527,27 @@ def calc_atr_percent(df, period=14):
     Returns:
         pd.Series: Eine Series mit dem ATR-Prozentsatz für jeden Zeitpunkt.
     """
-    # 1. True Range (TR) berechnen
-    df['H-L'] = abs(df['High'] - df['Low'])
-    df['H-C'] = abs(df['High'] - df['Close'].shift(1))
-    df['L-C'] = abs(df['Low'] - df['Close'].shift(1))
-    df['TR'] = df[['H-L', 'H-C', 'L-C']].max(axis=1)
-
-    # 2. Average True Range (ATR) berechnen
-    atr = df['TR'].rolling(window=period).mean()
-
     from tradinglib.utils import DataUtils
-    return round(DataUtils.safe_last(atr, default=0), 2)
+    return round(DataUtils.safe_last(atr_series(df, period), default=0), 2)
+
+
+def atr_series(df, period=14):
+    """ATR for every bar of *df* -- the series calc_atr_percent takes the last value of.
+
+    Leaves *df* untouched. calc_atr_percent used to add its helper columns
+    (H-L, H-C, L-C, TR) to the frame it got; in process_symbol that frame is
+    a fresh slice per row, so every row copied the ~200-column frame and left
+    it fragmented for all later lookups.
+
+    The rolling mean runs front to back, so the value at bar i depends only on
+    bars up to i: computing it once over df_r.loc[start:] gives every row the
+    same number as computing it over df_r.loc[start:date].
+    """
+    tr = pd.concat([abs(df['High'] - df['Low']),
+                    abs(df['High'] - df['Close'].shift(1)),
+                    abs(df['Low'] - df['Close'].shift(1))],
+                   axis=1, keys=['H-L', 'H-C', 'L-C']).max(axis=1)
+    return tr.rolling(window=period).mean()
 
 def get_roa(ticker):
     
@@ -625,7 +636,7 @@ def get_ticker_value(ticker, key, from_json=False):
 
 
 def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=None, ft=None, last_year_high = 0, last_year_low = 0,
-               wk_trend=None):
+               wk_trend=None, atr=None):
     """
     
     Args:
@@ -716,10 +727,15 @@ def fill_pdict(symbol, ticker, df, df_weekly, df_monthly, simulate=True, year=No
         pdict['ewo_trend_wk'] = DataUtils.safe_last(df_weekly, 'ewo_trend', default=0)
         pdict['ewo_trend_mo'] = DataUtils.safe_last(df_monthly, 'ewo_trend', default=0)
         pdict['ewo_angle'] = ewo_angle
-        try:
-            pdict['atr'] = calc_atr_percent(df=df)
-        except Exception:
-            pdict['atr'] = 0
+        # atr: precomputed by process_symbol (see atr_series); computed here
+        # for any other caller.
+        if atr is not None:
+            pdict['atr'] = atr
+        else:
+            try:
+                pdict['atr'] = calc_atr_percent(df=df)
+            except Exception:
+                pdict['atr'] = 0
         pdict['take_profit'] = pdict['close'] + 4 * pdict['atr']
         pdict['stop_loss'] = pdict['close'] - 2 * pdict['atr']
 
@@ -913,6 +929,11 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
         sup_htf = sup_htf_series(df_r)
         # Same reason for wkTrend: week-to-date close vs. the last completed week.
         wk_trend = wk_trend_series(df_r)
+        # ATR once per ticker instead of once per row (same values, see atr_series).
+        try:
+            atr_by_date = atr_series(df_r.loc[startdate:])
+        except Exception:
+            atr_by_date = None   # fill_pdict falls back to computing it per row
 
         for date in df.index:
             if only_dates is not None and date.strftime('%Y-%m-%d') not in only_dates:
@@ -920,8 +941,12 @@ def process_symbol(symbol, simulate=True, add_current=False, year='', init=False
             res_df_d = df_r.loc[startdate:date]
             res_df_w = df_w.loc[:date] if df_w is not None else pd.DataFrame()
             res_df_m = df_m.loc[:date] if df_m is not None else pd.DataFrame()
+            atr = None
+            if atr_by_date is not None and date in atr_by_date.index:
+                _a = atr_by_date.at[date]
+                atr = round(_a.item() if isinstance(_a, np.generic) else _a, 2)
             pdict = fill_pdict(symbol, ticker, res_df_d, res_df_w, res_df_m, year=year, ft=ft, last_year_high=last_year_high, last_year_low=last_year_low,
-                               wk_trend=wk_trend.get(date))
+                               wk_trend=wk_trend.get(date), atr=atr)
             if pdict:
                 for _col, _series in sup_htf.items():
                     _v = _series.get(date)
@@ -1065,7 +1090,6 @@ if __name__ == "__main__":
     system_currency = sys_conf.get_value("system_currency", "EUR")
 
     info_db = tt.tools.Db_tools(db_path="database", database_name="yf_tickers.db")
-    sim_db = tt.tools.Db_tools(db_path="database", database_name=sim_db_name, db_type=":memory:")
 
     ft = fetch_data.FetchData(indicators=[ 'adx', 'macd', 'rsi', 'stoch', 'cci', 'fvg', 'bos', 'vol', 'don', 'fib', 'bol', 'gan', 'sup', 'pre', 'ewo','vwap','lqz','ici','bsz','heikin', 'atc', 'candle', 'zcr', 'relvol','dema','markov'])
 
@@ -1211,16 +1235,23 @@ if __name__ == "__main__":
     logger.info("Parallel processing done in %.2fs", time.time()-start)
 
     # === Seriell: in SQLite schreiben ===
+    # Straight into the file, one transaction. This used to go through an
+    # in-memory copy: the whole DB (1.2-1.8 GB) was loaded before the run,
+    # held for its full length, written back, loaded again for the duplicate
+    # cleanup and written back once more -- four full passes over the file
+    # for a few thousand new rows. Same statements, same order, same result.
     db_table = "asset_simulation"
+    write_start = time.time()
+    sim_db = tt.tools.Db_tools(db_path='database', database_name=sim_db_name, db_type=":file:")
+    known_keys = None
     for pdict in all_results:
-        sim_db.ensure_table_and_columns(pdict.keys(), pdict, db_table, primary_key=False)
+        keys = tuple(pdict.keys())
+        if keys != known_keys:   # schema check only when the key set changes (idempotent)
+            sim_db.ensure_table_and_columns(pdict.keys(), pdict, db_table, primary_key=False)
+            known_keys = keys
         sim_db.insert_data(pdict.keys(), pdict, db_table, replace=False)
 
     sim_db.conn.commit()
-    sim_db.close() # write memory db to file
-
-    # reopen db
-    sim_db = tt.tools.Db_tools(db_path='database', database_name=sim_db_name, db_type=":memory:")
 
     logger.info("removing duplicates...")
     # avoid duplicate entries
@@ -1238,6 +1269,7 @@ if __name__ == "__main__":
         logger.warning("Duplikate konnten nicht entfernt werden (Tabelle evtl. leer): %s", e)
 
     sim_db.close()
+    logger.info("%d rows written to %s in %.1fs", len(all_results), sim_db_name, time.time() - write_start)
 
     # Minervini RS rating for the days just written: a cross-sectional rank, so
     # it can only be computed once all tickers of the run are stored -- and

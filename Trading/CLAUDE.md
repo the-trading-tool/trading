@@ -2466,3 +2466,37 @@ gespeicherte Formel nutzt die Spalte. Andere Indikatoren nach bsz zeigten keine 
 
 Offen: Worker auf Linux = 1 (`/worker:N` in den Jobs nach Messung auf dem Zielrechner), Sim-DB je
 Lauf zweimal komplett geladen/zurueckgeschrieben, `fill_pdict` ~16 ms je Zeile (103 `safe_last`).
+
+### asset_perf2: Sim-DB direkt schreiben, ATR einmal je Ticker (2026-11-28)
+
+- **Schreibpfad:** die Sim-DB wurde VOR der Berechnung komplett in den Speicher geladen
+  (`db_type=":memory:"`, 1,2-1,8 GB), stundenlang gehalten, zurueckgeschrieben, fuer die
+  Duplikat-Bereinigung erneut geladen und nochmals zurueckgeschrieben — vier volle Durchgaenge
+  ueber die Datei fuer ein paar tausend Zeilen. Jetzt `db_type=":file:"`, eine Transaktion,
+  dieselben Anweisungen in derselben Reihenfolge; `ensure_table_and_columns` nur, wenn sich der
+  Schluesselsatz aendert (idempotent). Nebeneffekt: Aenderungen anderer Schreiber waehrend des
+  Laufs (z. B. `sim_repair`) werden nicht mehr vom Zurueckschreiben ueberbuegelt.
+- **ATR:** `calc_atr_percent` haengte je Zeile vier Hilfsspalten an den Tagesausschnitt (Kopie des
+  ~200-Spalten-Rahmens, danach fragmentiert → jeder `safe_last` langsamer). Neu `atr_series()`
+  ohne Seiteneffekt; `process_symbol` rechnet sie einmal ueber `df_r.loc[startdate:]` und reicht
+  `atr=` an `fill_pdict` durch. Bit-gleich, weil der rollende Mittelwert von vorn nach hinten
+  laeuft (Test `tests/test_perf2_atr.py` gegen die alte Implementierung woertlich).
+- **Verifiziert:** ganzes Skript alt (HEAD) gegen neu, `/index:^GDAXI` (40 Ticker) auf je einer
+  Kopie der echten `asset_simulation_.db` (vorher dieselben 799 November-Zeilen geloescht):
+  **236 s → 99 s**, davon Rechnung 101 → 65 s, Schreiben 5,7 s; alle 833.270 Zeilen ueber
+  (ticker, Date) identisch inkl. Typen (rowids unterscheiden sich, weil die Worker in zufaelliger
+  Reihenfolge fertig werden — war vorher schon so). `init` 8 Ticker 156 → 129 s, identisch.
+- **Unveraendert teuer in fill_pdict:** sharpe/sortino/semiVola/dTrend/vola rechnen je Zeile ueber
+  den ganzen Ausschnitt seit Vorjahresbeginn; eine fortlaufende Variante waere nicht bit-gleich.
+
+### BEFUND (offen): Duplikat-Regel behaelt die ERSTE Berechnung eines Tages
+
+Geschrieben wird per INSERT, danach `DELETE ... WHERE rowid NOT IN (SELECT MIN(rowid) ... GROUP BY
+ticker, Date)` → die aelteste Zeile gewinnt, jede spaetere Neuberechnung desselben Tages wird
+verworfen (22:00 nach 16:00, die Folgetage rechnen die letzten 6 Tage nochmals). Der 16:00-Lauf
+rechnet US-Werte waehrend des Handels → deren Zeilen tragen dauerhaft einen Intraday-Stand,
+samt aller Indikatoren. Geprueft 2026-11-10..27 (read-only): `close` != `day_data.Close` an
+13/13 Tagen bei AAPL/MSFT/KO, 12/13 JPM, 3/14 SAP.DE/ALV.DE (EU-Werte werden in langen Laeufen oft
+erst nach Handelsschluss erreicht). Die Memory-Notiz "Sim- vs OHLC-Preis-Vintage" fuehrte das auf
+Yahoo-Revisionen zurueck — das ist hoechstens ein Teil. Fix waere `MAX(rowid)` (neueste gewinnt)
+bzw. Upsert; aendert gespeicherte Backtest-Daten → Entscheidung Nutzer, nicht umgesetzt.
